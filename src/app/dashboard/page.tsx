@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/actions/auth";
 
@@ -11,6 +12,12 @@ export default async function DashboardPage() {
   if (!user) {
     redirect("/login");
   }
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
 
   return (
     <main className="flex flex-1 flex-col px-4 py-16">
@@ -30,6 +37,15 @@ export default async function DashboardPage() {
         <p className="mt-4 text-sm text-gray-600">
           Accesso effettuato come <span className="font-medium">{user.email}</span>.
         </p>
+
+        {profile?.role === "admin" && (
+          <Link
+            href="/admin"
+            className="mt-6 inline-block text-sm font-medium underline"
+          >
+            Vai al pannello admin
+          </Link>
+        )}
       </div>
     </main>
   );
