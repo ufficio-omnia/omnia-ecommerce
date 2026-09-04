@@ -12,13 +12,26 @@ export default async function ProdottoPage({
   const supabase = await createClient();
   const { data: product } = await supabase
     .from("products")
-    .select("id, title, description, price")
+    .select(
+      "id, title, description, price, active, product_files(id, label, sort_order)",
+    )
     .eq("id", id)
-    .single();
+    .single<{
+      id: string;
+      title: string;
+      description: string | null;
+      price: number;
+      active: boolean;
+      product_files: { id: string; label: string; sort_order: number }[];
+    }>();
 
-  if (!product) {
+  if (!product || !product.active) {
     notFound();
   }
+
+  const files = [...(product.product_files ?? [])].sort(
+    (a, b) => a.sort_order - b.sort_order,
+  );
 
   return (
     <main className="flex flex-1 flex-col px-4 py-16">
@@ -31,6 +44,17 @@ export default async function ProdottoPage({
             currency: "EUR",
           })}
         </p>
+
+        {files.length > 0 && (
+          <div className="mt-4">
+            <p className="text-sm font-medium">Contenuto del pacchetto</p>
+            <ul className="mt-1 list-inside list-disc text-sm text-gray-600">
+              {files.map((f) => (
+                <li key={f.id}>{f.label}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="mt-8 space-y-6">
           <div className="rounded-md border border-gray-200 p-4">

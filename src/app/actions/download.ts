@@ -6,7 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function downloadDocument(formData: FormData) {
   const orderId = String(formData.get("orderId") ?? "");
-  if (!orderId) return;
+  const fileId = String(formData.get("fileId") ?? "");
+  if (!orderId || !fileId) return;
 
   const supabase = await createClient();
   const {
@@ -30,20 +31,23 @@ export async function downloadDocument(formData: FormData) {
     redirect("/dashboard");
   }
 
-  const { data: product } = await supabase
-    .from("products")
+  // Verifichiamo che il file richiesto appartenga davvero al prodotto di
+  // questo ordine, non solo che l'id esista da qualche parte.
+  const { data: file } = await supabase
+    .from("product_files")
     .select("file_path")
-    .eq("id", order.product_id)
-    .single<{ file_path: string | null }>();
+    .eq("id", fileId)
+    .eq("product_id", order.product_id)
+    .single<{ file_path: string }>();
 
-  if (!product?.file_path) {
+  if (!file) {
     redirect("/dashboard");
   }
 
   const admin = createAdminClient();
   const { data: signed, error } = await admin.storage
     .from("documents")
-    .createSignedUrl(product.file_path, 60);
+    .createSignedUrl(file.file_path, 60);
 
   if (error || !signed) {
     redirect("/dashboard");

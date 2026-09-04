@@ -10,7 +10,10 @@ type OrderRow = {
   status: string;
   total_amount: number;
   created_at: string;
-  products: { title: string } | null;
+  products: {
+    title: string;
+    product_files: { id: string; label: string }[];
+  } | null;
   invoices: { id: string } | null;
 };
 
@@ -32,7 +35,9 @@ export default async function DashboardPage() {
 
   const { data: ordersRaw } = await supabase
     .from("orders")
-    .select("id, status, total_amount, created_at, products(title), invoices(id)")
+    .select(
+      "id, status, total_amount, created_at, products(title, product_files(id, label)), invoices(id)",
+    )
     .order("created_at", { ascending: false });
 
   const orders = ordersRaw as unknown as OrderRow[] | null;
@@ -94,35 +99,52 @@ export default async function DashboardPage() {
                     </div>
 
                     {o.status === "pagato" ? (
-                      <div className="flex gap-2">
-                        <form action={downloadDocument}>
+                      o.invoices && (
+                        <form action={downloadInvoice}>
                           <input type="hidden" name="orderId" value={o.id} />
                           <button
                             type="submit"
-                            className="rounded-md bg-black px-3 py-1.5 text-sm font-medium text-white"
+                            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
                           >
-                            Scarica
+                            Fattura
                           </button>
                         </form>
-
-                        {o.invoices && (
-                          <form action={downloadInvoice}>
-                            <input type="hidden" name="orderId" value={o.id} />
-                            <button
-                              type="submit"
-                              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                            >
-                              Fattura
-                            </button>
-                          </form>
-                        )}
-                      </div>
+                      )
                     ) : (
                       <span className="text-xs text-gray-400">
                         Non disponibile
                       </span>
                     )}
                   </div>
+
+                  {o.status === "pagato" && (
+                    <ul className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+                      {o.products?.product_files?.length ? (
+                        o.products.product_files.map((f) => (
+                          <li
+                            key={f.id}
+                            className="flex items-center justify-between text-sm"
+                          >
+                            <span>{f.label}</span>
+                            <form action={downloadDocument}>
+                              <input type="hidden" name="orderId" value={o.id} />
+                              <input type="hidden" name="fileId" value={f.id} />
+                              <button
+                                type="submit"
+                                className="rounded-md bg-black px-3 py-1.5 text-xs font-medium text-white"
+                              >
+                                Scarica
+                              </button>
+                            </form>
+                          </li>
+                        ))
+                      ) : (
+                        <p className="text-xs text-gray-500">
+                          Nessun file disponibile per questo prodotto.
+                        </p>
+                      )}
+                    </ul>
+                  )}
 
                   {o.status !== "pagato" && (
                     <dl className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs">

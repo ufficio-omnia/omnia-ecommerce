@@ -54,12 +54,20 @@ export default async function AdminPage() {
       <div className="mx-auto w-full max-w-4xl">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Pannello admin</h1>
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium underline text-gray-600"
-          >
-            Torna alla dashboard
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/admin/prodotti"
+              className="text-sm font-medium underline text-gray-600"
+            >
+              Gestisci prodotti
+            </Link>
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium underline text-gray-600"
+            >
+              Torna alla dashboard
+            </Link>
+          </div>
         </div>
 
         <section className="mt-10">
