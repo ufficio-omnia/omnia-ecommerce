@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { markOrderAsPaid } from "@/app/actions/admin";
+import { markOrderAsPaid, uploadInvoice } from "@/app/actions/admin";
 
 type OrderRow = {
   id: string;
@@ -11,6 +11,7 @@ type OrderRow = {
   created_at: string;
   users: { email: string } | null;
   products: { title: string } | null;
+  invoices: { id: string } | null;
 };
 
 export default async function AdminPage() {
@@ -41,7 +42,7 @@ export default async function AdminPage() {
     supabase
       .from("orders")
       .select(
-        "id, status, payment_method, total_amount, created_at, users(email), products(title)",
+        "id, status, payment_method, total_amount, created_at, users(email), products(title), invoices(id)",
       )
       .order("created_at", { ascending: false }),
   ]);
@@ -115,6 +116,7 @@ export default async function AdminPage() {
                   <th className="px-4 py-2 text-left font-medium">Importo</th>
                   <th className="px-4 py-2 text-left font-medium">Data</th>
                   <th className="px-4 py-2 text-left font-medium">Azione</th>
+                  <th className="px-4 py-2 text-left font-medium">Fattura</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -152,11 +154,38 @@ export default async function AdminPage() {
                           "—"
                         )}
                       </td>
+                      <td className="px-4 py-2">
+                        {o.status !== "pagato" ? (
+                          "—"
+                        ) : o.invoices ? (
+                          "Caricata"
+                        ) : (
+                          <form
+                            action={uploadInvoice}
+                            className="flex items-center gap-1"
+                          >
+                            <input type="hidden" name="orderId" value={o.id} />
+                            <input
+                              type="file"
+                              name="file"
+                              accept="application/pdf"
+                              required
+                              className="w-32 text-xs"
+                            />
+                            <button
+                              type="submit"
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                            >
+                              Carica
+                            </button>
+                          </form>
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-2 text-gray-500" colSpan={8}>
+                    <td className="px-4 py-2 text-gray-500" colSpan={9}>
                       Nessun ordine.
                     </td>
                   </tr>

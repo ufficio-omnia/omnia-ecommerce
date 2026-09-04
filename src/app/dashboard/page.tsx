@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/actions/auth";
-import { downloadDocument } from "@/app/actions/download";
+import { downloadDocument, downloadInvoice } from "@/app/actions/download";
 import { IBAN, INTESTATARIO } from "@/lib/bank-details";
 
 type OrderRow = {
@@ -11,6 +11,7 @@ type OrderRow = {
   total_amount: number;
   created_at: string;
   products: { title: string } | null;
+  invoices: { id: string } | null;
 };
 
 export default async function DashboardPage() {
@@ -31,7 +32,7 @@ export default async function DashboardPage() {
 
   const { data: ordersRaw } = await supabase
     .from("orders")
-    .select("id, status, total_amount, created_at, products(title)")
+    .select("id, status, total_amount, created_at, products(title), invoices(id)")
     .order("created_at", { ascending: false });
 
   const orders = ordersRaw as unknown as OrderRow[] | null;
@@ -86,18 +87,36 @@ export default async function DashboardPage() {
                         ·{" "}
                         {o.status === "pagato" ? "Pagato" : "In attesa di pagamento"}
                       </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Ordine:{" "}
+                        <span className="font-mono">{o.id.slice(0, 8)}</span>
+                      </p>
                     </div>
 
                     {o.status === "pagato" ? (
-                      <form action={downloadDocument}>
-                        <input type="hidden" name="orderId" value={o.id} />
-                        <button
-                          type="submit"
-                          className="rounded-md bg-black px-3 py-1.5 text-sm font-medium text-white"
-                        >
-                          Scarica
-                        </button>
-                      </form>
+                      <div className="flex gap-2">
+                        <form action={downloadDocument}>
+                          <input type="hidden" name="orderId" value={o.id} />
+                          <button
+                            type="submit"
+                            className="rounded-md bg-black px-3 py-1.5 text-sm font-medium text-white"
+                          >
+                            Scarica
+                          </button>
+                        </form>
+
+                        {o.invoices && (
+                          <form action={downloadInvoice}>
+                            <input type="hidden" name="orderId" value={o.id} />
+                            <button
+                              type="submit"
+                              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                            >
+                              Fattura
+                            </button>
+                          </form>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-xs text-gray-400">
                         Non disponibile

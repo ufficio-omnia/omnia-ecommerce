@@ -51,3 +51,40 @@ export async function downloadDocument(formData: FormData) {
 
   redirect(signed.signedUrl);
 }
+
+export async function downloadInvoice(formData: FormData) {
+  const orderId = String(formData.get("orderId") ?? "");
+  if (!orderId) return;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // La RLS ("invoices_select_own") garantisce che questa query restituisca
+  // la fattura solo se l'ordine collegato appartiene all'utente corrente.
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("file_path")
+    .eq("order_id", orderId)
+    .single<{ file_path: string }>();
+
+  if (!invoice) {
+    redirect("/dashboard");
+  }
+
+  const admin = createAdminClient();
+  const { data: signed, error } = await admin.storage
+    .from("invoices")
+    .createSignedUrl(invoice.file_path, 60);
+
+  if (error || !signed) {
+    redirect("/dashboard");
+  }
+
+  redirect(signed.signedUrl);
+}

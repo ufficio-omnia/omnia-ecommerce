@@ -4,10 +4,13 @@ import { IBAN, INTESTATARIO } from "@/lib/bank-details";
 
 export default async function BonificoIstruzioniPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ new?: string }>;
 }) {
   const { orderId } = await params;
+  const { new: isNewCustomer } = await searchParams;
   const admin = createAdminClient();
 
   const { data: order } = await admin
@@ -62,8 +65,9 @@ export default async function BonificoIstruzioniPage({
         </dl>
 
         <p className="mt-6 text-sm text-gray-600">
-          Ti abbiamo anche inviato un&apos;email per attivare il tuo account
-          e impostare la password.
+          {isNewCustomer
+            ? "Ti abbiamo anche inviato un'email per attivare il tuo account e impostare la password."
+            : "Ti invieremo un'email non appena il documento sarà pronto per il download."}
         </p>
       </div>
     </main>
