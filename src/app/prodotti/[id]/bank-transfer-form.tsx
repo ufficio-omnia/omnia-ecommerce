@@ -6,7 +6,8 @@ import { startBankTransferOrder, type ActionState } from "@/app/actions/checkout
 const initialState: ActionState = {};
 
 const inputClass =
-  "mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none";
+  "mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none";
+const labelClass = "block text-sm font-medium text-ink";
 
 export default function BankTransferForm({ productId }: { productId: string }) {
   const [state, formAction, pending] = useActionState(
@@ -15,11 +16,11 @@ export default function BankTransferForm({ productId }: { productId: string }) {
   );
 
   return (
-    <form action={formAction} className="mt-3 space-y-3">
+    <form action={formAction} className="mt-4 space-y-3">
       <input type="hidden" name="productId" value={productId} />
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium">
+        <label htmlFor="email" className={labelClass}>
           Email
         </label>
         <input
@@ -32,13 +33,13 @@ export default function BankTransferForm({ productId }: { productId: string }) {
         />
       </div>
 
-      <div className="border-t border-gray-100 pt-3">
-        <p className="text-xs font-medium text-gray-600">
+      <div className="border-t border-border pt-3">
+        <p className="font-mono text-xs tracking-wide text-sage uppercase">
           Dati di fatturazione
         </p>
 
         <div className="mt-2">
-          <label htmlFor="ragioneSociale" className="block text-sm font-medium">
+          <label htmlFor="ragioneSociale" className={labelClass}>
             Ragione sociale
           </label>
           <input
@@ -51,7 +52,7 @@ export default function BankTransferForm({ productId }: { productId: string }) {
         </div>
 
         <div className="mt-2">
-          <label htmlFor="partitaIva" className="block text-sm font-medium">
+          <label htmlFor="partitaIva" className={labelClass}>
             Partita IVA
           </label>
           <input
@@ -64,7 +65,7 @@ export default function BankTransferForm({ productId }: { productId: string }) {
         </div>
 
         <div className="mt-2">
-          <label htmlFor="indirizzo" className="block text-sm font-medium">
+          <label htmlFor="indirizzo" className={labelClass}>
             Indirizzo
           </label>
           <input
@@ -77,30 +78,30 @@ export default function BankTransferForm({ productId }: { productId: string }) {
         </div>
 
         <div className="mt-2">
-          <label htmlFor="codiceSdi" className="block text-sm font-medium">
+          <label htmlFor="codiceSdi" className={labelClass}>
             Codice SDI
           </label>
           <input id="codiceSdi" name="codiceSdi" type="text" className={inputClass} />
         </div>
 
         <div className="mt-2">
-          <label htmlFor="pec" className="block text-sm font-medium">
+          <label htmlFor="pec" className={labelClass}>
             PEC
           </label>
           <input id="pec" name="pec" type="email" className={inputClass} />
         </div>
 
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-sage">
           Inserisci almeno uno tra codice SDI e PEC.
         </p>
       </div>
 
-      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state.error && <p className="text-sm text-red-700">{state.error}</p>}
 
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="w-full rounded-full bg-forest px-4 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark disabled:opacity-50"
       >
         {pending ? "Elaborazione..." : "Ordina con bonifico"}
       </button>

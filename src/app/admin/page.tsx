@@ -50,53 +50,47 @@ export default async function AdminPage() {
   const orders = ordersRaw as unknown as OrderRow[] | null;
 
   return (
-    <main className="flex flex-1 flex-col px-4 py-16">
-      <div className="mx-auto w-full max-w-4xl">
+    <main className="flex-1">
+      <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Pannello admin</h1>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/admin/prodotti"
-              className="text-sm font-medium underline text-gray-600"
-            >
-              Gestisci prodotti
-            </Link>
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium underline text-gray-600"
-            >
-              Torna alla dashboard
-            </Link>
-          </div>
+          <h1 className="font-serif text-3xl text-ink">Pannello admin</h1>
+          <Link
+            href="/admin/prodotti"
+            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+          >
+            Gestisci prodotti
+          </Link>
         </div>
 
         <section className="mt-10">
-          <h2 className="text-lg font-medium">Utenti</h2>
-          <div className="mt-3 overflow-x-auto rounded-md border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
+            Utenti
+          </h2>
+          <div className="mt-3 overflow-x-auto rounded-2xl border border-border bg-cream-soft">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead>
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium">Email</th>
-                  <th className="px-4 py-2 text-left font-medium">Ruolo</th>
-                  <th className="px-4 py-2 text-left font-medium">
+                  <th className="px-4 py-2 text-left font-medium text-ink">Email</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">Ruolo</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">
                     Registrato il
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border">
                 {users?.length ? (
                   users.map((u) => (
                     <tr key={u.id}>
-                      <td className="px-4 py-2">{u.email}</td>
-                      <td className="px-4 py-2">{u.role}</td>
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 text-ink">{u.email}</td>
+                      <td className="px-4 py-2 text-ink">{u.role}</td>
+                      <td className="px-4 py-2 text-sage">
                         {new Date(u.created_at).toLocaleDateString("it-IT")}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-2 text-gray-500" colSpan={3}>
+                    <td className="px-4 py-2 text-sage" colSpan={3}>
                       Nessun utente.
                     </td>
                   </tr>
@@ -107,44 +101,52 @@ export default async function AdminPage() {
         </section>
 
         <section className="mt-10">
-          <h2 className="text-lg font-medium">Ordini</h2>
-          <div className="mt-3 overflow-x-auto rounded-md border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
+          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
+            Ordini
+          </h2>
+          <div className="mt-3 overflow-x-auto rounded-2xl border border-border bg-cream-soft">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead>
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium">Ordine</th>
-                  <th className="px-4 py-2 text-left font-medium">Cliente</th>
-                  <th className="px-4 py-2 text-left font-medium">
+                  <th className="px-4 py-2 text-left font-medium text-ink">Ordine</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">Cliente</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">
                     Documento
                   </th>
-                  <th className="px-4 py-2 text-left font-medium">Stato</th>
-                  <th className="px-4 py-2 text-left font-medium">
+                  <th className="px-4 py-2 text-left font-medium text-ink">Stato</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">
                     Pagamento
                   </th>
-                  <th className="px-4 py-2 text-left font-medium">Importo</th>
-                  <th className="px-4 py-2 text-left font-medium">Data</th>
-                  <th className="px-4 py-2 text-left font-medium">Azione</th>
-                  <th className="px-4 py-2 text-left font-medium">Fattura</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">Importo</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">Data</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">Azione</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">Fattura</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border">
                 {orders?.length ? (
                   orders.map((o) => (
                     <tr key={o.id}>
-                      <td className="px-4 py-2 font-mono text-xs">
+                      <td className="px-4 py-2 font-mono text-xs text-sage">
                         {o.id.slice(0, 8)}
                       </td>
-                      <td className="px-4 py-2">{o.users?.email ?? "—"}</td>
-                      <td className="px-4 py-2">{o.products?.title ?? "—"}</td>
-                      <td className="px-4 py-2">{o.status}</td>
-                      <td className="px-4 py-2">{o.payment_method ?? "—"}</td>
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 text-ink">{o.users?.email ?? "—"}</td>
+                      <td className="px-4 py-2 text-ink">{o.products?.title ?? "—"}</td>
+                      <td className="px-4 py-2 text-ink">
+                        {o.status === "pagato" ? (
+                          <span className="text-forest">{o.status}</span>
+                        ) : (
+                          o.status
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-ink">{o.payment_method ?? "—"}</td>
+                      <td className="px-4 py-2 text-ink">
                         {Number(o.total_amount).toLocaleString("it-IT", {
                           style: "currency",
                           currency: "EUR",
                         })}
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 text-sage">
                         {new Date(o.created_at).toLocaleDateString("it-IT")}
                       </td>
                       <td className="px-4 py-2">
@@ -153,20 +155,20 @@ export default async function AdminPage() {
                             <input type="hidden" name="orderId" value={o.id} />
                             <button
                               type="submit"
-                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                              className="rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream"
                             >
                               Segna come pagato
                             </button>
                           </form>
                         ) : (
-                          "—"
+                          <span className="text-sage">—</span>
                         )}
                       </td>
                       <td className="px-4 py-2">
                         {o.status !== "pagato" ? (
-                          "—"
+                          <span className="text-sage">—</span>
                         ) : o.invoices ? (
-                          "Caricata"
+                          <span className="text-forest">Caricata</span>
                         ) : (
                           <form
                             action={uploadInvoice}
@@ -178,11 +180,11 @@ export default async function AdminPage() {
                               name="file"
                               accept="application/pdf"
                               required
-                              className="w-32 text-xs"
+                              className="w-32 text-xs text-ink"
                             />
                             <button
                               type="submit"
-                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                              className="rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream"
                             >
                               Carica
                             </button>
@@ -193,7 +195,7 @@ export default async function AdminPage() {
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-2 text-gray-500" colSpan={9}>
+                    <td className="px-4 py-2 text-sage" colSpan={9}>
                       Nessun ordine.
                     </td>
                   </tr>

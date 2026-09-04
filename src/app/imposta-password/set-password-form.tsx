@@ -5,6 +5,9 @@ import { setInitialPassword, type ActionState } from "@/app/actions/auth";
 
 const initialState: ActionState = {};
 
+const inputClass =
+  "mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none";
+
 export default function SetPasswordForm() {
   const [state, formAction, pending] = useActionState(
     setInitialPassword,
@@ -14,7 +17,7 @@ export default function SetPasswordForm() {
   return (
     <form action={formAction} className="mt-6 space-y-4">
       <div>
-        <label htmlFor="password" className="block text-sm font-medium">
+        <label htmlFor="password" className="block text-sm font-medium text-ink">
           Nuova password
         </label>
         <input
@@ -24,12 +27,12 @@ export default function SetPasswordForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none"
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label htmlFor="confirmPassword" className="block text-sm font-medium">
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-ink">
           Conferma password
         </label>
         <input
@@ -39,16 +42,16 @@ export default function SetPasswordForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none"
+          className={inputClass}
         />
       </div>
 
-      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state.error && <p className="text-sm text-red-700">{state.error}</p>}
 
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="w-full rounded-full bg-forest px-4 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark disabled:opacity-50"
       >
         {pending ? "Salvataggio..." : "Imposta password e continua"}
       </button>

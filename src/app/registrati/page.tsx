@@ -14,21 +14,21 @@ export default function RegistratiPage() {
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
-      <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-semibold">Crea il tuo account OMNIA</h1>
-        <p className="mt-2 text-sm text-gray-600">
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-cream-soft p-8">
+        <h1 className="font-serif text-2xl text-ink">Crea il tuo account OMNIA</h1>
+        <p className="mt-2 text-sm text-sage">
           Inserisci la tua email: ti invieremo un link per attivare
           l&apos;account e impostare la password.
         </p>
 
         {state.success ? (
-          <p className="mt-6 rounded-md bg-green-50 p-4 text-sm text-green-800">
+          <p className="mt-6 rounded-lg border border-forest/30 bg-forest/10 p-4 text-sm text-forest-dark">
             {state.success}
           </p>
         ) : (
           <form action={formAction} className="mt-6 space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium">
+              <label htmlFor="email" className="block text-sm font-medium text-ink">
                 Email
               </label>
               <input
@@ -37,27 +37,27 @@ export default function RegistratiPage() {
                 type="email"
                 required
                 autoComplete="email"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-black focus:outline-none"
+                className="mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none"
               />
             </div>
 
             {state.error && (
-              <p className="text-sm text-red-600">{state.error}</p>
+              <p className="text-sm text-red-700">{state.error}</p>
             )}
 
             <button
               type="submit"
               disabled={pending}
-              className="w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="w-full rounded-full bg-forest px-4 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark disabled:opacity-50"
             >
               {pending ? "Invio in corso..." : "Registrati"}
             </button>
           </form>
         )}
 
-        <p className="mt-6 text-sm text-gray-600">
+        <p className="mt-6 text-sm text-sage">
           Hai già un account?{" "}
-          <Link href="/login" className="font-medium underline">
+          <Link href="/login" className="font-medium text-forest underline">
             Accedi
           </Link>
         </p>

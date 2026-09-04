@@ -30,6 +30,13 @@ type Product = {
   product_files: ProductFile[];
 };
 
+const inputClass =
+  "mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none";
+const smallInputClass =
+  "mt-1 rounded-lg border border-border bg-cream px-2 py-1 text-sm text-ink focus:border-forest focus:outline-none";
+const ghostButtonClass =
+  "rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream";
+
 export default async function AdminProdottiPage() {
   const supabase = await createClient();
   const {
@@ -60,43 +67,37 @@ export default async function AdminProdottiPage() {
   const products = productsRaw as unknown as Product[] | null;
 
   return (
-    <main className="flex flex-1 flex-col px-4 py-16">
-      <div className="mx-auto w-full max-w-3xl">
+    <main className="flex-1">
+      <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Gestisci prodotti</h1>
-          <Link href="/admin" className="text-sm font-medium underline text-gray-600">
+          <h1 className="font-serif text-3xl text-ink">Gestisci prodotti</h1>
+          <Link
+            href="/admin"
+            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+          >
             Torna al pannello admin
           </Link>
         </div>
 
-        <section className="mt-10 rounded-md border border-gray-200 p-4">
-          <h2 className="text-lg font-medium">Aggiungi nuovo prodotto</h2>
+        <section className="mt-10 rounded-2xl border border-border bg-cream-soft p-5">
+          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
+            Aggiungi nuovo prodotto
+          </h2>
           <form action={createProduct} className="mt-3 space-y-3">
             <div>
-              <label htmlFor="title" className="block text-sm font-medium">
+              <label htmlFor="title" className="block text-sm font-medium text-ink">
                 Titolo
               </label>
-              <input
-                id="title"
-                name="title"
-                type="text"
-                required
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
+              <input id="title" name="title" type="text" required className={inputClass} />
             </div>
             <div>
-              <label htmlFor="category" className="block text-sm font-medium">
+              <label htmlFor="category" className="block text-sm font-medium text-ink">
                 Categoria
               </label>
-              <input
-                id="category"
-                name="category"
-                type="text"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
+              <input id="category" name="category" type="text" className={inputClass} />
             </div>
             <div>
-              <label htmlFor="price" className="block text-sm font-medium">
+              <label htmlFor="price" className="block text-sm font-medium text-ink">
                 Prezzo (€)
               </label>
               <input
@@ -106,23 +107,18 @@ export default async function AdminProdottiPage() {
                 step="0.01"
                 min="0.01"
                 required
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                className={inputClass}
               />
             </div>
             <div>
-              <label htmlFor="description" className="block text-sm font-medium">
+              <label htmlFor="description" className="block text-sm font-medium text-ink">
                 Descrizione
               </label>
-              <textarea
-                id="description"
-                name="description"
-                rows={2}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
+              <textarea id="description" name="description" rows={2} className={inputClass} />
             </div>
             <button
               type="submit"
-              className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white"
+              className="rounded-full bg-forest px-4 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
             >
               Aggiungi prodotto
             </button>
@@ -130,30 +126,32 @@ export default async function AdminProdottiPage() {
         </section>
 
         <section className="mt-10 space-y-6">
-          <h2 className="text-lg font-medium">Prodotti esistenti</h2>
+          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
+            Prodotti esistenti
+          </h2>
 
           {products?.length ? (
             products.map((p) => (
-              <div key={p.id} className="rounded-md border border-gray-200 p-4">
+              <div
+                key={p.id}
+                className="rounded-2xl border border-border bg-cream-soft p-5"
+              >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">
+                    <p className="font-serif text-lg text-ink">
                       {p.title}{" "}
                       {!p.active && (
-                        <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                        <span className="ml-2 rounded-full bg-border px-2 py-0.5 font-mono text-[10px] text-sage uppercase">
                           Disattivato
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-gray-500">{p.category ?? "—"}</p>
+                    <p className="text-xs text-sage">{p.category ?? "—"}</p>
                   </div>
                   <form action={toggleProductActive}>
                     <input type="hidden" name="productId" value={p.id} />
                     <input type="hidden" name="active" value={String(p.active)} />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
-                    >
+                    <button type="submit" className={ghostButtonClass}>
                       {p.active ? "Disattiva" : "Riattiva"}
                     </button>
                   </form>
@@ -162,7 +160,7 @@ export default async function AdminProdottiPage() {
                 <form action={updateProduct} className="mt-3 flex flex-wrap items-end gap-2">
                   <input type="hidden" name="productId" value={p.id} />
                   <div>
-                    <label className="block text-xs text-gray-500">Prezzo (€)</label>
+                    <label className="block text-xs text-sage">Prezzo (€)</label>
                     <input
                       name="price"
                       type="number"
@@ -170,32 +168,31 @@ export default async function AdminProdottiPage() {
                       min="0.01"
                       defaultValue={p.price}
                       required
-                      className="mt-1 w-28 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      className={`${smallInputClass} w-28`}
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs text-gray-500">Descrizione</label>
+                    <label className="block text-xs text-sage">Descrizione</label>
                     <input
                       name="description"
                       type="text"
                       defaultValue={p.description ?? ""}
-                      className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                      className={`${smallInputClass} w-full`}
                     />
                   </div>
-                  <button
-                    type="submit"
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
-                  >
+                  <button type="submit" className={ghostButtonClass}>
                     Salva
                   </button>
                 </form>
 
-                <div className="mt-4 border-t border-gray-100 pt-3">
-                  <p className="text-xs font-medium text-gray-600">Sconto</p>
+                <div className="mt-4 border-t border-border pt-3">
+                  <p className="font-mono text-xs tracking-wide text-sage uppercase">
+                    Sconto
+                  </p>
 
                   {p.discount_active ? (
                     <div className="mt-2 flex items-center gap-3 text-sm">
-                      <span>
+                      <span className="text-ink">
                         Sconto attivo:{" "}
                         <span className="font-medium">
                           {Number(p.discount_price).toLocaleString("it-IT", {
@@ -203,7 +200,7 @@ export default async function AdminProdottiPage() {
                             currency: "EUR",
                           })}
                         </span>{" "}
-                        <span className="text-gray-400 line-through">
+                        <span className="text-sage line-through">
                           {Number(p.price).toLocaleString("it-IT", {
                             style: "currency",
                             currency: "EUR",
@@ -212,10 +209,7 @@ export default async function AdminProdottiPage() {
                       </span>
                       <form action={clearProductDiscount}>
                         <input type="hidden" name="productId" value={p.id} />
-                        <button
-                          type="submit"
-                          className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
-                        >
+                        <button type="submit" className={ghostButtonClass}>
                           Disattiva sconto
                         </button>
                       </form>
@@ -227,7 +221,7 @@ export default async function AdminProdottiPage() {
                     >
                       <input type="hidden" name="productId" value={p.id} />
                       <div>
-                        <label className="block text-xs text-gray-500">
+                        <label className="block text-xs text-sage">
                           Prezzo scontato (€)
                         </label>
                         <input
@@ -237,21 +231,18 @@ export default async function AdminProdottiPage() {
                           min="0.01"
                           max={p.price}
                           required
-                          className="mt-1 w-28 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                          className={`${smallInputClass} w-28`}
                         />
                       </div>
-                      <button
-                        type="submit"
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
-                      >
+                      <button type="submit" className={ghostButtonClass}>
                         Attiva sconto
                       </button>
                     </form>
                   )}
                 </div>
 
-                <div className="mt-4 border-t border-gray-100 pt-3">
-                  <p className="text-xs font-medium text-gray-600">
+                <div className="mt-4 border-t border-border pt-3">
+                  <p className="font-mono text-xs tracking-wide text-sage uppercase">
                     File inclusi ({p.product_files?.length ?? 0})
                   </p>
                   <ul className="mt-2 space-y-1">
@@ -260,10 +251,10 @@ export default async function AdminProdottiPage() {
                       .map((f) => (
                         <li
                           key={f.id}
-                          className="flex items-center justify-between text-sm"
+                          className="flex items-center justify-between text-sm text-ink"
                         >
                           <span>
-                            <span className="text-xs text-gray-400">
+                            <span className="text-xs text-sage">
                               [{f.sort_order}]
                             </span>{" "}
                             {f.label}
@@ -272,7 +263,7 @@ export default async function AdminProdottiPage() {
                             <input type="hidden" name="fileId" value={f.id} />
                             <button
                               type="submit"
-                              className="text-xs text-red-600 hover:underline"
+                              className="text-xs text-red-700 hover:underline"
                             >
                               Rimuovi
                             </button>
@@ -287,7 +278,7 @@ export default async function AdminProdottiPage() {
                   >
                     <input type="hidden" name="productId" value={p.id} />
                     <div>
-                      <label className="block text-xs text-gray-500">
+                      <label className="block text-xs text-sage">
                         Etichetta file
                       </label>
                       <input
@@ -295,25 +286,25 @@ export default async function AdminProdottiPage() {
                         type="text"
                         required
                         placeholder="es. Piano di lavoro (Excel)"
-                        className="mt-1 w-56 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                        className={`${smallInputClass} w-56`}
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-500">
-                        Ordine
-                      </label>
+                      <label className="block text-xs text-sage">Ordine</label>
                       <input
                         name="sortOrder"
                         type="number"
                         defaultValue={p.product_files?.length ?? 0}
-                        className="mt-1 w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                        className={`${smallInputClass} w-16`}
                       />
                     </div>
-                    <input type="file" name="file" required className="text-xs" />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
-                    >
+                    <input
+                      type="file"
+                      name="file"
+                      required
+                      className="text-xs text-ink"
+                    />
+                    <button type="submit" className={ghostButtonClass}>
                       Aggiungi file
                     </button>
                   </form>
@@ -321,7 +312,7 @@ export default async function AdminProdottiPage() {
               </div>
             ))
           ) : (
-            <p className="text-sm text-gray-500">Nessun prodotto.</p>
+            <p className="text-sm text-sage">Nessun prodotto.</p>
           )}
         </section>
       </div>

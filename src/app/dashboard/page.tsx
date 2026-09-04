@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "@/app/actions/auth";
 import { downloadDocument, downloadInvoice } from "@/app/actions/download";
 import { IBAN, INTESTATARIO } from "@/lib/bank-details";
 
@@ -27,12 +25,6 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
   const { data: ordersRaw } = await supabase
     .from("orders")
     .select(
@@ -43,56 +35,43 @@ export default async function DashboardPage() {
   const orders = ordersRaw as unknown as OrderRow[] | null;
 
   return (
-    <main className="flex flex-1 flex-col px-4 py-16">
-      <div className="mx-auto w-full max-w-2xl">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-            >
-              Esci
-            </button>
-          </form>
-        </div>
-
-        <p className="mt-4 text-sm text-gray-600">
-          Accesso effettuato come <span className="font-medium">{user.email}</span>.
+    <main className="flex-1">
+      <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+        <h1 className="font-serif text-3xl text-ink">Dashboard</h1>
+        <p className="mt-2 text-sm text-sage">
+          Accesso effettuato come{" "}
+          <span className="font-medium text-ink">{user.email}</span>.
         </p>
 
-        {profile?.role === "admin" && (
-          <Link
-            href="/admin"
-            className="mt-6 inline-block text-sm font-medium underline"
-          >
-            Vai al pannello admin
-          </Link>
-        )}
-
         <section className="mt-10">
-          <h2 className="text-lg font-medium">I tuoi ordini</h2>
-          <ul className="mt-3 space-y-3">
+          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
+            I tuoi ordini
+          </h2>
+          <ul className="mt-4 space-y-4">
             {orders?.length ? (
               orders.map((o) => (
                 <li
                   key={o.id}
-                  className="rounded-md border border-gray-200 p-4"
+                  className="rounded-2xl border border-border bg-cream-soft p-5"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium">
+                      <p className="font-serif text-lg text-ink">
                         {o.products?.title ?? "Documento"}
                       </p>
-                      <p className="mt-1 text-xs text-gray-500">
+                      <p className="mt-1 text-xs text-sage">
                         {Number(o.total_amount).toLocaleString("it-IT", {
                           style: "currency",
                           currency: "EUR",
                         })}{" "}
                         ·{" "}
-                        {o.status === "pagato" ? "Pagato" : "In attesa di pagamento"}
+                        {o.status === "pagato" ? (
+                          <span className="text-forest">Pagato</span>
+                        ) : (
+                          "In attesa di pagamento"
+                        )}
                       </p>
-                      <p className="mt-1 text-xs text-gray-500">
+                      <p className="mt-1 text-xs text-sage">
                         Ordine:{" "}
                         <span className="font-mono">{o.id.slice(0, 8)}</span>
                       </p>
@@ -104,26 +83,26 @@ export default async function DashboardPage() {
                           <input type="hidden" name="orderId" value={o.id} />
                           <button
                             type="submit"
-                            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                            className="rounded-full border border-border-strong px-3 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
                           >
                             Fattura
                           </button>
                         </form>
                       )
                     ) : (
-                      <span className="text-xs text-gray-400">
+                      <span className="font-mono text-xs text-sage uppercase">
                         Non disponibile
                       </span>
                     )}
                   </div>
 
                   {o.status === "pagato" && (
-                    <ul className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+                    <ul className="mt-4 space-y-2 border-t border-border pt-4">
                       {o.products?.product_files?.length ? (
                         o.products.product_files.map((f) => (
                           <li
                             key={f.id}
-                            className="flex items-center justify-between text-sm"
+                            className="flex items-center justify-between text-sm text-ink"
                           >
                             <span>{f.label}</span>
                             <form action={downloadDocument}>
@@ -131,7 +110,7 @@ export default async function DashboardPage() {
                               <input type="hidden" name="fileId" value={f.id} />
                               <button
                                 type="submit"
-                                className="rounded-md bg-black px-3 py-1.5 text-xs font-medium text-white"
+                                className="rounded-full bg-forest px-3 py-1.5 font-mono text-[10px] tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
                               >
                                 Scarica
                               </button>
@@ -139,7 +118,7 @@ export default async function DashboardPage() {
                           </li>
                         ))
                       ) : (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-sage">
                           Nessun file disponibile per questo prodotto.
                         </p>
                       )}
@@ -147,18 +126,18 @@ export default async function DashboardPage() {
                   )}
 
                   {o.status !== "pagato" && (
-                    <dl className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-xs">
+                    <dl className="mt-4 space-y-1 border-t border-border pt-4 text-xs">
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">IBAN</dt>
-                        <dd className="font-medium">{IBAN}</dd>
+                        <dt className="text-sage">IBAN</dt>
+                        <dd className="font-medium text-ink">{IBAN}</dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">Intestatario</dt>
-                        <dd className="font-medium">{INTESTATARIO}</dd>
+                        <dt className="text-sage">Intestatario</dt>
+                        <dd className="font-medium text-ink">{INTESTATARIO}</dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">Causale</dt>
-                        <dd className="font-mono font-medium">
+                        <dt className="text-sage">Causale</dt>
+                        <dd className="font-mono font-medium text-ink">
                           Ordine {o.id.slice(0, 8)}
                         </dd>
                       </div>
@@ -167,7 +146,7 @@ export default async function DashboardPage() {
                 </li>
               ))
             ) : (
-              <p className="text-sm text-gray-500">Nessun ordine.</p>
+              <p className="text-sm text-sage">Nessun ordine.</p>
             )}
           </ul>
         </section>
