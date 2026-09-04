@@ -21,6 +21,13 @@ export default function Home() {
             Registrati
           </Link>
         </div>
+
+        <Link
+          href="/prodotti"
+          className="mt-4 inline-block text-sm text-gray-600 underline"
+        >
+          Vedi i documenti disponibili
+        </Link>
       </div>
     </main>
   );
