@@ -1,9 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { requireAdmin } from "@/lib/require-admin";
+
+type DeleteState = { error?: string };
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -46,6 +50,100 @@ export async function markOrderAsPaid(formData: FormData) {
   }
 
   revalidatePath("/admin");
+}
+
+export async function deleteOrder(
+  _prevState: DeleteState,
+  formData: FormData,
+): Promise<DeleteState> {
+  if (!(await requireAdmin())) {
+    return { error: "Non autorizzato." };
+  }
+
+  const orderId = String(formData.get("orderId") ?? "");
+  if (!orderId) return { error: "Ordine non valido." };
+
+  const admin = createAdminClient();
+
+  // Recuperiamo il file della fattura prima di eliminare l'ordine: la
+  // riga in "invoices" viene cancellata a cascata dal DB, ma il file
+  // nello storage no, va rimosso a parte.
+  const { data: invoice } = await admin
+    .from("invoices")
+    .select("file_path")
+    .eq("order_id", orderId)
+    .maybeSingle<{ file_path: string }>();
+
+  const { error } = await admin.from("orders").delete().eq("id", orderId);
+
+  if (error) {
+    console.error("Errore eliminazione ordine:", error);
+    return { error: "Errore nell'eliminazione dell'ordine." };
+  }
+
+  if (invoice?.file_path) {
+    await admin.storage.from("invoices").remove([invoice.file_path]);
+  }
+
+  revalidatePath("/admin");
+  revalidatePath(`/admin/clienti/${formData.get("userId") ?? ""}`);
+  return {};
+}
+
+type OrderInvoicePath = { invoices: { file_path: string } | null };
+
+export async function deleteUser(
+  _prevState: DeleteState,
+  formData: FormData,
+): Promise<DeleteState> {
+  if (!(await requireAdmin())) {
+    return { error: "Non autorizzato." };
+  }
+
+  const targetUserId = String(formData.get("userId") ?? "");
+  if (!targetUserId) return { error: "Utente non valido." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user?.id === targetUserId) {
+    return { error: "Non puoi eliminare il tuo stesso account." };
+  }
+
+  const admin = createAdminClient();
+
+  // Raccogliamo i file fattura da rimuovere dallo storage: la cancellazione
+  // dell'utente elimina a cascata (via FK) i suoi ordini/fatture nel DB,
+  // ma non i file nello storage.
+  const { data: ordersRaw } = await admin
+    .from("orders")
+    .select("invoices(file_path)")
+    .eq("user_id", targetUserId);
+
+  const orders = ordersRaw as unknown as OrderInvoicePath[] | null;
+
+  // Eliminare l'utente auth (non solo la riga public.users) è l'unico
+  // punto di cancellazione necessario: public.users, companies, orders e
+  // invoices sono tutti collegati con "on delete cascade" fino ad
+  // auth.users.
+  const { error } = await admin.auth.admin.deleteUser(targetUserId);
+
+  if (error) {
+    console.error("Errore eliminazione utente:", error);
+    return { error: "Errore nell'eliminazione dell'utente." };
+  }
+
+  const filePaths = (orders ?? [])
+    .map((o) => o.invoices?.file_path)
+    .filter((p): p is string => Boolean(p));
+
+  if (filePaths.length) {
+    await admin.storage.from("invoices").remove(filePaths);
+  }
+
+  redirect("/admin");
 }
 
 export async function uploadInvoice(formData: FormData) {

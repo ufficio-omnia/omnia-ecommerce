@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { downloadDocument, downloadInvoice } from "@/app/actions/download";
 import { IBAN, INTESTATARIO } from "@/lib/bank-details";
@@ -38,7 +39,15 @@ export default async function DashboardPage() {
   return (
     <main className="flex-1">
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-        <h1 className="font-serif text-3xl text-ink">Dashboard</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-serif text-3xl text-ink">Dashboard</h1>
+          <Link
+            href="/dashboard/messaggi"
+            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+          >
+            Messaggi
+          </Link>
+        </div>
         <p className="mt-2 text-sm text-sage">
           Accesso effettuato come{" "}
           <span className="font-medium text-ink">{user.email}</span>.

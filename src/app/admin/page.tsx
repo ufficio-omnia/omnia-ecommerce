@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { markOrderAsPaid, uploadInvoice } from "@/app/actions/admin";
+import { markOrderAsPaid, uploadInvoice, deleteOrder } from "@/app/actions/admin";
+import DeleteButton from "@/components/delete-button";
 
 type OrderRow = {
   id: string;
+  user_id: string;
   status: string;
   payment_method: string | null;
   total_amount: number;
@@ -42,7 +44,7 @@ export default async function AdminPage() {
     supabase
       .from("orders")
       .select(
-        "id, status, payment_method, total_amount, created_at, users(email), products(title), invoices(id)",
+        "id, user_id, status, payment_method, total_amount, created_at, users(email), products(title), invoices(id)",
       )
       .order("created_at", { ascending: false }),
   ]);
@@ -80,8 +82,15 @@ export default async function AdminPage() {
               <tbody className="divide-y divide-border">
                 {users?.length ? (
                   users.map((u) => (
-                    <tr key={u.id}>
-                      <td className="px-4 py-2 text-ink">{u.email}</td>
+                    <tr key={u.id} className="hover:bg-cream">
+                      <td className="px-4 py-2">
+                        <Link
+                          href={`/admin/clienti/${u.id}`}
+                          className="text-ink underline hover:text-forest"
+                        >
+                          {u.email}
+                        </Link>
+                      </td>
                       <td className="px-4 py-2 text-ink">{u.role}</td>
                       <td className="px-4 py-2 text-sage">
                         {new Date(u.created_at).toLocaleDateString("it-IT")}
@@ -121,6 +130,7 @@ export default async function AdminPage() {
                   <th className="px-4 py-2 text-left font-medium text-ink">Data</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Azione</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Fattura</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -191,11 +201,20 @@ export default async function AdminPage() {
                           </form>
                         )}
                       </td>
+                      <td className="px-4 py-2">
+                        <DeleteButton
+                          action={deleteOrder}
+                          hiddenFields={{ orderId: o.id, userId: o.user_id }}
+                          confirmMessage="Eliminare definitivamente questo ordine? L'operazione non è reversibile."
+                          label="Elimina"
+                          className="font-mono text-[10px] tracking-wide text-red-700 uppercase hover:underline"
+                        />
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-2 text-sage" colSpan={9}>
+                    <td className="px-4 py-2 text-sage" colSpan={10}>
                       Nessun ordine.
                     </td>
                   </tr>

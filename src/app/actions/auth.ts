@@ -56,6 +56,33 @@ export async function loginWithPassword(
   redirect("/dashboard");
 }
 
+export async function requestPasswordReset(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+
+  if (!email) {
+    return { error: "Inserisci un indirizzo email." };
+  }
+
+  const supabase = await createClient();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl}/auth/callback?next=/imposta-password`,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return {
+    success:
+      "Se l'indirizzo è registrato, ti abbiamo inviato un'email con le istruzioni per reimpostare la password.",
+  };
+}
+
 export async function setInitialPassword(
   _prevState: ActionState,
   formData: FormData,
