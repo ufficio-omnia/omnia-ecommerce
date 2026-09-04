@@ -36,7 +36,7 @@ export default async function Home() {
             <br />
             <span className="text-forest italic">Da scaricare oggi.</span>
           </h1>
-          <p className="mx-auto mt-6 max-w-xl text-sage">
+          <p className="mx-auto mt-6 max-w-xl text-justify text-sage">
             Facsimile e modelli professionali per la tua partecipazione a
             gare d&apos;appalto: relazione tecnica, piani di lavoro,
             organigrammi e check list, pronti da personalizzare.
@@ -79,7 +79,7 @@ export default async function Home() {
                   className="flex flex-col rounded-2xl border border-border bg-cream-soft p-6 transition-shadow hover:shadow-lg"
                 >
                   <h3 className="font-serif text-xl text-ink">{p.title}</h3>
-                  <p className="mt-2 flex-1 text-sm text-sage">
+                  <p className="mt-2 flex-1 text-justify text-sm text-sage">
                     {p.description}
                   </p>
 

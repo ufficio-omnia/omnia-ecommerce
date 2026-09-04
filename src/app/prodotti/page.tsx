@@ -39,7 +39,7 @@ export default async function ProdottiPage() {
           <h1 className="mt-3 font-serif text-3xl text-ink sm:text-4xl">
             Documenti disponibili
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-sm text-sage">
+          <p className="mx-auto mt-3 max-w-md text-justify text-sm text-sage">
             Ogni pacchetto include tutti i file elencati, pronti da scaricare
             e personalizzare non appena il pagamento è confermato.
           </p>
@@ -64,7 +64,7 @@ export default async function ProdottiPage() {
                       {p.title}
                     </h2>
                   </Link>
-                  <p className="mt-2 text-sm text-sage">{p.description}</p>
+                  <p className="mt-2 text-justify text-sm text-sage">{p.description}</p>
 
                   {files.length > 0 && (
                     <ul className="mt-4 space-y-1 text-sm text-sage">

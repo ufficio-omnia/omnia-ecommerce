@@ -16,7 +16,7 @@ export default function RegistratiPage() {
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-cream-soft p-8">
         <h1 className="font-serif text-2xl text-ink">Crea il tuo account OMNIA</h1>
-        <p className="mt-2 text-sm text-sage">
+        <p className="mt-2 text-justify text-sm text-sage">
           Inserisci la tua email: ti invieremo un link per attivare
           l&apos;account e impostare la password.
         </p>

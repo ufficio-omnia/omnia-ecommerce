@@ -31,7 +31,7 @@ export default async function BonificoIstruzioniPage({
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
         <h1 className="font-serif text-3xl text-ink">Ordine ricevuto</h1>
-        <p className="mt-2 text-sm text-sage">
+        <p className="mt-2 text-justify text-sm text-sage">
           Completa il pagamento con bonifico bancario. Il documento sarà
           sbloccato in dashboard non appena confermiamo la ricezione.
         </p>
@@ -66,7 +66,7 @@ export default async function BonificoIstruzioniPage({
           </div>
         </dl>
 
-        <p className="mt-6 text-sm text-sage">
+        <p className="mt-6 text-justify text-sm text-sage">
           {isNewCustomer
             ? "Ti abbiamo anche inviato un'email per attivare il tuo account e impostare la password."
             : "Ti invieremo un'email non appena il documento sarà pronto per il download."}

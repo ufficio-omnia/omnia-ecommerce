@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { downloadDocument, downloadInvoice } from "@/app/actions/download";
 import { IBAN, INTESTATARIO } from "@/lib/bank-details";
+import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 
 type OrderRow = {
   id: string;
@@ -79,15 +80,12 @@ export default async function DashboardPage() {
 
                     {o.status === "pagato" ? (
                       o.invoices && (
-                        <form action={downloadInvoice}>
-                          <input type="hidden" name="orderId" value={o.id} />
-                          <button
-                            type="submit"
-                            className="rounded-full border border-border-strong px-3 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
-                          >
-                            Fattura
-                          </button>
-                        </form>
+                        <OpenInNewTabButton
+                          action={downloadInvoice}
+                          hiddenFields={{ orderId: o.id }}
+                          label="Fattura"
+                          className="rounded-full border border-border-strong px-3 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+                        />
                       )
                     ) : (
                       <span className="font-mono text-xs text-sage uppercase">
@@ -105,16 +103,12 @@ export default async function DashboardPage() {
                             className="flex items-center justify-between text-sm text-ink"
                           >
                             <span>{f.label}</span>
-                            <form action={downloadDocument}>
-                              <input type="hidden" name="orderId" value={o.id} />
-                              <input type="hidden" name="fileId" value={f.id} />
-                              <button
-                                type="submit"
-                                className="rounded-full bg-forest px-3 py-1.5 font-mono text-[10px] tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
-                              >
-                                Scarica
-                              </button>
-                            </form>
+                            <OpenInNewTabButton
+                              action={downloadDocument}
+                              hiddenFields={{ orderId: o.id, fileId: f.id }}
+                              label="Scarica"
+                              className="rounded-full bg-forest px-3 py-1.5 font-mono text-[10px] tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
+                            />
                           </li>
                         ))
                       ) : (

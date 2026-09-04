@@ -6,7 +6,7 @@ import { createStripeClient } from "@/lib/stripe";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { effectivePrice } from "@/lib/products";
 
-export type ActionState = { error?: string };
+export type ActionState = { error?: string; url?: string };
 
 export async function startBankTransferOrder(
   _prevState: ActionState,
@@ -227,5 +227,8 @@ export async function startCardCheckout(
     return { error: "Errore nell'avvio del pagamento. Riprova." };
   }
 
-  redirect(session.url);
+  // Non usiamo redirect(): il pagamento Stripe si apre in una nuova
+  // scheda (gestito dal componente client), lasciando la pagina prodotto
+  // aperta nella scheda originale.
+  return { url: session.url };
 }

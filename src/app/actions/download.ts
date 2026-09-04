@@ -4,10 +4,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export async function downloadDocument(formData: FormData) {
+export type DownloadState = { error?: string; url?: string };
+
+export async function downloadDocument(
+  _prevState: DownloadState,
+  formData: FormData,
+): Promise<DownloadState> {
   const orderId = String(formData.get("orderId") ?? "");
   const fileId = String(formData.get("fileId") ?? "");
-  if (!orderId || !fileId) return;
+  if (!orderId || !fileId) return {};
 
   const supabase = await createClient();
   const {
@@ -28,7 +33,7 @@ export async function downloadDocument(formData: FormData) {
     .single<{ id: string; status: string; product_id: string | null }>();
 
   if (!order || order.status !== "pagato" || !order.product_id) {
-    redirect("/dashboard");
+    return { error: "Documento non disponibile." };
   }
 
   // Verifichiamo che il file richiesto appartenga davvero al prodotto di
@@ -41,7 +46,7 @@ export async function downloadDocument(formData: FormData) {
     .single<{ file_path: string }>();
 
   if (!file) {
-    redirect("/dashboard");
+    return { error: "File non trovato." };
   }
 
   const admin = createAdminClient();
@@ -50,15 +55,18 @@ export async function downloadDocument(formData: FormData) {
     .createSignedUrl(file.file_path, 60);
 
   if (error || !signed) {
-    redirect("/dashboard");
+    return { error: "Errore nella generazione del link di download." };
   }
 
-  redirect(signed.signedUrl);
+  return { url: signed.signedUrl };
 }
 
-export async function downloadInvoice(formData: FormData) {
+export async function downloadInvoice(
+  _prevState: DownloadState,
+  formData: FormData,
+): Promise<DownloadState> {
   const orderId = String(formData.get("orderId") ?? "");
-  if (!orderId) return;
+  if (!orderId) return {};
 
   const supabase = await createClient();
   const {
@@ -78,7 +86,7 @@ export async function downloadInvoice(formData: FormData) {
     .single<{ file_path: string }>();
 
   if (!invoice) {
-    redirect("/dashboard");
+    return { error: "Fattura non trovata." };
   }
 
   const admin = createAdminClient();
@@ -87,8 +95,8 @@ export async function downloadInvoice(formData: FormData) {
     .createSignedUrl(invoice.file_path, 60);
 
   if (error || !signed) {
-    redirect("/dashboard");
+    return { error: "Errore nella generazione del link di download." };
   }
 
-  redirect(signed.signedUrl);
+  return { url: signed.signedUrl };
 }

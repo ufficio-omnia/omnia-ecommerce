@@ -52,7 +52,7 @@ export default async function ProdottoPage({
           <h1 className="font-serif text-3xl text-ink sm:text-4xl">
             {product.title}
           </h1>
-          <p className="mt-3 max-w-xl text-sage">{product.description}</p>
+          <p className="mt-3 max-w-xl text-justify text-sage">{product.description}</p>
 
           <div className="mt-6">
             {discounted && (
@@ -97,7 +97,7 @@ export default async function ProdottoPage({
         <div className="mt-8 grid gap-6 sm:grid-cols-2">
           <div className="rounded-2xl border border-border bg-cream-soft p-6">
             <p className="font-serif text-lg text-ink">Paga con carta</p>
-            <p className="mt-1 text-xs text-sage">
+            <p className="mt-1 text-justify text-xs text-sage">
               Pagamento sicuro tramite Stripe. Il documento sarà sbloccato in
               dashboard subito dopo la conferma del pagamento.
             </p>
@@ -106,7 +106,7 @@ export default async function ProdottoPage({
 
           <div className="rounded-2xl border border-border bg-cream-soft p-6">
             <p className="font-serif text-lg text-ink">Bonifico bancario</p>
-            <p className="mt-1 text-xs text-sage">
+            <p className="mt-1 text-justify text-xs text-sage">
               L&apos;ordine resterà in attesa finché non confermiamo il
               pagamento.
             </p>

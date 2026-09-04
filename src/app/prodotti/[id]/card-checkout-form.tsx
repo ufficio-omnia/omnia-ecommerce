@@ -1,22 +1,46 @@
 "use client";
 
-import { useActionState } from "react";
-import { startCardCheckout, type ActionState } from "@/app/actions/checkout";
-
-const initialState: ActionState = {};
+import { useState, useTransition, type FormEvent } from "react";
+import { startCardCheckout } from "@/app/actions/checkout";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none";
 const labelClass = "block text-sm font-medium text-ink";
 
 export default function CardCheckoutForm({ productId }: { productId: string }) {
-  const [state, formAction, pending] = useActionState(
-    startCardCheckout,
-    initialState,
-  );
+  const [error, setError] = useState<string | null>(null);
+  const [opened, setOpened] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+
+    // La scheda va aperta subito, in modo sincrono nel submit, altrimenti
+    // i browser bloccano window.open() se arriva dopo l'attesa del server.
+    const tab = window.open("about:blank", "_blank");
+    setError(null);
+    setOpened(false);
+
+    startTransition(async () => {
+      const result = await startCardCheckout({}, formData);
+
+      if (result.url) {
+        if (tab) {
+          tab.location.href = result.url;
+        } else {
+          window.open(result.url, "_blank", "noopener,noreferrer");
+        }
+        setOpened(true);
+      } else {
+        tab?.close();
+        setError(result.error ?? "Errore imprevisto.");
+      }
+    });
+  }
 
   return (
-    <form action={formAction} className="mt-4 space-y-3">
+    <form onSubmit={handleSubmit} className="mt-4 space-y-3">
       <input type="hidden" name="productId" value={productId} />
 
       <div>
@@ -101,14 +125,19 @@ export default function CardCheckoutForm({ productId }: { productId: string }) {
         </p>
       </div>
 
-      {state.error && <p className="text-sm text-red-700">{state.error}</p>}
+      {error && <p className="text-sm text-red-700">{error}</p>}
+      {opened && (
+        <p className="text-sm text-forest">
+          Il pagamento si è aperto in una nuova scheda.
+        </p>
+      )}
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={isPending}
         className="w-full rounded-full bg-ink px-4 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest disabled:opacity-50"
       >
-        {pending ? "Reindirizzamento..." : "Paga con carta"}
+        {isPending ? "Apertura in corso..." : "Paga con carta"}
       </button>
     </form>
   );
