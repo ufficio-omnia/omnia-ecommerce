@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { effectivePrice } from "@/lib/products";
 
 type ProductFile = {
   label: string;
@@ -11,6 +12,8 @@ type Product = {
   title: string;
   description: string | null;
   price: number;
+  discount_active: boolean;
+  discount_price: number | null;
   product_files: ProductFile[];
 };
 
@@ -18,7 +21,9 @@ export default async function ProdottiPage() {
   const supabase = await createClient();
   const { data: productsRaw } = await supabase
     .from("products")
-    .select("id, title, description, price, product_files(label, sort_order)")
+    .select(
+      "id, title, description, price, discount_active, discount_price, product_files(label, sort_order)",
+    )
     .eq("active", true)
     .order("created_at", { ascending: false });
 
@@ -52,12 +57,36 @@ export default async function ProdottiPage() {
                   )}
 
                   <div className="mt-3 flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      {Number(p.price).toLocaleString("it-IT", {
-                        style: "currency",
-                        currency: "EUR",
-                      })}
-                    </p>
+                    <div>
+                      {p.discount_active && p.discount_price != null ? (
+                        <div>
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">
+                            Sconto momentaneo
+                          </span>
+                          <p className="mt-1">
+                            <span className="mr-2 text-sm text-gray-400 line-through">
+                              {Number(p.price).toLocaleString("it-IT", {
+                                style: "currency",
+                                currency: "EUR",
+                              })}
+                            </span>
+                            <span className="text-sm font-medium">
+                              {Number(effectivePrice(p)).toLocaleString("it-IT", {
+                                style: "currency",
+                                currency: "EUR",
+                              })}
+                            </span>
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-medium">
+                          {Number(p.price).toLocaleString("it-IT", {
+                            style: "currency",
+                            currency: "EUR",
+                          })}
+                        </p>
+                      )}
+                    </div>
                     <Link
                       href={`/prodotti/${p.id}`}
                       className="rounded-md bg-black px-3 py-1.5 text-sm font-medium text-white"

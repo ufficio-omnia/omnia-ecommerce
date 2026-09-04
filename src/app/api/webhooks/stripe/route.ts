@@ -60,7 +60,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   const { data: product } = await admin
     .from("products")
-    .select("id, title, price")
+    .select("id, title")
     .eq("id", productId)
     .single();
 
@@ -68,6 +68,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     console.error("Webhook Stripe: prodotto non trovato", productId);
     return;
   }
+
+  // L'importo da registrare è quello effettivamente addebitato da Stripe
+  // (bloccato al momento della creazione della sessione, con l'eventuale
+  // sconto già applicato allora), non il prezzo attuale del prodotto —
+  // che nel frattempo potrebbe essere cambiato.
+  const amountCharged = (session.amount_total ?? 0) / 100;
 
   const { error: createError } = await admin.auth.admin.createUser({
     email,
@@ -112,7 +118,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       product_id: product.id,
       status: "pagato",
       payment_method: "carta",
-      total_amount: product.price,
+      total_amount: amountCharged,
       stripe_session_id: session.id,
     })
     .select("id")
@@ -131,7 +137,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       <p>Numero ordine: ${order.id.slice(0, 8)}</p>
       <p>Metodo di pagamento: carta (Stripe)</p>
       <p>Documento acquistato: ${product.title}</p>
-      <p>Importo: ${Number(product.price).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
+      <p>Importo: ${amountCharged.toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
       <p><strong>Cliente</strong></p>
       <p>Email: ${email}</p>
       <p>Ragione sociale: ${ragioneSociale}</p>

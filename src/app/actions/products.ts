@@ -77,6 +77,50 @@ export async function toggleProductActive(formData: FormData) {
   revalidatePath("/prodotti");
 }
 
+export async function setProductDiscount(formData: FormData) {
+  if (!(await requireAdmin())) return;
+
+  const productId = String(formData.get("productId") ?? "");
+  const discountPrice = Number(formData.get("discountPrice"));
+
+  if (!productId || !discountPrice || discountPrice <= 0) return;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("products")
+    .update({ discount_active: true, discount_price: discountPrice })
+    .eq("id", productId);
+
+  if (error) {
+    console.error("Errore attivazione sconto:", error);
+    return;
+  }
+
+  revalidatePath("/admin/prodotti");
+  revalidatePath("/prodotti");
+}
+
+export async function clearProductDiscount(formData: FormData) {
+  if (!(await requireAdmin())) return;
+
+  const productId = String(formData.get("productId") ?? "");
+  if (!productId) return;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("products")
+    .update({ discount_active: false })
+    .eq("id", productId);
+
+  if (error) {
+    console.error("Errore disattivazione sconto:", error);
+    return;
+  }
+
+  revalidatePath("/admin/prodotti");
+  revalidatePath("/prodotti");
+}
+
 export async function addProductFile(formData: FormData) {
   if (!(await requireAdmin())) return;
 

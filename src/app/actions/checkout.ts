@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeClient } from "@/lib/stripe";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
+import { effectivePrice } from "@/lib/products";
 
 export type ActionState = { error?: string };
 
@@ -40,7 +41,7 @@ export async function startBankTransferOrder(
 
   const { data: product, error: productError } = await admin
     .from("products")
-    .select("id, title, price")
+    .select("id, title, price, discount_active, discount_price")
     .eq("id", productId)
     .single();
 
@@ -99,7 +100,7 @@ export async function startBankTransferOrder(
       product_id: product.id,
       status: "in_attesa",
       payment_method: "bonifico",
-      total_amount: product.price,
+      total_amount: effectivePrice(product),
     })
     .select("id")
     .single();
@@ -116,7 +117,7 @@ export async function startBankTransferOrder(
       <p>Numero ordine: ${order.id.slice(0, 8)}</p>
       <p>Metodo di pagamento: bonifico bancario</p>
       <p>Documento acquistato: ${product.title}</p>
-      <p>Importo: ${Number(product.price).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
+      <p>Importo: ${Number(effectivePrice(product)).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
       <p><strong>Cliente</strong></p>
       <p>Email: ${email}</p>
       <p>Ragione sociale: ${ragioneSociale}</p>
@@ -180,7 +181,7 @@ export async function startCardCheckout(
 
   const { data: product, error: productError } = await admin
     .from("products")
-    .select("id, title, price")
+    .select("id, title, price, discount_active, discount_price")
     .eq("id", productId)
     .single();
 
@@ -201,7 +202,7 @@ export async function startCardCheckout(
           price_data: {
             currency: "eur",
             product_data: { name: product.title },
-            unit_amount: Math.round(Number(product.price) * 100),
+            unit_amount: Math.round(effectivePrice(product) * 100),
           },
           quantity: 1,
         },

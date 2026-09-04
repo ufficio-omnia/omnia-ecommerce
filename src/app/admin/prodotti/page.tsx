@@ -5,6 +5,8 @@ import {
   createProduct,
   updateProduct,
   toggleProductActive,
+  setProductDiscount,
+  clearProductDiscount,
   addProductFile,
   removeProductFile,
 } from "@/app/actions/products";
@@ -23,6 +25,8 @@ type Product = {
   description: string | null;
   price: number;
   active: boolean;
+  discount_active: boolean;
+  discount_price: number | null;
   product_files: ProductFile[];
 };
 
@@ -49,7 +53,7 @@ export default async function AdminProdottiPage() {
   const { data: productsRaw } = await supabase
     .from("products")
     .select(
-      "id, title, category, description, price, active, product_files(id, label, file_path, sort_order)",
+      "id, title, category, description, price, active, discount_active, discount_price, product_files(id, label, file_path, sort_order)",
     )
     .order("created_at", { ascending: false });
 
@@ -185,6 +189,66 @@ export default async function AdminProdottiPage() {
                     Salva
                   </button>
                 </form>
+
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  <p className="text-xs font-medium text-gray-600">Sconto</p>
+
+                  {p.discount_active ? (
+                    <div className="mt-2 flex items-center gap-3 text-sm">
+                      <span>
+                        Sconto attivo:{" "}
+                        <span className="font-medium">
+                          {Number(p.discount_price).toLocaleString("it-IT", {
+                            style: "currency",
+                            currency: "EUR",
+                          })}
+                        </span>{" "}
+                        <span className="text-gray-400 line-through">
+                          {Number(p.price).toLocaleString("it-IT", {
+                            style: "currency",
+                            currency: "EUR",
+                          })}
+                        </span>
+                      </span>
+                      <form action={clearProductDiscount}>
+                        <input type="hidden" name="productId" value={p.id} />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                        >
+                          Disattiva sconto
+                        </button>
+                      </form>
+                    </div>
+                  ) : (
+                    <form
+                      action={setProductDiscount}
+                      className="mt-2 flex flex-wrap items-end gap-2"
+                    >
+                      <input type="hidden" name="productId" value={p.id} />
+                      <div>
+                        <label className="block text-xs text-gray-500">
+                          Prezzo scontato (€)
+                        </label>
+                        <input
+                          name="discountPrice"
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          max={p.price}
+                          required
+                          className="mt-1 w-28 rounded-md border border-gray-300 px-2 py-1 text-sm"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                      >
+                        Attiva sconto
+                      </button>
+                    </form>
+                  )}
+                </div>
 
                 <div className="mt-4 border-t border-gray-100 pt-3">
                   <p className="text-xs font-medium text-gray-600">

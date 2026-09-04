@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { effectivePrice } from "@/lib/products";
 import BankTransferForm from "./bank-transfer-form";
 import CardCheckoutForm from "./card-checkout-form";
 
@@ -13,7 +14,7 @@ export default async function ProdottoPage({
   const { data: product } = await supabase
     .from("products")
     .select(
-      "id, title, description, price, active, product_files(id, label, sort_order)",
+      "id, title, description, price, active, discount_active, discount_price, product_files(id, label, sort_order)",
     )
     .eq("id", id)
     .single<{
@@ -22,6 +23,8 @@ export default async function ProdottoPage({
       description: string | null;
       price: number;
       active: boolean;
+      discount_active: boolean;
+      discount_price: number | null;
       product_files: { id: string; label: string; sort_order: number }[];
     }>();
 
@@ -38,12 +41,34 @@ export default async function ProdottoPage({
       <div className="mx-auto w-full max-w-md">
         <h1 className="text-2xl font-semibold">{product.title}</h1>
         <p className="mt-2 text-sm text-gray-600">{product.description}</p>
-        <p className="mt-4 text-xl font-semibold">
-          {Number(product.price).toLocaleString("it-IT", {
-            style: "currency",
-            currency: "EUR",
-          })}
-        </p>
+        {product.discount_active && product.discount_price != null ? (
+          <div className="mt-4">
+            <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">
+              Sconto momentaneo
+            </span>
+            <p className="mt-1">
+              <span className="mr-2 text-lg text-gray-400 line-through">
+                {Number(product.price).toLocaleString("it-IT", {
+                  style: "currency",
+                  currency: "EUR",
+                })}
+              </span>
+              <span className="text-xl font-semibold">
+                {Number(effectivePrice(product)).toLocaleString("it-IT", {
+                  style: "currency",
+                  currency: "EUR",
+                })}
+              </span>
+            </p>
+          </div>
+        ) : (
+          <p className="mt-4 text-xl font-semibold">
+            {Number(product.price).toLocaleString("it-IT", {
+              style: "currency",
+              currency: "EUR",
+            })}
+          </p>
+        )}
 
         {files.length > 0 && (
           <div className="mt-4">
