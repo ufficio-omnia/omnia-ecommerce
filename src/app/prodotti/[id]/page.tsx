@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BankTransferForm from "./bank-transfer-form";
+import CardCheckoutForm from "./card-checkout-form";
 
 export default async function ProdottoPage({
   params,
@@ -32,9 +33,13 @@ export default async function ProdottoPage({
         </p>
 
         <div className="mt-8 space-y-6">
-          <div className="rounded-md border border-gray-200 p-4 opacity-50">
+          <div className="rounded-md border border-gray-200 p-4">
             <p className="text-sm font-medium">Paga con carta</p>
-            <p className="mt-1 text-xs text-gray-500">Disponibile a breve.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Pagamento sicuro tramite Stripe. Il documento sarà sbloccato in
+              dashboard dopo la conferma del pagamento.
+            </p>
+            <CardCheckoutForm productId={product.id} />
           </div>
 
           <div className="rounded-md border border-gray-200 p-4">

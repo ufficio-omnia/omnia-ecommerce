@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createStripeClient } from "@/lib/stripe";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 
 export type ActionState = { error?: string };
@@ -147,4 +148,83 @@ export async function startBankTransferOrder(
   redirect(
     `/checkout/bonifico-istruzioni/${order.id}${needsActivation ? "?new=1" : ""}`,
   );
+}
+
+export async function startCardCheckout(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const productId = String(formData.get("productId") ?? "");
+  const ragioneSociale = String(formData.get("ragioneSociale") ?? "").trim();
+  const partitaIva = String(formData.get("partitaIva") ?? "").trim();
+  const indirizzo = String(formData.get("indirizzo") ?? "").trim();
+  const codiceSdi = String(formData.get("codiceSdi") ?? "").trim();
+  const pec = String(formData.get("pec") ?? "").trim();
+
+  if (!email) {
+    return { error: "Inserisci un indirizzo email." };
+  }
+
+  if (!ragioneSociale || !partitaIva || !indirizzo) {
+    return {
+      error: "Ragione sociale, P.IVA e indirizzo sono obbligatori per la fattura.",
+    };
+  }
+
+  if (!codiceSdi && !pec) {
+    return { error: "Inserisci almeno uno tra codice SDI e PEC." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: product, error: productError } = await admin
+    .from("products")
+    .select("id, title, price")
+    .eq("id", productId)
+    .single();
+
+  if (productError || !product) {
+    return { error: "Prodotto non trovato." };
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const stripe = createStripeClient();
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: email,
+      line_items: [
+        {
+          price_data: {
+            currency: "eur",
+            product_data: { name: product.title },
+            unit_amount: Math.round(Number(product.price) * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        productId: product.id,
+        ragioneSociale,
+        partitaIva,
+        indirizzo,
+        codiceSdi,
+        pec,
+      },
+      success_url: `${siteUrl}/checkout/carta-successo?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${siteUrl}/prodotti/${product.id}`,
+    });
+  } catch (err) {
+    console.error("Errore creazione sessione Stripe:", err);
+    return { error: "Errore nell'avvio del pagamento. Riprova." };
+  }
+
+  if (!session.url) {
+    return { error: "Errore nell'avvio del pagamento. Riprova." };
+  }
+
+  redirect(session.url);
 }
