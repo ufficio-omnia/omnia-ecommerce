@@ -1,9 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-// Dati placeholder: sostituire con i dati bancari reali prima del lancio.
-const IBAN = "IT60X0542811101000000123456";
-const INTESTATARIO = "OMNIA Consulting Srl";
+import { IBAN, INTESTATARIO } from "@/lib/bank-details";
 
 export default async function BonificoIstruzioniPage({
   params,

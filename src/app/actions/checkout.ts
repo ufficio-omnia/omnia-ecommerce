@@ -33,7 +33,7 @@ export async function startBankTransferOrder(
     email_confirm: false,
   });
 
-  if (createError && !/already registered|already exists/i.test(createError.message)) {
+  if (createError && !/already.*registered|already exists/i.test(createError.message)) {
     return { error: `Errore nella creazione dell'account: ${createError.message}` };
   }
 
@@ -64,12 +64,16 @@ export async function startBankTransferOrder(
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  await admin.auth.signInWithOtp({
+  const { error: otpError } = await admin.auth.signInWithOtp({
     email,
     options: {
       emailRedirectTo: `${siteUrl}/auth/callback?next=/imposta-password`,
     },
   });
+
+  if (otpError) {
+    console.error("Errore nell'invio dell'email di attivazione:", otpError);
+  }
 
   redirect(`/checkout/bonifico-istruzioni/${order.id}`);
 }

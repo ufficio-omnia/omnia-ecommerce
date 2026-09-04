@@ -1,6 +1,17 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { markOrderAsPaid } from "@/app/actions/admin";
+
+type OrderRow = {
+  id: string;
+  status: string;
+  payment_method: string | null;
+  total_amount: number;
+  created_at: string;
+  users: { email: string } | null;
+  products: { title: string } | null;
+};
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -22,16 +33,20 @@ export default async function AdminPage() {
     redirect("/dashboard");
   }
 
-  const [{ data: users }, { data: orders }] = await Promise.all([
+  const [{ data: users }, { data: ordersRaw }] = await Promise.all([
     supabase
       .from("users")
       .select("id, email, role, created_at")
       .order("created_at", { ascending: false }),
     supabase
       .from("orders")
-      .select("id, user_id, status, payment_method, total_amount, created_at")
+      .select(
+        "id, status, payment_method, total_amount, created_at, users(email), products(title)",
+      )
       .order("created_at", { ascending: false }),
   ]);
+
+  const orders = ordersRaw as unknown as OrderRow[] | null;
 
   return (
     <main className="flex flex-1 flex-col px-4 py-16">
@@ -88,22 +103,33 @@ export default async function AdminPage() {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-2 text-left font-medium">Ordine</th>
+                  <th className="px-4 py-2 text-left font-medium">Cliente</th>
+                  <th className="px-4 py-2 text-left font-medium">
+                    Documento
+                  </th>
                   <th className="px-4 py-2 text-left font-medium">Stato</th>
                   <th className="px-4 py-2 text-left font-medium">
                     Pagamento
                   </th>
                   <th className="px-4 py-2 text-left font-medium">Importo</th>
                   <th className="px-4 py-2 text-left font-medium">Data</th>
+                  <th className="px-4 py-2 text-left font-medium">Azione</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {orders?.length ? (
                   orders.map((o) => (
                     <tr key={o.id}>
+                      <td className="px-4 py-2 font-mono text-xs">
+                        {o.id.slice(0, 8)}
+                      </td>
+                      <td className="px-4 py-2">{o.users?.email ?? "—"}</td>
+                      <td className="px-4 py-2">{o.products?.title ?? "—"}</td>
                       <td className="px-4 py-2">{o.status}</td>
                       <td className="px-4 py-2">{o.payment_method ?? "—"}</td>
                       <td className="px-4 py-2">
-                        {o.total_amount.toLocaleString("it-IT", {
+                        {Number(o.total_amount).toLocaleString("it-IT", {
                           style: "currency",
                           currency: "EUR",
                         })}
@@ -111,13 +137,27 @@ export default async function AdminPage() {
                       <td className="px-4 py-2">
                         {new Date(o.created_at).toLocaleDateString("it-IT")}
                       </td>
+                      <td className="px-4 py-2">
+                        {o.status === "in_attesa" ? (
+                          <form action={markOrderAsPaid}>
+                            <input type="hidden" name="orderId" value={o.id} />
+                            <button
+                              type="submit"
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-gray-50"
+                            >
+                              Segna come pagato
+                            </button>
+                          </form>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-2 text-gray-500" colSpan={4}>
-                      Nessun ordine (funzionalità e-commerce non ancora
-                      implementata).
+                    <td className="px-4 py-2 text-gray-500" colSpan={8}>
+                      Nessun ordine.
                     </td>
                   </tr>
                 )}
