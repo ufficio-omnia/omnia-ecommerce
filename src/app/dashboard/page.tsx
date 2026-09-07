@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { downloadDocument, downloadInvoice } from "@/app/actions/download";
-import { IBAN, INTESTATARIO } from "@/lib/bank-details";
+import { getBankDetails } from "@/lib/bank-details";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 
 type OrderRow = {
@@ -35,6 +35,7 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false });
 
   const orders = ordersRaw as unknown as OrderRow[] | null;
+  const bank = await getBankDetails();
 
   return (
     <main className="flex-1">
@@ -132,11 +133,11 @@ export default async function DashboardPage() {
                     <dl className="mt-4 space-y-1 border-t border-border pt-4 text-xs">
                       <div className="flex justify-between">
                         <dt className="text-sage">IBAN</dt>
-                        <dd className="font-medium text-ink">{IBAN}</dd>
+                        <dd className="font-medium text-ink">{bank.iban}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-sage">Intestatario</dt>
-                        <dd className="font-medium text-ink">{INTESTATARIO}</dd>
+                        <dd className="font-medium text-ink">{bank.intestatario}</dd>
                       </div>
                       <div className="flex justify-between">
                         <dt className="text-sage">Causale</dt>

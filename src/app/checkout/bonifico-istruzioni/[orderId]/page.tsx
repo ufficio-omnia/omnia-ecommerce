@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { IBAN, INTESTATARIO } from "@/lib/bank-details";
+import { getBankDetails } from "@/lib/bank-details";
 
 export default async function BonificoIstruzioniPage({
   params,
@@ -27,6 +27,8 @@ export default async function BonificoIstruzioniPage({
     notFound();
   }
 
+  const bank = await getBankDetails();
+
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
@@ -43,11 +45,11 @@ export default async function BonificoIstruzioniPage({
           </div>
           <div className="flex justify-between">
             <dt className="text-sage">IBAN</dt>
-            <dd className="font-medium text-ink">{IBAN}</dd>
+            <dd className="font-medium text-ink">{bank.iban}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-sage">Intestatario</dt>
-            <dd className="font-medium text-ink">{INTESTATARIO}</dd>
+            <dd className="font-medium text-ink">{bank.intestatario}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-sage">Importo</dt>

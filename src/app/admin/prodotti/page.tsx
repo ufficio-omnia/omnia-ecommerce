@@ -77,12 +77,20 @@ export default async function AdminProdottiPage({
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
         <div className="flex items-center justify-between">
           <h1 className="font-serif text-3xl text-ink">Gestisci prodotti</h1>
-          <Link
-            href="/admin"
-            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
-          >
-            Torna al pannello admin
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/impostazioni"
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+            >
+              Dati bancari
+            </Link>
+            <Link
+              href="/admin"
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+            >
+              Torna al pannello admin
+            </Link>
+          </div>
         </div>
 
         {errorMessage && (

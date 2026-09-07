@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeClient } from "@/lib/stripe";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { effectivePrice } from "@/lib/products";
+import { getBankDetails } from "@/lib/bank-details";
 
 export type ActionState = { error?: string; url?: string };
 
@@ -125,6 +126,21 @@ export async function startBankTransferOrder(
       <p>Indirizzo: ${indirizzo}</p>
       <p>Codice SDI: ${codiceSdi || "—"}</p>
       <p>PEC: ${pec || "—"}</p>
+    `,
+  });
+
+  const bank = await getBankDetails();
+  await sendEmail({
+    to: email,
+    subject: "Istruzioni per il pagamento tramite bonifico",
+    html: `
+      <p>Grazie per il tuo ordine.</p>
+      <p><strong>Documento:</strong> ${product.title}</p>
+      <p><strong>Importo:</strong> ${Number(effectivePrice(product)).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
+      <p><strong>IBAN:</strong> ${bank.iban}</p>
+      <p><strong>Intestatario:</strong> ${bank.intestatario}</p>
+      <p><strong>Causale:</strong> Ordine ${order.id.slice(0, 8)}</p>
+      <p>Il documento sarà disponibile nella tua area riservata non appena confermiamo la ricezione del bonifico.</p>
     `,
   });
 
