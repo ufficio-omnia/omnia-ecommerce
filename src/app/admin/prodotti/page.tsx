@@ -10,6 +10,7 @@ import {
   addProductFile,
   removeProductFile,
 } from "@/app/actions/products";
+import { DeleteProductButton } from "./delete-product-button";
 
 type ProductFile = {
   id: string;
@@ -37,7 +38,12 @@ const smallInputClass =
 const ghostButtonClass =
   "rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream";
 
-export default async function AdminProdottiPage() {
+export default async function AdminProdottiPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error: errorMessage } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -78,6 +84,12 @@ export default async function AdminProdottiPage() {
             Torna al pannello admin
           </Link>
         </div>
+
+        {errorMessage && (
+          <div className="mt-6 rounded-xl border border-red-700/40 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
 
         <section className="mt-10 rounded-2xl border border-border bg-cream-soft p-5">
           <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
@@ -148,13 +160,16 @@ export default async function AdminProdottiPage() {
                     </p>
                     <p className="text-xs text-sage">{p.category ?? "—"}</p>
                   </div>
-                  <form action={toggleProductActive}>
-                    <input type="hidden" name="productId" value={p.id} />
-                    <input type="hidden" name="active" value={String(p.active)} />
-                    <button type="submit" className={ghostButtonClass}>
-                      {p.active ? "Disattiva" : "Riattiva"}
-                    </button>
-                  </form>
+                  <div className="flex items-center gap-2">
+                    <form action={toggleProductActive}>
+                      <input type="hidden" name="productId" value={p.id} />
+                      <input type="hidden" name="active" value={String(p.active)} />
+                      <button type="submit" className={ghostButtonClass}>
+                        {p.active ? "Disattiva" : "Riattiva"}
+                      </button>
+                    </form>
+                    <DeleteProductButton productId={p.id} productTitle={p.title} />
+                  </div>
                 </div>
 
                 <form action={updateProduct} className="mt-3 flex flex-wrap items-end gap-2">

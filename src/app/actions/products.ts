@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-admin";
 
@@ -190,4 +191,43 @@ export async function removeProductFile(formData: FormData) {
   }
 
   revalidatePath("/admin/prodotti");
+}
+
+export async function deleteProduct(formData: FormData) {
+  if (!(await requireAdmin())) return;
+
+  const productId = String(formData.get("productId") ?? "");
+  if (!productId) return;
+
+  const admin = createAdminClient();
+
+  const { data: files } = await admin
+    .from("product_files")
+    .select("file_path")
+    .eq("product_id", productId)
+    .returns<{ file_path: string }[]>();
+
+  const { error } = await admin.from("products").delete().eq("id", productId);
+
+  if (error) {
+    // FK "orders.product_id ... on delete restrict": un prodotto già
+    // acquistato non si può eliminare, altrimenti si perderebbe lo
+    // storico ordini. In quel caso si disattiva soltanto.
+    if (error.code === "23503") {
+      redirect(
+        `/admin/prodotti?error=${encodeURIComponent(
+          "Impossibile eliminare: il prodotto ha ordini associati. Disattivalo invece di eliminarlo.",
+        )}`,
+      );
+    }
+    console.error("Errore eliminazione prodotto:", error);
+    return;
+  }
+
+  if (files?.length) {
+    await admin.storage.from("documents").remove(files.map((f) => f.file_path));
+  }
+
+  revalidatePath("/admin/prodotti");
+  revalidatePath("/prodotti");
 }
