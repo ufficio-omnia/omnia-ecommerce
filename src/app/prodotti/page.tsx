@@ -1,10 +1,18 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { effectivePrice } from "@/lib/products";
+import PreviewGalleryButton from "@/components/preview-gallery-button";
+
+type ProductFilePreview = {
+  image_path: string;
+  sort_order: number;
+};
 
 type ProductFile = {
+  id: string;
   label: string;
   sort_order: number;
+  product_file_previews: ProductFilePreview[];
 };
 
 type Product = {
@@ -22,7 +30,7 @@ export default async function ProdottiPage() {
   const { data: productsRaw } = await supabase
     .from("products")
     .select(
-      "id, title, description, price, discount_active, discount_price, product_files(label, sort_order)",
+      "id, title, description, price, discount_active, discount_price, product_files(id, label, sort_order, product_file_previews(image_path, sort_order))",
     )
     .eq("active", true)
     .order("price", { ascending: true });
@@ -68,11 +76,30 @@ export default async function ProdottiPage() {
 
                   {files.length > 0 && (
                     <ul className="mt-4 space-y-1 text-sm text-sage">
-                      {files.map((f, i) => (
-                        <li key={i} className="flex gap-2">
-                          <span className="text-forest">•</span> {f.label}
-                        </li>
-                      ))}
+                      {files.map((f) => {
+                        const previewUrls = [
+                          ...(f.product_file_previews ?? []),
+                        ]
+                          .sort((a, b) => a.sort_order - b.sort_order)
+                          .map(
+                            (preview) =>
+                              supabase.storage
+                                .from("product-previews")
+                                .getPublicUrl(preview.image_path).data
+                                .publicUrl,
+                          );
+
+                        return (
+                          <li key={f.id} className="flex items-center gap-2">
+                            <span className="text-forest">•</span>
+                            <span>{f.label}</span>
+                            <PreviewGalleryButton
+                              images={previewUrls}
+                              label={f.label}
+                            />
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
 

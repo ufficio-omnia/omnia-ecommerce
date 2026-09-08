@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { effectivePrice } from "@/lib/products";
 import BankTransferForm from "./bank-transfer-form";
 import CardCheckoutForm from "./card-checkout-form";
+import PreviewGalleryButton from "@/components/preview-gallery-button";
 
 export default async function ProdottoPage({
   params,
@@ -15,7 +16,7 @@ export default async function ProdottoPage({
   const { data: product } = await supabase
     .from("products")
     .select(
-      "id, title, description, price, active, discount_active, discount_price, product_files(id, label, sort_order)",
+      "id, title, description, price, active, discount_active, discount_price, product_files(id, label, sort_order, product_file_previews(image_path, sort_order))",
     )
     .eq("id", id)
     .single<{
@@ -26,7 +27,12 @@ export default async function ProdottoPage({
       active: boolean;
       discount_active: boolean;
       discount_price: number | null;
-      product_files: { id: string; label: string; sort_order: number }[];
+      product_files: {
+        id: string;
+        label: string;
+        sort_order: number;
+        product_file_previews: { image_path: string; sort_order: number }[];
+      }[];
     }>();
 
   if (!product || !product.active) {
@@ -84,11 +90,30 @@ export default async function ProdottoPage({
                 Contenuto del pacchetto
               </p>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-                {files.map((f) => (
-                  <li key={f.id} className="flex gap-2 text-sm text-ink">
-                    <span className="text-forest">•</span> {f.label}
-                  </li>
-                ))}
+                {files.map((f) => {
+                  const previewUrls = [...(f.product_file_previews ?? [])]
+                    .sort((a, b) => a.sort_order - b.sort_order)
+                    .map(
+                      (preview) =>
+                        supabase.storage
+                          .from("product-previews")
+                          .getPublicUrl(preview.image_path).data.publicUrl,
+                    );
+
+                  return (
+                    <li
+                      key={f.id}
+                      className="flex items-center gap-2 text-sm text-ink"
+                    >
+                      <span className="text-forest">•</span>
+                      <span>{f.label}</span>
+                      <PreviewGalleryButton
+                        images={previewUrls}
+                        label={f.label}
+                      />
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

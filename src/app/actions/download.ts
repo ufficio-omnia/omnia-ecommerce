@@ -50,12 +50,16 @@ export async function downloadDocument(
   }
 
   const admin = createAdminClient();
-  // { download: true } forza Content-Disposition: attachment sulla signed
-  // URL indipendentemente dal Content-Type: evita che il browser apra il
-  // file (es. html) come pagina invece di scaricarlo.
+  // Il nome file va passato esplicitamente a { download }: con
+  // { download: true } Supabase risponde con "Content-Disposition:
+  // attachment;" senza filename, e senza estensione alcuni browser
+  // salvano il file come .txt (per via del Content-Type text/plain
+  // forzato su html/svg/xml, vedi commit precedente).
+  const fileName = file.file_path.split("/").pop()!.replace(/^\d+-/, "");
+
   const { data: signed, error } = await admin.storage
     .from("documents")
-    .createSignedUrl(file.file_path, 60, { download: true });
+    .createSignedUrl(file.file_path, 60, { download: fileName });
 
   if (error || !signed) {
     return { error: "Errore nella generazione del link di download." };

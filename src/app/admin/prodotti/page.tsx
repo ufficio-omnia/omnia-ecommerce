@@ -13,12 +13,24 @@ import {
 import { DeleteProductButton } from "./delete-product-button";
 import { downloadProductFileAdmin } from "@/app/actions/admin-download";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
+import {
+  addProductFilePreviews,
+  removeProductFilePreview,
+  moveProductFilePreview,
+} from "@/app/actions/product-previews";
+
+type ProductFilePreview = {
+  id: string;
+  image_path: string;
+  sort_order: number;
+};
 
 type ProductFile = {
   id: string;
   label: string;
   file_path: string;
   sort_order: number;
+  product_file_previews: ProductFilePreview[];
 };
 
 type Product = {
@@ -68,11 +80,16 @@ export default async function AdminProdottiPage({
   const { data: productsRaw } = await supabase
     .from("products")
     .select(
-      "id, title, category, description, price, active, discount_active, discount_price, product_files(id, label, file_path, sort_order)",
+      "id, title, category, description, price, active, discount_active, discount_price, product_files(id, label, file_path, sort_order, product_file_previews(id, image_path, sort_order))",
     )
     .order("created_at", { ascending: false });
 
   const products = productsRaw as unknown as Product[] | null;
+
+  function previewUrl(imagePath: string) {
+    return supabase.storage.from("product-previews").getPublicUrl(imagePath)
+      .data.publicUrl;
+  }
 
   return (
     <main className="flex-1">
@@ -270,40 +287,168 @@ export default async function AdminProdottiPage({
                   <p className="font-mono text-xs tracking-wide text-sage uppercase">
                     File inclusi ({p.product_files?.length ?? 0})
                   </p>
-                  <ul className="mt-2 space-y-1">
+                  <ul className="mt-2 space-y-3">
                     {[...(p.product_files ?? [])]
                       .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((f) => (
-                        <li
-                          key={f.id}
-                          className="flex items-center justify-between text-sm text-ink"
-                        >
-                          <span>
-                            <span className="text-xs text-sage">
-                              [{f.sort_order}]
-                            </span>{" "}
-                            {f.label}
-                          </span>
-                          <div className="flex items-center gap-3">
-                            <OpenInNewTabButton
-                              action={downloadProductFileAdmin}
-                              hiddenFields={{ fileId: f.id }}
-                              label="Scarica"
-                              pendingLabel="Apertura…"
-                              className="text-xs text-forest hover:underline"
-                            />
-                            <form action={removeProductFile}>
-                              <input type="hidden" name="fileId" value={f.id} />
-                              <button
-                                type="submit"
-                                className="text-xs text-red-700 hover:underline"
+                      .map((f) => {
+                        const previews = [
+                          ...(f.product_file_previews ?? []),
+                        ].sort((a, b) => a.sort_order - b.sort_order);
+
+                        return (
+                          <li
+                            key={f.id}
+                            className="rounded-lg border border-transparent text-sm text-ink"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span>
+                                <span className="text-xs text-sage">
+                                  [{f.sort_order}]
+                                </span>{" "}
+                                {f.label}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <OpenInNewTabButton
+                                  action={downloadProductFileAdmin}
+                                  hiddenFields={{ fileId: f.id }}
+                                  label="Scarica"
+                                  pendingLabel="Apertura…"
+                                  className="text-xs text-forest hover:underline"
+                                />
+                                <form action={removeProductFile}>
+                                  <input
+                                    type="hidden"
+                                    name="fileId"
+                                    value={f.id}
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="text-xs text-red-700 hover:underline"
+                                  >
+                                    Rimuovi
+                                  </button>
+                                </form>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 rounded-lg bg-cream p-3">
+                              <p className="font-mono text-[10px] tracking-wide text-sage uppercase">
+                                Galleria anteprime ({previews.length})
+                              </p>
+
+                              {previews.length > 0 && (
+                                <ul className="mt-2 flex flex-wrap gap-3">
+                                  {previews.map((preview, i) => (
+                                    <li
+                                      key={preview.id}
+                                      className="flex flex-col items-center gap-1"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={previewUrl(preview.image_path)}
+                                        alt=""
+                                        className="h-16 w-16 rounded border border-border object-cover"
+                                      />
+                                      <div className="flex items-center gap-1">
+                                        <form action={moveProductFilePreview}>
+                                          <input
+                                            type="hidden"
+                                            name="previewId"
+                                            value={preview.id}
+                                          />
+                                          <input
+                                            type="hidden"
+                                            name="productFileId"
+                                            value={f.id}
+                                          />
+                                          <input
+                                            type="hidden"
+                                            name="direction"
+                                            value="up"
+                                          />
+                                          <button
+                                            type="submit"
+                                            disabled={i === 0}
+                                            className="rounded border border-border-strong px-1 text-[10px] text-ink disabled:opacity-30"
+                                            aria-label="Sposta su"
+                                          >
+                                            ↑
+                                          </button>
+                                        </form>
+                                        <form action={moveProductFilePreview}>
+                                          <input
+                                            type="hidden"
+                                            name="previewId"
+                                            value={preview.id}
+                                          />
+                                          <input
+                                            type="hidden"
+                                            name="productFileId"
+                                            value={f.id}
+                                          />
+                                          <input
+                                            type="hidden"
+                                            name="direction"
+                                            value="down"
+                                          />
+                                          <button
+                                            type="submit"
+                                            disabled={i === previews.length - 1}
+                                            className="rounded border border-border-strong px-1 text-[10px] text-ink disabled:opacity-30"
+                                            aria-label="Sposta giù"
+                                          >
+                                            ↓
+                                          </button>
+                                        </form>
+                                        <form
+                                          action={removeProductFilePreview}
+                                        >
+                                          <input
+                                            type="hidden"
+                                            name="previewId"
+                                            value={preview.id}
+                                          />
+                                          <button
+                                            type="submit"
+                                            className="rounded border border-red-700/40 px-1 text-[10px] text-red-700"
+                                            aria-label="Elimina anteprima"
+                                          >
+                                            ✕
+                                          </button>
+                                        </form>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+
+                              <form
+                                action={addProductFilePreviews}
+                                className="mt-2 flex flex-wrap items-center gap-2"
                               >
-                                Rimuovi
-                              </button>
-                            </form>
-                          </div>
-                        </li>
-                      ))}
+                                <input
+                                  type="hidden"
+                                  name="productFileId"
+                                  value={f.id}
+                                />
+                                <input
+                                  type="file"
+                                  name="images"
+                                  multiple
+                                  accept="image/jpeg,image/png,image/webp"
+                                  className="text-xs text-ink"
+                                />
+                                <button
+                                  type="submit"
+                                  className={ghostButtonClass}
+                                >
+                                  Carica anteprime
+                                </button>
+                              </form>
+                            </div>
+                          </li>
+                        );
+                      })}
                   </ul>
 
                   <form
