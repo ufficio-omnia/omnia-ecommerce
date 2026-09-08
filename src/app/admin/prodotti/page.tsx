@@ -11,6 +11,8 @@ import {
   removeProductFile,
 } from "@/app/actions/products";
 import { DeleteProductButton } from "./delete-product-button";
+import { downloadProductFileAdmin } from "@/app/actions/admin-download";
+import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 
 type ProductFile = {
   id: string;
@@ -282,15 +284,24 @@ export default async function AdminProdottiPage({
                             </span>{" "}
                             {f.label}
                           </span>
-                          <form action={removeProductFile}>
-                            <input type="hidden" name="fileId" value={f.id} />
-                            <button
-                              type="submit"
-                              className="text-xs text-red-700 hover:underline"
-                            >
-                              Rimuovi
-                            </button>
-                          </form>
+                          <div className="flex items-center gap-3">
+                            <OpenInNewTabButton
+                              action={downloadProductFileAdmin}
+                              hiddenFields={{ fileId: f.id }}
+                              label="Scarica"
+                              pendingLabel="Apertura…"
+                              className="text-xs text-forest hover:underline"
+                            />
+                            <form action={removeProductFile}>
+                              <input type="hidden" name="fileId" value={f.id} />
+                              <button
+                                type="submit"
+                                className="text-xs text-red-700 hover:underline"
+                              >
+                                Rimuovi
+                              </button>
+                            </form>
+                          </div>
                         </li>
                       ))}
                   </ul>
