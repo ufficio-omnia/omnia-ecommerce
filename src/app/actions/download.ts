@@ -50,9 +50,132 @@ export async function downloadDocument(
   }
 
   const admin = createAdminClient();
+  // { download: true } forza Content-Disposition: attachment sulla signed
+  // URL indipendentemente dal Content-Type: evita che il browser apra il
+  // file (es. html) come pagina invece di scaricarlo.
   const { data: signed, error } = await admin.storage
     .from("documents")
-    .createSignedUrl(file.file_path, 60);
+    .createSignedUrl(file.file_path, 60, { download: true });
+
+  if (error || !signed) {
+    return { error: "Errore nella generazione del link di download." };
+  }
+
+  return { url: signed.signedUrl };
+}
+
+export async function downloadGaraDocumento(
+  _prevState: DownloadState,
+  formData: FormData,
+): Promise<DownloadState> {
+  const docId = String(formData.get("docId") ?? "");
+  if (!docId) return {};
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // La RLS ("gara_documenti_all_own") garantisce che questa query
+  // restituisca il documento solo se appartiene all'utente corrente.
+  const { data: doc } = await supabase
+    .from("gara_documenti")
+    .select("file_path")
+    .eq("id", docId)
+    .single<{ file_path: string }>();
+
+  if (!doc) {
+    return { error: "Documento non trovato." };
+  }
+
+  const admin = createAdminClient();
+  const { data: signed, error } = await admin.storage
+    .from("gare")
+    .createSignedUrl(doc.file_path, 60);
+
+  if (error || !signed) {
+    return { error: "Errore nella generazione del link di download." };
+  }
+
+  return { url: signed.signedUrl };
+}
+
+export async function downloadGaraMessaggioFile(
+  _prevState: DownloadState,
+  formData: FormData,
+): Promise<DownloadState> {
+  const msgId = String(formData.get("msgId") ?? "");
+  if (!msgId) return {};
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // La RLS ("gara_messaggi_all_own") garantisce che questa query
+  // restituisca il messaggio solo se appartiene all'utente corrente.
+  const { data: messaggio } = await supabase
+    .from("gara_messaggi")
+    .select("file_path")
+    .eq("id", msgId)
+    .single<{ file_path: string | null }>();
+
+  if (!messaggio?.file_path) {
+    return { error: "File non trovato." };
+  }
+
+  const admin = createAdminClient();
+  const { data: signed, error } = await admin.storage
+    .from("gare")
+    .createSignedUrl(messaggio.file_path, 60);
+
+  if (error || !signed) {
+    return { error: "Errore nella generazione del link di download." };
+  }
+
+  return { url: signed.signedUrl };
+}
+
+export async function downloadAllegatoMessaggio(
+  _prevState: DownloadState,
+  formData: FormData,
+): Promise<DownloadState> {
+  const allegatoId = String(formData.get("allegatoId") ?? "");
+  if (!allegatoId) return {};
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // La RLS ("gara_messaggio_allegati_all_own") garantisce che questa
+  // query restituisca l'allegato solo se appartiene all'utente corrente.
+  const { data: allegato } = await supabase
+    .from("gara_messaggio_allegati")
+    .select("file_path")
+    .eq("id", allegatoId)
+    .single<{ file_path: string }>();
+
+  if (!allegato) {
+    return { error: "Allegato non trovato." };
+  }
+
+  const admin = createAdminClient();
+  const { data: signed, error } = await admin.storage
+    .from("gare")
+    .createSignedUrl(allegato.file_path, 60);
 
   if (error || !signed) {
     return { error: "Errore nella generazione del link di download." };
