@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "@/components/site-header";
+import CookieConsent from "@/components/cookie-consent";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-cream text-ink font-sans">
         <SiteHeader />
         {children}
+        <CookieConsent />
       </body>
     </html>
   );
