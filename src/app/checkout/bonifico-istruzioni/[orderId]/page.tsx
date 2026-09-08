@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getBankDetails } from "@/lib/bank-details";
+import { ConversionTracker } from "@/components/conversion-tracker";
 
 export default async function BonificoIstruzioniPage({
   params,
@@ -74,6 +75,11 @@ export default async function BonificoIstruzioniPage({
             : "Ti invieremo un'email non appena il documento sarà pronto per il download."}
         </p>
       </div>
+
+      <ConversionTracker
+        orderId={order.id}
+        value={Number(order.total_amount)}
+      />
     </main>
   );
 }

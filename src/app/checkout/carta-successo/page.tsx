@@ -1,6 +1,13 @@
 import Link from "next/link";
+import { ConversionTrackerFromSession } from "@/components/conversion-tracker";
 
-export default function CartaSuccessoPage() {
+export default async function CartaSuccessoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session_id?: string }>;
+}) {
+  const { session_id: sessionId } = await searchParams;
+
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <div className="w-full max-w-md rounded-2xl border border-border bg-cream-soft p-8 text-center">
@@ -18,6 +25,8 @@ export default function CartaSuccessoPage() {
           Torna alla home
         </Link>
       </div>
+
+      {sessionId && <ConversionTrackerFromSession sessionId={sessionId} />}
     </main>
   );
 }
