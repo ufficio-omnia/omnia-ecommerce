@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { markOrderAsPaid, uploadInvoice, deleteOrder } from "@/app/actions/admin";
 import DeleteButton from "@/components/delete-button";
+
+export const metadata: Metadata = {
+  title: "Pannello admin",
+  robots: { index: false, follow: false },
+};
 
 type OrderRow = {
   id: string;
@@ -54,14 +60,22 @@ export default async function AdminPage() {
   return (
     <main className="flex-1">
       <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="font-serif text-3xl text-ink">Pannello admin</h1>
-          <Link
-            href="/admin/prodotti"
-            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
-          >
-            Gestisci prodotti
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/knowledge-base"
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+            >
+              Knowledge base AI
+            </Link>
+            <Link
+              href="/admin/prodotti"
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+            >
+              Gestisci prodotti
+            </Link>
+          </div>
         </div>
 
         <section className="mt-10">
@@ -126,7 +140,9 @@ export default async function AdminPage() {
                   <th className="px-4 py-2 text-left font-medium text-ink">
                     Pagamento
                   </th>
-                  <th className="px-4 py-2 text-left font-medium text-ink">Importo</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">
+                    Importo (IVA inclusa)
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Data</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Azione</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Fattura</th>

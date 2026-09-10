@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { downloadDocument, downloadInvoice } from "@/app/actions/download";
 import { getBankDetails } from "@/lib/bank-details";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
+
+export const metadata: Metadata = {
+  title: "Area riservata",
+  robots: { index: false, follow: false },
+};
 
 type OrderRow = {
   id: string;
@@ -40,14 +46,22 @@ export default async function DashboardPage() {
   return (
     <main className="flex-1">
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="font-serif text-3xl text-ink">Dashboard</h1>
-          <Link
-            href="/dashboard/messaggi"
-            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
-          >
-            Messaggi
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard/omnia-ai"
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+            >
+              OMNIA AI
+            </Link>
+            <Link
+              href="/dashboard/messaggi"
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream"
+            >
+              Messaggi
+            </Link>
+          </div>
         </div>
         <p className="mt-2 text-sm text-sage">
           Accesso effettuato come{" "}
@@ -75,7 +89,7 @@ export default async function DashboardPage() {
                           style: "currency",
                           currency: "EUR",
                         })}{" "}
-                        ·{" "}
+                        (IVA inclusa) ·{" "}
                         {o.status === "pagato" ? (
                           <span className="text-forest">Pagato</span>
                         ) : (
