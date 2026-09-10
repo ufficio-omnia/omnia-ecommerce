@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { useMarchioStato } from "./marchio-stato-context";
 
 // Porting diretto (stessi tempi, stesse parole, stessa fisica) dello
@@ -276,12 +277,12 @@ export default function HeroDemo() {
             di offerte tecniche scritte a mano per soft e hard facility.
           </p>
           <div className="omnia-azioni">
-            <a className="omnia-btn omnia-btn-p" href="#demo">
+            <Link className="omnia-btn omnia-btn-p" href="/demo">
               Richiedi la demo
-            </a>
-            <a className="omnia-btn omnia-btn-s" href="#funziona">
+            </Link>
+            <Link className="omnia-btn omnia-btn-s" href="/come-funziona">
               Come funziona
-            </a>
+            </Link>
           </div>
           <p className="micro" style={{ marginTop: 18, fontSize: 13.5, color: "var(--fioco)" }}>
             Demo su una gara vera, non su un esempio preconfezionato. Rispondiamo entro 24 ore.

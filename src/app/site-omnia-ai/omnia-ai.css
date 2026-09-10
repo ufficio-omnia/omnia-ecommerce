@@ -638,6 +638,272 @@ li {
     padding: 68px 0;
   }
 }
+/* ==================== Pagine interne (come funziona, piani, demo, contatti, privacy, cookie) ==================== */
+
+.omnia-pagina-hero {
+  padding: 72px 0 48px;
+  text-align: center;
+  border: 0;
+}
+.omnia-pagina-hero h1 {
+  font-size: clamp(32px, 4.6vw, 52px);
+  line-height: 1.06;
+  letter-spacing: -0.028em;
+  max-width: 22ch;
+  margin: 0 auto;
+}
+.omnia-pagina-corpo {
+  padding: 0 0 96px;
+}
+.omnia-pagina-corpo h2 {
+  margin-top: 56px;
+}
+.omnia-pagina-corpo h2:first-child {
+  margin-top: 0;
+}
+.omnia-prosa {
+  max-width: 70ch;
+}
+.omnia-prosa p {
+  margin-top: 16px;
+  color: var(--fioco);
+  font-size: 15.5px;
+  line-height: 1.75;
+  font-weight: 300;
+}
+.omnia-prosa p:first-child {
+  margin-top: 0;
+}
+
+/* Passi numerati (come funziona) */
+.omnia-passi {
+  list-style: none;
+  counter-reset: omnia-passo;
+  margin-top: 44px;
+  display: grid;
+  gap: 20px;
+}
+.omnia-passo {
+  counter-increment: omnia-passo;
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 20px;
+  padding: 26px;
+  border: 1px solid var(--bordo);
+  border-radius: 16px;
+  background: var(--vetro);
+  text-align: left;
+}
+.omnia-passo::before {
+  content: counter(omnia-passo);
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--viola);
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bordo-f);
+  border-radius: 50%;
+  flex: none;
+}
+.omnia-passo b {
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  display: block;
+  margin-bottom: 8px;
+}
+.omnia-passo p {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--fioco);
+  font-weight: 300;
+  text-align: left;
+}
+
+/* Frammenti recuperati (come funziona) */
+.omnia-frammenti {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.omnia-frammento {
+  border: 1px solid var(--bordo);
+  border-left: 2px solid var(--verde);
+  border-radius: 10px;
+  background: rgba(11, 10, 22, 0.6);
+  padding: 14px 16px;
+  text-align: left;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+}
+.omnia-frammento.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+.omnia-frammento-fonte {
+  font-size: 11.5px;
+  color: var(--verde);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.omnia-frammento-testo {
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #c9c6dd;
+  font-weight: 300;
+  text-align: left;
+}
+
+/* Piani e prezzi */
+.omnia-prezzi {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 44px;
+  align-items: stretch;
+}
+.omnia-prezzo {
+  display: flex;
+  flex-direction: column;
+  padding: 32px 28px;
+  border-radius: 18px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-align: left;
+}
+.omnia-prezzo.in-evidenza {
+  border-color: var(--bordo-f);
+  background: var(--vetro-2);
+}
+.omnia-prezzo b {
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+}
+.omnia-prezzo-cifra {
+  margin-top: 14px;
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: 34px;
+}
+.omnia-prezzo-cifra span {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--fioco);
+}
+.omnia-prezzo-elenco {
+  list-style: none;
+  margin-top: 20px;
+  flex: 1;
+  display: grid;
+  gap: 10px;
+}
+.omnia-prezzo-elenco li {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  color: #c4c1d8;
+  font-weight: 300;
+  text-align: left;
+}
+.omnia-prezzo-elenco li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--verde);
+  flex: none;
+}
+.omnia-prezzo .omnia-btn {
+  margin-top: 24px;
+  text-align: center;
+}
+
+/* Modulo (richiedi la demo) */
+.omnia-modulo {
+  max-width: 640px;
+  margin: 44px auto 0;
+  display: grid;
+  gap: 18px;
+  text-align: left;
+}
+.omnia-campo-riga {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.omnia-etichetta {
+  display: block;
+  font-size: 13px;
+  color: var(--fioco);
+  margin-bottom: 8px;
+}
+.omnia-input,
+.omnia-select,
+.omnia-textarea {
+  width: 100%;
+  background: var(--vetro);
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--testo);
+  font-family: inherit;
+  font-size: 14.5px;
+}
+.omnia-input:focus,
+.omnia-select:focus,
+.omnia-textarea:focus {
+  outline: none;
+  border-color: var(--bordo-f);
+}
+.omnia-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+.omnia-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%238B8AA8'%3E%3Cpath d='M5.5 7.5l4.5 4.5 4.5-4.5' stroke='%238B8AA8' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+.omnia-modulo .omnia-btn {
+  justify-self: start;
+}
+.omnia-esito {
+  font-size: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--bordo);
+}
+.omnia-esito.errore {
+  border-color: rgba(232, 93, 61, 0.4);
+  color: var(--rosso);
+}
+.omnia-esito.successo {
+  border-color: rgba(79, 209, 165, 0.4);
+  color: var(--verde);
+}
+
+@media (max-width: 900px) {
+  .omnia-prezzi {
+    grid-template-columns: 1fr;
+  }
+  .omnia-campo-riga {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import BrandMark from "./brand-mark";
 import { useMarchioStato } from "./marchio-stato-context";
 
@@ -9,15 +10,15 @@ export default function SiteHeader() {
   return (
     <header className="omnia-header">
       <div className="omnia-bar">
-        <a className="omnia-marchio" href="#">
+        <Link className="omnia-marchio" href="/">
           <BrandMark stato={stato} />
           OMNIA AI
-        </a>
+        </Link>
         <nav className="omnia-nav omnia-principale">
-          <a href="#funziona">Come funziona</a>
-          <a href="#piani">Piani</a>
-          <a href="#demo">Demo</a>
-          <a href="#contatti">Contatti</a>
+          <Link href="/come-funziona">Come funziona</Link>
+          <Link href="/piani">Piani</Link>
+          <Link href="/demo">Demo</Link>
+          <Link href="/contatti">Contatti</Link>
           <a href="#" className="omnia-accedi">
             Accedi
           </a>
