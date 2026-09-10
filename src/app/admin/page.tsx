@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { markOrderAsPaid, uploadInvoice, deleteOrder } from "@/app/actions/admin";
 import DeleteButton from "@/components/delete-button";
+
+export const metadata: Metadata = {
+  title: "Pannello admin",
+  robots: { index: false, follow: false },
+};
 
 type OrderRow = {
   id: string;
@@ -126,7 +132,9 @@ export default async function AdminPage() {
                   <th className="px-4 py-2 text-left font-medium text-ink">
                     Pagamento
                   </th>
-                  <th className="px-4 py-2 text-left font-medium text-ink">Importo</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">
+                    Importo (IVA inclusa)
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Data</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Azione</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Fattura</th>

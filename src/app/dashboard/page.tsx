@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { downloadDocument, downloadInvoice } from "@/app/actions/download";
 import { getBankDetails } from "@/lib/bank-details";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
+
+export const metadata: Metadata = {
+  title: "Area riservata",
+  robots: { index: false, follow: false },
+};
 
 type OrderRow = {
   id: string;
@@ -75,7 +81,7 @@ export default async function DashboardPage() {
                           style: "currency",
                           currency: "EUR",
                         })}{" "}
-                        ·{" "}
+                        (IVA inclusa) ·{" "}
                         {o.status === "pagato" ? (
                           <span className="text-forest">Pagato</span>
                         ) : (
