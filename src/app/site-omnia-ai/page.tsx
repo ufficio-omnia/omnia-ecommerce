@@ -15,7 +15,7 @@ const FAQ = [
   {
     domanda: "Su quali gare funziona davvero?",
     risposta:
-      "Su gare di soft e hard facility management: pulizie e sanificazione, facchinaggio, ausiliariato, portierato, manutenzioni. È una specializzazione verticale, non una piattaforma buona per tutto: fuori da questi settori non ti darebbe lo stesso livello di dettaglio, e preferiamo dirtelo prima.",
+      "Su gare di soft e hard facility management: pulizie e sanificazione, facchinaggio, ausiliariato, portierato, manutenzione edile, idrica ed elettrica, sorveglianza armata e non armata, gestione e manutenzione di elisuperfici. È una specializzazione verticale, non una piattaforma buona per tutto: fuori da questi settori non ti darebbe lo stesso livello di dettaglio, e preferiamo dirtelo prima.",
   },
   {
     domanda: "Il documento è pronto da consegnare in gara?",
@@ -119,9 +119,11 @@ export default function OmniaAiHomePage() {
             <div>
               <p className="omnia-firma">
                 <strong>Omnia Consulting SRLS</strong> redige offerte tecniche per gare di soft e
-                hard facility management da oltre dieci anni: pulizie, facchinaggio,
-                ausiliariato, manutenzioni. OMNIA AI nasce da quel lavoro — è il metodo di uno
-                studio di consulenza messo in mano a te.
+                hard facility management da oltre dieci anni: pulizie e sanificazione,
+                facchinaggio, ausiliariato, portierato, manutenzione edile, idrica ed elettrica,
+                sorveglianza armata e non armata, gestione e manutenzione di elisuperfici. OMNIA
+                AI nasce da quel lavoro — è il metodo di uno studio di consulenza messo in mano a
+                te.
                 <br />
                 <br />
                 Quando la posta in gioco è alta, puoi affidare il documento generato ai nostri
