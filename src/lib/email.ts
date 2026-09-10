@@ -5,10 +5,15 @@ export async function sendEmail({
   to,
   subject,
   html,
+  from,
 }: {
   to: string;
   subject: string;
   html: string;
+  // Stesso dominio verificato su Resend (omniaitalia.com), solo il nome
+  // visualizzato cambia — serve per le email a marchio OMNIA AI (es.
+  // richieste demo), che non devono apparire come "OMNIA" e-commerce.
+  from?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -23,7 +28,7 @@ export async function sendEmail({
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+    body: JSON.stringify({ from: from ?? FROM, to: [to], subject, html }),
   });
 
   if (!res.ok) {

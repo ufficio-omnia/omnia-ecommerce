@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./omnia-ai.css";
+import OmniaAiCookieConsent from "@/components/omnia-ai/cookie-consent";
 
 // Root layout indipendente (route group multipli, vedi src/app/(ecommerce)/layout.tsx):
 // <html> proprio, mai condiviso con l'e-commerce — nessuna variabile CSS,
@@ -16,7 +17,10 @@ export const viewport: Viewport = {
 export default function OmniaAiRootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="it">
-      <body>{children}</body>
+      <body>
+        {children}
+        <OmniaAiCookieConsent />
+      </body>
     </html>
   );
 }
