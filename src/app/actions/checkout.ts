@@ -6,8 +6,29 @@ import { createStripeClient } from "@/lib/stripe";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { effectivePrice } from "@/lib/products";
 import { getBankDetails } from "@/lib/bank-details";
+import {
+  getCurrentLegalDocuments,
+  getRequestMeta,
+  recordLegalAcceptances,
+  validateLegalAcceptance,
+  type AcceptanceInput,
+  type BuyerType,
+} from "@/lib/legal-acceptance";
 
 export type ActionState = { error?: string; url?: string };
+
+function parseBuyerType(formData: FormData): BuyerType | null {
+  const value = String(formData.get("buyerType") ?? "");
+  return value === "azienda" || value === "consumatore" ? value : null;
+}
+
+function parseAcceptance(formData: FormData): AcceptanceInput {
+  return {
+    condizioniEPrivacy: formData.get("acceptCondizioniPrivacy") === "on",
+    esecuzioneImmediata: formData.get("acceptEsecuzioneImmediata") === "on",
+    clausoleSpecifiche: formData.get("acceptClausoleSpecifiche") === "on",
+  };
+}
 
 export async function startBankTransferOrder(
   _prevState: ActionState,
@@ -19,26 +40,56 @@ export async function startBankTransferOrder(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const productId = String(formData.get("productId") ?? "");
   const ragioneSociale = String(formData.get("ragioneSociale") ?? "").trim();
-  const partitaIva = String(formData.get("partitaIva") ?? "").trim();
   const indirizzo = String(formData.get("indirizzo") ?? "").trim();
+  const partitaIva = String(formData.get("partitaIva") ?? "").trim();
+  const codiceFiscale = String(formData.get("codiceFiscale") ?? "").trim();
   const codiceSdi = String(formData.get("codiceSdi") ?? "").trim();
   const pec = String(formData.get("pec") ?? "").trim();
+  const buyerType = parseBuyerType(formData);
+  const acceptance = parseAcceptance(formData);
 
   if (!email) {
     return { error: "Inserisci un indirizzo email." };
   }
 
-  if (!ragioneSociale || !partitaIva || !indirizzo) {
+  if (!buyerType) {
+    return { error: "Seleziona il tipo di acquirente." };
+  }
+
+  if (!ragioneSociale || !indirizzo) {
     return {
-      error: "Ragione sociale, P.IVA e indirizzo sono obbligatori per la fattura.",
+      error:
+        buyerType === "azienda"
+          ? "Ragione sociale e indirizzo sono obbligatori per la fattura."
+          : "Nome e cognome e indirizzo sono obbligatori per la fattura.",
     };
   }
 
-  if (!codiceSdi && !pec) {
-    return { error: "Inserisci almeno uno tra codice SDI e PEC." };
+  if (buyerType === "azienda") {
+    if (!partitaIva) {
+      return { error: "La partita IVA è obbligatoria per la fattura." };
+    }
+    if (!codiceSdi && !pec) {
+      return { error: "Inserisci almeno uno tra codice SDI e PEC." };
+    }
+  } else if (!codiceFiscale) {
+    return { error: "Il codice fiscale è obbligatorio per la fattura." };
+  }
+
+  // Controllo server-side, indipendente da qualsiasi validazione fatta
+  // nel browser: un pulsante disabilitato lato client non impedisce a
+  // nessuno di inviare comunque la richiesta.
+  const acceptanceError = validateLegalAcceptance(buyerType, acceptance);
+  if (acceptanceError) {
+    return { error: acceptanceError };
   }
 
   const admin = createAdminClient();
+
+  const legalDocuments = await getCurrentLegalDocuments(admin);
+  if (!legalDocuments) {
+    return { error: "Errore nel recupero dei documenti legali. Riprova." };
+  }
 
   const { data: product, error: productError } = await admin
     .from("products")
@@ -81,8 +132,10 @@ export async function startBankTransferOrder(
   const { error: companyError } = await admin.from("companies").upsert(
     {
       user_id: profile.id,
+      buyer_type: buyerType,
       ragione_sociale: ragioneSociale,
-      partita_iva: partitaIva,
+      partita_iva: buyerType === "azienda" ? partitaIva : null,
+      codice_fiscale: buyerType === "consumatore" ? codiceFiscale : null,
       indirizzo,
       codice_sdi: codiceSdi || null,
       pec: pec || null,
@@ -110,6 +163,27 @@ export async function startBankTransferOrder(
     return { error: "Errore nella creazione dell'ordine." };
   }
 
+  // Registrata SUBITO dopo la creazione dell'ordine, prima di qualunque
+  // email o redirect: se le accettazioni non si salvano, meglio saperlo
+  // ora che scoprirlo in caso di contestazione futura.
+  const { ip, userAgent } = await getRequestMeta();
+  const acceptedAt = new Date().toISOString();
+  const acceptanceResult = await recordLegalAcceptances({
+    admin,
+    orderId: order.id,
+    userId: profile.id,
+    buyerType,
+    input: acceptance,
+    documents: legalDocuments,
+    ip,
+    userAgent,
+    acceptedAt,
+  });
+
+  if (acceptanceResult.error) {
+    return { error: acceptanceResult.error };
+  }
+
   await sendEmail({
     to: ADMIN_EMAIL,
     subject: `Nuovo ordine (bonifico): ${product.title}`,
@@ -118,11 +192,13 @@ export async function startBankTransferOrder(
       <p>Numero ordine: ${order.id.slice(0, 8)}</p>
       <p>Metodo di pagamento: bonifico bancario</p>
       <p>Documento acquistato: ${product.title}</p>
-      <p>Importo: ${Number(effectivePrice(product)).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
+      <p>Importo (IVA inclusa): ${Number(effectivePrice(product)).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
       <p><strong>Cliente</strong></p>
       <p>Email: ${email}</p>
-      <p>Ragione sociale: ${ragioneSociale}</p>
-      <p>Partita IVA: ${partitaIva}</p>
+      <p>Tipo acquirente: ${buyerType === "azienda" ? "Azienda/libero professionista" : "Privato consumatore"}</p>
+      <p>Ragione sociale/Nome: ${ragioneSociale}</p>
+      <p>Partita IVA: ${partitaIva || "—"}</p>
+      <p>Codice fiscale: ${codiceFiscale || "—"}</p>
       <p>Indirizzo: ${indirizzo}</p>
       <p>Codice SDI: ${codiceSdi || "—"}</p>
       <p>PEC: ${pec || "—"}</p>
@@ -136,11 +212,21 @@ export async function startBankTransferOrder(
     html: `
       <p>Grazie per il tuo ordine.</p>
       <p><strong>Documento:</strong> ${product.title}</p>
-      <p><strong>Importo:</strong> ${Number(effectivePrice(product)).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
+      <p><strong>Importo (IVA inclusa):</strong> ${Number(effectivePrice(product)).toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
       <p><strong>IBAN:</strong> ${bank.iban}</p>
       <p><strong>Intestatario:</strong> ${bank.intestatario}</p>
       <p><strong>Causale:</strong> Ordine ${order.id.slice(0, 8)}</p>
       <p>Il documento sarà disponibile nella tua area riservata non appena confermiamo la ricezione del bonifico.</p>
+      <p style="margin-top:16px;">Hai accettato le
+        <a href="${legalDocUrl("condizioni-vendita", legalDocuments.condizioniVendita.version)}">Condizioni generali di vendita (versione ${legalDocuments.condizioniVendita.version})</a>
+        e preso visione della
+        <a href="${legalDocUrl("privacy-policy", legalDocuments.privacyPolicy.version)}">Privacy policy (versione ${legalDocuments.privacyPolicy.version})</a>.
+        ${
+          buyerType === "consumatore"
+            ? "Hai inoltre richiesto espressamente l'esecuzione immediata della fornitura, con conseguente perdita del diritto di recesso."
+            : ""
+        }
+      </p>
     `,
   });
 
@@ -167,6 +253,11 @@ export async function startBankTransferOrder(
   );
 }
 
+function legalDocUrl(type: string, version: number) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  return `${siteUrl}/documenti-legali/${type}/${version}`;
+}
+
 export async function startCardCheckout(
   _prevState: ActionState,
   formData: FormData,
@@ -174,26 +265,56 @@ export async function startCardCheckout(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const productId = String(formData.get("productId") ?? "");
   const ragioneSociale = String(formData.get("ragioneSociale") ?? "").trim();
-  const partitaIva = String(formData.get("partitaIva") ?? "").trim();
   const indirizzo = String(formData.get("indirizzo") ?? "").trim();
+  const partitaIva = String(formData.get("partitaIva") ?? "").trim();
+  const codiceFiscale = String(formData.get("codiceFiscale") ?? "").trim();
   const codiceSdi = String(formData.get("codiceSdi") ?? "").trim();
   const pec = String(formData.get("pec") ?? "").trim();
+  const buyerType = parseBuyerType(formData);
+  const acceptance = parseAcceptance(formData);
 
   if (!email) {
     return { error: "Inserisci un indirizzo email." };
   }
 
-  if (!ragioneSociale || !partitaIva || !indirizzo) {
+  if (!buyerType) {
+    return { error: "Seleziona il tipo di acquirente." };
+  }
+
+  if (!ragioneSociale || !indirizzo) {
     return {
-      error: "Ragione sociale, P.IVA e indirizzo sono obbligatori per la fattura.",
+      error:
+        buyerType === "azienda"
+          ? "Ragione sociale e indirizzo sono obbligatori per la fattura."
+          : "Nome e cognome e indirizzo sono obbligatori per la fattura.",
     };
   }
 
-  if (!codiceSdi && !pec) {
-    return { error: "Inserisci almeno uno tra codice SDI e PEC." };
+  if (buyerType === "azienda") {
+    if (!partitaIva) {
+      return { error: "La partita IVA è obbligatoria per la fattura." };
+    }
+    if (!codiceSdi && !pec) {
+      return { error: "Inserisci almeno uno tra codice SDI e PEC." };
+    }
+  } else if (!codiceFiscale) {
+    return { error: "Il codice fiscale è obbligatorio per la fattura." };
+  }
+
+  // Stesso controllo server-side del bonifico: se manca qualcosa, la
+  // richiesta si ferma qui, PRIMA di creare la sessione Stripe e quindi
+  // prima di qualunque reindirizzamento a Stripe.
+  const acceptanceError = validateLegalAcceptance(buyerType, acceptance);
+  if (acceptanceError) {
+    return { error: acceptanceError };
   }
 
   const admin = createAdminClient();
+
+  const legalDocuments = await getCurrentLegalDocuments(admin);
+  if (!legalDocuments) {
+    return { error: "Errore nel recupero dei documenti legali. Riprova." };
+  }
 
   const { data: product, error: productError } = await admin
     .from("products")
@@ -204,6 +325,15 @@ export async function startCardCheckout(
   if (productError || !product) {
     return { error: "Prodotto non trovato." };
   }
+
+  // L'ordine carta viene creato solo dopo il pagamento, dal webhook
+  // Stripe (vedi src/app/api/webhooks/stripe/route.ts): l'accettazione
+  // va quindi catturata ORA (unico momento in cui abbiamo IP e user
+  // agent della richiesta del cliente) e passata nei metadata della
+  // sessione, per essere registrata nella stessa operazione che crea
+  // l'ordine, dentro al webhook.
+  const { ip, userAgent } = await getRequestMeta();
+  const acceptedAt = new Date().toISOString();
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   const stripe = createStripeClient();
@@ -227,9 +357,21 @@ export async function startCardCheckout(
         productId: product.id,
         ragioneSociale,
         partitaIva,
+        codiceFiscale,
         indirizzo,
         codiceSdi,
         pec,
+        buyerType,
+        acceptCondizioniPrivacy: String(acceptance.condizioniEPrivacy),
+        acceptEsecuzioneImmediata: String(acceptance.esecuzioneImmediata),
+        acceptClausoleSpecifiche: String(acceptance.clausoleSpecifiche),
+        acceptedAt,
+        acceptIp: ip ?? "",
+        acceptUserAgent: (userAgent ?? "").slice(0, 490),
+        condizioniVenditaDocId: legalDocuments.condizioniVendita.id,
+        condizioniVenditaVersion: String(legalDocuments.condizioniVendita.version),
+        privacyPolicyDocId: legalDocuments.privacyPolicy.id,
+        privacyPolicyVersion: String(legalDocuments.privacyPolicy.version),
       },
       success_url: `${siteUrl}/checkout/carta-successo?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/prodotti/${product.id}`,

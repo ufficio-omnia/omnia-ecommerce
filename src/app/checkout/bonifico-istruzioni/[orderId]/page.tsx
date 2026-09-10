@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getBankDetails } from "@/lib/bank-details";
 import { ConversionTracker } from "@/components/conversion-tracker";
+
+export const metadata: Metadata = {
+  title: "Istruzioni bonifico",
+  robots: { index: false, follow: false },
+};
 
 export default async function BonificoIstruzioniPage({
   params,
@@ -53,7 +59,7 @@ export default async function BonificoIstruzioniPage({
             <dd className="font-medium text-ink">{bank.intestatario}</dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-sage">Importo</dt>
+            <dt className="text-sage">Importo (IVA inclusa)</dt>
             <dd className="font-medium text-ink">
               {Number(order.total_amount).toLocaleString("it-IT", {
                 style: "currency",

@@ -1,11 +1,18 @@
+import type { Metadata } from "next";
+import { Fragment } from "react";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { downloadInvoice } from "@/app/actions/download";
-import { deleteOrder, deleteUser } from "@/app/actions/admin";
+import { deleteOrder, deleteUser, anonymizeUser } from "@/app/actions/admin";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import DeleteButton from "@/components/delete-button";
 import ReplyForm from "./reply-form";
+
+export const metadata: Metadata = {
+  title: "Scheda cliente",
+  robots: { index: false, follow: false },
+};
 
 type Company = {
   ragione_sociale: string | null;
@@ -13,6 +20,13 @@ type Company = {
   indirizzo: string | null;
   codice_sdi: string | null;
   pec: string | null;
+};
+
+type LegalAcceptance = {
+  acceptance_type: string;
+  accepted_at: string;
+  ip_address: string | null;
+  legal_documents: { document_type: string; version: number } | null;
 };
 
 type OrderRow = {
@@ -23,6 +37,18 @@ type OrderRow = {
   created_at: string;
   products: { title: string } | null;
   invoices: { id: string } | null;
+  legal_acceptances: LegalAcceptance[];
+};
+
+const ACCEPTANCE_LABELS: Record<string, string> = {
+  condizioni_e_privacy: "Condizioni/Privacy",
+  esecuzione_immediata_recesso: "Esecuzione immediata (rinuncia recesso)",
+  clausole_specifiche: "Clausole 7/8/11/14",
+};
+
+const DOCUMENT_LABELS: Record<string, string> = {
+  condizioni_vendita: "CGV",
+  privacy_policy: "Privacy",
 };
 
 type Message = {
@@ -77,7 +103,7 @@ export default async function AdminClientePage({
       supabase
         .from("orders")
         .select(
-          "id, status, payment_method, total_amount, created_at, products(title), invoices(id)",
+          "id, status, payment_method, total_amount, created_at, products(title), invoices(id), legal_acceptances(acceptance_type, accepted_at, ip_address, legal_documents(document_type, version))",
         )
         .eq("user_id", id)
         .order("created_at", { ascending: false }),
@@ -109,13 +135,23 @@ export default async function AdminClientePage({
               {new Date(customer.created_at).toLocaleDateString("it-IT")}
             </p>
           </div>
-          <DeleteButton
-            action={deleteUser}
-            hiddenFields={{ userId: customer.id }}
-            confirmMessage={`Eliminare definitivamente l'account di ${customer.email}? Verranno cancellati anche tutti i suoi ordini e fatture. L'operazione non è reversibile.`}
-            label="Elimina utente"
-            className="shrink-0 rounded-full border border-red-700 px-4 py-1.5 font-mono text-xs tracking-wide text-red-700 uppercase hover:bg-red-700 hover:text-cream"
-          />
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <DeleteButton
+              action={deleteUser}
+              hiddenFields={{ userId: customer.id }}
+              confirmMessage={`Eliminare definitivamente l'account di ${customer.email}? Verranno cancellati anche tutti i suoi ordini e fatture. Fallisce se esistono accettazioni contrattuali registrate: in quel caso usa "Anonimizza cliente". L'operazione non è reversibile.`}
+              label="Elimina utente"
+              className="rounded-full border border-red-700 px-4 py-1.5 font-mono text-xs tracking-wide text-red-700 uppercase hover:bg-red-700 hover:text-cream"
+            />
+            <DeleteButton
+              action={anonymizeUser}
+              hiddenFields={{ userId: customer.id }}
+              confirmMessage={`Anonimizzare l'account di ${customer.email}? Email e dati di fatturazione verranno sostituiti con valori anonimi e l'accesso verrà revocato, ma ordini, fatture e accettazioni contrattuali restano conservati per obbligo fiscale. L'operazione non è reversibile.`}
+              label="Anonimizza cliente"
+              pendingLabel="Anonimizzazione..."
+              className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase hover:bg-ink hover:text-cream"
+            />
+          </div>
         </div>
 
         <section className="mt-8 rounded-2xl border border-border bg-cream-soft p-5">
@@ -165,7 +201,9 @@ export default async function AdminClientePage({
                   <th className="px-4 py-2 text-left font-medium text-ink">
                     Pagamento
                   </th>
-                  <th className="px-4 py-2 text-left font-medium text-ink">Importo</th>
+                  <th className="px-4 py-2 text-left font-medium text-ink">
+                    Importo (IVA inclusa)
+                  </th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Data</th>
                   <th className="px-4 py-2 text-left font-medium text-ink">Fattura</th>
                   <th className="px-4 py-2 text-left font-medium text-ink"></th>
@@ -174,47 +212,72 @@ export default async function AdminClientePage({
               <tbody className="divide-y divide-border">
                 {orders?.length ? (
                   orders.map((o) => (
-                    <tr key={o.id}>
-                      <td className="px-4 py-2 text-ink">{o.products?.title ?? "—"}</td>
-                      <td className="px-4 py-2 text-ink">
-                        {o.status === "pagato" ? (
-                          <span className="text-forest">{o.status}</span>
-                        ) : (
-                          o.status
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-ink">{o.payment_method ?? "—"}</td>
-                      <td className="px-4 py-2 text-ink">
-                        {Number(o.total_amount).toLocaleString("it-IT", {
-                          style: "currency",
-                          currency: "EUR",
-                        })}
-                      </td>
-                      <td className="px-4 py-2 text-sage">
-                        {new Date(o.created_at).toLocaleDateString("it-IT")}
-                      </td>
-                      <td className="px-4 py-2">
-                        {o.invoices ? (
-                          <OpenInNewTabButton
-                            action={downloadInvoice}
-                            hiddenFields={{ orderId: o.id }}
-                            label="Scarica"
-                            className="rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream"
+                    <Fragment key={o.id}>
+                      <tr>
+                        <td className="px-4 py-2 text-ink">{o.products?.title ?? "—"}</td>
+                        <td className="px-4 py-2 text-ink">
+                          {o.status === "pagato" ? (
+                            <span className="text-forest">{o.status}</span>
+                          ) : (
+                            o.status
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-ink">{o.payment_method ?? "—"}</td>
+                        <td className="px-4 py-2 text-ink">
+                          {Number(o.total_amount).toLocaleString("it-IT", {
+                            style: "currency",
+                            currency: "EUR",
+                          })}
+                        </td>
+                        <td className="px-4 py-2 text-sage">
+                          {new Date(o.created_at).toLocaleDateString("it-IT")}
+                        </td>
+                        <td className="px-4 py-2">
+                          {o.invoices ? (
+                            <OpenInNewTabButton
+                              action={downloadInvoice}
+                              hiddenFields={{ orderId: o.id }}
+                              label="Scarica"
+                              className="rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream"
+                            />
+                          ) : (
+                            <span className="text-sage">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2">
+                          <DeleteButton
+                            action={deleteOrder}
+                            hiddenFields={{ orderId: o.id, userId: customer.id }}
+                            confirmMessage="Eliminare definitivamente questo ordine? L'operazione non è reversibile."
+                            label="Elimina"
+                            className="font-mono text-[10px] tracking-wide text-red-700 uppercase hover:underline"
                           />
-                        ) : (
-                          <span className="text-sage">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">
-                        <DeleteButton
-                          action={deleteOrder}
-                          hiddenFields={{ orderId: o.id, userId: customer.id }}
-                          confirmMessage="Eliminare definitivamente questo ordine? L'operazione non è reversibile."
-                          label="Elimina"
-                          className="font-mono text-[10px] tracking-wide text-red-700 uppercase hover:underline"
-                        />
-                      </td>
-                    </tr>
+                        </td>
+                      </tr>
+                      {o.legal_acceptances?.length > 0 && (
+                        <tr key={`${o.id}-legal`}>
+                          <td colSpan={7} className="bg-cream px-4 py-2 text-xs text-sage">
+                            <span className="font-mono tracking-wide text-ink uppercase">
+                              Accettazioni:
+                            </span>{" "}
+                            {o.legal_acceptances.map((a, i) => (
+                              <span key={i}>
+                                {i > 0 && " · "}
+                                {ACCEPTANCE_LABELS[a.acceptance_type] ?? a.acceptance_type}
+                                {a.legal_documents &&
+                                  ` (${DOCUMENT_LABELS[a.legal_documents.document_type] ?? a.legal_documents.document_type} v${a.legal_documents.version})`}
+                              </span>
+                            ))}
+                            {" — "}
+                            {new Date(o.legal_acceptances[0].accepted_at).toLocaleString(
+                              "it-IT",
+                            )}
+                            {o.legal_acceptances[0].ip_address &&
+                              ` · IP ${o.legal_acceptances[0].ip_address}`}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))
                 ) : (
                   <tr>

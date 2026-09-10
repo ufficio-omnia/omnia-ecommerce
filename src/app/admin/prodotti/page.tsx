@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,11 @@ import {
   removeProductFilePreview,
   moveProductFilePreview,
 } from "@/app/actions/product-previews";
+
+export const metadata: Metadata = {
+  title: "Gestisci prodotti",
+  robots: { index: false, follow: false },
+};
 
 type ProductFilePreview = {
   id: string;
@@ -137,7 +143,7 @@ export default async function AdminProdottiPage({
             </div>
             <div>
               <label htmlFor="price" className="block text-sm font-medium text-ink">
-                Prezzo (€)
+                Prezzo (€, IVA inclusa)
               </label>
               <input
                 id="price"
@@ -202,7 +208,7 @@ export default async function AdminProdottiPage({
                 <form action={updateProduct} className="mt-3 flex flex-wrap items-end gap-2">
                   <input type="hidden" name="productId" value={p.id} />
                   <div>
-                    <label className="block text-xs text-sage">Prezzo (€)</label>
+                    <label className="block text-xs text-sage">Prezzo (€, IVA inclusa)</label>
                     <input
                       name="price"
                       type="number"
@@ -264,7 +270,7 @@ export default async function AdminProdottiPage({
                       <input type="hidden" name="productId" value={p.id} />
                       <div>
                         <label className="block text-xs text-sage">
-                          Prezzo scontato (€)
+                          Prezzo scontato (€, IVA inclusa)
                         </label>
                         <input
                           name="discountPrice"

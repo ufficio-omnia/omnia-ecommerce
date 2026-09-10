@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { createStripeClient } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
+import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -44,8 +45,28 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
-  const { productId, ragioneSociale, partitaIva, indirizzo, codiceSdi, pec } =
-    metadata;
+  const {
+    productId,
+    ragioneSociale,
+    partitaIva,
+    codiceFiscale,
+    indirizzo,
+    codiceSdi,
+    pec,
+    buyerType: buyerTypeRaw,
+    acceptCondizioniPrivacy,
+    acceptEsecuzioneImmediata,
+    acceptClausoleSpecifiche,
+    acceptedAt,
+    acceptIp,
+    acceptUserAgent,
+    condizioniVenditaDocId,
+    condizioniVenditaVersion,
+    privacyPolicyDocId,
+    privacyPolicyVersion,
+  } = metadata;
+
+  const buyerType: BuyerType = buyerTypeRaw === "consumatore" ? "consumatore" : "azienda";
 
   const admin = createAdminClient();
 
@@ -102,8 +123,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   await admin.from("companies").upsert(
     {
       user_id: profile.id,
+      buyer_type: buyerType,
       ragione_sociale: ragioneSociale,
-      partita_iva: partitaIva,
+      partita_iva: buyerType === "azienda" ? partitaIva : null,
+      codice_fiscale: buyerType === "consumatore" ? codiceFiscale : null,
       indirizzo,
       codice_sdi: codiceSdi || null,
       pec: pec || null,
@@ -129,6 +152,56 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return;
   }
 
+  // L'accettazione era stata catturata (IP, user agent, versioni dei
+  // documenti) al momento del checkout, prima del redirect a Stripe: qui
+  // la registriamo nella stessa operazione che crea l'ordine carta, che
+  // per il pagamento con carta è proprio questo webhook.
+  if (
+    condizioniVenditaDocId &&
+    condizioniVenditaVersion &&
+    privacyPolicyDocId &&
+    privacyPolicyVersion
+  ) {
+    const acceptanceResult = await recordLegalAcceptances({
+      admin,
+      orderId: order.id,
+      userId: profile.id,
+      buyerType,
+      input: {
+        condizioniEPrivacy: acceptCondizioniPrivacy === "true",
+        esecuzioneImmediata: acceptEsecuzioneImmediata === "true",
+        clausoleSpecifiche: acceptClausoleSpecifiche === "true",
+      },
+      documents: {
+        condizioniVendita: {
+          id: condizioniVenditaDocId,
+          version: Number(condizioniVenditaVersion),
+        },
+        privacyPolicy: {
+          id: privacyPolicyDocId,
+          version: Number(privacyPolicyVersion),
+        },
+      },
+      ip: acceptIp || null,
+      userAgent: acceptUserAgent || null,
+      acceptedAt: acceptedAt || new Date().toISOString(),
+    });
+
+    if (acceptanceResult.error) {
+      console.error(
+        "Webhook Stripe: errore registrazione accettazioni legali",
+        acceptanceResult.error,
+        "ordine",
+        order.id,
+      );
+    }
+  } else {
+    console.error(
+      "Webhook Stripe: metadata accettazioni legali mancanti per l'ordine",
+      order.id,
+    );
+  }
+
   await sendEmail({
     to: ADMIN_EMAIL,
     subject: `Nuovo ordine (carta): ${product.title}`,
@@ -137,16 +210,32 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       <p>Numero ordine: ${order.id.slice(0, 8)}</p>
       <p>Metodo di pagamento: carta (Stripe)</p>
       <p>Documento acquistato: ${product.title}</p>
-      <p>Importo: ${amountCharged.toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
+      <p>Importo (IVA inclusa): ${amountCharged.toLocaleString("it-IT", { style: "currency", currency: "EUR" })}</p>
       <p><strong>Cliente</strong></p>
       <p>Email: ${email}</p>
-      <p>Ragione sociale: ${ragioneSociale}</p>
-      <p>Partita IVA: ${partitaIva}</p>
+      <p>Tipo acquirente: ${buyerType === "azienda" ? "Azienda/libero professionista" : "Privato consumatore"}</p>
+      <p>Ragione sociale/Nome: ${ragioneSociale}</p>
+      <p>Partita IVA: ${partitaIva || "—"}</p>
+      <p>Codice fiscale: ${codiceFiscale || "—"}</p>
       <p>Indirizzo: ${indirizzo}</p>
       <p>Codice SDI: ${codiceSdi || "—"}</p>
       <p>PEC: ${pec || "—"}</p>
     `,
   });
+
+  const legalNote =
+    condizioniVenditaVersion && privacyPolicyVersion
+      ? `<p style="margin-top:16px;">Hai accettato le
+          <a href="${siteUrl}/documenti-legali/condizioni-vendita/${condizioniVenditaVersion}">Condizioni generali di vendita (versione ${condizioniVenditaVersion})</a>
+          e preso visione della
+          <a href="${siteUrl}/documenti-legali/privacy-policy/${privacyPolicyVersion}">Privacy policy (versione ${privacyPolicyVersion})</a>.
+          ${
+            buyerType === "consumatore"
+              ? "Hai inoltre richiesto espressamente l'esecuzione immediata della fornitura, con conseguente perdita del diritto di recesso."
+              : ""
+          }
+        </p>`
+      : "";
 
   if (needsActivation) {
     const { error: otpError } = await admin.auth.signInWithOtp({
@@ -163,7 +252,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     await sendEmail({
       to: email,
       subject: "Il tuo documento è pronto per il download",
-      html: `<p>Il pagamento è stato confermato.</p><p>Il documento <strong>${product.title}</strong> è ora disponibile nella tua area riservata.</p><p><a href="${siteUrl}/dashboard">Vai alla dashboard</a></p>`,
+      html: `<p>Il pagamento è stato confermato.</p><p>Il documento <strong>${product.title}</strong> è ora disponibile nella tua area riservata.</p><p><a href="${siteUrl}/dashboard">Vai alla dashboard</a></p>${legalNote}`,
     });
   }
 }

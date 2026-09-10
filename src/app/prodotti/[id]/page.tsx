@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -5,6 +6,29 @@ import { effectivePrice } from "@/lib/products";
 import BankTransferForm from "./bank-transfer-form";
 import CardCheckoutForm from "./card-checkout-form";
 import PreviewGalleryButton from "@/components/preview-gallery-button";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: product } = await supabase
+    .from("products")
+    .select("title, description")
+    .eq("id", id)
+    .maybeSingle<{ title: string; description: string | null }>();
+
+  if (!product) {
+    return { title: "Pacchetto non trovato" };
+  }
+
+  return {
+    title: `${product.title} — documenti per gare d'appalto`,
+    description: product.description ?? undefined,
+  };
+}
 
 export default async function ProdottoPage({
   params,
@@ -38,6 +62,27 @@ export default async function ProdottoPage({
   if (!product || !product.active) {
     notFound();
   }
+
+  // "Vigente" = effective_date più recente non successiva ad oggi, non
+  // il numero di versione più alto (stessa logica di
+  // getCurrentLegalDocuments in src/lib/legal-acceptance.ts, duplicata
+  // qui solo perché questa pagina usa il client di sessione, non quello
+  // admin usato dalle server action di checkout).
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: legalDocsRaw } = await supabase
+    .from("legal_documents")
+    .select("document_type, version, effective_date")
+    .in("document_type", ["condizioni_vendita", "privacy_policy"])
+    .lte("effective_date", today)
+    .order("effective_date", { ascending: false })
+    .returns<{ document_type: string; version: number; effective_date: string }[]>();
+
+  const condizioniVersion =
+    legalDocsRaw?.find((d) => d.document_type === "condizioni_vendita")
+      ?.version ?? 1;
+  const privacyVersion =
+    legalDocsRaw?.find((d) => d.document_type === "privacy_policy")
+      ?.version ?? 1;
 
   const files = [...(product.product_files ?? [])].sort(
     (a, b) => a.sort_order - b.sort_order,
@@ -82,6 +127,9 @@ export default async function ProdottoPage({
                 })}
               </span>
             </div>
+            <p className="mt-0.5 font-mono text-[10px] tracking-wide text-sage uppercase">
+              IVA inclusa
+            </p>
           </div>
 
           {files.length > 0 && (
@@ -126,7 +174,11 @@ export default async function ProdottoPage({
               Pagamento sicuro tramite Stripe. Il documento sarà sbloccato in
               dashboard subito dopo la conferma del pagamento.
             </p>
-            <CardCheckoutForm productId={product.id} />
+            <CardCheckoutForm
+              productId={product.id}
+              condizioniVersion={condizioniVersion}
+              privacyVersion={privacyVersion}
+            />
           </div>
 
           <div className="rounded-2xl border border-border bg-cream-soft p-6">
@@ -135,7 +187,11 @@ export default async function ProdottoPage({
               L&apos;ordine resterà in attesa finché non confermiamo il
               pagamento.
             </p>
-            <BankTransferForm productId={product.id} />
+            <BankTransferForm
+              productId={product.id}
+              condizioniVersion={condizioniVersion}
+              privacyVersion={privacyVersion}
+            />
           </div>
         </div>
       </div>

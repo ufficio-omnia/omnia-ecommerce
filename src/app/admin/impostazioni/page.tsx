@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getBankDetails } from "@/lib/bank-details";
 import { updateBankDetails } from "@/app/actions/bank-details";
+
+export const metadata: Metadata = {
+  title: "Dati bancari",
+  robots: { index: false, follow: false },
+};
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none";

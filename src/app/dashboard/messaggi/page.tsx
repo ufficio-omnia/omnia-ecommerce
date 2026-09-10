@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import MessageForm from "./message-form";
+
+export const metadata: Metadata = {
+  title: "Messaggi",
+  robots: { index: false, follow: false },
+};
 
 type Message = {
   id: string;

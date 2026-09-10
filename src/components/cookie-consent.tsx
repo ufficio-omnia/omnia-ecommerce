@@ -40,6 +40,15 @@ function setConsent(value: "accepted" | "rejected") {
   window.dispatchEvent(new Event(CONSENT_EVENT));
 }
 
+// Usata dal link "Preferenze cookie" nel piè di pagina: la Cookie policy
+// promette che si possa cambiare idea in qualsiasi momento, quindi deve
+// rimettere il banner nello stato "pending" invece di limitarsi a
+// cancellare la scelta salvata.
+export function resetCookieConsent() {
+  localStorage.removeItem(CONSENT_KEY);
+  window.dispatchEvent(new Event(CONSENT_EVENT));
+}
+
 export default function CookieConsent() {
   const status = useSyncExternalStore(
     subscribe,

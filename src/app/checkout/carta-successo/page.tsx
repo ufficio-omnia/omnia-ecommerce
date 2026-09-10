@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ConversionTrackerFromSession } from "@/components/conversion-tracker";
+
+export const metadata: Metadata = {
+  title: "Pagamento ricevuto",
+  robots: { index: false, follow: false },
+};
 
 export default async function CartaSuccessoPage({
   searchParams,

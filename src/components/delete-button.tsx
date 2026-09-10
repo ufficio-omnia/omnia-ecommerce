@@ -10,12 +10,14 @@ export default function DeleteButton({
   hiddenFields,
   confirmMessage,
   label,
+  pendingLabel = "Eliminazione...",
   className,
 }: {
   action: (prevState: DeleteState, formData: FormData) => Promise<DeleteState>;
   hiddenFields: Record<string, string>;
   confirmMessage: string;
   label: string;
+  pendingLabel?: string;
   className: string;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -32,7 +34,7 @@ export default function DeleteButton({
         <input key={key} type="hidden" name={key} value={value} />
       ))}
       <button type="submit" disabled={pending} className={className}>
-        {pending ? "Eliminazione..." : label}
+        {pending ? pendingLabel : label}
       </button>
       {state.error && (
         <p className="mt-1 text-xs text-red-700">{state.error}</p>

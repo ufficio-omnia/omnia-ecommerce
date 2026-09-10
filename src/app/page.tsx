@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { effectivePrice } from "@/lib/products";
+
+export const metadata: Metadata = {
+  title: "Documenti pronti per gare d'appalto | Omnia Consulting",
+  description:
+    "Facsimile e modelli professionali per la partecipazione a gare d'appalto: relazione tecnica, piani di lavoro, organigrammi e check list, pronti da scaricare dopo il pagamento.",
+};
 
 type Product = {
   id: string;
@@ -112,6 +119,9 @@ export default async function Home() {
                         })}
                       </span>
                     </div>
+                    <p className="mt-0.5 font-mono text-[10px] tracking-wide text-sage uppercase">
+                      IVA inclusa
+                    </p>
                   </div>
 
                   <Link

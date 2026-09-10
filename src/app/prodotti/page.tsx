@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { effectivePrice } from "@/lib/products";
 import PreviewGalleryButton from "@/components/preview-gallery-button";
+
+export const metadata: Metadata = {
+  title: "Pacchetti documenti per gare d'appalto",
+  description:
+    "Confronta i pacchetti BASIC, MEDIUM e PREMIUM: relazione tecnica, piani di lavoro, organigrammi e check list pronti da scaricare dopo il pagamento.",
+};
 
 type ProductFilePreview = {
   image_path: string;
@@ -127,6 +134,9 @@ export default async function ProdottiPage() {
                         })}
                       </span>
                     </div>
+                    <p className="mt-0.5 font-mono text-[10px] tracking-wide text-sage uppercase">
+                      IVA inclusa
+                    </p>
                   </div>
 
                   <Link

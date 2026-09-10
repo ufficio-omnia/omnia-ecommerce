@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -132,6 +133,15 @@ export async function deleteUser(
 
   if (error) {
     console.error("Errore eliminazione utente:", error);
+    // Un ordine con accettazioni legali registrate blocca la cascata
+    // (order_id/user_id sono "on delete restrict" in legal_acceptances,
+    // di proposito): la prova non deve poter sparire con l'account.
+    if (/foreign key|violat/i.test(error.message)) {
+      return {
+        error:
+          'Impossibile eliminare: questo cliente ha ordini con accettazioni contrattuali registrate, che per obbligo di legge non possono essere cancellate. Usa "Anonimizza cliente" invece.',
+      };
+    }
     return { error: "Errore nell'eliminazione dell'utente." };
   }
 
@@ -141,6 +151,84 @@ export async function deleteUser(
 
   if (filePaths.length) {
     await admin.storage.from("invoices").remove(filePaths);
+  }
+
+  redirect("/admin");
+}
+
+// Alternativa a deleteUser per i clienti che hanno ordini con
+// accettazioni legali registrate (che quindi deleteUser non può più
+// cancellare): invece di eliminare fisicamente l'account, lo rende
+// irriconoscibile mantenendo intatti ordini, fatture e accettazioni
+// per i dieci anni di obbligo fiscale/probatorio. L'utente perde
+// l'accesso (email e password sostituite, account bannato) ma le righe
+// restano referenziabili.
+export async function anonymizeUser(
+  _prevState: DeleteState,
+  formData: FormData,
+): Promise<DeleteState> {
+  if (!(await requireAdmin())) {
+    return { error: "Non autorizzato." };
+  }
+
+  const targetUserId = String(formData.get("userId") ?? "");
+  if (!targetUserId) return { error: "Utente non valido." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user?.id === targetUserId) {
+    return { error: "Non puoi anonimizzare il tuo stesso account." };
+  }
+
+  const admin = createAdminClient();
+
+  // ".invalid" è il dominio riservato dalla RFC 2606 per indirizzi
+  // garantiti non reali: identifica chiaramente la riga come
+  // anonimizzata senza rischiare di generare un indirizzo che esiste
+  // davvero.
+  const anonymizedEmail = `cliente-anonimizzato-${targetUserId.slice(0, 8)}@omniaitalia.invalid`;
+  const randomPassword = `${randomUUID()}${randomUUID()}`;
+
+  const { error: authError } = await admin.auth.admin.updateUserById(
+    targetUserId,
+    {
+      email: anonymizedEmail,
+      password: randomPassword,
+      email_confirm: true,
+      ban_duration: "876000h",
+      user_metadata: {},
+    },
+  );
+
+  if (authError) {
+    console.error("Errore anonimizzazione account:", authError);
+    return { error: "Errore nell'anonimizzazione dell'account." };
+  }
+
+  const { error: profileError } = await admin
+    .from("users")
+    .update({ email: anonymizedEmail })
+    .eq("id", targetUserId);
+
+  if (profileError) {
+    console.error("Errore anonimizzazione profilo:", profileError);
+    return { error: "Errore nell'anonimizzazione del profilo." };
+  }
+
+  // I dati di fatturazione (ragione sociale, P.IVA/CF, indirizzo,
+  // SDI/PEC) sono l'unico dato identificativo oltre all'email: vanno
+  // rimossi. Ordini, fatture e accettazioni restano intatti.
+  const { error: companyError } = await admin
+    .from("companies")
+    .delete()
+    .eq("user_id", targetUserId);
+
+  if (companyError) {
+    console.error("Errore rimozione dati fatturazione:", companyError);
+    return { error: "Errore nella rimozione dei dati di fatturazione." };
   }
 
   redirect("/admin");

@@ -30,6 +30,12 @@ export default async function SiteHeader() {
         </Link>
 
         <nav className="flex items-center gap-3 sm:gap-5">
+          <a
+            href="https://omniaitalia.com"
+            className="hidden font-mono text-xs tracking-wide text-sage uppercase hover:text-ink sm:inline"
+          >
+            Consulenza e servizi
+          </a>
           <Link
             href="/prodotti"
             className="hidden font-mono text-xs tracking-wide text-sage uppercase hover:text-ink sm:inline"
