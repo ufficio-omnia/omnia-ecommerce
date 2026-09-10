@@ -2,10 +2,41 @@
 
 import { useSyncExternalStore } from "react";
 import Script from "next/script";
+import { ZONE_COOKIE } from "@/lib/zone";
 
 const CONSENT_KEY = "omnia-cookie-consent";
 const CONSENT_EVENT = "omnia-consent-change";
 const GADS_ID = "AW-18422155730";
+
+// Il tag Google Ads è una cosa dell'e-commerce (misura le conversioni di
+// vendita documenti): fuori da quella zona (omnia-ai.it, console.*) non
+// deve montarsi né il banner né lo script, prima ancora che quei domini
+// abbiano una propria informativa cookie — indipendentemente da quale
+// consenso risulti nel localStorage locale a quel dominio. Letto da un
+// cookie semplice (non da headers(), per non rendere dinamico l'intero
+// root layout condiviso, e-commerce incluso — vedi src/proxy.ts).
+//
+// Stesso motivo di useSyncExternalStore per il consenso qui sotto: il
+// server non conosce il cookie di zona nel render iniziale, quindi la
+// prima passata client (idratazione) deve assumere "ecommerce" come il
+// server — leggere document.cookie direttamente nel corpo del componente
+// darebbe un mismatch di idratazione ogni volta che la zona reale è
+// diversa. getZoneSnapshot/getZoneServerSnapshot seguono lo stesso
+// pattern di getSnapshot/getServerSnapshot sotto.
+function subscribeNever() {
+  return () => {};
+}
+
+function getZoneSnapshot(): string {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${ZONE_COOKIE}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : "ecommerce";
+}
+
+function getZoneServerSnapshot(): string {
+  return "ecommerce";
+}
 
 type Consent = "pending" | "accepted" | "rejected";
 
@@ -55,6 +86,18 @@ export default function CookieConsent() {
     getSnapshot,
     getServerSnapshot,
   );
+
+  // Guardia di zona: il tag Google Ads e il banner di consenso servono
+  // solo all'e-commerce. Lo script resta comunque bloccato in ogni caso
+  // (status è sempre "pending" nel render server/idratazione, vedi
+  // getServerSnapshot) — questo controllo evita che il banner resti
+  // visibile dopo l'idratazione su un dominio diverso dall'e-commerce.
+  const zone = useSyncExternalStore(
+    subscribeNever,
+    getZoneSnapshot,
+    getZoneServerSnapshot,
+  );
+  if (zone === "omnia-ai" || zone === "console") return null;
 
   return (
     <>
