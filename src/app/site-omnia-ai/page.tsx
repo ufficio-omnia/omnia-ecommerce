@@ -15,7 +15,7 @@ const FAQ = [
   {
     domanda: "Su quali gare funziona davvero?",
     risposta:
-      "Su gare di soft e hard facility management: pulizie e sanificazione, facchinaggio, ausiliariato, portierato, manutenzioni. È una specializzazione verticale, non una piattaforma buona per tutto: fuori da questi settori non ti darebbe lo stesso livello di dettaglio, e preferiamo dirtelo prima.",
+      "Su gare di soft e hard facility management: pulizie e sanificazione, facchinaggio, ausiliariato, portierato, manutenzione edile, idrica ed elettrica, sorveglianza armata e non armata, gestione e manutenzione di elisuperfici. È una specializzazione verticale, non una piattaforma buona per tutto: fuori da questi settori non ti darebbe lo stesso livello di dettaglio, e preferiamo dirtelo prima.",
   },
   {
     domanda: "Il documento è pronto da consegnare in gara?",
