@@ -1,0 +1,210 @@
+/* Sistema visivo OMNIA AI — vale SOLO per le pagine sotto questo root
+   layout (site-omnia-ai), mai per l'e-commerce. Riferimento visivo
+   esatto: design/riferimento-home.html (mockup approvato). */
+
+/* ---------- Font auto-ospitati (public/fonts) ----------
+   Mai da CDN esterni, per la stessa scelta GDPR già fatta su
+   omniaitalia.com. Due @font-face per peso (latin + latin-ext), stessi
+   unicode-range usati da Google Fonts per i due sottoinsiemi. */
+
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/syne-700-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/syne-700-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/syne-800-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/syne-800-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-300-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-300-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ---------- Variabili colore ----------
+   Ruoli fissi, regola di prodotto non estetica — vale anche nell'area
+   riservata, non solo sul sito pubblico:
+     --viola  azione dell'utente (pulsanti principali, campo domanda, marchio a riposo)
+     --verde  risposta del sistema (frammenti recuperati, citazioni, conferme)
+     --ambra  SOLO scadenze e avvisi
+     --rosso  SOLO errori
+   Non scambiare mai i ruoli, nemmeno quando un altro colore "starebbe meglio". */
+:root {
+  --nero: #050509;
+  --nero-0: rgba(5, 5, 9, 0); /* stesso colore di fondo, opacità zero — mai "transparent" nei gradienti, vedi sotto */
+  --vetro: rgba(255, 255, 255, 0.038);
+  --vetro-2: rgba(255, 255, 255, 0.06);
+  --bordo: rgba(150, 140, 255, 0.16);
+  --bordo-f: rgba(150, 140, 255, 0.3);
+  --viola: #8b7fe8;
+  --verde: #4fd1a5;
+  --ambra: #e8a33d;
+  --rosso: #e85d3d;
+  --testo: #e9e7f4;
+  --fioco: #8b8aa8;
+}
+
+/* ---------- Fondamenta ----------
+   Il fondo scuro va dichiarato sull'html, non solo sul body: altrimenti
+   su iOS, nell'overscroll/rimbalzo, traspare il bianco della superficie
+   sotto. color-scheme:dark evita che i controlli nativi del browser
+   (scrollbar, autofill, ecc.) restino chiari sopra uno sfondo scuro. */
+html {
+  background: var(--nero);
+  color-scheme: dark;
+}
+body {
+  background: var(--nero);
+  color: var(--testo);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums; /* le cifre sono sempre tabellari */
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+/* ---------- Tipografia ----------
+   Regola rigida: Syne SOLO sopra i 24px (titoli, marchio). Sotto quella
+   soglia mai — menu, etichette, pulsanti e testo corrente restano
+   Space Grotesk (il font di base sopra, ereditato di default). Chi
+   aggiunge un nuovo titolo/heading in questa zona deve applicare
+   esplicitamente .font-marchio o una delle regole qui sotto, non
+   presumere che "sembra un titolo" basti. */
+h1,
+h2,
+h3,
+.font-marchio {
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+}
+
+/* ---------- Paragrafi ----------
+   Giustificati con sillabazione automatica; lang="it" va dichiarato
+   sull'elemento html (vedi layout.tsx) perché hyphens:auto usi le
+   regole di sillabazione italiane. Eccezione: le righe brevi centrate
+   sotto i pulsanti (.micro). */
+p,
+li {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.micro {
+  text-align: center;
+}
+
+/* ---------- Marchio ----------
+   Tre stati, mai colori diversi da questi tre: vedi la regola di
+   prodotto sopra. Il respiro lento è lo stato di default (riposo); in
+   elaborazione il battito accelera per comunicare attività; pronto resta
+   sull'alone stabile e più intenso già usato nel mockup di riferimento. */
+.omnia-marchio-segno {
+  width: 25px;
+  height: 25px;
+  flex: none;
+  color: var(--viola);
+  filter: drop-shadow(0 0 7px currentColor);
+  transition:
+    color 0.7s ease,
+    filter 0.7s ease;
+  animation: omnia-respiro 4.6s ease-in-out infinite;
+}
+.omnia-marchio-segno[data-stato="pronto"] {
+  color: var(--verde);
+  filter: drop-shadow(0 0 11px currentColor);
+}
+.omnia-marchio-segno[data-stato="elaborazione"] {
+  color: var(--ambra);
+  animation: omnia-elaborazione 1.2s ease-in-out infinite;
+}
+@keyframes omnia-respiro {
+  50% {
+    filter: drop-shadow(0 0 13px currentColor);
+  }
+}
+@keyframes omnia-elaborazione {
+  50% {
+    filter: drop-shadow(0 0 15px currentColor);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .omnia-marchio-segno {
+    animation: none;
+  }
+}
