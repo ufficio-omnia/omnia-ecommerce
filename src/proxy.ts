@@ -77,7 +77,15 @@ export async function proxy(request: NextRequest) {
     // reali: senza questa guardia sarebbero raggiungibili digitandoli a
     // mano da app.omniaitalia.com.
     response = NextResponse.rewrite(new URL(ZONE_GUARD_NOT_FOUND_PATH, request.url), { request: requestInit });
-  } else if (!isSeoExemptPath && zone !== "ecommerce") {
+  } else if (
+    !isSeoExemptPath &&
+    zone !== "ecommerce" &&
+    !request.nextUrl.pathname.startsWith(ZONE_PREFIX[zone])
+  ) {
+    // Riscrive SOLO se il path non ha già il prefisso di zona — un file
+    // generato sotto quel prefisso (es. apple-icon di next/og) porta il
+    // prefisso già nel proprio URL reale, prefissarlo di nuovo darebbe
+    // /site-omnia-ai/site-omnia-ai/... e un 404 (bug osservato in pratica).
     const zoneUrl = new URL(
       `${ZONE_PREFIX[zone]}${request.nextUrl.pathname}${request.nextUrl.search}`,
       request.url,
@@ -117,6 +125,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?|ttf|otf|eot)$).*)",
   ],
 };
