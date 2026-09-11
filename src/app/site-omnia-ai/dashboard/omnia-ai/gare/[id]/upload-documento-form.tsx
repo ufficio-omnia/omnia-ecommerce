@@ -19,29 +19,14 @@ export default function UploadDocumentoForm({ garaId }: { garaId: string }) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
-    <form
-      ref={formRef}
-      action={formAction}
-      className="flex flex-col gap-2 sm:flex-row sm:items-center"
-    >
+    <form ref={formRef} action={formAction} className="omnia-form-riga">
       <input type="hidden" name="garaId" value={garaId} />
-      <input
-        type="file"
-        name="file"
-        required
-        className="flex-1 text-sm text-ink"
-      />
-      <button
-        type="submit"
-        disabled={pending}
-        className="shrink-0 rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream disabled:opacity-50"
-      >
+      <input type="file" name="file" required className="omnia-file-input" />
+      <button type="submit" disabled={pending} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
         {pending ? "Caricamento..." : "Carica documento"}
       </button>
-      {state.error && <p className="text-xs text-red-700">{state.error}</p>}
-      {state.warning && (
-        <p className="text-xs text-amber-700">{state.warning}</p>
-      )}
+      {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
+      {state.warning && <p className="omnia-messaggio-stato avviso">{state.warning}</p>}
     </form>
   );
 }

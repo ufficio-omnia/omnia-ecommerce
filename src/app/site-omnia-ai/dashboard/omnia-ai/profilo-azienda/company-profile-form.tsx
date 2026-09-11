@@ -9,11 +9,6 @@ import type { Company } from "./page";
 
 const initialState: CompanyProfileState = {};
 
-const inputClass =
-  "mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none";
-
-const labelClass = "block text-sm font-medium text-ink";
-
 export default function CompanyProfileForm({
   company,
 }: {
@@ -25,18 +20,15 @@ export default function CompanyProfileForm({
   );
 
   return (
-    <form action={formAction} className="mt-8 space-y-8">
-      <section className="rounded-2xl border border-border bg-cream-soft p-5">
-        <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-          Loghi
-        </h2>
-        <p className="mt-1 text-xs text-sage">
-          Usati da OMNIA AI per inserire i loghi reali negli organigrammi e nei
-          documenti generati.
+    <form action={formAction} style={{ marginTop: 16, display: "grid", gap: 24 }}>
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Loghi</span>
+        <p className="omnia-riquadro-nota">
+          Usati da OMNIA AI per inserire i loghi reali negli organigrammi e nei documenti generati.
         </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="omnia-campo-griglia">
           <div>
-            <label htmlFor="logo" className={labelClass}>
+            <label htmlFor="logo" className="omnia-etichetta">
               Logo aziendale
             </label>
             <input
@@ -44,14 +36,16 @@ export default function CompanyProfileForm({
               name="logo"
               type="file"
               accept="image/png,image/jpeg,image/webp"
-              className={inputClass}
+              className="omnia-input"
             />
             {company?.logo_path && (
-              <p className="mt-1 text-xs text-forest">Logo già caricato.</p>
+              <span className="omnia-badge verde" style={{ marginTop: 8 }}>
+                Logo già caricato
+              </span>
             )}
           </div>
           <div>
-            <label htmlFor="softwareNome" className={labelClass}>
+            <label htmlFor="softwareNome" className="omnia-etichetta">
               Software gestionale in uso
             </label>
             <input
@@ -60,9 +54,9 @@ export default function CompanyProfileForm({
               type="text"
               placeholder="es. FM360"
               defaultValue={company?.software_nome ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
-            <label htmlFor="softwareLogo" className={`${labelClass} mt-2`}>
+            <label htmlFor="softwareLogo" className="omnia-etichetta" style={{ marginTop: 12 }}>
               Logo del software
             </label>
             <input
@@ -70,22 +64,22 @@ export default function CompanyProfileForm({
               name="softwareLogo"
               type="file"
               accept="image/png,image/jpeg,image/webp"
-              className={inputClass}
+              className="omnia-input"
             />
             {company?.software_logo_path && (
-              <p className="mt-1 text-xs text-forest">Logo già caricato.</p>
+              <span className="omnia-badge verde" style={{ marginTop: 8 }}>
+                Logo già caricato
+              </span>
             )}
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border bg-cream-soft p-5">
-        <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-          Anagrafica
-        </h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label htmlFor="ragioneSociale" className={labelClass}>
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Anagrafica</span>
+        <div className="omnia-campo-griglia">
+          <div className="largo">
+            <label htmlFor="ragioneSociale" className="omnia-etichetta">
               Ragione sociale *
             </label>
             <input
@@ -94,11 +88,11 @@ export default function CompanyProfileForm({
               type="text"
               required
               defaultValue={company?.ragione_sociale ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="partitaIva" className={labelClass}>
+            <label htmlFor="partitaIva" className="omnia-etichetta">
               P.IVA *
             </label>
             <input
@@ -107,11 +101,11 @@ export default function CompanyProfileForm({
               type="text"
               required
               defaultValue={company?.partita_iva ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="codiceFiscale" className={labelClass}>
+            <label htmlFor="codiceFiscale" className="omnia-etichetta">
               Codice fiscale
             </label>
             <input
@@ -119,11 +113,11 @@ export default function CompanyProfileForm({
               name="codiceFiscale"
               type="text"
               defaultValue={company?.codice_fiscale ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="formaGiuridica" className={labelClass}>
+            <label htmlFor="formaGiuridica" className="omnia-etichetta">
               Forma giuridica
             </label>
             <input
@@ -132,11 +126,11 @@ export default function CompanyProfileForm({
               type="text"
               placeholder="es. SRL, SPA, ditta individuale"
               defaultValue={company?.forma_giuridica ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="annoCostituzione" className={labelClass}>
+            <label htmlFor="annoCostituzione" className="omnia-etichetta">
               Anno di costituzione
             </label>
             <input
@@ -146,11 +140,11 @@ export default function CompanyProfileForm({
               min={1900}
               max={2100}
               defaultValue={company?.anno_costituzione ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
-          <div className="sm:col-span-2">
-            <label htmlFor="indirizzo" className={labelClass}>
+          <div className="largo">
+            <label htmlFor="indirizzo" className="omnia-etichetta">
               Indirizzo
             </label>
             <input
@@ -158,11 +152,11 @@ export default function CompanyProfileForm({
               name="indirizzo"
               type="text"
               defaultValue={company?.indirizzo ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="codiceSdi" className={labelClass}>
+            <label htmlFor="codiceSdi" className="omnia-etichetta">
               Codice SDI
             </label>
             <input
@@ -170,11 +164,11 @@ export default function CompanyProfileForm({
               name="codiceSdi"
               type="text"
               defaultValue={company?.codice_sdi ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="pec" className={labelClass}>
+            <label htmlFor="pec" className="omnia-etichetta">
               PEC
             </label>
             <input
@@ -182,11 +176,11 @@ export default function CompanyProfileForm({
               name="pec"
               type="email"
               defaultValue={company?.pec ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="sitoWeb" className={labelClass}>
+            <label htmlFor="sitoWeb" className="omnia-etichetta">
               Sito web
             </label>
             <input
@@ -195,11 +189,11 @@ export default function CompanyProfileForm({
               type="text"
               placeholder="www.esempio.it"
               defaultValue={company?.sito_web ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="telefonoAziendale" className={labelClass}>
+            <label htmlFor="telefonoAziendale" className="omnia-etichetta">
               Telefono aziendale
             </label>
             <input
@@ -207,19 +201,17 @@ export default function CompanyProfileForm({
               name="telefonoAziendale"
               type="tel"
               defaultValue={company?.telefono_aziendale ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border bg-cream-soft p-5">
-        <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-          Capacità organizzativa ed economica
-        </h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Capacità organizzativa ed economica</span>
+        <div className="omnia-campo-griglia">
           <div>
-            <label htmlFor="numeroDipendenti" className={labelClass}>
+            <label htmlFor="numeroDipendenti" className="omnia-etichetta">
               Numero dipendenti / organico
             </label>
             <input
@@ -228,11 +220,11 @@ export default function CompanyProfileForm({
               type="number"
               min={0}
               defaultValue={company?.numero_dipendenti ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
           <div>
-            <label htmlFor="fatturatoMedioAnnuo" className={labelClass}>
+            <label htmlFor="fatturatoMedioAnnuo" className="omnia-etichetta">
               Fatturato medio annuo (€)
             </label>
             <input
@@ -242,19 +234,17 @@ export default function CompanyProfileForm({
               min={0}
               step="0.01"
               defaultValue={company?.fatturato_medio_annuo ?? ""}
-              className={inputClass}
+              className="omnia-input"
             />
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border bg-cream-soft p-5">
-        <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-          Certificazioni e ambiti di attività
-        </h2>
-        <div className="mt-4 space-y-4">
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Certificazioni e ambiti di attività</span>
+        <div style={{ marginTop: 20, display: "grid", gap: 16 }}>
           <div>
-            <label htmlFor="certificazioni" className={labelClass}>
+            <label htmlFor="certificazioni" className="omnia-etichetta">
               Certificazioni possedute
             </label>
             <textarea
@@ -263,11 +253,11 @@ export default function CompanyProfileForm({
               rows={3}
               placeholder="es. ISO 9001, ISO 14001, ISO 45001, attestazione SOA..."
               defaultValue={company?.certificazioni ?? ""}
-              className={`${inputClass} text-justify`}
+              className="omnia-textarea"
             />
           </div>
           <div>
-            <label htmlFor="settoriAttivita" className={labelClass}>
+            <label htmlFor="settoriAttivita" className="omnia-etichetta">
               Settori di attività
             </label>
             <textarea
@@ -276,19 +266,17 @@ export default function CompanyProfileForm({
               rows={2}
               placeholder="es. pulizie civili, industriali, sanificazione..."
               defaultValue={company?.settori_attivita ?? ""}
-              className={`${inputClass} text-justify`}
+              className="omnia-textarea"
             />
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border bg-cream-soft p-5">
-        <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-          Esperienza e presentazione
-        </h2>
-        <div className="mt-4 space-y-4">
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Esperienza e presentazione</span>
+        <div style={{ marginTop: 20, display: "grid", gap: 16 }}>
           <div>
-            <label htmlFor="referenze" className={labelClass}>
+            <label htmlFor="referenze" className="omnia-etichetta">
               Referenze / lavori pregressi rilevanti
             </label>
             <textarea
@@ -297,11 +285,11 @@ export default function CompanyProfileForm({
               rows={4}
               placeholder="Elenco di gare/appalti pulizie svolti in precedenza, committenti, importi..."
               defaultValue={company?.referenze ?? ""}
-              className={`${inputClass} text-justify`}
+              className="omnia-textarea"
             />
           </div>
           <div>
-            <label htmlFor="presentazione" className={labelClass}>
+            <label htmlFor="presentazione" className="omnia-etichetta">
               Breve presentazione aziendale
             </label>
             <textarea
@@ -310,24 +298,16 @@ export default function CompanyProfileForm({
               rows={4}
               placeholder="Chi siete, cosa vi contraddistingue, punti di forza..."
               defaultValue={company?.presentazione ?? ""}
-              className={`${inputClass} text-justify`}
+              className="omnia-textarea"
             />
           </div>
         </div>
       </section>
 
-      {state.error && <p className="text-sm text-red-700">{state.error}</p>}
-      {state.success && (
-        <p className="text-sm text-forest">
-          Profilo azienda salvato correttamente.
-        </p>
-      )}
+      {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
+      {state.success && <p className="omnia-messaggio-stato successo">Profilo azienda salvato correttamente.</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-full bg-forest px-6 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark disabled:opacity-50"
-      >
+      <button type="submit" disabled={pending} className="omnia-btn omnia-btn-p" style={{ justifySelf: "start" }}>
         {pending ? "Salvataggio..." : "Salva profilo"}
       </button>
     </form>
