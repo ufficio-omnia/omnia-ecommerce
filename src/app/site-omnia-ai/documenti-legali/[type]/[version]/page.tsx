@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import type { ReactElement } from "react";
 import { notFound } from "next/navigation";
 import PageShell from "@/components/omnia-ai/page-shell";
+import PrivacyPolicyV1 from "@/components/omnia-ai/legal/privacy-policy-v1";
+import CookiePolicyV1 from "@/components/omnia-ai/legal/cookie-policy-v1";
+import CondizioniAbbonamentoV1 from "@/components/omnia-ai/legal/condizioni-abbonamento-v1";
 
 // Registro delle versioni pubblicate dei documenti legali di omnia-ai.it,
 // stesso pattern di src/app/(ecommerce)/documenti-legali/[type]/[version]/
@@ -9,16 +12,11 @@ import PageShell from "@/components/omnia-ai/page-shell";
 // revisione aggiunge una voce nuova (es. "2": PrivacyPolicyV2), non
 // sostituisce quella esistente, così un link raccolto al momento
 // dell'accettazione continua a mostrare esattamente quel testo che era in
-// vigore allora. I componenti andranno in src/components/omnia-ai/legal/,
-// uno per versione pubblicata (mai modificato dopo).
-//
-// Vuoto finché non arrivano i testi reali e le relative righe in
-// legal_documents (vedi supabase/migrations/0051_omnia_ai_legal_documents.sql):
-// una richiesta a qualunque versione dà 404 fino ad allora, correttamente.
+// vigore allora.
 const REGISTRY: Record<string, Record<string, () => ReactElement>> = {
-  "privacy-policy": {},
-  "cookie-policy": {},
-  "condizioni-abbonamento": {},
+  "privacy-policy": { "1": PrivacyPolicyV1 },
+  "cookie-policy": { "1": CookiePolicyV1 },
+  "condizioni-abbonamento": { "1": CondizioniAbbonamentoV1 },
 };
 
 const TITLES: Record<string, string> = {
@@ -53,11 +51,7 @@ export default async function DocumentoLegaleVersionatoPage({
 
   return (
     <PageShell>
-      <section className="omnia-pagina-corpo">
-        <div className="omnia-prosa">
-          <Componente />
-        </div>
-      </section>
+      <Componente />
     </PageShell>
   );
 }

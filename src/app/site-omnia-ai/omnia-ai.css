@@ -674,6 +674,62 @@ li {
 .omnia-prosa p:first-child {
   margin-top: 0;
 }
+.omnia-prosa h2 {
+  font-size: 20px;
+}
+.omnia-prosa strong {
+  color: var(--testo);
+  font-weight: 600;
+}
+.omnia-prosa ul,
+.omnia-prosa ol {
+  margin-top: 16px;
+  padding-left: 22px;
+  color: var(--fioco);
+  font-size: 15.5px;
+  line-height: 1.75;
+  font-weight: 300;
+}
+.omnia-prosa ul {
+  list-style: disc;
+}
+.omnia-prosa li + li {
+  margin-top: 4px;
+}
+.omnia-prosa .omnia-tabella-scroll {
+  margin-top: 20px;
+  overflow-x: auto;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--vetro);
+}
+.omnia-prosa table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.omnia-prosa th,
+.omnia-prosa td {
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--bordo);
+}
+.omnia-prosa th {
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--testo);
+}
+.omnia-prosa td {
+  color: var(--fioco);
+}
+.omnia-prosa tbody tr:last-child th,
+.omnia-prosa tbody tr:last-child td {
+  border-bottom: none;
+}
 
 /* Passi numerati (come funziona) */
 .omnia-passi {
