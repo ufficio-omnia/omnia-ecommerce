@@ -5,8 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
+import { consumeGaraQuotaIfNeeded } from "@/lib/gara-consumo";
 
-export type ExtractionState = { error?: string };
+export type ExtractionState = { error?: string; quotaEsaurita?: boolean };
 
 const MODEL = "claude-sonnet-5";
 
@@ -140,6 +141,11 @@ export async function extractGaraData(
       error:
         "Carica almeno un documento in formato PDF prima di avviare l'estrazione: al momento è l'unico formato analizzato automaticamente.",
     };
+  }
+
+  const consumo = await consumeGaraQuotaIfNeeded({ garaId, userId: user.id });
+  if (consumo.error) {
+    return { error: consumo.error, quotaEsaurita: true };
   }
 
   await supabase

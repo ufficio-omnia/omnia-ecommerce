@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import {
   extractGaraData,
   type ExtractionState,
@@ -58,7 +59,20 @@ export default function ExtractionSection({
         </form>
       </div>
 
-      {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
+      {state.error && (
+        <div className="omnia-messaggio-stato errore">
+          <p style={{ margin: 0 }}>{state.error}</p>
+          {state.quotaEsaurita && (
+            <Link
+              href="/dashboard/omnia-ai/abbonamento"
+              className="omnia-btn omnia-btn-s omnia-btn-piccolo"
+              style={{ marginTop: 10, display: "inline-block" }}
+            >
+              Acquista crediti o gestisci l&apos;abbonamento →
+            </Link>
+          )}
+        </div>
+      )}
 
       {estrazione.estrazione_stato === "errore" && !state.error && (
         <p className="omnia-messaggio-stato errore">
