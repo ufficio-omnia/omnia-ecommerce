@@ -6,8 +6,10 @@
 -- organigramma dei progetti caricati, solo una loro parafrasi. Con questa
 -- libreria le immagini vere vengono allegate come blocchi immagine reali
 -- alle chiamate di generazione.
+--
+-- Idempotente: sicura da rieseguire se già applicata in tutto o in parte.
 
-create table public.knowledge_base_immagini (
+create table if not exists public.knowledge_base_immagini (
   id uuid primary key default gen_random_uuid(),
   documento_id uuid not null references public.knowledge_base_documenti (id) on delete cascade,
   storage_path text not null,
@@ -18,13 +20,21 @@ create table public.knowledge_base_immagini (
 
 alter table public.knowledge_base_immagini enable row level security;
 
-create policy "kb_immagini_admin_all" on public.knowledge_base_immagini
-  for all using (public.is_admin()) with check (public.is_admin());
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'knowledge_base_immagini' and policyname = 'kb_immagini_admin_all'
+  ) then
+    create policy "kb_immagini_admin_all" on public.knowledge_base_immagini
+      for all using (public.is_admin()) with check (public.is_admin());
+  end if;
+end $$;
 
 grant select, insert, update, delete on public.knowledge_base_immagini to authenticated;
 grant select, insert, update, delete on public.knowledge_base_immagini to service_role;
 
-create index kb_immagini_embedding_idx
+create index if not exists kb_immagini_embedding_idx
   on public.knowledge_base_immagini
   using hnsw (embedding vector_cosine_ops);
 

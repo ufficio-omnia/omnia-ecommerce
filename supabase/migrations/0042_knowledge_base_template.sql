@@ -3,7 +3,9 @@
 -- quando si genera un documento completo, non solo ispirazione di stile.
 -- Un solo documento alla volta è la struttura attiva (applicato a livello
 -- applicativo, non con un vincolo DB, per restare semplice).
+--
+-- Idempotente: colonne aggiunte con IF NOT EXISTS.
 
 alter table public.knowledge_base_documenti
-  add column e_template boolean not null default false,
-  add column struttura_titoli text;
+  add column if not exists e_template boolean not null default false,
+  add column if not exists struttura_titoli text;

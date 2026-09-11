@@ -9,5 +9,7 @@
 -- chiamata all'altra (bug osservato in pratica: un sub-criterio
 -- correttamente marcato "tabellare" durante una generazione è tornato
 -- discorsivo alla rigenerazione successiva della stessa sezione).
+--
+-- Idempotente: colonna aggiunta con IF NOT EXISTS.
 alter table public.gare
-  add column sub_criteri_tabellari text[];
+  add column if not exists sub_criteri_tabellari text[];

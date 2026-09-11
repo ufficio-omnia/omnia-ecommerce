@@ -4,15 +4,18 @@
 -- generazione contenuti). Tutti nullable: le righe già create dal
 -- checkout (bonifico) non hanno questi dati e vanno completate dal
 -- cliente dall'area riservata.
+--
+-- Idempotente: colonne aggiunte con IF NOT EXISTS, sicura da rieseguire
+-- se già applicata in tutto o in parte.
 
 alter table public.companies
-  add column forma_giuridica text,
-  add column anno_costituzione integer,
-  add column numero_dipendenti integer,
-  add column fatturato_medio_annuo numeric(12, 2),
-  add column certificazioni text,
-  add column referenze text,
-  add column settori_attivita text,
-  add column presentazione text,
-  add column sito_web text,
-  add column telefono_aziendale text;
+  add column if not exists forma_giuridica text,
+  add column if not exists anno_costituzione integer,
+  add column if not exists numero_dipendenti integer,
+  add column if not exists fatturato_medio_annuo numeric(12, 2),
+  add column if not exists certificazioni text,
+  add column if not exists referenze text,
+  add column if not exists settori_attivita text,
+  add column if not exists presentazione text,
+  add column if not exists sito_web text,
+  add column if not exists telefono_aziendale text;

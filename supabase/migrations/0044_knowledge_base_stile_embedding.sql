@@ -4,11 +4,13 @@
 -- documenti caricati, ogni messaggio deve poter trovare gli esempi di
 -- stile/impaginazione più adatti alla gara specifica, scansionando
 -- TUTTI i documenti, non escludendone nessuno dalla ricerca.
+--
+-- Idempotente: colonna e indice con IF NOT EXISTS.
 
 alter table public.knowledge_base_documenti
-  add column stile_embedding vector(1024);
+  add column if not exists stile_embedding vector(1024);
 
-create index kb_documenti_stile_embedding_idx
+create index if not exists kb_documenti_stile_embedding_idx
   on public.knowledge_base_documenti
   using hnsw (stile_embedding vector_cosine_ops);
 
