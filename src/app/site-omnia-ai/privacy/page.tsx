@@ -11,6 +11,11 @@ export const metadata: Metadata = {
 // privacy policy dell'e-commerce (src/components/legal/privacy-policy-v1.tsx),
 // da adattare al trattamento dati specifico di OMNIA AI (documenti di
 // gara caricati, non solo dati di fatturazione/ordine).
+//
+// Quando arriva il testo: creare src/components/omnia-ai/legal/privacy-policy-v1.tsx,
+// registrarlo in .../documenti-legali/[type]/[version]/page.tsx sotto
+// "privacy-policy" → "1", e sostituire il blocco sotto con <PrivacyPolicyV1 />
+// — esattamente come fa src/app/(ecommerce)/privacy/page.tsx.
 export default function PrivacyPage() {
   return (
     <PageShell>

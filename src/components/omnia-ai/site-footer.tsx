@@ -11,6 +11,7 @@ export default function SiteFooter() {
         <a href="https://omniaitalia.com">omniaitalia.com</a>
         <Link href="/contatti">Contatti</Link>
         <Link href="/privacy">Privacy</Link>
+        <Link href="/condizioni-abbonamento">Condizioni</Link>
         <Link href="/cookie-policy">Cookie</Link>
         <button
           type="button"

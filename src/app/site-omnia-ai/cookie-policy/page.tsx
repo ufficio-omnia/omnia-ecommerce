@@ -10,6 +10,11 @@ export const metadata: Metadata = {
 // fornisce Ufficio Omnia. Il banner cookie di questo dominio
 // (src/components/omnia-ai/cookie-consent.tsx) non ha ancora un tag
 // Google Ads collegato — questa pagina andrà aggiornata quando ce l'avrà.
+//
+// Quando arriva il testo: creare src/components/omnia-ai/legal/cookie-policy-v1.tsx,
+// registrarlo in .../documenti-legali/[type]/[version]/page.tsx sotto
+// "cookie-policy" → "1", e sostituire il blocco sotto con <CookiePolicyV1 />
+// — esattamente come fa src/app/(ecommerce)/cookie-policy/page.tsx.
 export default function CookiePolicyPage() {
   return (
     <PageShell>
