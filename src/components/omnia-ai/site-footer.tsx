@@ -12,7 +12,7 @@ export default async function SiteFooter() {
 
   return (
     <footer className="omnia-footer" id="contatti">
-      <span>OMNIA AI — un prodotto di Omnia Consulting SRLS · P.IVA 00000000000</span>
+      <span>OMNIA AI — un prodotto di Omnia Consulting SRLS · P.IVA 02957590819</span>
       <nav>
         <a href="https://omniaitalia.com">omniaitalia.com</a>
         <Link href="/contatti">Contatti</Link>
