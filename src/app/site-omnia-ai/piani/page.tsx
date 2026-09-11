@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
+import { getCurrentOmniaAiCondizioniAbbonamentoUrl } from "@/lib/omnia-ai-legal";
 
 export const metadata: Metadata = {
   title: "Piani e prezzi — OMNIA AI",
@@ -42,7 +43,9 @@ const PIANI = [
   },
 ];
 
-export default function PianiPage() {
+export default async function PianiPage() {
+  const condizioniUrl = await getCurrentOmniaAiCondizioniAbbonamentoUrl();
+
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
@@ -81,6 +84,13 @@ export default function PianiPage() {
         <p className="micro" style={{ marginTop: 32 }}>
           Prezzi in fase di definizione. Se finiscono i crediti puoi ricaricarli senza cambiare
           piano.
+        </p>
+        <p className="micro" style={{ marginTop: 8 }}>
+          Iscrivendoti accetti le{" "}
+          <Link href={condizioniUrl} style={{ color: "inherit", textDecoration: "underline" }}>
+            Condizioni di abbonamento
+          </Link>
+          .
         </p>
       </section>
     </PageShell>
