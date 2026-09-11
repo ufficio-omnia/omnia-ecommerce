@@ -32,3 +32,55 @@
 body {
   font-family: var(--font-plex-sans), sans-serif;
 }
+
+.prose-chat p {
+  margin-top: 0.5em;
+}
+.prose-chat p:first-child {
+  margin-top: 0;
+}
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.5em 0;
+  padding-left: 1.25em;
+}
+.prose-chat ul {
+  list-style: disc;
+}
+.prose-chat ol {
+  list-style: decimal;
+}
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3 {
+  font-weight: 600;
+  margin: 0.75em 0 0.35em;
+}
+.prose-chat h1:first-child,
+.prose-chat h2:first-child,
+.prose-chat h3:first-child {
+  margin-top: 0;
+}
+.prose-chat strong {
+  font-weight: 600;
+}
+.prose-chat code {
+  background: var(--color-border);
+  border-radius: 0.25em;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-plex-mono), monospace;
+  font-size: 0.85em;
+}
+.prose-chat a {
+  color: var(--color-forest);
+  text-decoration: underline;
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spin-slow 2.2s linear infinite;
+}

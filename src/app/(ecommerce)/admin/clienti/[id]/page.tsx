@@ -8,6 +8,7 @@ import { deleteOrder, deleteUser, anonymizeUser } from "@/app/actions/admin";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import DeleteButton from "@/components/delete-button";
 import ReplyForm from "./reply-form";
+import SubscriptionForm, { type Subscription } from "./subscription-form";
 
 export const metadata: Metadata = {
   title: "Scheda cliente",
@@ -93,26 +94,37 @@ export default async function AdminClientePage({
     notFound();
   }
 
-  const [{ data: company }, { data: ordersRaw }, { data: messagesRaw }] =
-    await Promise.all([
-      supabase
-        .from("companies")
-        .select("ragione_sociale, partita_iva, indirizzo, codice_sdi, pec")
-        .eq("user_id", id)
-        .maybeSingle<Company>(),
-      supabase
-        .from("orders")
-        .select(
-          "id, status, payment_method, total_amount, created_at, products(title), invoices(id), legal_acceptances(acceptance_type, accepted_at, ip_address, legal_documents(document_type, version))",
-        )
-        .eq("user_id", id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("messages")
-        .select("id, sender, body, created_at")
-        .eq("user_id", id)
-        .order("created_at", { ascending: true }),
-    ]);
+  const [
+    { data: company },
+    { data: ordersRaw },
+    { data: messagesRaw },
+    { data: subscription },
+  ] = await Promise.all([
+    supabase
+      .from("companies")
+      .select("ragione_sociale, partita_iva, indirizzo, codice_sdi, pec")
+      .eq("user_id", id)
+      .maybeSingle<Company>(),
+    supabase
+      .from("orders")
+      .select(
+        "id, status, payment_method, total_amount, created_at, products(title), invoices(id), legal_acceptances(acceptance_type, accepted_at, ip_address, legal_documents(document_type, version))",
+      )
+      .eq("user_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("messages")
+      .select("id, sender, body, created_at")
+      .eq("user_id", id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("subscriptions")
+      .select("plan, status, current_period_end")
+      .eq("user_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<Subscription>(),
+  ]);
 
   const orders = ordersRaw as unknown as OrderRow[] | null;
   const messages = messagesRaw as unknown as Message[] | null;
@@ -186,6 +198,24 @@ export default async function AdminClientePage({
               Nessun dato di fatturazione ancora inserito.
             </p>
           )}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-border bg-cream-soft p-5">
+          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
+            Abbonamento OMNIA AI
+          </h2>
+          <p className="mt-1 text-xs text-sage">
+            {subscription
+              ? `Attuale: ${subscription.plan} · ${subscription.status}${
+                  subscription.current_period_end
+                    ? ` · scade il ${new Date(
+                        subscription.current_period_end,
+                      ).toLocaleDateString("it-IT")}`
+                    : ""
+                }`
+              : "Nessun abbonamento impostato."}
+          </p>
+          <SubscriptionForm userId={customer.id} subscription={subscription ?? null} />
         </section>
 
         <section className="mt-8">
