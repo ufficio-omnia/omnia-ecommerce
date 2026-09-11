@@ -43,18 +43,12 @@ export default function ExtractionSection({
   const hasData = estrazione.estrazione_stato === "completata";
 
   return (
-    <section className="mt-8 rounded-2xl border border-border bg-cream-soft p-5">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-          Dati estratti dall&apos;AI
-        </h2>
+    <section className="omnia-riquadro" style={{ marginTop: 24 }}>
+      <div className="omnia-app-intestazione">
+        <span className="omnia-eyebrow">Dati estratti dall&apos;AI</span>
         <form action={formAction}>
           <input type="hidden" name="garaId" value={garaId} />
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream disabled:opacity-50"
-          >
+          <button type="submit" disabled={pending} className="omnia-btn omnia-btn-p omnia-btn-piccolo">
             {pending
               ? "Analisi in corso..."
               : hasData
@@ -64,41 +58,39 @@ export default function ExtractionSection({
         </form>
       </div>
 
-      {state.error && (
-        <p className="mt-3 text-sm text-red-700">{state.error}</p>
-      )}
+      {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
 
       {estrazione.estrazione_stato === "errore" && !state.error && (
-        <p className="mt-3 text-sm text-red-700">
+        <p className="omnia-messaggio-stato errore">
           L&apos;ultima analisi non è andata a buon fine. Riprova.
         </p>
       )}
 
       {hasData ? (
-        <div className="mt-4 space-y-5 text-sm">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-border bg-cream px-3 py-2">
-              <span className="block text-xs text-sage">Scadenza</span>
-              <span className="text-ink">
+        <div style={{ marginTop: 8 }}>
+          <div className="omnia-dati-griglia">
+            <div className={`omnia-dato${estrazione.scadenza ? " ambra" : ""}`}>
+              <div className="omnia-dato-etichetta">Scadenza</div>
+              <div className="omnia-dato-valore">
                 {estrazione.scadenza
                   ? new Date(estrazione.scadenza).toLocaleDateString("it-IT")
                   : "Non specificata"}
-              </span>
+              </div>
             </div>
-            <div className="rounded-lg border border-border bg-cream px-3 py-2">
-              <span className="block text-xs text-sage">Importo</span>
-              <span className="text-ink">
+            <div className="omnia-dato">
+              <div className="omnia-dato-etichetta">Importo</div>
+              <div className="omnia-dato-valore">
                 {estrazione.importo
                   ? Number(estrazione.importo).toLocaleString("it-IT", {
                       style: "currency",
                       currency: "EUR",
                     })
                   : "Non specificato"}
-              </span>
+              </div>
             </div>
-            <div className="rounded-lg border border-border bg-cream px-3 py-2">
-              <span className="block text-xs text-sage">Formattazione offerta tecnica</span>
-              <span className="text-ink">
+            <div className="omnia-dato">
+              <div className="omnia-dato-etichetta">Formattazione offerta tecnica</div>
+              <div className="omnia-dato-valore">
                 {estrazione.relazione_font ?? "font non specificato"}
                 {estrazione.relazione_dimensione_carattere
                   ? `, ${estrazione.relazione_dimensione_carattere}pt`
@@ -106,21 +98,21 @@ export default function ExtractionSection({
                 {estrazione.relazione_interlinea
                   ? `, interlinea ${estrazione.relazione_interlinea}`
                   : ""}
-              </span>
+              </div>
             </div>
-            <div className="rounded-lg border border-border bg-cream px-3 py-2">
-              <span className="block text-xs text-sage">Limite pagine</span>
-              <span className="text-ink">
+            <div className="omnia-dato">
+              <div className="omnia-dato-etichetta">Limite pagine</div>
+              <div className="omnia-dato-valore">
                 {estrazione.limite_pagine_totale
                   ? `${estrazione.limite_pagine_totale} pagine max`
                   : "Nessun limite complessivo indicato"}
-              </span>
+              </div>
             </div>
           </div>
 
           {estrazione.criteri_riepilogo && estrazione.criteri_riepilogo.length > 0 && (
-            <div>
-              <span className="block text-xs text-sage">
+            <div style={{ marginTop: 24 }}>
+              <span className="omnia-eyebrow">
                 Criteri di valutazione
                 {estrazione.punteggio_tecnico_max
                   ? ` — tecnica ${estrazione.punteggio_tecnico_max} punti${
@@ -130,31 +122,33 @@ export default function ExtractionSection({
                     }`
                   : ""}
               </span>
-              <table className="mt-1.5 w-full overflow-hidden rounded-lg border border-border text-left" style={{ borderCollapse: "collapse" }}>
-                <thead>
-                  <tr className="bg-ink/5">
-                    <th className="px-3 py-1.5 font-medium text-ink">N.</th>
-                    <th className="px-3 py-1.5 font-medium text-ink">Criterio</th>
-                    <th className="px-3 py-1.5 text-right font-medium text-ink">Punti max</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {estrazione.criteri_riepilogo.map((c, i) => (
-                    <tr key={i} className="border-t border-border">
-                      <td className="px-3 py-1.5 text-ink">{c.numero}</td>
-                      <td className="px-3 py-1.5 text-ink">{c.titolo}</td>
-                      <td className="px-3 py-1.5 text-right text-ink">{c.punti_max}</td>
+              <div className="omnia-tabella-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>N.</th>
+                      <th>Criterio</th>
+                      <th className="num">Punti max</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {estrazione.criteri_riepilogo.map((c, i) => (
+                      <tr key={i}>
+                        <td>{c.numero}</td>
+                        <td>{c.titolo}</td>
+                        <td className="num">{c.punti_max}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {estrazione.requisiti_chiave && estrazione.requisiti_chiave.length > 0 && (
-            <div>
-              <span className="block text-xs text-sage">Requisiti chiave</span>
-              <ul className="mt-1.5 list-disc space-y-1 pl-5 text-ink">
+            <div style={{ marginTop: 24 }}>
+              <span className="omnia-eyebrow">Requisiti chiave</span>
+              <ul style={{ marginTop: 10 }}>
                 {estrazione.requisiti_chiave.map((r, i) => (
                   <li key={i}>{r}</li>
                 ))}
@@ -162,36 +156,27 @@ export default function ExtractionSection({
             </div>
           )}
 
-          <details className="rounded-lg border border-border bg-cream">
-            <summary className="cursor-pointer select-none px-3 py-2 font-mono text-xs tracking-wide text-sage uppercase">
-              Dettagli completi (uso interno di OMNIA AI)
-            </summary>
-            <dl className="space-y-3 px-3 pb-3 pt-1 text-sm">
+          <details className="omnia-dettagli" style={{ marginTop: 24 }}>
+            <summary>Dettagli completi (uso interno di OMNIA AI)</summary>
+            <dl className="omnia-dettagli-corpo">
               <div>
-                <dt className="text-sage">Criteri di valutazione — testo completo</dt>
-                <dd className="mt-1 whitespace-pre-line text-justify text-ink">
-                  {estrazione.criteri_valutazione}
-                </dd>
+                <dt>Criteri di valutazione — testo completo</dt>
+                <dd>{estrazione.criteri_valutazione}</dd>
               </div>
               <div>
-                <dt className="text-sage">Requisiti di partecipazione — testo completo</dt>
-                <dd className="mt-1 whitespace-pre-line text-justify text-ink">
-                  {estrazione.requisiti}
-                </dd>
+                <dt>Requisiti di partecipazione — testo completo</dt>
+                <dd>{estrazione.requisiti}</dd>
               </div>
               <div>
-                <dt className="text-sage">Limiti di pagine/formattazione — testo completo</dt>
-                <dd className="mt-1 whitespace-pre-line text-justify text-ink">
-                  {estrazione.limiti_formattazione}
-                </dd>
+                <dt>Limiti di pagine/formattazione — testo completo</dt>
+                <dd>{estrazione.limiti_formattazione}</dd>
               </div>
             </dl>
           </details>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-sage">
-          Nessuna analisi ancora eseguita. Carica i documenti (PDF) e avvia
-          l&apos;estrazione.
+        <p className="omnia-riquadro-nota" style={{ marginTop: 12 }}>
+          Nessuna analisi ancora eseguita. Carica i documenti (PDF) e avvia l&apos;estrazione.
         </p>
       )}
     </section>

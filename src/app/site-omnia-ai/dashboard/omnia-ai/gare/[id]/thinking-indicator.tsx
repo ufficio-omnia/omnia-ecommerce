@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import BrandMark from "@/components/omnia-ai/brand-mark";
 
 const FASI = [
   "Sta pensando...",
@@ -22,15 +22,9 @@ export default function ThinkingIndicator() {
   }, []);
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-cream px-4 py-3">
-      <Image
-        src="/omnia-logo.png"
-        alt=""
-        width={22}
-        height={22}
-        className="animate-spin-slow shrink-0"
-      />
-      <span className="text-sm text-sage">{FASI[fase]}</span>
+    <div className="omnia-pensiero">
+      <BrandMark stato="elaborazione" width={22} height={22} />
+      <span>{FASI[fase]}</span>
     </div>
   );
 }

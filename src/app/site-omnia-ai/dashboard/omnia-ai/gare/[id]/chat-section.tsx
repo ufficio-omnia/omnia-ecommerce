@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import { sendGaraMessage, type ChatState } from "@/app/actions/gara-chat";
 import { downloadGaraMessaggioFile, downloadAllegatoMessaggio } from "@/app/actions/download";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
+import BrandMark from "@/components/omnia-ai/brand-mark";
 import ThinkingIndicator from "./thinking-indicator";
 
 const initialState: ChatState = {};
@@ -97,126 +97,77 @@ export default function ChatSection({
   }
 
   return (
-    <section className="mt-8 overflow-hidden rounded-2xl border border-border bg-cream-soft">
-      <div className="flex items-center gap-3 border-b border-border px-6 py-4">
-        <Image
-          src="/omnia-logo.png"
-          alt=""
-          width={28}
-          height={28}
-          className="shrink-0"
-        />
+    <section className="omnia-chat">
+      <div className="omnia-chat-intestazione">
+        <BrandMark stato="riposo" width={28} height={28} />
         <div>
-          <h2 className="font-serif text-lg text-ink">Chat con OMNIA AI</h2>
-          <p className="text-xs text-sage">
-            Documenti, criteri dell&apos;offerta tecnica, ricerche sul web e
-            generazione documenti Word
-          </p>
+          <h2>Chat con OMNIA AI</h2>
+          <p>Documenti, criteri dell&apos;offerta tecnica, ricerche sul web e generazione documenti Word</p>
         </div>
       </div>
 
-      <p className="border-b border-border bg-cream px-6 py-2 text-xs text-sage">
-        <strong className="text-ink">Come procedere:</strong> chiedi di
-        sviluppare i criteri uno alla volta (ognuno genera una bozza a sé).
-        Solo quando tutti i criteri sono stati sviluppati, chiedi di
-        &quot;elaborare la relazione finale&quot; per comporli in un unico
-        documento definitivo.
+      <p className="omnia-chat-nota">
+        <strong>Come procedere:</strong> chiedi di sviluppare i criteri uno alla volta (ognuno genera
+        una bozza a sé). Solo quando tutti i criteri sono stati sviluppati, chiedi di
+        &quot;elaborare la relazione finale&quot; per comporli in un unico documento definitivo.
       </p>
 
-      <div
-        ref={scrollRef}
-        className="max-h-[38rem] min-h-[20rem] space-y-4 overflow-y-auto scroll-smooth px-6 py-6"
-      >
+      <div ref={scrollRef} className="omnia-chat-corpo">
         {messaggi.length ? (
           messaggi.map((m) => (
-            <div
-              key={m.id}
-              className={`flex ${m.ruolo === "assistente" ? "justify-start" : "justify-end"}`}
-            >
-              <div
-                className={`max-w-[90%] rounded-2xl px-5 py-3 text-[15px] leading-relaxed shadow-sm sm:max-w-[80%] ${
-                  m.ruolo === "assistente"
-                    ? "border border-border bg-cream text-ink"
-                    : "bg-forest text-cream"
-                }`}
-              >
+            <div key={m.id} className={`omnia-msg-riga ${m.ruolo}`}>
+              <div className={`omnia-msg ${m.ruolo}`}>
                 {m.file_nome && (
-                  <div className="mb-3 flex items-center gap-3 rounded-xl border-2 border-forest bg-forest/10 px-4 py-3">
-                    <span className="text-xl">📄</span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-                      {m.file_nome}
-                    </span>
+                  <div className="omnia-allegato-generato">
+                    <span style={{ fontSize: 18 }}>📄</span>
+                    <span className="nome">{m.file_nome}</span>
                     <OpenInNewTabButton
                       action={downloadGaraMessaggioFile}
                       hiddenFields={{ msgId: m.id }}
                       label="Scarica documento"
-                      className="shrink-0 rounded-full bg-forest px-4 py-2 font-mono text-[10px] tracking-wide text-cream uppercase hover:bg-forest-dark"
+                      className="omnia-btn omnia-btn-verde omnia-btn-piccolo"
                     />
                   </div>
                 )}
                 {m.allegati.length > 0 && (
-                  <div className="mb-3 flex flex-wrap gap-2">
+                  <div className="omnia-allegati-pillole">
                     {m.allegati.map((a) => (
-                      <div
-                        key={a.id}
-                        className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
-                          m.ruolo === "assistente"
-                            ? "border-border-strong bg-cream text-ink"
-                            : "border-cream/40 bg-forest-dark/40 text-cream"
-                        }`}
-                      >
+                      <div key={a.id} className="omnia-allegato-pillola">
                         <span>{iconaAllegato(a.nome_file)}</span>
-                        <span className="max-w-[10rem] truncate">{a.nome_file}</span>
+                        <span className="nome">{a.nome_file}</span>
                         <OpenInNewTabButton
                           action={downloadAllegatoMessaggio}
                           hiddenFields={{ allegatoId: a.id }}
                           label="Apri"
-                          className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase ${
-                            m.ruolo === "assistente"
-                              ? "border border-border-strong hover:bg-ink hover:text-cream"
-                              : "border border-cream/40 hover:bg-cream hover:text-forest"
-                          }`}
+                          className="omnia-btn omnia-btn-s omnia-btn-piccolo"
                         />
                       </div>
                     ))}
                   </div>
                 )}
                 {m.ruolo === "assistente" ? (
-                  <div className="prose-chat text-justify">
+                  <div className="prose-chat">
                     <ReactMarkdown>{m.contenuto}</ReactMarkdown>
                   </div>
                 ) : (
-                  <p className="text-justify whitespace-pre-wrap">
-                    {m.contenuto}
-                  </p>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{m.contenuto}</p>
                 )}
-                <p
-                  className={`mt-2 text-[10px] ${
-                    m.ruolo === "assistente" ? "text-sage" : "text-cream/70"
-                  }`}
-                >
-                  {new Date(m.created_at).toLocaleString("it-IT")}
-                </p>
+                <p className="omnia-msg-ora">{new Date(m.created_at).toLocaleString("it-IT")}</p>
               </div>
             </div>
           ))
         ) : (
-          <div className="flex h-full items-center justify-center py-10 text-center">
-            <p className="max-w-sm text-sm text-sage">
-              Nessun messaggio ancora. Chiedi qualcosa sui documenti caricati,
-              su un criterio dell&apos;offerta tecnica o su un piano di
-              lavoro da preparare.
+          <div className="omnia-chat-vuota">
+            <p>
+              Nessun messaggio ancora. Chiedi qualcosa sui documenti caricati, su un criterio
+              dell&apos;offerta tecnica o su un piano di lavoro da preparare.
             </p>
           </div>
         )}
         {pending && <ThinkingIndicator />}
       </div>
 
-      <form
-        ref={formRef}
-        action={formAction}
-        className="border-t border-border px-6 py-4"
-      >
+      <form ref={formRef} action={formAction} className="omnia-chat-input">
         <input type="hidden" name="garaId" value={garaId} />
         <input
           ref={fileInputRef}
@@ -226,22 +177,18 @@ export default function ChatSection({
           accept={ESTENSIONI_ACCETTATE}
           onChange={handleFileChange}
           disabled={pending || fileSelezionati.length >= MAX_ALLEGATI}
-          className="hidden"
+          hidden
         />
         {fileSelezionati.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="omnia-chat-selezionati">
             {fileSelezionati.map((f, i) => (
-              <span
-                key={`${f.name}-${i}`}
-                className="flex items-center gap-1.5 rounded-full border border-border-strong bg-cream px-3 py-1 text-xs text-ink"
-              >
+              <span key={`${f.name}-${i}`} className="omnia-chat-selezionato">
                 {iconaAllegato(f.name)}
-                <span className="max-w-[9rem] truncate">{f.name}</span>
+                <span className="nome">{f.name}</span>
                 <button
                   type="button"
                   onClick={() => rimuoviFile(i)}
                   disabled={pending}
-                  className="text-sage hover:text-red-700"
                   aria-label={`Rimuovi ${f.name}`}
                 >
                   ✕
@@ -250,13 +197,13 @@ export default function ChatSection({
             ))}
           </div>
         )}
-        <div className="flex items-end gap-3">
+        <div className="omnia-chat-riga">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={pending || fileSelezionati.length >= MAX_ALLEGATI}
             title="Allega file (immagini, PDF, Word, Excel/CSV)"
-            className="shrink-0 rounded-full border border-border-strong px-3 py-3 text-sm text-ink hover:bg-ink hover:text-cream disabled:opacity-50"
+            className="omnia-chat-allegabutton"
           >
             📎
           </button>
@@ -267,19 +214,13 @@ export default function ChatSection({
             disabled={pending}
             onKeyDown={handleKeyDown}
             placeholder="Scrivi un messaggio a OMNIA AI... (Invio per inviare, Maiusc+Invio per andare a capo)"
-            className="flex-1 resize-none rounded-xl border border-border bg-cream px-4 py-3 text-sm text-ink focus:border-forest focus:outline-none disabled:bg-border/20 disabled:text-sage"
+            className="omnia-input"
           />
-          <button
-            type="submit"
-            disabled={pending}
-            className="shrink-0 rounded-full bg-forest px-6 py-3 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark disabled:opacity-50"
-          >
+          <button type="submit" disabled={pending} className="omnia-btn omnia-btn-p">
             {pending ? "Inviato ✓" : "Invia"}
           </button>
         </div>
-        {state.error && (
-          <p className="mt-2 text-xs text-red-700">{state.error}</p>
-        )}
+        {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
       </form>
     </section>
   );

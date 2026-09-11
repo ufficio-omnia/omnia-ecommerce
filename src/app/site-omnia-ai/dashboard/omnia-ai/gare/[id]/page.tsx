@@ -110,95 +110,84 @@ export default async function GaraPage({
   }
 
   return (
-    <main className="flex-1">
-      <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6">
-        <Link
-          href="/dashboard/omnia-ai/gare"
-          className="font-mono text-xs tracking-wide text-sage uppercase hover:text-ink"
-        >
-          ← Le tue gare
-        </Link>
+    <div className="omnia-app-shell largo">
+      <Link href="/dashboard/omnia-ai/gare" className="omnia-torna">
+        ← Le tue gare
+      </Link>
 
-        <div className="mt-4 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-serif text-3xl text-ink">{gara.titolo}</h1>
-            <p className="mt-1 text-xs text-sage">
-              Creata il {new Date(gara.created_at).toLocaleDateString("it-IT")}
-            </p>
-          </div>
-          <DeleteButton
-            action={deleteGara}
-            hiddenFields={{ garaId: gara.id }}
-            confirmMessage={`Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? L'operazione non è reversibile.`}
-            label="Elimina gara"
-            className="shrink-0 rounded-full border border-red-700 px-4 py-1.5 font-mono text-xs tracking-wide text-red-700 uppercase hover:bg-red-700 hover:text-cream"
-          />
-        </div>
-
-        <section className="mt-8 rounded-2xl border border-border bg-cream-soft p-5">
-          <h2 className="font-mono text-xs tracking-wide text-sage uppercase">
-            Documenti
-          </h2>
-          <p className="mt-1 text-xs text-sage">
-            Carica bando, disciplinare, capitolato e ogni altro documento
-            collegato a questa gara.
+      <div className="omnia-app-intestazione" style={{ marginTop: 16 }}>
+        <div>
+          <h1 className="omnia-app-titolo" style={{ marginTop: 0 }}>
+            {gara.titolo}
+          </h1>
+          <p className="omnia-eyebrow" style={{ marginTop: 6 }}>
+            Creata il {new Date(gara.created_at).toLocaleDateString("it-IT")}
           </p>
+        </div>
+        <DeleteButton
+          action={deleteGara}
+          hiddenFields={{ garaId: gara.id }}
+          confirmMessage={`Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? L'operazione non è reversibile.`}
+          label="Elimina gara"
+          className="omnia-btn omnia-btn-s omnia-btn-piccolo"
+        />
+      </div>
 
-          <ul className="mt-4 space-y-2">
-            {documenti?.length ? (
-              documenti.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-cream px-3 py-2 text-sm"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-ink">{d.nome_file}</span>
-                    {(() => {
-                      const n = chunkCountPerDocumento.get(d.id) ?? 0;
-                      return n > 0 ? (
-                        <span className="shrink-0 rounded-full bg-forest/10 px-2 py-0.5 font-mono text-[10px] tracking-wide text-forest uppercase">
-                          Indicizzato ({n})
-                        </span>
-                      ) : (
-                        <span className="shrink-0 rounded-full bg-red-700/10 px-2 py-0.5 font-mono text-[10px] tracking-wide text-red-700 uppercase">
-                          Non indicizzato
-                        </span>
-                      );
-                    })()}
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Documenti</span>
+        <p className="omnia-riquadro-nota">
+          Carica bando, disciplinare, capitolato e ogni altro documento collegato a questa gara.
+        </p>
+
+        {documenti?.length ? (
+          <div style={{ marginTop: 16 }}>
+            {documenti.map((d) => {
+              const n = chunkCountPerDocumento.get(d.id) ?? 0;
+              return (
+                <div key={d.id} className="omnia-doc">
+                  <span style={{ display: "flex", minWidth: 0, alignItems: "center", gap: 10 }}>
+                    <span className="nome">{d.nome_file}</span>
+                    {n > 0 ? (
+                      <span className="omnia-badge verde">Indicizzato ({n})</span>
+                    ) : (
+                      <span className="omnia-badge ambra">Non indicizzato</span>
+                    )}
                   </span>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="omnia-doc-azioni">
                     <OpenInNewTabButton
                       action={downloadGaraDocumento}
                       hiddenFields={{ docId: d.id }}
                       label="Scarica"
-                      className="rounded-full border border-border-strong px-2 py-1 font-mono text-[10px] tracking-wide text-ink uppercase hover:bg-ink hover:text-cream"
+                      className="omnia-btn omnia-btn-s omnia-btn-piccolo"
                     />
                     <DeleteButton
                       action={removeGaraDocumento}
                       hiddenFields={{ docId: d.id, garaId: gara.id }}
                       confirmMessage="Eliminare questo documento?"
                       label="Elimina"
-                      className="font-mono text-[10px] tracking-wide text-red-700 uppercase hover:underline"
+                      className="omnia-btn omnia-btn-s omnia-btn-piccolo"
                     />
                   </div>
-                </li>
-              ))
-            ) : (
-              <p className="text-sm text-sage">Nessun documento caricato.</p>
-            )}
-          </ul>
-
-          <div className="mt-5 border-t border-border pt-5">
-            <UploadDocumentoForm garaId={gara.id} />
+                </div>
+              );
+            })}
           </div>
+        ) : (
+          <p className="omnia-elenco-vuoto" style={{ marginTop: 16 }}>
+            Nessun documento caricato.
+          </p>
+        )}
 
-          <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
-        </section>
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--bordo)" }}>
+          <UploadDocumentoForm garaId={gara.id} />
+        </div>
 
-        <ExtractionSection garaId={gara.id} estrazione={gara} />
+        <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
+      </section>
 
-        <ChatSection garaId={gara.id} messaggi={messaggi} />
-      </div>
-    </main>
+      <ExtractionSection garaId={gara.id} estrazione={gara} />
+
+      <ChatSection garaId={gara.id} messaggi={messaggi} />
+    </div>
   );
 }

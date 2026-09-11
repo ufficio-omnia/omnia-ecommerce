@@ -9,24 +9,19 @@ export default function CreateGaraForm() {
   const [state, formAction, pending] = useActionState(createGara, initialState);
 
   return (
-    <form action={formAction} className="flex flex-col gap-2 sm:flex-row">
+    <form action={formAction} className="omnia-form-riga">
       <input
         name="titolo"
         type="text"
         required
         placeholder="Nome della gara (es. Comune di Milano - pulizie uffici)"
-        className="flex-1 rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none"
+        className="omnia-input"
+        style={{ flex: 1 }}
       />
-      <button
-        type="submit"
-        disabled={pending}
-        className="shrink-0 rounded-full bg-forest px-5 py-2 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark disabled:opacity-50"
-      >
+      <button type="submit" disabled={pending} className="omnia-btn omnia-btn-p omnia-btn-piccolo">
         {pending ? "Creazione..." : "Nuova gara"}
       </button>
-      {state.error && (
-        <p className="text-xs text-red-700 sm:self-center">{state.error}</p>
-      )}
+      {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
     </form>
   );
 }
