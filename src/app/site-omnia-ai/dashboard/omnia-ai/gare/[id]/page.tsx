@@ -126,7 +126,11 @@ export default async function GaraPage({
         <DeleteButton
           action={deleteGara}
           hiddenFields={{ garaId: gara.id }}
-          confirmMessage={`Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? L'operazione non è reversibile.`}
+          confirmMessage={
+            gara.estrazione_stato === "completata"
+              ? `Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? Questa gara ha già consumato una gara della tua quota (piano o credito): eliminarla non te la restituisce. L'operazione non è reversibile.`
+              : `Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? L'operazione non è reversibile.`
+          }
           label="Elimina gara"
           className="omnia-btn omnia-btn-s omnia-btn-piccolo"
         />
