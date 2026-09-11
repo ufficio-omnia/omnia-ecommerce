@@ -1,5 +1,6 @@
 import mammoth from "mammoth";
 import { createAnthropicClient } from "@/lib/anthropic";
+import { logAiUsage } from "@/lib/ai-usage";
 
 const MODEL = "claude-sonnet-5";
 const MAX_VOCI = 60;
@@ -104,6 +105,16 @@ async function strutturaPdf(buffer: Buffer): Promise<string> {
         ],
       },
     ],
+  });
+
+  await logAiUsage({
+    userId: null,
+    garaId: null,
+    operazione: "kb_struttura_titoli",
+    provider: "anthropic",
+    model: MODEL,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
   });
 
   return response.content

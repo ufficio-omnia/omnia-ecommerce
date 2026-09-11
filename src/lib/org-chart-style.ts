@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { embedQuery } from "@/lib/voyage";
+import { logAiUsage } from "@/lib/ai-usage";
 
 const MODEL = "claude-sonnet-5";
 const QUERY = "organigramma schema gerarchico struttura organizzativa aziendale caselle collegate";
@@ -38,10 +39,15 @@ const STILE_TOOL: Anthropic.Tool = {
 // usati (colori, forma delle caselle) — così l'organigramma che OMNIA AI
 // disegna programmaticamente per il cliente assomiglia visivamente a
 // quelli reali di OMNIA, non a uno stile fisso scelto a priori.
-export async function ricavaStileOrganigramma(): Promise<StileOrganigramma | null> {
+export async function ricavaStileOrganigramma(
+  context: { userId: string | null; garaId: string | null },
+): Promise<StileOrganigramma | null> {
   try {
     const supabase = await createClient();
-    const queryEmbedding = await embedQuery(QUERY);
+    const queryEmbedding = await embedQuery(QUERY, {
+      ...context,
+      operazione: "organigramma_ricerca_stile",
+    });
 
     const { data: immaginiRaw, error } = await supabase.rpc("match_knowledge_base_immagini", {
       query_embedding: queryEmbedding,
@@ -90,6 +96,16 @@ export async function ricavaStileOrganigramma(): Promise<StileOrganigramma | nul
       tool_choice: { type: "tool", name: STILE_TOOL.name },
       tools: [STILE_TOOL],
       messages: [{ role: "user", content }],
+    });
+
+    await logAiUsage({
+      userId: context.userId,
+      garaId: context.garaId,
+      operazione: "organigramma_stile",
+      provider: "anthropic",
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     const toolUse = response.content.find((b) => b.type === "tool_use");

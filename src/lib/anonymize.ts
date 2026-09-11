@@ -1,4 +1,5 @@
 import { createAnthropicClient } from "@/lib/anthropic";
+import { logAiUsage } from "@/lib/ai-usage";
 
 const BLOCK_SIZE_WORDS = 2500;
 const MODEL = "claude-sonnet-5";
@@ -109,6 +110,16 @@ async function estraiAliasEntita(
       },
       { timeout: 120000 },
     );
+
+    await logAiUsage({
+      userId: null,
+      garaId: null,
+      operazione: "kb_anonimizzazione_alias",
+      provider: "anthropic",
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
 
     const toolUse = response.content.find((b) => b.type === "tool_use");
     if (!toolUse || toolUse.type !== "tool_use") return [];
@@ -223,6 +234,16 @@ async function anonymizeBlocco(
     // farebbe restare sospeso l'intero caricamento del documento.
     { timeout: 120000 },
   );
+
+  await logAiUsage({
+    userId: null,
+    garaId: null,
+    operazione: "kb_anonimizzazione_blocco",
+    provider: "anthropic",
+    model: MODEL,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  });
 
   const testoRisposta = response.content
     .map((block) => (block.type === "text" ? block.text : ""))

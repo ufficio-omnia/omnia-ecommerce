@@ -6,6 +6,7 @@ import { sanitizeFileName } from "@/lib/document-text";
 import { ricavaStileOrganigramma } from "@/lib/org-chart-style";
 import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { logAiUsage } from "@/lib/ai-usage";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
@@ -166,7 +167,10 @@ export async function generaBozzaSezione(params: {
 
   const contieneOrganigramma = CONTIENE_ORGANIGRAMMA.test(contenuto);
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma
-    ? await Promise.all([ricavaStileOrganigramma(), recuperaLoghiOrganigramma(garaId)])
+    ? await Promise.all([
+        ricavaStileOrganigramma({ userId, garaId }),
+        recuperaLoghiOrganigramma(garaId),
+      ])
     : [null, undefined];
 
   const buffer = await buildDocxBuffer(
@@ -407,6 +411,7 @@ async function espandiContenutoSezione(
   pagineTarget: number,
   azione: AzioneSezione,
   formattazione: { dimensioneCarattere?: number; interlinea?: number },
+  context: { userId: string | null; garaId: string | null },
 ): Promise<string | null> {
   const anthropic = createAnthropicClient();
   const paroleAttuali = contenutoAttuale.split(/\s+/).filter(Boolean).length;
@@ -453,6 +458,16 @@ ${contenutoAttuale}`,
 
     const response = await stream.finalMessage();
 
+    await logAiUsage({
+      userId: context.userId,
+      garaId: context.garaId,
+      operazione: `bozza_${azione}`,
+      provider: "anthropic",
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
+
     if (response.stop_reason === "max_tokens") {
       console.warn(`espandiContenutoSezione: risposta troncata per max_tokens su "${titoloSezione}", mantengo la versione originale.`);
       return null;
@@ -485,6 +500,7 @@ export async function correggiSezioneVersoTarget(
   contenutoIniziale: string,
   pagineTarget: number,
   formattazione: { dimensioneCarattere?: number; interlinea?: number },
+  context: { userId: string | null; garaId: string | null },
   maxTentativi = 2,
 ): Promise<string> {
   let contenuto = contenutoIniziale;
@@ -510,7 +526,14 @@ export async function correggiSezioneVersoTarget(
     if (!necessitaLunghezza && !necessitaRiduzione && !necessitaFormattazione) break;
 
     const azione: AzioneSezione = necessitaRiduzione ? "condensa" : necessitaLunghezza ? "espandi" : "formatta";
-    const risultato = await espandiContenutoSezione(titoloSezione, contenuto, pagineTarget, azione, formattazione);
+    const risultato = await espandiContenutoSezione(
+      titoloSezione,
+      contenuto,
+      pagineTarget,
+      azione,
+      formattazione,
+      context,
+    );
     if (!risultato) break; // fallito/troncato: tieni l'ultima versione buona, non rischiare di perderla
 
     contenuto = risultato;
@@ -632,6 +655,7 @@ export async function componiRelazioneFinale(params: {
           sezione.contenuto,
           pagineTarget,
           formattazioneGaraCorrente,
+          { userId, garaId },
         );
         if (corretto === sezione.contenuto) return null;
 
@@ -678,7 +702,10 @@ export async function componiRelazioneFinale(params: {
 
   const contieneOrganigramma = CONTIENE_ORGANIGRAMMA.test(contenutoFinale);
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma
-    ? await Promise.all([ricavaStileOrganigramma(), recuperaLoghiOrganigramma(garaId)])
+    ? await Promise.all([
+        ricavaStileOrganigramma({ userId, garaId }),
+        recuperaLoghiOrganigramma(garaId),
+      ])
     : [null, undefined];
 
   const buffer = await buildDocxBuffer(

@@ -30,7 +30,11 @@ export async function indexGaraDocumento(params: {
 
   if (chunks.length === 0) return;
 
-  const embeddings = await embedDocuments(chunks);
+  const embeddings = await embedDocuments(chunks, {
+    userId,
+    garaId,
+    operazione: "indicizzazione_documento_gara",
+  });
 
   const supabase = await createClient();
   const rows = chunks.map((contenuto, index) => ({

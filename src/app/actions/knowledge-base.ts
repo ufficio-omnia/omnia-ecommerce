@@ -40,7 +40,11 @@ async function salvaImmaginiKnowledgeBase(
   if (immagini.length === 0) return;
 
   const descrizioni = immagini.map((img) => img.descrizione);
-  const embeddings = await embedDocuments(descrizioni);
+  const embeddings = await embedDocuments(descrizioni, {
+    userId: null,
+    garaId: null,
+    operazione: "kb_embedding_immagini",
+  });
 
   for (const [index, img] of immagini.entries()) {
     const estensione = EXTENSION_PER_TIPO[img.contentType] ?? "png";
@@ -79,7 +83,11 @@ async function embeddingStileStruttura(
   const testo = [notaStile, strutturaTitoli].filter(Boolean).join("\n\n");
   if (!testo) return null;
 
-  const [embedding] = await embedDocuments([testo]);
+  const [embedding] = await embedDocuments([testo], {
+    userId: null,
+    garaId: null,
+    operazione: "kb_embedding_stile_struttura",
+  });
   return embedding;
 }
 
@@ -153,7 +161,11 @@ export async function uploadKnowledgeBaseDocumento(
       };
     }
 
-    const embeddings = await embedDocuments(chunks);
+    const embeddings = await embedDocuments(chunks, {
+      userId: null,
+      garaId: null,
+      operazione: "kb_embedding_documento",
+    });
     const rows = chunks.map((contenuto, index) => ({
       documento_id: documento.id,
       chunk_index: index,
