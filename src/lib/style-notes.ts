@@ -3,6 +3,7 @@ import { PDFParse } from "pdf-parse";
 import "pdf-parse/worker";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createAnthropicClient } from "@/lib/anthropic";
+import { logAiUsage } from "@/lib/ai-usage";
 
 const MODEL = "claude-sonnet-5";
 const MAX_IMMAGINI = 6;
@@ -134,6 +135,15 @@ async function noteStilePdf(buffer: Buffer): Promise<NoteStile> {
     thinking: { type: "disabled" },
     messages: [{ role: "user", content }],
   });
+  await logAiUsage({
+    userId: null,
+    garaId: null,
+    operazione: "kb_nota_stile",
+    provider: "anthropic",
+    model: MODEL,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
+  });
   const testoRisposta = response.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
   const { notaStile, didascalie } = parseRisposta(testoRisposta);
 
@@ -204,6 +214,15 @@ async function noteStileDocx(buffer: Buffer): Promise<NoteStile> {
     max_tokens: 2000,
     thinking: { type: "disabled" },
     messages: [{ role: "user", content }],
+  });
+  await logAiUsage({
+    userId: null,
+    garaId: null,
+    operazione: "kb_nota_stile",
+    provider: "anthropic",
+    model: MODEL,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
   });
   const testoRisposta = response.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
   const { notaStile, didascalie } = parseRisposta(testoRisposta);

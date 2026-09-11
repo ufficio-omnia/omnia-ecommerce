@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
+import { logAiUsage } from "@/lib/ai-usage";
 
 export type ExtractionState = { error?: string };
 
@@ -199,6 +200,16 @@ export async function extractGaraData(
           ],
         },
       ],
+    });
+
+    await logAiUsage({
+      userId: user.id,
+      garaId,
+      operazione: "estrazione_gara",
+      provider: "anthropic",
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     const toolUse = response.content.find(

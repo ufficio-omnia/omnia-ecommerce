@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { embedQuery } from "@/lib/voyage";
+import { logAiUsage } from "@/lib/ai-usage";
 import { sanitizeFileName } from "@/lib/document-text";
 import {
   categorizzaAllegato,
@@ -388,7 +389,11 @@ export async function sendGaraMessage(
   let fileGenerato: { nomeFile: string; filePath: string } | null = null;
 
   try {
-    const queryEmbedding = await embedQuery(messaggio);
+    const queryEmbedding = await embedQuery(messaggio, {
+      userId: user.id,
+      garaId,
+      operazione: "chat_gara_ricerca",
+    });
 
     const [
       { data: chunksRaw, error: matchError },
@@ -536,6 +541,16 @@ export async function sendGaraMessage(
       });
       const response = await stream.finalMessage();
 
+      await logAiUsage({
+        userId: user.id,
+        garaId,
+        operazione: "chat_gara",
+        provider: "anthropic",
+        model: MODEL,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      });
+
       if (response.stop_reason === "max_tokens") {
         console.warn(
           `sendGaraMessage: risposta troncata per max_tokens al round ${round} (gara ${garaId}).`,
@@ -651,7 +666,13 @@ export async function sendGaraMessage(
           // tentativo" da verificare a mano.
           const contenutoCorretto =
             pagineTarget !== null
-              ? await correggiSezioneVersoTarget(input.titolo_sezione, contenutoConMarcatori, pagineTarget, formattazioneCorrente)
+              ? await correggiSezioneVersoTarget(
+                  input.titolo_sezione,
+                  contenutoConMarcatori,
+                  pagineTarget,
+                  formattazioneCorrente,
+                  { userId: user.id, garaId },
+                )
               : contenutoConMarcatori;
           // Riapplicate dopo l'eventuale espansione/condensazione: quel
           // passaggio non sa nulla né dei marcatori tabellari né
@@ -724,6 +745,16 @@ export async function sendGaraMessage(
           system: systemPrompt,
           tool_choice: { type: "none" },
           messages,
+        });
+
+        await logAiUsage({
+          userId: user.id,
+          garaId,
+          operazione: "chat_gara_wrapup",
+          provider: "anthropic",
+          model: MODEL,
+          inputTokens: wrapUp.usage.input_tokens,
+          outputTokens: wrapUp.usage.output_tokens,
         });
 
         rispostaFinale = wrapUp.content
