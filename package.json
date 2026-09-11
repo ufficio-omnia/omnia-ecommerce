@@ -2,6 +2,7 @@
   "name": "omnia-app",
   "version": "0.1.0",
   "private": true,
+  "//xlsx": "La voce 'xlsx' sotto è un tarball ufficiale SheetJS pinnato alla 0.20.3, non un pacchetto npm: la build 'xlsx' su npm si è fermata alla 0.18, le versioni successive sono distribuite solo da cdn.sheetjs.com (vedi https://docs.sheetjs.com/docs/getting-started/installation/nodejs).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
+    "@napi-rs/canvas": "0.1.80",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.115.0",
     "docx": "^9.7.1",
