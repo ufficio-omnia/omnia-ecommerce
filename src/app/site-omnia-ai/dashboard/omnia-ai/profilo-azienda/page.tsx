@@ -44,24 +44,19 @@ export default async function ProfiloAziendaPage() {
     .maybeSingle<Company>();
 
   return (
-    <main className="flex-1">
-      <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
-        <Link
-          href="/dashboard/omnia-ai"
-          className="font-mono text-xs tracking-wide text-sage uppercase hover:text-ink"
-        >
-          ← OMNIA AI
-        </Link>
+    <div className="omnia-app-shell">
+      <Link href="/dashboard/omnia-ai" className="omnia-torna">
+        ← OMNIA AI
+      </Link>
 
-        <h1 className="mt-4 font-serif text-3xl text-ink">Profilo azienda</h1>
-        <p className="mt-2 text-justify text-sm text-sage">
-          Questi dati vengono salvati in modo permanente sul tuo account e
-          verranno usati da OMNIA AI per l&apos;analisi delle gare e la
-          generazione dei contenuti. Puoi aggiornarli in qualsiasi momento.
-        </p>
+      <h1 className="omnia-app-titolo">Profilo azienda</h1>
+      <p className="omnia-app-sottotitolo">
+        Questi dati vengono salvati in modo permanente sul tuo account e verranno usati da OMNIA AI
+        per l&apos;analisi delle gare e la generazione dei contenuti. Puoi aggiornarli in qualsiasi
+        momento.
+      </p>
 
-        <CompanyProfileForm company={company ?? null} />
-      </div>
-    </main>
+      <CompanyProfileForm company={company ?? null} />
+    </div>
   );
 }

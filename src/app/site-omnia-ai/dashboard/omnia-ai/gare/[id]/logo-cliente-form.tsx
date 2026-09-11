@@ -25,38 +25,27 @@ export default function LogoClienteForm({
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
-    <div className="mt-5 border-t border-border pt-5">
-      <h3 className="font-mono text-xs tracking-wide text-sage uppercase">
-        Logo stazione appaltante / committente
-      </h3>
-      <p className="mt-1 text-xs text-sage">
-        Usato da OMNIA AI per inserirlo negli organigrammi generati per questa
-        gara.
+    <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--bordo)" }}>
+      <span className="omnia-eyebrow">Logo stazione appaltante / committente</span>
+      <p className="omnia-riquadro-nota">
+        Usato da OMNIA AI per inserirlo negli organigrammi generati per questa gara.
       </p>
-      <form
-        ref={formRef}
-        action={formAction}
-        className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"
-      >
+      <form ref={formRef} action={formAction} className="omnia-form-riga" style={{ marginTop: 12 }}>
         <input type="hidden" name="garaId" value={garaId} />
         <input
           type="file"
           name="logo"
           accept="image/png,image/jpeg,image/webp"
           required
-          className="flex-1 text-sm text-ink"
+          className="omnia-file-input"
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="shrink-0 rounded-full border border-border-strong px-4 py-1.5 font-mono text-xs tracking-wide text-ink uppercase transition-colors hover:bg-ink hover:text-cream disabled:opacity-50"
-        >
+        <button type="submit" disabled={pending} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
           {pending ? "Caricamento..." : "Carica logo"}
         </button>
         {loghiCaricato && !state.error && (
-          <span className="text-xs text-forest">Logo già caricato.</span>
+          <span className="omnia-badge verde">Logo già caricato</span>
         )}
-        {state.error && <p className="text-xs text-red-700">{state.error}</p>}
+        {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
       </form>
     </div>
   );

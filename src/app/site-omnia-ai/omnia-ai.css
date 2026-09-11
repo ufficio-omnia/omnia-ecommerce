@@ -696,26 +696,29 @@ li {
 .omnia-prosa li + li {
   margin-top: 4px;
 }
-.omnia-prosa .omnia-tabella-scroll {
+/* .omnia-tabella-scroll non è più legata a .omnia-prosa: la usa anche
+   l'area riservata (tabella criteri di valutazione), non solo i testi
+   legali. */
+.omnia-tabella-scroll {
   margin-top: 20px;
   overflow-x: auto;
   border: 1px solid var(--bordo);
   border-radius: 14px;
   background: var(--vetro);
 }
-.omnia-prosa table {
+.omnia-tabella-scroll table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }
-.omnia-prosa th,
-.omnia-prosa td {
+.omnia-tabella-scroll th,
+.omnia-tabella-scroll td {
   padding: 10px 14px;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--bordo);
 }
-.omnia-prosa th {
+.omnia-tabella-scroll th {
   font-family: "Syne", sans-serif;
   font-weight: 700;
   font-size: 12.5px;
@@ -723,11 +726,15 @@ li {
   text-transform: uppercase;
   color: var(--testo);
 }
-.omnia-prosa td {
+.omnia-tabella-scroll td {
   color: var(--fioco);
 }
-.omnia-prosa tbody tr:last-child th,
-.omnia-prosa tbody tr:last-child td {
+.omnia-tabella-scroll th.num,
+.omnia-tabella-scroll td.num {
+  text-align: right;
+}
+.omnia-tabella-scroll tbody tr:last-child th,
+.omnia-tabella-scroll tbody tr:last-child td {
   border-bottom: none;
 }
 
@@ -970,23 +977,501 @@ li {
   }
 }
 
-/* Area riservata (dashboard/omnia-ai): regole trasferite qui da
-   (ecommerce)/globals.css perché usate solo dalla chat AI, non
-   dall'e-commerce. Riferiscono ancora variabili dell'e-commerce
-   (--color-border, --color-forest, --font-plex-mono), non definite in
-   questo foglio: qui non risolvono a niente. Restano segnaposto fino
-   al rivestimento vero dell'area riservata (passo separato, dopo gli
-   abbonamenti), che le riscriverà sui token di questo file. */
+/* ==================== Area riservata (dashboard/omnia-ai) ====================
+   Stesso sistema visivo del sito pubblico (fondo, superfici, bordi,
+   caratteri, ruoli colore) — nessun token nuovo. Nessuna modifica di
+   logica: solo le regole per "vestire" le pagine già esistenti. */
+
+.omnia-app-shell {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 64px 24px 96px;
+}
+.omnia-app-shell.largo {
+  max-width: 1040px;
+}
+.omnia-torna {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--fioco);
+  text-decoration: none;
+}
+.omnia-torna:hover {
+  color: var(--testo);
+}
+.omnia-app-titolo {
+  margin-top: 16px;
+  font-size: clamp(26px, 3.4vw, 34px);
+  letter-spacing: -0.02em;
+}
+.omnia-app-sottotitolo {
+  margin-top: 10px;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--fioco);
+  font-weight: 300;
+  max-width: 62ch;
+}
+.omnia-app-intestazione {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.omnia-eyebrow {
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fioco);
+}
+
+/* Riquadro generico (documenti, dati estratti, sezioni del profilo) */
+.omnia-riquadro {
+  margin-top: 32px;
+  padding: 26px;
+  border-radius: 18px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-align: left;
+}
+.omnia-riquadro > .omnia-eyebrow {
+  display: block;
+}
+.omnia-riquadro-nota {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--fioco);
+}
+
+/* Elenco (gare, documenti) */
+.omnia-elenco-riquadri {
+  margin-top: 24px;
+  display: grid;
+  gap: 12px;
+}
+.omnia-elenco-vuoto {
+  font-size: 14px;
+  color: var(--fioco);
+}
+.omnia-riga-link {
+  display: block;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-decoration: none;
+  transition: border-color 0.2s ease;
+}
+.omnia-riga-link:hover {
+  border-color: var(--bordo-f);
+}
+.omnia-riga-link .titolo {
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--testo);
+}
+.omnia-riga-link .meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fioco);
+}
+
+/* Documento singolo */
+.omnia-doc {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: rgba(11, 10, 22, 0.5);
+  font-size: 13.5px;
+}
+.omnia-doc + .omnia-doc {
+  margin-top: 8px;
+}
+.omnia-doc .nome {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--testo);
+}
+.omnia-doc-azioni {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Badge di stato */
+.omnia-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.omnia-badge.verde {
+  background: rgba(79, 209, 165, 0.12);
+  color: var(--verde);
+}
+.omnia-badge.ambra {
+  background: rgba(232, 163, 61, 0.12);
+  color: var(--ambra);
+}
+.omnia-badge.rosso {
+  background: rgba(232, 93, 61, 0.12);
+  color: var(--rosso);
+}
+
+/* Pulsanti piccoli (inline, dentro liste/righe) */
+.omnia-btn-piccolo {
+  padding: 6px 14px;
+  border-radius: 30px;
+  font-size: 11.5px;
+}
+.omnia-btn-verde {
+  background: var(--verde);
+  color: #06231a;
+}
+
+/* Messaggi di stato (errore/avviso) fuori dal modulo demo pubblico */
+.omnia-messaggio-stato {
+  margin-top: 14px;
+  font-size: 13.5px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--bordo);
+}
+.omnia-messaggio-stato.errore {
+  border-color: rgba(232, 93, 61, 0.35);
+  background: rgba(232, 93, 61, 0.08);
+  color: var(--rosso);
+}
+.omnia-messaggio-stato.avviso {
+  border-color: rgba(232, 163, 61, 0.35);
+  background: rgba(232, 163, 61, 0.08);
+  color: var(--ambra);
+}
+.omnia-messaggio-stato.successo {
+  border-color: rgba(79, 209, 165, 0.35);
+  background: rgba(79, 209, 165, 0.08);
+  color: var(--verde);
+}
+
+/* Scheda dati estratti — griglia ordinata, non righe di testo in fila */
+.omnia-dati-griglia {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.omnia-dato {
+  padding: 14px 16px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: rgba(11, 10, 22, 0.5);
+}
+.omnia-dato-etichetta {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fioco);
+}
+.omnia-dato-valore {
+  margin-top: 5px;
+  font-size: 15px;
+  color: var(--testo);
+}
+.omnia-dato.ambra .omnia-dato-valore {
+  color: var(--ambra);
+}
+
+.omnia-dettagli {
+  margin-top: 20px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: rgba(11, 10, 22, 0.4);
+}
+.omnia-dettagli summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 18px;
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fioco);
+}
+.omnia-dettagli summary::-webkit-details-marker {
+  display: none;
+}
+.omnia-dettagli[open] summary {
+  border-bottom: 1px solid var(--bordo);
+}
+.omnia-dettagli-corpo {
+  padding: 4px 18px 18px;
+  display: grid;
+  gap: 16px;
+}
+.omnia-dettagli-corpo dt {
+  font-size: 12px;
+  color: var(--fioco);
+}
+.omnia-dettagli-corpo dd {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--testo);
+  white-space: pre-line;
+}
+
+/* Chat */
+.omnia-chat {
+  margin-top: 32px;
+  border-radius: 20px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  overflow: hidden;
+}
+.omnia-chat-intestazione {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--bordo);
+}
+.omnia-chat-intestazione h2 {
+  font-size: 18px;
+}
+.omnia-chat-intestazione p {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-chat-nota {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--bordo);
+  background: rgba(11, 10, 22, 0.5);
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-chat-nota strong {
+  color: var(--testo);
+}
+.omnia-chat-corpo {
+  max-height: 38rem;
+  min-height: 20rem;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+.omnia-chat-vuota {
+  height: 100%;
+  min-height: 15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 0;
+}
+.omnia-chat-vuota p {
+  max-width: 32ch;
+  font-size: 13.5px;
+  color: var(--fioco);
+}
+.omnia-msg-riga {
+  display: flex;
+}
+.omnia-msg-riga.utente {
+  justify-content: flex-end;
+}
+.omnia-msg-riga.assistente {
+  justify-content: flex-start;
+}
+.omnia-msg {
+  max-width: 85%;
+  padding: 14px 18px;
+  border-radius: 16px;
+  font-size: 14.5px;
+  line-height: 1.65;
+  text-align: left;
+}
+.omnia-msg.utente {
+  background: rgba(139, 127, 232, 0.16);
+  border: 1px solid var(--bordo-f);
+}
+.omnia-msg.assistente {
+  background: rgba(79, 209, 165, 0.07);
+  border: 1px solid rgba(79, 209, 165, 0.22);
+}
+.omnia-msg p {
+  text-align: left;
+}
+.omnia-msg-ora {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--fioco);
+  text-align: left;
+}
+
+/* Allegato generato dal sistema (documento Word scaricabile): un
+   pulsante di scaricamento riconoscibile, mai un semplice link
+   sottolineato. */
+.omnia-allegato-generato {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(79, 209, 165, 0.35);
+  border-radius: 12px;
+  background: rgba(79, 209, 165, 0.1);
+}
+.omnia-allegato-generato .nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  color: var(--testo);
+}
+
+/* Allegati caricati in chat, pillole piccole */
+.omnia-allegati-pillole {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.omnia-allegato-pillola {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--bordo-f);
+  background: rgba(5, 5, 9, 0.3);
+  font-size: 11.5px;
+}
+.omnia-msg.utente .omnia-allegato-pillola {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(5, 5, 9, 0.2);
+}
+.omnia-allegato-pillola .nome {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.omnia-chat-input {
+  border-top: 1px solid var(--bordo);
+  padding: 18px 24px;
+}
+.omnia-chat-selezionati {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.omnia-chat-selezionato {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--bordo-f);
+  background: var(--vetro-2);
+  font-size: 11.5px;
+}
+.omnia-chat-selezionato .nome {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.omnia-chat-selezionato button {
+  background: none;
+  border: 0;
+  color: var(--fioco);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.omnia-chat-selezionato button:hover {
+  color: var(--rosso);
+}
+.omnia-chat-riga {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.omnia-chat-allegabutton {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  color: var(--testo);
+  cursor: pointer;
+  font-size: 16px;
+}
+.omnia-chat-allegabutton:hover {
+  border-color: var(--bordo-f);
+}
+.omnia-chat-allegabutton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.omnia-chat-riga textarea.omnia-input {
+  flex: 1;
+  resize: none;
+}
+
+/* Indicatore "sta elaborando": riusa il marchio nel suo stato
+   "elaborazione" (ambra, battito accelerato) — stessa regola di
+   prodotto del marchio, non un colore scelto qui. */
+.omnia-pensiero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border: 1px solid var(--bordo);
+  border-radius: 16px;
+  background: rgba(11, 10, 22, 0.5);
+  width: fit-content;
+}
+.omnia-pensiero span {
+  font-size: 13px;
+  color: var(--fioco);
+}
+
+/* Testo markdown delle risposte dell'assistente (ReactMarkdown) */
 .prose-chat p {
-  margin-top: 0.5em;
+  margin-top: 0.6em;
 }
 .prose-chat p:first-child {
   margin-top: 0;
 }
 .prose-chat ul,
 .prose-chat ol {
-  margin: 0.5em 0;
-  padding-left: 1.25em;
+  margin: 0.6em 0;
+  padding-left: 1.3em;
 }
 .prose-chat ul {
   list-style: disc;
@@ -997,8 +1482,10 @@ li {
 .prose-chat h1,
 .prose-chat h2,
 .prose-chat h3 {
+  font-family: "Space Grotesk", sans-serif;
   font-weight: 600;
-  margin: 0.75em 0 0.35em;
+  font-size: 1em;
+  margin: 0.8em 0 0.35em;
 }
 .prose-chat h1:first-child,
 .prose-chat h2:first-child,
@@ -1006,25 +1493,50 @@ li {
   margin-top: 0;
 }
 .prose-chat strong {
+  color: var(--testo);
   font-weight: 600;
 }
 .prose-chat code {
-  background: var(--color-border);
-  border-radius: 0.25em;
-  padding: 0.1em 0.35em;
-  font-family: var(--font-plex-mono), monospace;
-  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 0.3em;
+  padding: 0.1em 0.4em;
+  font-size: 0.9em;
 }
 .prose-chat a {
-  color: var(--color-forest);
+  color: var(--verde);
   text-decoration: underline;
 }
 
-@keyframes spin-slow {
-  to {
-    transform: rotate(360deg);
-  }
+/* Moduli (upload, profilo azienda) */
+.omnia-file-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--fioco);
 }
-.animate-spin-slow {
-  animation: spin-slow 2.2s linear infinite;
+.omnia-form-riga {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.omnia-campo-griglia {
+  margin-top: 20px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+}
+.omnia-campo-griglia .largo {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .omnia-dati-griglia,
+  .omnia-campo-griglia {
+    grid-template-columns: 1fr;
+  }
+  .omnia-app-shell.largo {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
