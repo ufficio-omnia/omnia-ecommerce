@@ -7,7 +7,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { indexGaraDocumento, isIndexableFile } from "@/lib/gara-indexing";
 import { sanitizeFileName } from "@/lib/document-text";
 
-export type GaraState = { error?: string; warning?: string };
+export type GaraState = { error?: string; warning?: string; duplicato?: string };
+
+// Confronto "simile" per il titolo: ignora maiuscole/minuscole, spazi
+// iniziali/finali e spazi doppi ("Comune di Aosta" e "comune  di aosta "
+// contano come lo stesso titolo) — non un confronto esatto, altrimenti
+// il caso reale che l'ha fatto notare (stessa gara, maiuscole diverse)
+// non verrebbe intercettato.
+function normalizzaTitolo(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 export async function createGara(
   _prevState: GaraState,
@@ -23,6 +32,29 @@ export async function createGara(
   const titolo = String(formData.get("titolo") ?? "").trim();
   if (!titolo) return { error: "Inserisci un titolo per la gara." };
 
+  // "conferma" arriva solo dal secondo invio, dopo che il cliente ha
+  // visto l'avviso di duplicato e ha scelto di procedere comunque: la
+  // creazione non è mai bloccata, solo posticipata di un passaggio.
+  const conferma = String(formData.get("conferma") ?? "") === "true";
+
+  if (!conferma) {
+    // La RLS ("gare_all_own") garantisce che questa query restituisca
+    // solo le gare dell'utente corrente.
+    const { data: esistenti } = await supabase
+      .from("gare")
+      .select("titolo")
+      .returns<{ titolo: string }[]>();
+
+    const normalizzato = normalizzaTitolo(titolo);
+    const duplicato = (esistenti ?? []).find(
+      (g) => normalizzaTitolo(g.titolo) === normalizzato,
+    );
+
+    if (duplicato) {
+      return { duplicato: duplicato.titolo };
+    }
+  }
+
   const { data: gara, error } = await supabase
     .from("gare")
     .insert({ user_id: user.id, titolo })
@@ -36,6 +68,39 @@ export async function createGara(
 
   revalidatePath("/dashboard/omnia-ai/gare");
   redirect(`/dashboard/omnia-ai/gare/${gara.id}`);
+}
+
+export async function renameGara(
+  _prevState: GaraState,
+  formData: FormData,
+): Promise<GaraState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  const garaId = String(formData.get("garaId") ?? "");
+  const titolo = String(formData.get("titolo") ?? "").trim();
+  if (!garaId) return { error: "Gara non valida." };
+  if (!titolo) return { error: "Il titolo non può essere vuoto." };
+
+  // La RLS ("gare_all_own") garantisce che l'update abbia effetto solo
+  // se la gara appartiene all'utente corrente.
+  const { error } = await supabase
+    .from("gare")
+    .update({ titolo })
+    .eq("id", garaId);
+
+  if (error) {
+    console.error("Errore rinomina gara:", error);
+    return { error: "Errore nel salvataggio del titolo." };
+  }
+
+  revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
+  revalidatePath("/dashboard/omnia-ai/gare");
+  return {};
 }
 
 export async function deleteGara(
