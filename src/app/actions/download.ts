@@ -88,18 +88,22 @@ export async function downloadGaraDocumento(
   // restituisca il documento solo se appartiene all'utente corrente.
   const { data: doc } = await supabase
     .from("gara_documenti")
-    .select("file_path")
+    .select("file_path, nome_file")
     .eq("id", docId)
-    .single<{ file_path: string }>();
+    .single<{ file_path: string; nome_file: string }>();
 
   if (!doc) {
     return { error: "Documento non trovato." };
   }
 
   const admin = createAdminClient();
+  // Il nome file va passato esplicitamente a { download }: senza,
+  // Supabase risponde senza "Content-Disposition: attachment" e il
+  // browser apre il file in una nuova scheda invece di scaricarlo (bug
+  // osservato in pratica) — stesso fix già applicato a downloadDocument.
   const { data: signed, error } = await admin.storage
     .from("gare")
-    .createSignedUrl(doc.file_path, 60);
+    .createSignedUrl(doc.file_path, 60, { download: doc.nome_file });
 
   if (error || !signed) {
     return { error: "Errore nella generazione del link di download." };
@@ -128,18 +132,22 @@ export async function downloadGaraMessaggioFile(
   // restituisca il messaggio solo se appartiene all'utente corrente.
   const { data: messaggio } = await supabase
     .from("gara_messaggi")
-    .select("file_path")
+    .select("file_path, file_nome")
     .eq("id", msgId)
-    .single<{ file_path: string | null }>();
+    .single<{ file_path: string | null; file_nome: string | null }>();
 
   if (!messaggio?.file_path) {
     return { error: "File non trovato." };
   }
 
   const admin = createAdminClient();
+  // Vedi commento su downloadGaraDocumento: senza { download } il
+  // documento generato si apre in una nuova scheda invece di scaricarsi.
   const { data: signed, error } = await admin.storage
     .from("gare")
-    .createSignedUrl(messaggio.file_path, 60);
+    .createSignedUrl(messaggio.file_path, 60, {
+      download: messaggio.file_nome ?? true,
+    });
 
   if (error || !signed) {
     return { error: "Errore nella generazione del link di download." };
@@ -177,6 +185,10 @@ export async function downloadAllegatoMessaggio(
   }
 
   const admin = createAdminClient();
+  // Niente { download } qui, di proposito: il pulsante si chiama "Apri"
+  // (non "Scarica") — immagini e PDF devono aprirsi nella scheda, non
+  // scaricarsi forzatamente. Diverso da downloadGaraDocumento/
+  // downloadGaraMessaggioFile sotto, dove il pulsante dice "Scarica".
   const { data: signed, error } = await admin.storage
     .from("gare")
     .createSignedUrl(allegato.file_path, 60);
