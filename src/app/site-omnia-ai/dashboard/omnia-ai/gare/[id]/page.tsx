@@ -7,6 +7,7 @@ import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import DeleteButton from "@/components/delete-button";
 import UploadDocumentoForm from "./upload-documento-form";
 import LogoClienteForm from "./logo-cliente-form";
+import GaraTitolo from "./gara-titolo";
 import ExtractionSection, { type Estrazione } from "./extraction-section";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 
@@ -117,9 +118,7 @@ export default async function GaraPage({
 
       <div className="omnia-app-intestazione" style={{ marginTop: 16 }}>
         <div>
-          <h1 className="omnia-app-titolo" style={{ marginTop: 0 }}>
-            {gara.titolo}
-          </h1>
+          <GaraTitolo garaId={gara.id} titolo={gara.titolo} />
           <p className="omnia-eyebrow" style={{ marginTop: 6 }}>
             Creata il {new Date(gara.created_at).toLocaleDateString("it-IT")}
           </p>
