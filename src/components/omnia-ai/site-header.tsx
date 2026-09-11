@@ -19,9 +19,9 @@ export default function SiteHeader() {
           <Link href="/piani">Piani</Link>
           <Link href="/demo">Demo</Link>
           <Link href="/contatti">Contatti</Link>
-          <a href="#" className="omnia-accedi">
+          <Link href="/login" className="omnia-accedi">
             Accedi
-          </a>
+          </Link>
         </nav>
       </div>
     </header>
