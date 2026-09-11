@@ -46,7 +46,7 @@ export default async function DashboardPage() {
   return (
     <main className="flex-1">
       <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="font-serif text-3xl text-ink">Dashboard</h1>
           <Link
             href="/dashboard/messaggi"
