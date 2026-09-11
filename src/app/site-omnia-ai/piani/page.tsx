@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { getCurrentOmniaAiCondizioniAbbonamentoUrl } from "@/lib/omnia-ai-legal";
-import { PIANI, PIANI_ORDINE, formatEuro } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
 
 export const metadata: Metadata = {
   title: "Piani e prezzi — OMNIA AI",
@@ -31,8 +31,11 @@ export default async function PianiPage() {
               <div key={p.slug} className={`omnia-prezzo${p.inEvidenza ? " in-evidenza" : ""}`}>
                 <b>{p.nome}</b>
                 <div className="omnia-prezzo-cifra">
-                  {formatEuro(p.prezzoCentesimi)}
-                  <span> al mese, IVA inclusa</span>
+                  <span className="omnia-prezzo-valore">
+                    {formatEuroCifra(p.prezzoCentesimi)}
+                    <span className="omnia-prezzo-simbolo">€</span>
+                  </span>
+                  <span className="omnia-prezzo-periodo">al mese · IVA inclusa</span>
                 </div>
                 <p style={{ marginTop: 10, fontSize: 14, color: "var(--fioco)", fontWeight: 300, textAlign: "left" }}>
                   {p.descrizione}

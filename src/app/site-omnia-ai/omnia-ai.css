@@ -853,14 +853,30 @@ li {
 }
 .omnia-prezzo-cifra {
   margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.omnia-prezzo-valore {
   font-family: "Syne", sans-serif;
   font-weight: 800;
   font-size: 34px;
+  white-space: nowrap;
 }
-.omnia-prezzo-cifra span {
+.omnia-prezzo-simbolo {
+  /* Il simbolo € in Syne è troppo largo/sbilanciato rispetto alle
+     cifre: reso a parte in Space Grotesk, a un corpo più piccolo.
+     Nessun vertical-align: l'allineamento alla base delle cifre è
+     quello naturale di due elementi inline sulla stessa riga. */
   font-family: "Space Grotesk", sans-serif;
   font-weight: 400;
-  font-size: 14px;
+  font-size: 20px;
+  margin-left: 3px;
+}
+.omnia-prezzo-periodo {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 400;
+  font-size: 13px;
   color: var(--fioco);
 }
 .omnia-prezzo-elenco {

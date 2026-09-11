@@ -87,15 +87,24 @@ export const PACCHETTI_CREDITI: Record<PacchettoCreditiSlug, PacchettoCrediti> =
   },
 };
 
+function formatNumeroEuro(centesimi: number): string {
+  return (centesimi / 100).toLocaleString("it-IT", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    // "auto" (il default) non raggruppa le migliaia quando sono anche
+    // impostati min/maxFractionDigits (verificato: 1490 -> "1490,00"
+    // invece di "1.490,00") — va forzato esplicitamente.
+    useGrouping: true,
+  });
+}
+
 export function formatEuro(centesimi: number): string {
-  return (
-    (centesimi / 100).toLocaleString("it-IT", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-      // "auto" (il default) non raggruppa le migliaia quando sono anche
-      // impostati min/maxFractionDigits (verificato: 1490 -> "1490,00"
-      // invece di "1.490,00") — va forzato esplicitamente.
-      useGrouping: true,
-    }) + " €"
-  );
+  return formatNumeroEuro(centesimi) + " €";
+}
+
+// Solo la cifra, senza simbolo: per le schede piano, dove il simbolo va
+// reso a parte con un font e un corpo diversi dalla cifra (la forma del
+// simbolo € in Syne è troppo larga e sbilanciata rispetto ai numeri).
+export function formatEuroCifra(centesimi: number): string {
+  return formatNumeroEuro(centesimi);
 }
