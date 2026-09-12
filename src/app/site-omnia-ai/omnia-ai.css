@@ -1629,6 +1629,137 @@ li {
   grid-column: 1 / -1;
 }
 
+/* Schermata di vendita abbonamento (Tappa 4) — card piano selezionabile
+   con radio nascosto, stesso fix cifra/simbolo € di /piani (il simbolo
+   in Syne è troppo largo/sbilanciato, reso a parte in Space Grotesk). */
+.omnia-piani-scelta {
+  margin-top: 32px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.omnia-piano-scelta {
+  position: relative;
+  display: block;
+  cursor: pointer;
+  padding: 22px;
+  border-radius: 16px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-align: left;
+  transition: border-color 0.2s ease;
+}
+.omnia-piano-scelta:hover {
+  border-color: var(--bordo-f);
+}
+.omnia-piano-scelta.selezionato {
+  border-color: var(--viola);
+  background: var(--vetro-2);
+}
+.omnia-piano-scelta input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.omnia-piano-scelta .nome {
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+}
+.omnia-piano-scelta .prezzo {
+  margin-top: 10px;
+  display: block;
+}
+.omnia-piano-scelta .prezzo .cifra {
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: 24px;
+  white-space: nowrap;
+}
+.omnia-piano-scelta .prezzo .simbolo {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 400;
+  font-size: 15px;
+  margin-left: 2px;
+}
+.omnia-piano-scelta .prezzo .periodo {
+  font-size: 12px;
+  color: var(--fioco);
+  margin-left: 4px;
+}
+.omnia-piano-scelta ul {
+  margin-top: 12px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.omnia-piano-scelta li {
+  font-size: 12.5px;
+  color: #c4c1d8;
+  padding-left: 14px;
+  position: relative;
+}
+.omnia-piano-scelta li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--verde);
+  position: absolute;
+  left: 0;
+  top: 6px;
+}
+
+/* Caselle di accettazione legale, stesso pattern del checkout carta
+   e-commerce (card-checkout-form.tsx), tradotto in omnia-ai.css. */
+.omnia-check-riga {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+}
+.omnia-check-riga input[type="checkbox"] {
+  margin-top: 3px;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--viola);
+}
+.omnia-check-riga label {
+  font-size: 12.5px;
+  color: #c4c1d8;
+  line-height: 1.6;
+}
+.omnia-check-riga a {
+  color: var(--verde);
+  text-decoration: underline;
+}
+
+/* Avviso profilo azienda incompleto: barra a piena larghezza, non un
+   riquadro dentro omnia-app-shell (ogni pagina porta già il proprio
+   .omnia-app-shell, annidarne un altro raddoppierebbe i margini) —
+   mostrata su ogni pagina della dashboard finché il profilo resta
+   vuoto, colore ambra per la regola di prodotto (avviso, non errore). */
+.omnia-avviso-profilo {
+  background: rgba(232, 163, 61, 0.08);
+  border-bottom: 1px solid rgba(232, 163, 61, 0.25);
+  padding: 14px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ambra);
+}
+.omnia-avviso-profilo a {
+  color: var(--ambra);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .omnia-piani-scelta {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .omnia-dati-griglia,
   .omnia-campo-griglia {
