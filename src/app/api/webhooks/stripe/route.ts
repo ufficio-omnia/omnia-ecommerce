@@ -4,6 +4,7 @@ import { createStripeClient } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
+import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -29,14 +30,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  if (event.type === "checkout.session.completed") {
-    await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+  switch (event.type) {
+    case "checkout.session.completed":
+      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+      break;
+    // Questo account Stripe crea una Subscription SOLO per gli
+    // abbonamenti OMNIA AI: l'e-commerce è sempre mode:"payment", non
+    // genera mai questi due eventi. Nessuna discriminazione necessaria.
+    case "customer.subscription.updated":
+      await handleOmniaAiSubscriptionUpdated(event.data.object as Stripe.Subscription);
+      break;
+    case "customer.subscription.deleted":
+      await handleOmniaAiSubscriptionDeleted(event.data.object as Stripe.Subscription);
+      break;
   }
 
   return NextResponse.json({ received: true });
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  // Discriminatore esplicito nei metadata: un abbonamento OMNIA AI ha un
+  // percorso di creazione completamente diverso (mode:"subscription",
+  // nessun productId/buyerType/dati di fatturazione propri — quelli li
+  // raccoglie Stripe). Il ramo e-commerce sotto resta invariato.
+  if (session.metadata?.tipo === "omnia_ai_abbonamento") {
+    await handleOmniaAiSubscriptionCheckoutCompleted(session);
+    return;
+  }
+
   const email = session.customer_email?.trim().toLowerCase();
   const metadata = session.metadata;
 
@@ -254,5 +275,165 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       subject: "Il tuo documento è pronto per il download",
       html: `<p>Il pagamento è stato confermato.</p><p>Il documento <strong>${product.title}</strong> è ora disponibile nella tua area riservata.</p><p><a href="${siteUrl}/dashboard">Vai alla dashboard</a></p>${legalNote}`,
     });
+  }
+}
+
+// L'enum locale subscription_status ha solo attivo/scaduto/annullato,
+// nessun valore "sospeso" dedicato: past_due/unpaid/incomplete/paused
+// (pagamento fallito, in fase di riaddebito) ricadono su "scaduto", la
+// lettura più vicina — hasActiveSubscription() nega l'accesso finché lo
+// stato non torna "attivo", producendo la sospensione richiesta dalla
+// clausola 8 delle condizioni di abbonamento senza bisogno di un nuovo
+// valore enum.
+function mapStripeSubscriptionStatus(
+  status: Stripe.Subscription.Status,
+): "attivo" | "scaduto" | "annullato" {
+  if (status === "active" || status === "trialing") return "attivo";
+  if (status === "canceled") return "annullato";
+  return "scaduto";
+}
+
+async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const metadata = session.metadata;
+  const userId = metadata?.userId;
+  const planSlug = metadata?.planSlug;
+  const stripeSubscriptionId =
+    typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+
+  if (!userId || !planSlug || !stripeSubscriptionId) {
+    console.error(
+      "Webhook Stripe (abbonamento AI): dati mancanti nella sessione",
+      session.id,
+    );
+    return;
+  }
+
+  const admin = createAdminClient();
+
+  // Idempotenza granulare: un evento rielaborato (retry Stripe, o
+  // riprocessato a mano dopo un problema transitorio — es. la
+  // registrazione delle accettazioni fallita per una tabella non ancora
+  // esistente) non deve limitarsi a saltare tutto se la riga subscriptions
+  // esiste già. Va comunque ritentata la registrazione delle accettazioni
+  // legali: perderla in modo permanente per un problema temporaneo non è
+  // accettabile su un dato che prova il consenso contrattuale.
+  const { data: existing } = await admin
+    .from("subscriptions")
+    .select("id")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle<{ id: string }>();
+
+  let subscriptionRowId = existing?.id;
+
+  if (!subscriptionRowId) {
+    // Mai fidarsi solo del payload dell'evento per stato/periodo: si
+    // rilegge la subscription da Stripe. items.data[0] perché c'è sempre
+    // un solo line item (un piano, quantity 1) — current_period_start/end
+    // in Stripe non sono più sull'oggetto Subscription, vivono qui.
+    const stripe = createStripeClient();
+    const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    const item = subscription.items.data[0];
+
+    const { data: sub, error: subError } = await admin
+      .from("subscriptions")
+      .insert({
+        user_id: userId,
+        plan: planSlug,
+        status: mapStripeSubscriptionStatus(subscription.status),
+        stripe_subscription_id: stripeSubscriptionId,
+        current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
+        current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
+        cancel_at_period_end: subscription.cancel_at_period_end,
+      })
+      .select("id")
+      .single();
+
+    if (subError || !sub) {
+      console.error("Webhook Stripe (abbonamento AI): errore creazione subscription", subError);
+      return;
+    }
+
+    subscriptionRowId = sub.id;
+  }
+
+  if (!subscriptionRowId) return;
+
+  const {
+    condizioniAbbonamentoDocId,
+    condizioniAbbonamentoVersion,
+    privacyPolicyDocId,
+    privacyPolicyVersion,
+    acceptedAt,
+    acceptIp,
+    acceptUserAgent,
+  } = metadata;
+
+  if (
+    condizioniAbbonamentoDocId &&
+    condizioniAbbonamentoVersion &&
+    privacyPolicyDocId &&
+    privacyPolicyVersion
+  ) {
+    const acceptanceResult = await recordOmniaAiLegalAcceptances({
+      admin,
+      subscriptionId: subscriptionRowId,
+      userId,
+      documents: {
+        condizioniAbbonamento: {
+          id: condizioniAbbonamentoDocId,
+          version: Number(condizioniAbbonamentoVersion),
+        },
+        privacyPolicy: { id: privacyPolicyDocId, version: Number(privacyPolicyVersion) },
+      },
+      ip: acceptIp || null,
+      userAgent: acceptUserAgent || null,
+      acceptedAt: acceptedAt || new Date().toISOString(),
+    });
+
+    if (acceptanceResult.error) {
+      console.error(
+        "Webhook Stripe (abbonamento AI): errore registrazione accettazioni legali",
+        acceptanceResult.error,
+        "subscription",
+        subscriptionRowId,
+      );
+    }
+  } else {
+    console.error(
+      "Webhook Stripe (abbonamento AI): metadata accettazioni legali mancanti per l'abbonamento",
+      subscriptionRowId,
+    );
+  }
+}
+
+async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscription) {
+  const admin = createAdminClient();
+  const item = subscription.items.data[0];
+
+  const { error } = await admin
+    .from("subscriptions")
+    .update({
+      status: mapStripeSubscriptionStatus(subscription.status),
+      current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
+      current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+    })
+    .eq("stripe_subscription_id", subscription.id);
+
+  if (error) {
+    console.error("Webhook Stripe (abbonamento AI): errore aggiornamento subscription", error);
+  }
+}
+
+async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscription) {
+  const admin = createAdminClient();
+
+  const { error } = await admin
+    .from("subscriptions")
+    .update({ status: "annullato", cancel_at_period_end: false })
+    .eq("stripe_subscription_id", subscription.id);
+
+  if (error) {
+    console.error("Webhook Stripe (abbonamento AI): errore cancellazione subscription", error);
   }
 }
