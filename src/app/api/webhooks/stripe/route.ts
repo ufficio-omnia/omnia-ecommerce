@@ -481,29 +481,46 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     );
   }
 
-  // Costruito con getOmniaAiBaseUrl, non getOmniaAiRequestOrigin — un
-  // webhook arriva dai server di Stripe, non c'è una richiesta del
-  // cliente da cui derivare l'host. Punta a /attiva-account, non a
-  // /auth/callback: quest'ultima è una route SERVER che sa leggere solo
-  // un ?code= PKCE, valido solo per un flusso avviato dal browser (che
-  // ha potuto salvare il code_verifier abbinato — registerOmniaAi e il
-  // reset password lo usano correttamente). Un signInWithOtp lanciato
-  // qui, da un webhook senza alcun browser coinvolto, non ha un
-  // code_verifier da abbinare: Supabase consegna la sessione in un
-  // frammento URL, leggibile solo lato client — da qui /attiva-account,
-  // non /auth/callback (bug reale osservato in pratica: il link
-  // riportava al login invece che a imposta-password).
+  // Terzo tentativo, dopo due bug reali osservati in test: prima
+  // l'email nativa di Supabase (dominio fisso), poi signInWithOtp +
+  // /auth/callback (redirect_to consegnato come frammento URL, leggibile
+  // solo da un client configurato per flusso "implicit" — il nostro
+  // client browser condiviso è configurato "pkce" per gli altri flussi,
+  // GoTrue scarta il frammento perché in contrasto col flusso atteso).
+  //
+  // generateLink non invia nulla da solo (a differenza di
+  // signInWithOtp): restituisce hashed_token, che usiamo per costruire
+  // NOI il link verso /attiva-account, dentro una email NOSTRA — stesso
+  // schema che Supabase raccomanda per le email di attivazione
+  // personalizzate. /attiva-account chiama poi verifyOtp({token_hash,
+  // type}) direttamente: nessun frammento, nessun code PKCE, nessuna
+  // dipendenza dal flowType del client — token_hash viaggia come normale
+  // parametro di query.
   if (justCreatedEmail) {
     const baseUrl = getOmniaAiBaseUrl();
-    const { error: otpError } = await admin.auth.signInWithOtp({
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: "magiclink",
       email: justCreatedEmail,
-      options: {
-        emailRedirectTo: `${baseUrl}/attiva-account?next=/imposta-password`,
-      },
     });
 
-    if (otpError) {
-      console.error("Webhook Stripe (abbonamento AI): errore invio email di attivazione", otpError);
+    if (linkError || !linkData?.properties?.hashed_token) {
+      console.error(
+        "Webhook Stripe (abbonamento AI): errore generazione link di attivazione",
+        linkError,
+      );
+    } else {
+      const activationUrl = `${baseUrl}/attiva-account?token_hash=${encodeURIComponent(linkData.properties.hashed_token)}&type=magiclink&next=${encodeURIComponent("/imposta-password")}`;
+
+      await sendEmail({
+        to: justCreatedEmail,
+        from: "OMNIA AI <noreply@omniaitalia.com>",
+        subject: "Attiva il tuo account OMNIA AI",
+        html: `
+          <p>Grazie per esserti abbonato a OMNIA AI.</p>
+          <p>Segui il link qui sotto per attivare l'account e impostare la password.</p>
+          <p><a href="${activationUrl}">Attiva l'account</a></p>
+        `,
+      });
     }
   }
 }
