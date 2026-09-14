@@ -7,6 +7,7 @@ import { ZONE_COOKIE } from "@/lib/zone";
 const CONSENT_KEY = "omnia-cookie-consent";
 const CONSENT_EVENT = "omnia-consent-change";
 const GADS_ID = "AW-18422155730";
+const GA4_ID = "G-KJR822ZRC7";
 
 // Il tag Google Ads è una cosa dell'e-commerce (misura le conversioni di
 // vendita documenti): fuori da quella zona (omnia-ai.it, console.*) non
@@ -113,6 +114,20 @@ export default function CookieConsent() {
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
               gtag('config', '${GADS_ID}');
+            `}
+          </Script>
+
+          {/* GA4 — proprietà separata da quella del sito statico, tag indipendente e aggiuntivo rispetto ad Ads */}
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`}
+            strategy="afterInteractive"
+          />
+          <Script id="ga4-init" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${GA4_ID}');
             `}
           </Script>
         </>
