@@ -128,6 +128,26 @@ export async function downloadGaraMessaggioFile(
     redirect("/login");
   }
 
+  // Codice destinatario o PEC servono per trasmettere la fattura
+  // dell'abbonamento allo SDI: senza uno dei due non possiamo fatturare,
+  // quindi non permettiamo di scaricare i documenti generati finché il
+  // cliente non li completa. Non blocca il resto del servizio (chat,
+  // caricamento documenti, generazione stessa) — solo questo download,
+  // qui lato server: un avviso nella dashboard da solo non basterebbe a
+  // impedirlo davvero.
+  const { data: company } = await supabase
+    .from("companies")
+    .select("codice_sdi, pec")
+    .eq("user_id", user.id)
+    .maybeSingle<{ codice_sdi: string | null; pec: string | null }>();
+
+  if (!company?.codice_sdi && !company?.pec) {
+    return {
+      error:
+        "Per scaricare i documenti generati devi prima completare i dati di fatturazione (codice destinatario o PEC) nel profilo azienda: ci servono per poterti fatturare l'abbonamento.",
+    };
+  }
+
   // La RLS ("gara_messaggi_all_own") garantisce che questa query
   // restituisca il messaggio solo se appartiene all'utente corrente.
   const { data: messaggio } = await supabase
