@@ -481,17 +481,24 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     );
   }
 
-  // Stesso link di attivazione già usato dalla registrazione libera
-  // (registerOmniaAi) e, nell'e-commerce, dal checkout carta: qui
-  // costruito con getOmniaAiBaseUrl, non getOmniaAiRequestOrigin — un
+  // Costruito con getOmniaAiBaseUrl, non getOmniaAiRequestOrigin — un
   // webhook arriva dai server di Stripe, non c'è una richiesta del
-  // cliente da cui derivare l'host.
+  // cliente da cui derivare l'host. Punta a /attiva-account, non a
+  // /auth/callback: quest'ultima è una route SERVER che sa leggere solo
+  // un ?code= PKCE, valido solo per un flusso avviato dal browser (che
+  // ha potuto salvare il code_verifier abbinato — registerOmniaAi e il
+  // reset password lo usano correttamente). Un signInWithOtp lanciato
+  // qui, da un webhook senza alcun browser coinvolto, non ha un
+  // code_verifier da abbinare: Supabase consegna la sessione in un
+  // frammento URL, leggibile solo lato client — da qui /attiva-account,
+  // non /auth/callback (bug reale osservato in pratica: il link
+  // riportava al login invece che a imposta-password).
   if (justCreatedEmail) {
     const baseUrl = getOmniaAiBaseUrl();
     const { error: otpError } = await admin.auth.signInWithOtp({
       email: justCreatedEmail,
       options: {
-        emailRedirectTo: `${baseUrl}/auth/callback?next=/imposta-password`,
+        emailRedirectTo: `${baseUrl}/attiva-account?next=/imposta-password`,
       },
     });
 
