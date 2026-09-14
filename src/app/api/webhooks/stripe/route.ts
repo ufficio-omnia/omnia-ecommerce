@@ -347,14 +347,32 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
         return;
       }
 
+      // email_confirm: true (non false come nell'e-commerce): qui non
+      // vogliamo l'email nativa "Confirm signup" di Supabase — il suo
+      // link usa sempre il Site URL del progetto, un valore fisso unico
+      // per tutto il progetto (impostato su app.omniaitalia.com), non
+      // consapevole di zona. Per la zona AI usiamo sempre e solo la
+      // nostra email di attivazione (signInWithOtp più sotto, costruita
+      // con getOmniaAiBaseUrl) — bug reale osservato in pratica: il
+      // cliente riceveva ENTRAMBE le email e cliccando quella nativa
+      // finiva su app.omniaitalia.com invece che su omnia-ai.it.
       const { error: createError } = await admin.auth.admin.createUser({
         email,
-        email_confirm: false,
+        email_confirm: true,
       });
 
-      if (createError && !/already.*registered|already exists/i.test(createError.message)) {
-        console.error("Webhook Stripe (abbonamento AI): errore creazione account", createError);
-        return;
+      // createUser non modifica un utente già esistente: se fallisce per
+      // questo motivo, isAccountNuovo resta false e più sotto si ricade
+      // sul controllo di email_confirmed_at dell'account preesistente.
+      let isAccountNuovo = false;
+
+      if (createError) {
+        if (!/already.*registered|already exists/i.test(createError.message)) {
+          console.error("Webhook Stripe (abbonamento AI): errore creazione account", createError);
+          return;
+        }
+      } else {
+        isAccountNuovo = true;
       }
 
       const { data: profile, error: profileError } = await admin
@@ -370,8 +388,15 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
 
       userId = profile.id;
 
+      // Un account appena creato con email_confirm:true ha
+      // email_confirmed_at già valorizzato (nessuna vera conferma
+      // avvenuta, solo la soppressione dell'email nativa) — non è quindi
+      // un segnale utilizzabile per capire se serve l'attivazione:
+      // isAccountNuovo lo sostituisce in quel caso. Per un account
+      // preesistente (mai toccato da questa creazione) resta invece il
+      // segnale giusto: nullo finché non ha mai impostato una password.
       const { data: authUser } = await admin.auth.admin.getUserById(userId);
-      const needsActivation = !authUser?.user?.email_confirmed_at;
+      const needsActivation = isAccountNuovo || !authUser?.user?.email_confirmed_at;
       if (needsActivation) justCreatedEmail = email;
     }
 
