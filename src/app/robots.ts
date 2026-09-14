@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
-import { ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
+import { BASE_URL, ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
   // src/proxy.ts risolve già la zona (hostname reale in produzione,
@@ -20,7 +20,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   if (zone === "ecommerce" && recognized) {
     return {
       rules: { userAgent: "*", allow: "/" },
-      sitemap: "https://app.omniaitalia.com/sitemap.xml",
+      sitemap: `${BASE_URL}/sitemap.xml`,
     };
   }
 

@@ -9,6 +9,20 @@ export type Zone = "ecommerce" | "omnia-ai" | "console";
 
 export const ECOMMERCE_HOST = "app.omniaitalia.com";
 
+// Dominio base per URL assoluti generati lato server (sitemap.xml,
+// robots.txt). NEXT_PUBLIC_SITE_URL segue l'ambiente corrente, ma se in
+// produzione restasse dimenticata al valore di sviluppo si finirebbe per
+// mandare ai crawler URL http://localhost:3000 — si usa quindi solo se
+// sembra davvero un dominio pubblico (https, non "localhost"), altrimenti
+// si ricade sull'host e-commerce reale.
+function isPublicSiteUrl(value: string | undefined): value is string {
+  return !!value && value.startsWith("https://") && !value.includes("localhost");
+}
+
+export const BASE_URL = isPublicSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
+  ? process.env.NEXT_PUBLIC_SITE_URL
+  : `https://${ECOMMERCE_HOST}`;
+
 // Un host non in questa mappa (dominio tecnico *.vercel.app incluso)
 // ricade sulla zona "ecommerce" per il ROUTING (comportamento identico a
 // oggi, non deve rompersi nulla) — ma NON per l'indicizzazione: vedere
