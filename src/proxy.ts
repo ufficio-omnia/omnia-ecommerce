@@ -60,16 +60,16 @@ export async function proxy(request: NextRequest) {
     return sessionResponse;
   }
 
-  // robots.txt e sitemap.xml devono restare raggiungibili al path
-  // canonico su qualunque dominio: ragionano da soli sulla zona (vedi
-  // src/app/robots.ts, sitemap.ts) e un crawler non li cercherebbe mai
-  // sotto un prefisso di zona.
-  const isSeoExemptPath = ZONE_REWRITE_EXEMPT_PATHS.includes(request.nextUrl.pathname);
+  // robots.txt/sitemap.xml (path canonico per i crawler) e /auth/callback
+  // (route reale unica, non duplicata per zona) devono restare
+  // raggiungibili senza prefisso — vedi il commento su
+  // ZONE_REWRITE_EXEMPT_PATHS in src/lib/zone.ts.
+  const isZoneRewriteExempt = ZONE_REWRITE_EXEMPT_PATHS.includes(request.nextUrl.pathname);
 
   let response: NextResponse;
 
   if (
-    !isSeoExemptPath &&
+    !isZoneRewriteExempt &&
     zone === "ecommerce" &&
     RESERVED_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix))
   ) {
@@ -78,7 +78,7 @@ export async function proxy(request: NextRequest) {
     // mano da app.omniaitalia.com.
     response = NextResponse.rewrite(new URL(ZONE_GUARD_NOT_FOUND_PATH, request.url), { request: requestInit });
   } else if (
-    !isSeoExemptPath &&
+    !isZoneRewriteExempt &&
     zone !== "ecommerce" &&
     !request.nextUrl.pathname.startsWith(ZONE_PREFIX[zone])
   ) {
