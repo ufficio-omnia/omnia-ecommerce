@@ -45,9 +45,18 @@ export default async function PianiPage() {
                     <li key={v}>{v}</li>
                   ))}
                 </ul>
-                <Link className={`omnia-btn ${p.inEvidenza ? "omnia-btn-p" : "omnia-btn-s"}`} href="/demo">
-                  Richiedi la demo
-                </Link>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+                  <Link
+                    className={`omnia-btn ${p.inEvidenza ? "omnia-btn-p" : "omnia-btn-s"}`}
+                    href={`/abbonati/${p.slug}`}
+                    style={{ textAlign: "center" }}
+                  >
+                    Abbonati
+                  </Link>
+                  <Link href="/demo" className="micro">
+                    Richiedi una demo
+                  </Link>
+                </div>
               </div>
             );
           })}

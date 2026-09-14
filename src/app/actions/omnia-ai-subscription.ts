@@ -24,8 +24,6 @@ export async function startOmniaAiSubscriptionCheckout(
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user || !user.email) return { error: "Sessione scaduta, ricarica la pagina." };
-
   const planSlug = String(formData.get("planSlug") ?? "");
   if (!(planSlug in PIANI)) return { error: "Piano non valido." };
   const piano = PIANI[planSlug as PianoSlug];
@@ -38,11 +36,50 @@ export async function startOmniaAiSubscriptionCheckout(
   const acceptanceError = validateOmniaAiAcceptance(acceptance);
   if (acceptanceError) return { error: acceptanceError };
 
-  if (await hasActiveSubscription(user.id)) {
-    return { error: "Hai già un abbonamento attivo." };
-  }
-
   const admin = createAdminClient();
+
+  let email: string;
+  let userId: string | null = null;
+
+  if (user) {
+    // Autenticato: l'email è quella della sessione, MAI quella
+    // eventualmente inviata dal form — la regola "non modificabile" si
+    // applica qui, nel controllo server, non nella UI (un campo
+    // disabilitato nel browser non impedisce a nessuno di inviare
+    // comunque un valore diverso).
+    if (!user.email) return { error: "Sessione non valida: ricarica la pagina." };
+    email = user.email;
+    userId = user.id;
+
+    if (await hasActiveSubscription(userId)) {
+      return { error: "Hai già un abbonamento attivo." };
+    }
+  } else {
+    // Anonimo: qui, e solo qui, l'email inserita nel form è la fonte —
+    // non esiste una sessione da cui derivarla.
+    email = String(formData.get("email") ?? "").trim().toLowerCase();
+    if (!email) return { error: "Inserisci un indirizzo email." };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { error: "Indirizzo email non valido." };
+    }
+
+    // Guardia anti-doppio-abbonamento: se l'email corrisponde a un
+    // account che ha già un abbonamento attivo, il pagamento non deve
+    // dare luogo a un secondo abbonamento — un cliente distratto non
+    // deve ritrovarsi con due addebiti mensili sullo stesso servizio.
+    const { data: existingUser } = await admin
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle<{ id: string }>();
+
+    if (existingUser && (await hasActiveSubscription(existingUser.id, admin))) {
+      return {
+        error:
+          "Esiste già un abbonamento attivo per questa email. Accedi al tuo account per gestirlo.",
+      };
+    }
+  }
 
   const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
   if (!legalDocuments) {
@@ -59,9 +96,11 @@ export async function startOmniaAiSubscriptionCheckout(
   const origin = await getOmniaAiRequestOrigin();
   const stripe = createStripeClient();
 
-  const metadata = {
+  // userId assente nei metadata = percorso anonimo: il webhook lo
+  // riconosce da qui e risolve/crea l'account per email, esattamente
+  // come il checkout carta e-commerce.
+  const metadata: Record<string, string> = {
     tipo: "omnia_ai_abbonamento",
-    userId: user.id,
     planSlug,
     acceptCondizioniPrivacy: String(acceptance.condizioniEPrivacy),
     acceptClausoleSpecifiche: String(acceptance.clausoleSpecifiche),
@@ -73,12 +112,13 @@ export async function startOmniaAiSubscriptionCheckout(
     privacyPolicyDocId: legalDocuments.privacyPolicy.id,
     privacyPolicyVersion: String(legalDocuments.privacyPolicy.version),
   };
+  if (userId) metadata.userId = userId;
 
   let session;
   try {
     session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer_email: user.email,
+      customer_email: email,
       billing_address_collection: "required",
       tax_id_collection: { enabled: true },
       line_items: [
@@ -95,12 +135,22 @@ export async function startOmniaAiSubscriptionCheckout(
       // Scritta sia qui (letta da checkout.session.completed) sia su
       // subscription_data.metadata (letta da customer.subscription.*,
       // che non porta i metadata della sessione): nessuno dei due
-      // webhook può restare senza userId, qualunque sia l'ordine di
-      // arrivo degli eventi.
+      // webhook può restare senza userId (quando presente), qualunque
+      // sia l'ordine di arrivo degli eventi.
       subscription_data: { metadata },
       metadata,
-      success_url: `${origin}/dashboard/omnia-ai?abbonamento=attivato`,
-      cancel_url: `${origin}/dashboard/omnia-ai`,
+      // Autenticato: torna in dashboard, dove lo stato attivo sarà già
+      // visibile appena il webhook ha processato l'evento. Anonimo: la
+      // dashboard richiederebbe un login che il cliente non ha ancora —
+      // pagina dedicata che spiega il passo successivo (email di
+      // attivazione, o accesso diretto se l'account esisteva già). In
+      // caso di annullamento, l'anonimo torna alla stessa pagina piano
+      // da cui è partito (indirizzo pensato per essere condiviso), non
+      // a una dashboard a cui non può comunque accedere.
+      success_url: userId
+        ? `${origin}/dashboard/omnia-ai?abbonamento=attivato`
+        : `${origin}/abbonamento-attivato`,
+      cancel_url: userId ? `${origin}/dashboard/omnia-ai` : `${origin}/abbonati/${planSlug}`,
     });
   } catch (err) {
     console.error("Errore creazione sessione Stripe (abbonamento AI):", err);

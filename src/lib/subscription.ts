@@ -1,7 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 
-export async function hasActiveSubscription(userId: string): Promise<boolean> {
-  const supabase = await createClient();
+// Client opzionale: di default quello di sessione, corretto quando si
+// controlla l'abbonamento dell'utente CORRENTE (la RLS "subscriptions_
+// select_own" lo permette naturalmente, auth.uid() coincide con
+// user_id). Serve però anche poter controllare l'abbonamento di un
+// ALTRO utente — es. la guardia anti-doppio-abbonamento nel checkout
+// anonimo, che verifica un'email diversa dalla sessione corrente (che
+// potrebbe non esistere affatto): lì la RLS bloccherebbe silenziosamente
+// la select (0 righe, mai un errore) restituendo sempre "false" anche
+// quando un abbonamento attivo esiste davvero — bug osservato in
+// pratica. Il chiamante passa in quel caso il client admin.
+export async function hasActiveSubscription(
+  userId: string,
+  client?: Awaited<ReturnType<typeof createClient>>,
+): Promise<boolean> {
+  const supabase = client ?? (await createClient());
 
   const { data } = await supabase
     .from("subscriptions")

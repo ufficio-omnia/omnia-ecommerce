@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
 import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
+import { getOmniaAiBaseUrl } from "@/lib/omnia-ai-request";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -295,12 +296,11 @@ function mapStripeSubscriptionStatus(
 
 async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session) {
   const metadata = session.metadata;
-  const userId = metadata?.userId;
   const planSlug = metadata?.planSlug;
   const stripeSubscriptionId =
     typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
 
-  if (!userId || !planSlug || !stripeSubscriptionId) {
+  if (!planSlug || !stripeSubscriptionId) {
     console.error(
       "Webhook Stripe (abbonamento AI): dati mancanti nella sessione",
       session.id,
@@ -316,16 +316,67 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
   // esistente) non deve limitarsi a saltare tutto se la riga subscriptions
   // esiste già. Va comunque ritentata la registrazione delle accettazioni
   // legali: perderla in modo permanente per un problema temporaneo non è
-  // accettabile su un dato che prova il consenso contrattuale.
+  // accettabile su un dato che prova il consenso contrattuale. Se la riga
+  // esiste già, anche user_id viene da lì — mai da metadata, che per il
+  // percorso anonimo non lo porta affatto.
   const { data: existing } = await admin
     .from("subscriptions")
-    .select("id")
+    .select("id, user_id")
     .eq("stripe_subscription_id", stripeSubscriptionId)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{ id: string; user_id: string }>();
 
   let subscriptionRowId = existing?.id;
+  let userId = existing?.user_id ?? metadata?.userId;
+
+  // Attivazione dell'account inviata SOLO al momento della creazione
+  // (mai su un evento rielaborato: l'account a quel punto esiste già,
+  // rimandare la stessa email non avrebbe senso).
+  let justCreatedEmail: string | null = null;
 
   if (!subscriptionRowId) {
+    if (!userId) {
+      // Percorso anonimo: nessun account già collegato in metadata —
+      // stesso identico schema di handleCheckoutCompleted sopra
+      // (e-commerce), crea l'account se non esiste, altrimenti lo trova.
+      const email = session.customer_email?.trim().toLowerCase();
+      if (!email) {
+        console.error(
+          "Webhook Stripe (abbonamento AI): email mancante per il percorso anonimo",
+          session.id,
+        );
+        return;
+      }
+
+      const { error: createError } = await admin.auth.admin.createUser({
+        email,
+        email_confirm: false,
+      });
+
+      if (createError && !/already.*registered|already exists/i.test(createError.message)) {
+        console.error("Webhook Stripe (abbonamento AI): errore creazione account", createError);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await admin
+        .from("users")
+        .select("id")
+        .eq("email", email)
+        .single<{ id: string }>();
+
+      if (profileError || !profile) {
+        console.error("Webhook Stripe (abbonamento AI): errore recupero profilo", profileError);
+        return;
+      }
+
+      userId = profile.id;
+
+      const { data: authUser } = await admin.auth.admin.getUserById(userId);
+      const needsActivation = !authUser?.user?.email_confirmed_at;
+      if (needsActivation) justCreatedEmail = email;
+    }
+
+    if (!userId) return;
+
     // Mai fidarsi solo del payload dell'evento per stato/periodo: si
     // rilegge la subscription da Stripe. items.data[0] perché c'è sempre
     // un solo line item (un piano, quantity 1) — current_period_start/end
@@ -356,7 +407,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     subscriptionRowId = sub.id;
   }
 
-  if (!subscriptionRowId) return;
+  if (!subscriptionRowId || !userId) return;
 
   const {
     condizioniAbbonamentoDocId,
@@ -403,6 +454,25 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
       "Webhook Stripe (abbonamento AI): metadata accettazioni legali mancanti per l'abbonamento",
       subscriptionRowId,
     );
+  }
+
+  // Stesso link di attivazione già usato dalla registrazione libera
+  // (registerOmniaAi) e, nell'e-commerce, dal checkout carta: qui
+  // costruito con getOmniaAiBaseUrl, non getOmniaAiRequestOrigin — un
+  // webhook arriva dai server di Stripe, non c'è una richiesta del
+  // cliente da cui derivare l'host.
+  if (justCreatedEmail) {
+    const baseUrl = getOmniaAiBaseUrl();
+    const { error: otpError } = await admin.auth.signInWithOtp({
+      email: justCreatedEmail,
+      options: {
+        emailRedirectTo: `${baseUrl}/auth/callback?next=/imposta-password`,
+      },
+    });
+
+    if (otpError) {
+      console.error("Webhook Stripe (abbonamento AI): errore invio email di attivazione", otpError);
+    }
   }
 }
 
