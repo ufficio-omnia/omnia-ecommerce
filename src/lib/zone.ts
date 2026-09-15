@@ -49,7 +49,15 @@ export const RESERVED_PREFIXES = Object.values(ZONE_PREFIX);
 // leggendo host/cookie internamente: qui basta escluderli dal rewrite di
 // zona, non dal resto (restano comunque fuori zona "ecommerce" per
 // qualunque altro path).
-export const ZONE_REWRITE_EXEMPT_PATHS = ["/robots.txt", "/sitemap.xml"];
+//
+// /auth/callback è nella stessa lista per un motivo diverso ma analogo:
+// è la route reale a cui Supabase rimanda dopo un magic link/reset
+// password (src/app/auth/callback/route.ts, unica per tutte le zone, non
+// duplicata sotto site-omnia-ai). Senza l'esenzione, un'email generata
+// dalla zona omnia-ai.it (registrazione, reimpostazione password)
+// produrrebbe un link che rientra riscritto su /site-omnia-ai/auth/
+// callback — un percorso che non esiste — invece di essere gestito qui.
+export const ZONE_REWRITE_EXEMPT_PATHS = ["/robots.txt", "/sitemap.xml", "/auth/callback"];
 
 // Cookie di override SOLO sviluppo (mai letto/scritto in produzione):
 // permette di provare le tre zone da localhost, dove l'hostname reale

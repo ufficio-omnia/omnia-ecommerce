@@ -1,23 +1,13 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createStripeClient } from "@/lib/stripe";
 import { hasActiveSubscription } from "@/lib/subscription";
 import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
+import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 
 export type OmniaAiCreditsCheckoutState = { error?: string };
-
-// Stessa ragione della gemella in omnia-ai-subscription.ts: mai
-// NEXT_PUBLIC_SITE_URL (dominio e-commerce), sempre l'host della
-// richiesta corrente — questa azione parte sempre dalla zona omnia-ai.it.
-async function getRequestOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 // Acquisto una tantum (mode:"payment", non subscription) riservato a chi
 // ha già un abbonamento attivo: i crediti si estinguono con la
@@ -44,7 +34,7 @@ export async function startOmniaAiCreditsCheckout(
     return { error: "L'acquisto di crediti aggiuntivi è riservato a chi ha un abbonamento attivo." };
   }
 
-  const origin = await getRequestOrigin();
+  const origin = await getOmniaAiRequestOrigin();
   const stripe = createStripeClient();
 
   let session;

@@ -1,6 +1,5 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -13,23 +12,9 @@ import {
 } from "@/lib/omnia-ai-legal";
 import { getRequestMeta } from "@/lib/legal-acceptance";
 import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
+import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 
 export type OmniaAiCheckoutState = { error?: string };
-
-// Costruita dall'host della richiesta corrente, MAI da
-// NEXT_PUBLIC_SITE_URL: quella costante è quella dell'e-commerce
-// (app.omniaitalia.com), userla qui reindirizzerebbe al dominio
-// sbagliato — il checkout di un abbonamento OMNIA AI parte sempre dalla
-// zona omnia-ai.it. In sviluppo la zona è risolta via cookie da
-// src/proxy.ts: un percorso "di zona" (senza prefisso /site-omnia-ai,
-// stesso stile di ogni altro Link in questa area) funziona identico in
-// entrambi gli ambienti.
-async function getRequestOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export async function startOmniaAiSubscriptionCheckout(
   _prevState: OmniaAiCheckoutState,
@@ -71,7 +56,7 @@ export async function startOmniaAiSubscriptionCheckout(
   const { ip, userAgent } = await getRequestMeta();
   const acceptedAt = new Date().toISOString();
 
-  const origin = await getRequestOrigin();
+  const origin = await getOmniaAiRequestOrigin();
   const stripe = createStripeClient();
 
   const metadata = {
@@ -222,7 +207,7 @@ export async function openOmniaAiBillingPortal(_prevState: { error?: string }, _
     await admin.from("subscriptions").update({ stripe_customer_id: customerId }).eq("id", subscription.id);
   }
 
-  const origin = await getRequestOrigin();
+  const origin = await getOmniaAiRequestOrigin();
 
   let portalSession;
   try {

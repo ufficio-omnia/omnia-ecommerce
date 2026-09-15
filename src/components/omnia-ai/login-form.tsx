@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { loginOmniaAi, type OmniaAiAuthState } from "@/app/actions/omnia-ai-auth";
 
 const initialState: OmniaAiAuthState = {};
@@ -35,6 +36,10 @@ export default function OmniaAiLoginForm() {
       <button type="submit" className="omnia-btn omnia-btn-p" disabled={pending}>
         {pending ? "Accesso in corso…" : "Accedi"}
       </button>
+
+      <p className="micro" style={{ marginTop: 16 }}>
+        Non hai un account? <Link href="/registrati">Registrati</Link>
+      </p>
     </form>
   );
 }
