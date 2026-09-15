@@ -343,6 +343,8 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     const stripe = createStripeClient();
     const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
     const item = subscription.items.data[0];
+    const stripeCustomerId =
+      typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
     const { data: sub, error: subError } = await admin
       .from("subscriptions")
@@ -351,6 +353,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
         plan: planSlug,
         status: mapStripeSubscriptionStatus(subscription.status),
         stripe_subscription_id: stripeSubscriptionId,
+        stripe_customer_id: stripeCustomerId,
         current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
         current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
         cancel_at_period_end: subscription.cancel_at_period_end,
@@ -438,13 +441,38 @@ async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscriptio
 async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscription) {
   const admin = createAdminClient();
 
-  const { error } = await admin
+  const { data: sub, error } = await admin
     .from("subscriptions")
     .update({ status: "annullato", cancel_at_period_end: false })
-    .eq("stripe_subscription_id", subscription.id);
+    .eq("stripe_subscription_id", subscription.id)
+    .select("user_id")
+    .maybeSingle<{ user_id: string }>();
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore cancellazione subscription", error);
+    return;
+  }
+
+  // I crediti aggiuntivi residui si estinguono con la cessazione, senza
+  // diritto a riattivazione successiva (clausola 5/8 delle condizioni di
+  // abbonamento): azzerati qui, al momento in cui Stripe conferma che
+  // l'abbonamento è davvero terminato — non al 30° giorno (troppo tardi,
+  // un cliente potrebbe riabbonarsi ben prima e ritrovarseli ancora
+  // spendibili) né alla sola richiesta di disdetta (troppo presto, resta
+  // pienamente utilizzabile fino alla fine del periodo pagato). Il job
+  // di cancellazione automatica a 30 giorni ripete comunque questo
+  // azzeramento come rete di sicurezza, nel caso questo evento non
+  // arrivi mai (es. impostazioni di riaddebito Stripe diverse da "Cancel
+  // the subscription").
+  if (sub?.user_id) {
+    const { error: creditiError } = await admin
+      .from("credits")
+      .update({ balance: 0 })
+      .eq("user_id", sub.user_id);
+
+    if (creditiError) {
+      console.error("Webhook Stripe (abbonamento AI): errore azzeramento crediti", creditiError);
+    }
   }
 }
 
