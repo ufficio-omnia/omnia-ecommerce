@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
 import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
+import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -55,6 +56,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // raccoglie Stripe). Il ramo e-commerce sotto resta invariato.
   if (session.metadata?.tipo === "omnia_ai_abbonamento") {
     await handleOmniaAiSubscriptionCheckoutCompleted(session);
+    return;
+  }
+
+  // Stesso discriminatore, per l'acquisto una tantum di crediti
+  // aggiuntivi (mode:"payment", non subscription): nessun productId né
+  // dati di fatturazione propri, li raccoglie lo stesso checkout
+  // dell'abbonamento a monte.
+  if (session.metadata?.tipo === "omnia_ai_crediti") {
+    await handleOmniaAiCreditsCheckoutCompleted(session);
     return;
   }
 
@@ -435,5 +445,66 @@ async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscriptio
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore cancellazione subscription", error);
+  }
+}
+
+async function handleOmniaAiCreditsCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const metadata = session.metadata;
+  const userId = metadata?.userId;
+  const pacchettoSlug = metadata?.pacchetto;
+
+  if (!userId || !pacchettoSlug || !(pacchettoSlug in PACCHETTI_CREDITI)) {
+    console.error(
+      "Webhook Stripe (crediti AI): dati mancanti o pacchetto non valido nella sessione",
+      session.id,
+    );
+    return;
+  }
+
+  const pacchetto = PACCHETTI_CREDITI[pacchettoSlug as PacchettoCreditiSlug];
+  const admin = createAdminClient();
+
+  // Idempotenza: Stripe può reinviare lo stesso evento più volte — stesso
+  // meccanismo già usato per orders.stripe_session_id nel ramo
+  // e-commerce. La riga qui sotto è anche il registro delle ricariche
+  // richiesto per la tappa 6 (data di acquisto compresa).
+  const { data: existing } = await admin
+    .from("omnia_ai_credit_purchases")
+    .select("id")
+    .eq("stripe_session_id", session.id)
+    .maybeSingle<{ id: string }>();
+
+  if (existing) return;
+
+  const importoCentesimi = session.amount_total ?? pacchetto.prezzoCentesimi;
+
+  const { error: insertError } = await admin.from("omnia_ai_credit_purchases").insert({
+    user_id: userId,
+    pacchetto: pacchettoSlug,
+    crediti: pacchetto.crediti,
+    importo_centesimi: importoCentesimi,
+    stripe_session_id: session.id,
+  });
+
+  if (insertError) {
+    // Violazione unique(stripe_session_id): un'altra consegna concorrente
+    // dello stesso evento ha già registrato questa ricarica — idempotente,
+    // non incrementiamo il saldo una seconda volta.
+    if (insertError.code === "23505") return;
+    console.error("Webhook Stripe (crediti AI): errore registrazione ricarica", insertError);
+    return;
+  }
+
+  // Incremento atomico (insert...on conflict dentro la funzione, non una
+  // lettura+scrittura qui): protegge anche dalla ricarica concorrente di
+  // un pacchetto DIVERSO per lo stesso cliente, un caso che il solo
+  // vincolo unique sopra non copre.
+  const { error: incrementError } = await admin.rpc("increment_credits", {
+    p_user_id: userId,
+    p_amount: pacchetto.crediti,
+  });
+
+  if (incrementError) {
+    console.error("Webhook Stripe (crediti AI): errore incremento saldo crediti", incrementError);
   }
 }
