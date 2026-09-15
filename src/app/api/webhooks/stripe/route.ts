@@ -6,6 +6,7 @@ import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
 import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
 import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
+import { pianoDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -43,6 +44,15 @@ export async function POST(request: NextRequest) {
       break;
     case "customer.subscription.deleted":
       await handleOmniaAiSubscriptionDeleted(event.data.object as Stripe.Subscription);
+      break;
+    // Cambio piano programmato (downgrade, mai immediato): questi tre
+    // eventi coprono la creazione della schedule, ogni sua modifica (compresa
+    // l'entrata nella nuova fase, che aggiorna anche la Subscription — vedi
+    // sopra) e l'annullamento prima che scatti.
+    case "subscription_schedule.created":
+    case "subscription_schedule.updated":
+    case "subscription_schedule.released":
+      await handleOmniaAiSubscriptionScheduleEvent(event.data.object as Stripe.SubscriptionSchedule);
       break;
   }
 
@@ -343,6 +353,8 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     const stripe = createStripeClient();
     const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
     const item = subscription.items.data[0];
+    const stripeCustomerId =
+      typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
     const { data: sub, error: subError } = await admin
       .from("subscriptions")
@@ -351,6 +363,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
         plan: planSlug,
         status: mapStripeSubscriptionStatus(subscription.status),
         stripe_subscription_id: stripeSubscriptionId,
+        stripe_customer_id: stripeCustomerId,
         current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
         current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
         cancel_at_period_end: subscription.cancel_at_period_end,
@@ -420,15 +433,24 @@ async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscriptio
   const admin = createAdminClient();
   const item = subscription.items.data[0];
 
-  const { error } = await admin
-    .from("subscriptions")
-    .update({
-      status: mapStripeSubscriptionStatus(subscription.status),
-      current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
-      current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
-      cancel_at_period_end: subscription.cancel_at_period_end,
-    })
-    .eq("stripe_subscription_id", subscription.id);
+  const update: Record<string, unknown> = {
+    status: mapStripeSubscriptionStatus(subscription.status),
+    current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
+    current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
+    cancel_at_period_end: subscription.cancel_at_period_end,
+  };
+
+  // item.price arriva già espanso (non solo l'id) sugli item di una
+  // Subscription: nessuna chiamata aggiuntiva a Stripe serve per
+  // risalire al piano. Un cambio piano (upgrade immediato, o l'entrata
+  // nella nuova fase di un downgrade programmato) passa sempre da qui —
+  // è l'unico punto che aggiorna subscriptions.plan dopo la creazione.
+  const pianoAggiornato = item ? pianoDaLookupKey(item.price.lookup_key) : null;
+  if (pianoAggiornato) {
+    update.plan = pianoAggiornato;
+  }
+
+  const { error } = await admin.from("subscriptions").update(update).eq("stripe_subscription_id", subscription.id);
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore aggiornamento subscription", error);
@@ -438,13 +460,101 @@ async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscriptio
 async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscription) {
   const admin = createAdminClient();
 
-  const { error } = await admin
+  const { data: sub, error } = await admin
     .from("subscriptions")
     .update({ status: "annullato", cancel_at_period_end: false })
-    .eq("stripe_subscription_id", subscription.id);
+    .eq("stripe_subscription_id", subscription.id)
+    .select("user_id")
+    .maybeSingle<{ user_id: string }>();
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore cancellazione subscription", error);
+    return;
+  }
+
+  // I crediti aggiuntivi residui si estinguono con la cessazione, senza
+  // diritto a riattivazione successiva (clausola 5/8 delle condizioni di
+  // abbonamento): azzerati qui, al momento in cui Stripe conferma che
+  // l'abbonamento è davvero terminato — non al 30° giorno (troppo tardi,
+  // un cliente potrebbe riabbonarsi ben prima e ritrovarseli ancora
+  // spendibili) né alla sola richiesta di disdetta (troppo presto, resta
+  // pienamente utilizzabile fino alla fine del periodo pagato). Il job
+  // di cancellazione automatica a 30 giorni ripete comunque questo
+  // azzeramento come rete di sicurezza, nel caso questo evento non
+  // arrivi mai (es. impostazioni di riaddebito Stripe diverse da "Cancel
+  // the subscription").
+  if (sub?.user_id) {
+    const { error: creditiError } = await admin
+      .from("credits")
+      .update({ balance: 0 })
+      .eq("user_id", sub.user_id);
+
+    if (creditiError) {
+      console.error("Webhook Stripe (abbonamento AI): errore azzeramento crediti", creditiError);
+    }
+  }
+}
+
+// Il cambio piano immediato (upgrade) passa dalla Subscription stessa
+// (vedi handleOmniaAiSubscriptionUpdated). Un downgrade invece è sempre
+// gestito da una Subscription Schedule a due fasi: questo handler legge
+// la fase successiva a quella corrente (se esiste) per capire se c'è un
+// cambio in programma, a quale piano e da quando — mai scritto
+// dall'azione che lo richiede, solo da qui.
+async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.SubscriptionSchedule) {
+  // Al rilascio Stripe svuota "subscription" e sposta l'id in
+  // "released_subscription" (la schedule non gestisce più nulla, ma
+  // l'abbonamento sottostante resta) — senza questo fallback l'evento
+  // "released" non troverebbe a chi appartiene, e piano_programmato
+  // resterebbe scritto per sempre dopo un annullamento.
+  const stripeSubscriptionId =
+    (typeof schedule.subscription === "string" ? schedule.subscription : schedule.subscription?.id) ??
+    schedule.released_subscription ??
+    undefined;
+
+  if (!stripeSubscriptionId) return;
+
+  const admin = createAdminClient();
+
+  let pianoProgrammato: string | null = null;
+  let pianoProgrammatoDa: string | null = null;
+
+  const rilasciata = schedule.status === "released" || schedule.status === "canceled";
+
+  if (!rilasciata && schedule.current_phase) {
+    // La fase che inizia esattamente dove finisce quella corrente: nel
+    // nostro modello a due fasi è sempre e solo l'eventuale downgrade
+    // programmato, non serve assumere un ordine nell'array.
+    const faseSuccessiva = schedule.phases.find((f) => f.start_date === schedule.current_phase!.end_date);
+    const itemSuccessivo = faseSuccessiva?.items[0];
+
+    if (itemSuccessivo) {
+      const priceId = typeof itemSuccessivo.price === "string" ? itemSuccessivo.price : itemSuccessivo.price.id;
+      try {
+        const stripe = createStripeClient();
+        const price = await stripe.prices.retrieve(priceId);
+        const slug = pianoDaLookupKey(price.lookup_key);
+        if (slug) {
+          pianoProgrammato = slug;
+          pianoProgrammatoDa = new Date(faseSuccessiva.start_date * 1000).toISOString();
+        }
+      } catch (err) {
+        console.error("Webhook Stripe (schedule AI): errore recupero prezzo fase successiva", err);
+      }
+    }
+  }
+
+  const { error } = await admin
+    .from("subscriptions")
+    .update({
+      stripe_schedule_id: rilasciata ? null : schedule.id,
+      piano_programmato: pianoProgrammato,
+      piano_programmato_da: pianoProgrammatoDa,
+    })
+    .eq("stripe_subscription_id", stripeSubscriptionId);
+
+  if (error) {
+    console.error("Webhook Stripe (schedule AI): errore aggiornamento subscription", error);
   }
 }
 

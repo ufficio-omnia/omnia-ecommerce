@@ -24,6 +24,7 @@ import {
   applicaMarcatoriTabellari,
   applicaSostituzioniAnonimizzazione,
 } from "@/lib/relazione-tecnica";
+import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 
 export type ChatState = { error?: string };
 
@@ -246,6 +247,9 @@ export async function sendGaraMessage(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
   const messaggio = String(formData.get("messaggio") ?? "").trim();

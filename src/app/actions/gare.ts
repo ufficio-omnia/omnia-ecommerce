@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { indexGaraDocumento, isIndexableFile } from "@/lib/gara-indexing";
 import { sanitizeFileName } from "@/lib/document-text";
+import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { collectGaraFilePaths, removeGaraFiles } from "@/lib/gara-storage";
 
 export type GaraState = { error?: string; warning?: string; duplicato?: string };
 
@@ -28,6 +30,9 @@ export async function createGara(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
 
   const titolo = String(formData.get("titolo") ?? "").trim();
   if (!titolo) return { error: "Inserisci un titolo per la gara." };
@@ -114,22 +119,20 @@ export async function deleteGara(
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
 
+  // In sola lettura una cancellazione è irreversibile senza alcun
+  // vantaggio per il cliente, che in quei 30 giorni sta salvando
+  // materiale che dopo non esisterà più — bloccata come le azioni che
+  // generano contenuto, non solo quelle.
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
+
   const garaId = String(formData.get("garaId") ?? "");
   if (!garaId) return { error: "Gara non valida." };
 
-  // Recuperiamo i percorsi dei file prima di eliminare la gara: le righe
-  // in "gara_documenti"/"gara_messaggi" vengono cancellate a cascata dal
-  // DB, ma i file nello storage no, vanno rimossi a parte. I documenti
-  // generati dall'AI in chat sono referenziati da gara_messaggi.file_path,
-  // non da gara_documenti.
-  const [{ data: docs }, { data: msgFiles }] = await Promise.all([
-    supabase.from("gara_documenti").select("file_path").eq("gara_id", garaId),
-    supabase
-      .from("gara_messaggi")
-      .select("file_path")
-      .eq("gara_id", garaId)
-      .not("file_path", "is", null),
-  ]);
+  // Recuperati prima di eliminare la gara: le righe che li referenziano
+  // (gara_documenti/gara_messaggi) vengono cancellate a cascata dal DB,
+  // ma i file nello storage no.
+  const filePaths = await collectGaraFilePaths(supabase, garaId);
 
   const { error } = await supabase.from("gare").delete().eq("id", garaId);
 
@@ -138,14 +141,7 @@ export async function deleteGara(
     return { error: "Errore nell'eliminazione della gara." };
   }
 
-  const filePaths = [...(docs ?? []), ...(msgFiles ?? [])]
-    .map((d) => d.file_path)
-    .filter((p): p is string => Boolean(p));
-
-  if (filePaths.length) {
-    const admin = createAdminClient();
-    await admin.storage.from("gare").remove(filePaths);
-  }
+  await removeGaraFiles(filePaths);
 
   redirect("/dashboard/omnia-ai/gare");
 }
@@ -160,6 +156,9 @@ export async function uploadGaraDocumento(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
   const file = formData.get("file") as File | null;
@@ -244,6 +243,11 @@ export async function removeGaraDocumento(
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
 
+  // Stessa ragione di deleteGara: in sola lettura è irreversibile senza
+  // alcun vantaggio per il cliente.
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
+
   const docId = String(formData.get("docId") ?? "");
   const garaId = String(formData.get("garaId") ?? "");
   if (!docId) return { error: "Documento non valido." };
@@ -293,6 +297,9 @@ export async function uploadGaraLogoCliente(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
   const file = formData.get("logo") as File | null;

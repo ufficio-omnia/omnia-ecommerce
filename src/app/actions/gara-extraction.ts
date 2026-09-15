@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
 import { consumeGaraQuotaIfNeeded } from "@/lib/gara-consumo";
+import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 
 export type ExtractionState = { error?: string; quotaEsaurita?: boolean };
 
@@ -112,6 +113,12 @@ export async function extractGaraData(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  // Vale anche per la rianalisi (gratuita per contratto, ma resta pur
+  // sempre l'avvio di una nuova generazione di contenuto): bloccata in
+  // sola lettura come ogni altra azione che genera contenuto.
+  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
   if (!garaId) return { error: "Gara non valida." };

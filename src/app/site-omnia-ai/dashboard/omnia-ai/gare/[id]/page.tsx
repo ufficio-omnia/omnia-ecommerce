@@ -39,6 +39,18 @@ export default async function GaraPage({
     redirect("/login");
   }
 
+  // Serve solo per proporre il confronto "credito o piano superiore" nel
+  // messaggio di quota esaurita (ExtractionSection): il gate vero e
+  // proprio resta in consumeGaraQuotaIfNeeded, invariato.
+  const { data: subscriptionAttiva } = await supabase
+    .from("subscriptions")
+    .select("plan")
+    .eq("user_id", user.id)
+    .eq("status", "attivo")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ plan: string }>();
+
   // La RLS ("gare_all_own") garantisce che questa query restituisca la
   // gara solo se appartiene all'utente corrente.
   const { data: gara, error: garaError } = await supabase
@@ -188,7 +200,7 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={gara} />
+      <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} />
 
       <ChatSection garaId={gara.id} messaggi={messaggi} />
     </div>

@@ -12,6 +12,7 @@ import {
   validateOmniaAiAcceptance,
 } from "@/lib/omnia-ai-legal";
 import { getRequestMeta } from "@/lib/legal-acceptance";
+import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
 
 export type OmniaAiCheckoutState = { error?: string };
 
@@ -43,7 +44,6 @@ export async function startOmniaAiSubscriptionCheckout(
 
   const planSlug = String(formData.get("planSlug") ?? "");
   if (!(planSlug in PIANI)) return { error: "Piano non valido." };
-  const piano = PIANI[planSlug as PianoSlug];
 
   const acceptance = {
     condizioniEPrivacy: formData.get("acceptCondizioniPrivacy") === "on",
@@ -89,6 +89,17 @@ export async function startOmniaAiSubscriptionCheckout(
     privacyPolicyVersion: String(legalDocuments.privacyPolicy.version),
   };
 
+  // Prezzo Stripe persistente (mai price_data creato al volo): un
+  // eventuale cambio piano futuro, programmato tramite Subscription
+  // Schedule, deve poter riferire lo stesso prezzo più volte nel tempo.
+  let priceId: string;
+  try {
+    priceId = await getStripePriceId(stripe, planSlug as PianoSlug);
+  } catch (err) {
+    console.error("Errore recupero prezzo Stripe (abbonamento AI):", err);
+    return { error: "Errore nell'avvio del pagamento. Riprova." };
+  }
+
   let session;
   try {
     session = await stripe.checkout.sessions.create({
@@ -96,17 +107,7 @@ export async function startOmniaAiSubscriptionCheckout(
       customer_email: user.email,
       billing_address_collection: "required",
       tax_id_collection: { enabled: true },
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: { name: `OMNIA AI — Piano ${piano.nome}` },
-            unit_amount: piano.prezzoCentesimi,
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: priceId, quantity: 1 }],
       // Scritta sia qui (letta da checkout.session.completed) sia su
       // subscription_data.metadata (letta da customer.subscription.*,
       // che non porta i metadata della sessione): nessuno dei due
@@ -131,11 +132,12 @@ export async function startOmniaAiSubscriptionCheckout(
 
 // Non tocca lo stato locale: quello arriva solo dal webhook
 // (customer.subscription.updated), mai da questa azione — stessa
-// disciplina "unica fonte di verità" del resto della Tappa 4. Nessuna
-// interfaccia la richiama ancora: arriverà con la pagina di gestione
-// abbonamento (Tappa 6), implementata già ora perché è nello scopo di
-// questa tappa.
-export async function cancelOmniaAiSubscription(): Promise<{ error?: string }> {
+// disciplina "unica fonte di verità" del resto della Tappa 4. Firma da
+// useActionState (prevState/formData ignorati, non servono: nessun campo
+// nel form di disdetta) per restare coerente con le altre azioni della
+// zona AI invocate da un form.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function cancelOmniaAiSubscription(_prevState: { error?: string }, _formData: FormData): Promise<{ error?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -169,4 +171,69 @@ export async function cancelOmniaAiSubscription(): Promise<{ error?: string }> {
   }
 
   return {};
+}
+
+// Apre il portale clienti Stripe (solo cambio metodo di pagamento e dati
+// di fatturazione, disdetta e cambio piano disattivati lì: li gestiamo
+// nel nostro flusso, non vogliamo due percorsi diversi per la stessa
+// cosa). stripe_customer_id manca sulle subscription create prima di
+// questa colonna: recuperato al volo da Stripe tramite
+// stripe_subscription_id e scritto qui per le volte successive.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function openOmniaAiBillingPortal(_prevState: { error?: string }, _formData: FormData): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+
+  const admin = createAdminClient();
+
+  const { data: subscription } = await admin
+    .from("subscriptions")
+    .select("id, stripe_subscription_id, stripe_customer_id")
+    .eq("user_id", user.id)
+    .eq("status", "attivo")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{
+      id: string;
+      stripe_subscription_id: string | null;
+      stripe_customer_id: string | null;
+    }>();
+
+  if (!subscription?.stripe_subscription_id) {
+    return { error: "Nessun abbonamento attivo trovato." };
+  }
+
+  const stripe = createStripeClient();
+  let customerId = subscription.stripe_customer_id;
+
+  if (!customerId) {
+    try {
+      const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+      customerId = typeof stripeSub.customer === "string" ? stripeSub.customer : stripeSub.customer.id;
+    } catch (err) {
+      console.error("Errore recupero customer Stripe per il portale:", err);
+      return { error: "Errore nell'apertura del portale pagamenti. Riprova." };
+    }
+
+    await admin.from("subscriptions").update({ stripe_customer_id: customerId }).eq("id", subscription.id);
+  }
+
+  const origin = await getRequestOrigin();
+
+  let portalSession;
+  try {
+    portalSession = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${origin}/dashboard/omnia-ai/abbonamento`,
+    });
+  } catch (err) {
+    console.error("Errore creazione sessione portale Stripe:", err);
+    return { error: "Errore nell'apertura del portale pagamenti. Riprova." };
+  }
+
+  redirect(portalSession.url);
 }
