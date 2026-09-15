@@ -45,6 +45,11 @@ export default async function PianiPage() {
                     <li key={v}>{v}</li>
                   ))}
                 </ul>
+                {/* TEMPORANEO: Stripe è in modalità di prova, "Abbonati"
+                    (verso /abbonati/[piano], pagamento diretto) resta
+                    pronto ma non collegato qui finché non si passa alla
+                    modalità live — nessun visitatore deve arrivare a un
+                    pagamento che non può davvero completare. */}
                 <Link className={`omnia-btn ${p.inEvidenza ? "omnia-btn-p" : "omnia-btn-s"}`} href="/demo">
                   Richiedi la demo
                 </Link>

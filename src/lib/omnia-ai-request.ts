@@ -14,3 +14,17 @@ export async function getOmniaAiRequestOrigin(): Promise<string> {
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto}://${host}`;
 }
+
+// Per contesti senza una richiesta del cliente da cui derivare l'host
+// (il webhook Stripe: le richieste arrivano dai server di Stripe, non
+// dal browser del cliente). NODE_ENV distingue sviluppo, dove tutte le
+// zone vivono sullo stesso localhost, da produzione, dove serve il
+// dominio reale — stesso identico bisogno già risolto per l'e-commerce
+// dalla costante "siteUrl" in cima al webhook, qui specifica per la
+// zona omnia-ai.it.
+export function getOmniaAiBaseUrl(): string {
+  if (process.env.NODE_ENV !== "production") {
+    return process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  }
+  return "https://omnia-ai.it";
+}
