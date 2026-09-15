@@ -19,18 +19,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing signature" }, { status: 400 });
   }
 
+  // Un solo endpoint, due account Stripe (e-commerce live, OMNIA AI di
+  // prova): la firma va verificata con IL secret giusto per chi ha
+  // davvero mandato l'evento, e non c'è modo di saperlo prima di
+  // verificarla. constructEvent è una verifica HMAC pura sul secret, non
+  // una chiamata API — funziona con qualunque client, il tentativo con
+  // l'altro secret dopo un fallimento non ha effetti collaterali.
   const stripe = createStripeClient();
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET!,
-    );
-  } catch (err) {
-    console.error("Firma webhook Stripe non valida:", err);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch {
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET_OMNIA_AI!);
+    } catch (err) {
+      console.error("Firma webhook Stripe non valida:", err);
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    }
   }
 
   switch (event.type) {
@@ -426,7 +432,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     // rilegge la subscription da Stripe. items.data[0] perché c'è sempre
     // un solo line item (un piano, quantity 1) — current_period_start/end
     // in Stripe non sono più sull'oggetto Subscription, vivono qui.
-    const stripe = createStripeClient();
+    const stripe = createStripeClient("omnia-ai");
     const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
     const item = subscription.items.data[0];
     const stripeCustomerId =
@@ -650,7 +656,7 @@ async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.Subscript
     if (itemSuccessivo) {
       const priceId = typeof itemSuccessivo.price === "string" ? itemSuccessivo.price : itemSuccessivo.price.id;
       try {
-        const stripe = createStripeClient();
+        const stripe = createStripeClient("omnia-ai");
         const price = await stripe.prices.retrieve(priceId);
         const slug = pianoDaLookupKey(price.lookup_key);
         if (slug) {

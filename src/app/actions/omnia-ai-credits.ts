@@ -35,7 +35,7 @@ export async function startOmniaAiCreditsCheckout(
   }
 
   const origin = await getOmniaAiRequestOrigin();
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
 
   let session;
   try {

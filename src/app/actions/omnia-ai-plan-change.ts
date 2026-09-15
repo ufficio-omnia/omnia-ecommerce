@@ -124,7 +124,7 @@ export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
     };
   }
 
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
 
   let stripeSub;
   let nuovoPriceId: string;
@@ -184,7 +184,7 @@ export async function confirmOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
   if ("error" in validazione) return validazione;
 
   const { subscription, pianoDestinazione, tipo } = validazione;
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
 
   let nuovoPriceId: string;
   try {
@@ -279,7 +279,7 @@ export async function cancelOmniaAiScheduledPlanChange(): Promise<{ error?: stri
     return { error: "Nessun cambio di piano programmato da annullare." };
   }
 
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
   try {
     await stripe.subscriptionSchedules.release(subscription.stripe_schedule_id);
   } catch (err) {

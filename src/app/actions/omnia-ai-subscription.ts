@@ -94,7 +94,7 @@ export async function startOmniaAiSubscriptionCheckout(
   const acceptedAt = new Date().toISOString();
 
   const origin = await getOmniaAiRequestOrigin();
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
 
   // userId assente nei metadata = percorso anonimo: il webhook lo
   // riconosce da qui e risolve/crea l'account per email, esattamente
@@ -195,7 +195,7 @@ export async function cancelOmniaAiSubscription(_prevState: { error?: string }, 
     return { error: "Nessun abbonamento attivo trovato." };
   }
 
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
   try {
     await stripe.subscriptions.update(subscription.stripe_subscription_id, {
       cancel_at_period_end: true,
@@ -242,7 +242,7 @@ export async function openOmniaAiBillingPortal(_prevState: { error?: string }, _
     return { error: "Nessun abbonamento attivo trovato." };
   }
 
-  const stripe = createStripeClient();
+  const stripe = createStripeClient("omnia-ai");
   let customerId = subscription.stripe_customer_id;
 
   if (!customerId) {
