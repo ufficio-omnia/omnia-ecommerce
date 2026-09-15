@@ -29,17 +29,19 @@ type Fase = "domanda" | "recupero" | "risposta" | "pausa";
 function useTypewriter(testo: string, attivo: boolean, velocita: number) {
   const [scritto, setScritto] = useState("");
   useEffect(() => {
-    if (!attivo) {
-      setScritto("");
-      return;
-    }
+    if (!attivo) return;
     let i = 0;
     const id = setInterval(() => {
       i++;
       setScritto(testo.slice(0, i));
       if (i >= testo.length) clearInterval(id);
     }, velocita);
-    return () => clearInterval(id);
+    // Il reset a "" vive nel cleanup (eseguito quando attivo torna
+    // falso o cambia testo), non nel corpo sincrono dell'effetto.
+    return () => {
+      clearInterval(id);
+      setScritto("");
+    };
   }, [testo, attivo, velocita]);
   return scritto;
 }
@@ -54,16 +56,22 @@ export default function ComeFunzionaDemo() {
   const domandaCompleta = fase !== "domanda" || domandaScritta.length === DOMANDA.length;
 
   useEffect(() => {
-    const ridotto = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (ridotto) {
-      setFase("risposta");
-      setFrammentiVisibili(FRAMMENTI.length);
-      setStato("pronto");
-      return;
-    }
-
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     const dopo = (fn: () => void, ms: number) => timeouts.push(setTimeout(fn, ms));
+
+    // Il salto diretto allo stato finale passa comunque da dopo(): un
+    // setState diretto nel corpo sincrono dell'effetto è l'anti-pattern
+    // che genera render a cascata, anche quando (come qui) il ritardo
+    // voluto è nullo.
+    const ridotto = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (ridotto) {
+      dopo(() => {
+        setFase("risposta");
+        setFrammentiVisibili(FRAMMENTI.length);
+        setStato("pronto");
+      }, 0);
+      return () => timeouts.forEach(clearTimeout);
+    }
 
     if (fase === "domanda" && domandaScritta.length === DOMANDA.length) {
       setStato("elaborazione");
