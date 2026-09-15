@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
 import {
   extractGaraData,
   type ExtractionState,
 } from "@/app/actions/gara-extraction";
+import QuotaEsauritaConfronto from "./quota-esaurita-confronto";
 
 const initialState: ExtractionState = {};
 
@@ -32,9 +32,11 @@ export type Estrazione = {
 export default function ExtractionSection({
   garaId,
   estrazione,
+  pianoAttuale,
 }: {
   garaId: string;
   estrazione: Estrazione;
+  pianoAttuale: string | null;
 }) {
   const [state, formAction, pending] = useActionState(
     extractGaraData,
@@ -62,15 +64,7 @@ export default function ExtractionSection({
       {state.error && (
         <div className="omnia-messaggio-stato errore">
           <p style={{ margin: 0 }}>{state.error}</p>
-          {state.quotaEsaurita && (
-            <Link
-              href="/dashboard/omnia-ai/abbonamento"
-              className="omnia-btn omnia-btn-s omnia-btn-piccolo"
-              style={{ marginTop: 10, display: "inline-block" }}
-            >
-              Acquista crediti o gestisci l&apos;abbonamento →
-            </Link>
-          )}
+          {state.quotaEsaurita && <QuotaEsauritaConfronto pianoAttuale={pianoAttuale} />}
         </div>
       )}
 

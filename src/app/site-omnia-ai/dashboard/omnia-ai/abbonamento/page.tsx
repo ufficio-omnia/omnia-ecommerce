@@ -8,6 +8,8 @@ import ActivateSubscriptionForm from "../activate-subscription-form";
 import AcquistaCreditiForm from "./acquista-crediti-form";
 import DisdiciAbbonamentoButton from "./disdici-abbonamento-button";
 import GestisciPagamentoButton from "./gestisci-pagamento-button";
+import CambiaPianoForm from "./cambia-piano-form";
+import AnnullaCambioPianoButton from "./annulla-cambio-piano-button";
 
 type SubscriptionRow = {
   id: string;
@@ -16,6 +18,8 @@ type SubscriptionRow = {
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   created_at: string;
+  piano_programmato: string | null;
+  piano_programmato_da: string | null;
 };
 
 type ConsumoRow = {
@@ -78,7 +82,9 @@ export default async function AbbonamentoPage() {
 
   const { data: subscription } = await supabase
     .from("subscriptions")
-    .select("id, plan, current_period_start, current_period_end, cancel_at_period_end, created_at")
+    .select(
+      "id, plan, current_period_start, current_period_end, cancel_at_period_end, created_at, piano_programmato, piano_programmato_da",
+    )
     .eq("user_id", user.id)
     .eq("status", "attivo")
     .order("created_at", { ascending: false })
@@ -121,8 +127,18 @@ export default async function AbbonamentoPage() {
     ? new Date(subscription.current_period_end).toLocaleDateString("it-IT")
     : null;
 
+  // In evidenza quando restano zero o una gara: è il momento in cui un
+  // upgrade ha più senso di un credito singolo, non va nascosto in
+  // fondo alla pagina insieme al resto.
+  const gareQuasiEsaurite = gareResidue <= 1;
+  const pianoRiconosciuto = (piano?.slug ?? null) as PianoSlug | null;
+
   return (
     <div className="omnia-app-shell">
+      <Link href="/dashboard/omnia-ai" className="omnia-torna">
+        ← Torna alla dashboard
+      </Link>
+
       <h1 className="omnia-app-titolo">Il tuo abbonamento</h1>
       <p className="omnia-app-sottotitolo">
         Piano {piano?.nome ?? subscription.plan}: consumo del periodo, crediti aggiuntivi e
@@ -140,7 +156,7 @@ export default async function AbbonamentoPage() {
             <div className="omnia-dato-etichetta">Prossimo rinnovo</div>
             <div className="omnia-dato-valore">{dataRinnovo ?? "—"}</div>
           </div>
-          <div className="omnia-dato">
+          <div className={`omnia-dato${gareQuasiEsaurite ? " ambra" : ""}`}>
             <div className="omnia-dato-etichetta">Gare incluse residue</div>
             <div className="omnia-dato-valore">
               {gareResidue} / {gareIncluse}
@@ -158,7 +174,47 @@ export default async function AbbonamentoPage() {
             disponibili fino all&apos;utilizzo, e comunque fino alla cessazione dell&apos;abbonamento.
           </p>
         )}
+        {gareQuasiEsaurite && pianoRiconosciuto && pianoRiconosciuto !== "enterprise" && (
+          <p className="omnia-messaggio-stato avviso" style={{ marginTop: 16 }}>
+            Le gare incluse in questo periodo sono quasi esaurite: valuta un passaggio a un piano
+            superiore qui sotto, oltre ai crediti aggiuntivi.
+          </p>
+        )}
       </section>
+
+      {pianoRiconosciuto && (
+        <section className="omnia-riquadro">
+          <span className="omnia-eyebrow">Cambia piano</span>
+
+          {subscription.piano_programmato ? (
+            <>
+              <p className="omnia-messaggio-stato avviso" style={{ marginTop: 12 }}>
+                Cambio a <strong>{PIANI[subscription.piano_programmato as PianoSlug]?.nome ?? subscription.piano_programmato}</strong>{" "}
+                programmato dal{" "}
+                {subscription.piano_programmato_da
+                  ? new Date(subscription.piano_programmato_da).toLocaleDateString("it-IT")
+                  : "prossimo rinnovo"}
+                . Fino ad allora resti su {piano?.nome ?? subscription.plan}, con le sue gare
+                residue.
+              </p>
+              <div style={{ marginTop: 12 }}>
+                <AnnullaCambioPianoButton />
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="omnia-riquadro-nota">
+                Un passaggio a un piano superiore è immediato, con conguaglio addebitato subito. Un
+                passaggio a un piano inferiore decorre dal prossimo rinnovo, mai a metà di un
+                periodo già pagato.
+              </p>
+              <div style={{ marginTop: 12 }}>
+                <CambiaPianoForm pianoAttuale={pianoRiconosciuto} />
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       <section className="omnia-riquadro">
         <span className="omnia-eyebrow">Acquista crediti aggiuntivi</span>

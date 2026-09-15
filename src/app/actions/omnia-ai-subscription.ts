@@ -12,6 +12,7 @@ import {
   validateOmniaAiAcceptance,
 } from "@/lib/omnia-ai-legal";
 import { getRequestMeta } from "@/lib/legal-acceptance";
+import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
 
 export type OmniaAiCheckoutState = { error?: string };
 
@@ -43,7 +44,6 @@ export async function startOmniaAiSubscriptionCheckout(
 
   const planSlug = String(formData.get("planSlug") ?? "");
   if (!(planSlug in PIANI)) return { error: "Piano non valido." };
-  const piano = PIANI[planSlug as PianoSlug];
 
   const acceptance = {
     condizioniEPrivacy: formData.get("acceptCondizioniPrivacy") === "on",
@@ -89,6 +89,17 @@ export async function startOmniaAiSubscriptionCheckout(
     privacyPolicyVersion: String(legalDocuments.privacyPolicy.version),
   };
 
+  // Prezzo Stripe persistente (mai price_data creato al volo): un
+  // eventuale cambio piano futuro, programmato tramite Subscription
+  // Schedule, deve poter riferire lo stesso prezzo più volte nel tempo.
+  let priceId: string;
+  try {
+    priceId = await getStripePriceId(stripe, planSlug as PianoSlug);
+  } catch (err) {
+    console.error("Errore recupero prezzo Stripe (abbonamento AI):", err);
+    return { error: "Errore nell'avvio del pagamento. Riprova." };
+  }
+
   let session;
   try {
     session = await stripe.checkout.sessions.create({
@@ -96,17 +107,7 @@ export async function startOmniaAiSubscriptionCheckout(
       customer_email: user.email,
       billing_address_collection: "required",
       tax_id_collection: { enabled: true },
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: { name: `OMNIA AI — Piano ${piano.nome}` },
-            unit_amount: piano.prezzoCentesimi,
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: priceId, quantity: 1 }],
       // Scritta sia qui (letta da checkout.session.completed) sia su
       // subscription_data.metadata (letta da customer.subscription.*,
       // che non porta i metadata della sessione): nessuno dei due

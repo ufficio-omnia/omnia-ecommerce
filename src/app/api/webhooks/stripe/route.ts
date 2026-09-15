@@ -6,6 +6,7 @@ import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
 import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
 import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
+import { pianoDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -43,6 +44,15 @@ export async function POST(request: NextRequest) {
       break;
     case "customer.subscription.deleted":
       await handleOmniaAiSubscriptionDeleted(event.data.object as Stripe.Subscription);
+      break;
+    // Cambio piano programmato (downgrade, mai immediato): questi tre
+    // eventi coprono la creazione della schedule, ogni sua modifica (compresa
+    // l'entrata nella nuova fase, che aggiorna anche la Subscription — vedi
+    // sopra) e l'annullamento prima che scatti.
+    case "subscription_schedule.created":
+    case "subscription_schedule.updated":
+    case "subscription_schedule.released":
+      await handleOmniaAiSubscriptionScheduleEvent(event.data.object as Stripe.SubscriptionSchedule);
       break;
   }
 
@@ -423,15 +433,24 @@ async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscriptio
   const admin = createAdminClient();
   const item = subscription.items.data[0];
 
-  const { error } = await admin
-    .from("subscriptions")
-    .update({
-      status: mapStripeSubscriptionStatus(subscription.status),
-      current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
-      current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
-      cancel_at_period_end: subscription.cancel_at_period_end,
-    })
-    .eq("stripe_subscription_id", subscription.id);
+  const update: Record<string, unknown> = {
+    status: mapStripeSubscriptionStatus(subscription.status),
+    current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
+    current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
+    cancel_at_period_end: subscription.cancel_at_period_end,
+  };
+
+  // item.price arriva già espanso (non solo l'id) sugli item di una
+  // Subscription: nessuna chiamata aggiuntiva a Stripe serve per
+  // risalire al piano. Un cambio piano (upgrade immediato, o l'entrata
+  // nella nuova fase di un downgrade programmato) passa sempre da qui —
+  // è l'unico punto che aggiorna subscriptions.plan dopo la creazione.
+  const pianoAggiornato = item ? pianoDaLookupKey(item.price.lookup_key) : null;
+  if (pianoAggiornato) {
+    update.plan = pianoAggiornato;
+  }
+
+  const { error } = await admin.from("subscriptions").update(update).eq("stripe_subscription_id", subscription.id);
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore aggiornamento subscription", error);
@@ -473,6 +492,69 @@ async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscriptio
     if (creditiError) {
       console.error("Webhook Stripe (abbonamento AI): errore azzeramento crediti", creditiError);
     }
+  }
+}
+
+// Il cambio piano immediato (upgrade) passa dalla Subscription stessa
+// (vedi handleOmniaAiSubscriptionUpdated). Un downgrade invece è sempre
+// gestito da una Subscription Schedule a due fasi: questo handler legge
+// la fase successiva a quella corrente (se esiste) per capire se c'è un
+// cambio in programma, a quale piano e da quando — mai scritto
+// dall'azione che lo richiede, solo da qui.
+async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.SubscriptionSchedule) {
+  // Al rilascio Stripe svuota "subscription" e sposta l'id in
+  // "released_subscription" (la schedule non gestisce più nulla, ma
+  // l'abbonamento sottostante resta) — senza questo fallback l'evento
+  // "released" non troverebbe a chi appartiene, e piano_programmato
+  // resterebbe scritto per sempre dopo un annullamento.
+  const stripeSubscriptionId =
+    (typeof schedule.subscription === "string" ? schedule.subscription : schedule.subscription?.id) ??
+    schedule.released_subscription ??
+    undefined;
+
+  if (!stripeSubscriptionId) return;
+
+  const admin = createAdminClient();
+
+  let pianoProgrammato: string | null = null;
+  let pianoProgrammatoDa: string | null = null;
+
+  const rilasciata = schedule.status === "released" || schedule.status === "canceled";
+
+  if (!rilasciata && schedule.current_phase) {
+    // La fase che inizia esattamente dove finisce quella corrente: nel
+    // nostro modello a due fasi è sempre e solo l'eventuale downgrade
+    // programmato, non serve assumere un ordine nell'array.
+    const faseSuccessiva = schedule.phases.find((f) => f.start_date === schedule.current_phase!.end_date);
+    const itemSuccessivo = faseSuccessiva?.items[0];
+
+    if (itemSuccessivo) {
+      const priceId = typeof itemSuccessivo.price === "string" ? itemSuccessivo.price : itemSuccessivo.price.id;
+      try {
+        const stripe = createStripeClient();
+        const price = await stripe.prices.retrieve(priceId);
+        const slug = pianoDaLookupKey(price.lookup_key);
+        if (slug) {
+          pianoProgrammato = slug;
+          pianoProgrammatoDa = new Date(faseSuccessiva.start_date * 1000).toISOString();
+        }
+      } catch (err) {
+        console.error("Webhook Stripe (schedule AI): errore recupero prezzo fase successiva", err);
+      }
+    }
+  }
+
+  const { error } = await admin
+    .from("subscriptions")
+    .update({
+      stripe_schedule_id: rilasciata ? null : schedule.id,
+      piano_programmato: pianoProgrammato,
+      piano_programmato_da: pianoProgrammatoDa,
+    })
+    .eq("stripe_subscription_id", stripeSubscriptionId);
+
+  if (error) {
+    console.error("Webhook Stripe (schedule AI): errore aggiornamento subscription", error);
   }
 }
 
