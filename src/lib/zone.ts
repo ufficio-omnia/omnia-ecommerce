@@ -57,7 +57,17 @@ export const RESERVED_PREFIXES = Object.values(ZONE_PREFIX);
 // dalla zona omnia-ai.it (registrazione, reimpostazione password)
 // produrrebbe un link che rientra riscritto su /site-omnia-ai/auth/
 // callback — un percorso che non esiste — invece di essere gestito qui.
-export const ZONE_REWRITE_EXEMPT_PATHS = ["/robots.txt", "/sitemap.xml", "/auth/callback"];
+//
+// /api/webhooks/stripe è lo stesso caso di /auth/callback: un'unica route
+// reale (src/app/api/webhooks/stripe/route.ts) che riceve chiamate da
+// Stripe verso il dominio di qualunque zona (l'endpoint per l'abbonamento
+// OMNIA AI punta a omnia-ai.it, quello e-commerce ad app.omniaitalia.com).
+// Senza l'esenzione, ogni evento inviato all'endpoint su omnia-ai.it
+// veniva riscritto su /site-omnia-ai/api/webhooks/stripe (404, mai
+// raggiunto) — bug reale osservato in produzione: mai visto in locale
+// perché lì l'host "localhost" risolve alla zona "ecommerce" di default,
+// che non riscrive nulla.
+export const ZONE_REWRITE_EXEMPT_PATHS = ["/robots.txt", "/sitemap.xml", "/auth/callback", "/api/webhooks/stripe"];
 
 // Cookie di override SOLO sviluppo (mai letto/scritto in produzione):
 // permette di provare le tre zone da localhost, dove l'hostname reale
