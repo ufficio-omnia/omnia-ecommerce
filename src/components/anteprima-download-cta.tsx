@@ -105,8 +105,8 @@ export default function AnteprimaDownloadCta({
         onClick={() => setOpen(true)}
         className={
           onDark
-            ? "mt-6 rounded-full bg-cream px-6 py-3 font-mono text-xs tracking-wide text-forest uppercase transition-colors hover:bg-cream-soft"
-            : "mt-6 rounded-full bg-forest px-6 py-3 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
+            ? "mt-6 rounded-full bg-cream px-8 py-4 font-mono text-sm tracking-wide text-forest uppercase shadow-lg transition-all hover:scale-[1.02] hover:bg-cream-soft hover:shadow-xl"
+            : "mt-6 rounded-full bg-forest px-8 py-4 font-mono text-sm tracking-wide text-cream uppercase shadow-lg shadow-forest/20 transition-all hover:scale-[1.02] hover:bg-forest-dark hover:shadow-xl"
         }
       >
         Scarica l&apos;anteprima gratuita

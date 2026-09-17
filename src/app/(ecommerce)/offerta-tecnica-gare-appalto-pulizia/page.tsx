@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { BASE_URL } from "@/lib/zone";
 import AnteprimaDownloadCta from "@/components/anteprima-download-cta";
-import ContentImage from "@/components/offerta-tecnica-gare-pulizia/content-image";
+import { FlowDiagram, HubDiagram } from "@/components/offerta-tecnica-gare-pulizia/diagrams";
 import Toc from "@/components/offerta-tecnica-gare-pulizia/toc";
 
 const PAGE_PATH = "/offerta-tecnica-gare-appalto-pulizia";
@@ -31,12 +31,13 @@ export const metadata: Metadata = {
   },
 };
 
-const h2 = "mt-16 font-serif text-2xl text-ink sm:text-[1.75rem]";
-const p = "mt-4 text-base leading-relaxed text-sage";
+const h2 =
+  "mt-12 font-serif text-2xl text-ink sm:text-[1.75rem] before:content-[''] before:block before:h-1 before:w-10 before:rounded-full before:bg-forest before:mb-4";
+const p = "mt-3 text-justify text-base leading-relaxed text-sage";
 const ul =
-  "mt-4 list-disc space-y-2 pl-5 text-base leading-relaxed text-sage marker:text-forest";
+  "mt-3 list-disc space-y-1.5 pl-5 text-base leading-relaxed text-sage marker:text-forest";
 const ulWide =
-  "mt-4 list-disc space-y-2 pl-5 text-base leading-relaxed text-sage marker:text-forest sm:columns-2 sm:gap-x-8 [&>li]:break-inside-avoid";
+  "mt-3 list-disc space-y-1.5 pl-5 text-base leading-relaxed text-sage marker:text-forest sm:columns-2 sm:gap-x-8 [&>li]:break-inside-avoid";
 const link = "text-forest underline underline-offset-2 hover:text-forest-dark";
 
 const TOC_ITEMS = [
@@ -123,7 +124,7 @@ function ChapterCard({
   children: ReactNode;
 }) {
   return (
-    <div className="mt-8 rounded-2xl border border-border bg-cream-soft p-6 sm:p-8">
+    <div className="mt-6 rounded-2xl border border-border bg-cream-soft p-6 shadow-sm transition-shadow hover:shadow-md sm:p-8">
       <div className="flex items-start gap-4 sm:gap-6">
         <span className="shrink-0 font-serif text-4xl leading-none text-forest sm:text-5xl">
           {number}
@@ -147,7 +148,7 @@ function ErrorCard({
   children: ReactNode;
 }) {
   return (
-    <div className="mt-8 rounded-2xl border border-border-strong border-l-4 border-l-ink bg-cream-soft p-6 sm:p-8">
+    <div className="mt-6 rounded-2xl border border-border-strong border-l-4 border-l-ink bg-cream-soft p-6 shadow-sm transition-shadow hover:shadow-md sm:p-8">
       <div className="flex items-start gap-4 sm:gap-6">
         <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink font-mono text-xs text-cream">
           {number}
@@ -182,7 +183,7 @@ function Callout({
   };
 
   return (
-    <div className={`my-8 rounded-2xl p-6 sm:p-8 ${styles[variant]}`}>
+    <div className={`my-6 rounded-2xl p-6 sm:p-8 ${styles[variant]}`}>
       {eyebrow && (
         <p className={`font-mono text-[11px] tracking-widest uppercase ${eyebrowStyles[variant]}`}>
           {eyebrow}
@@ -195,22 +196,22 @@ function Callout({
 
 function DownloadCta({ variant }: { variant: "prima" | "seconda" }) {
   return (
-    <div className="my-12 rounded-2xl bg-forest p-6 text-cream sm:p-10">
+    <div className="my-10 rounded-2xl bg-forest p-6 text-cream sm:p-10">
       {variant === "prima" ? (
         <>
           <p className="font-serif text-2xl">
             Guarda com&apos;è fatta una Relazione Tecnica completa
           </p>
-          <p className="mt-4 text-base leading-relaxed text-cream/90">
+          <p className="mt-4 text-justify text-base leading-relaxed text-cream/90">
             Vuoi vedere concretamente come viene strutturata un&apos;offerta
             tecnica professionale per una gara d&apos;appalto?
           </p>
-          <p className="mt-4 text-base leading-relaxed text-cream/90">
+          <p className="mt-4 text-justify text-base leading-relaxed text-cream/90">
             Scarica gratuitamente un&apos;anteprima con indice completo e
             alcune pagine esemplificative di una relazione tecnica
             strutturata per servizi di pulizia.
           </p>
-          <p className="mt-4 text-base leading-relaxed text-cream/90">
+          <p className="mt-4 text-justify text-base leading-relaxed text-cream/90">
             Potrai vedere come vengono organizzati criteri, metodologie,
             organigrammi, sistemi di controllo, migliorie e contenuti
             tecnici.
@@ -219,11 +220,11 @@ function DownloadCta({ variant }: { variant: "prima" | "seconda" }) {
       ) : (
         <>
           <p className="font-serif text-2xl">Guarda prima di acquistare</p>
-          <p className="mt-4 text-base leading-relaxed text-cream/90">
+          <p className="mt-4 text-justify text-base leading-relaxed text-cream/90">
             Scarica gratuitamente un&apos;anteprima della nostra Relazione
             Tecnica per servizi di pulizia.
           </p>
-          <p className="mt-4 text-base leading-relaxed text-cream/90">
+          <p className="mt-4 text-justify text-base leading-relaxed text-cream/90">
             Troverai:
           </p>
           <ul className="mt-4 list-disc space-y-2 pl-5 text-base leading-relaxed text-cream/90 marker:text-mint">
@@ -277,51 +278,47 @@ export default function OffertaTecnicaGarePuliziaPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
 
-      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
-        {/* HERO */}
-        <div className="lg:grid lg:grid-cols-[1fr_320px] lg:items-center lg:gap-12">
-          <div>
-            <p className="font-mono text-xs tracking-widest text-forest uppercase">
-              Guida gare d&apos;appalto
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20 lg:grid lg:grid-cols-[220px_1fr] lg:items-start lg:gap-x-16">
+        {/* HERO — in colonna 2 come il resto del testo (lg:col-start-2),
+            cosi' titolo e corpo condividono lo stesso margine sinistro
+            invece di sembrare due blocchi scollegati. */}
+        <div className="max-w-3xl lg:col-start-2">
+          <p className="font-mono text-xs tracking-widest text-forest uppercase">
+            Guida gare d&apos;appalto
+          </p>
+          <h1 className="mt-3 font-serif text-3xl text-ink sm:text-4xl">
+            Offerta tecnica per gare d&apos;appalto di pulizia: come si
+            scrive una relazione tecnica efficace
+          </h1>
+          <p className="mt-5 font-serif text-lg leading-relaxed text-ink sm:text-xl">
+            Come strutturare un&apos;offerta tecnica che la Commissione può
+            valutare punto per punto — criteri, organizzazione, migliorie e
+            gli errori che costano punti nelle gare di pulizia.
+          </p>
+          <div className="mt-8">
+            <a
+              href="#anteprima-download-1"
+              className="inline-flex items-center gap-2 rounded-full bg-forest px-8 py-4 font-mono text-sm tracking-wide text-cream uppercase shadow-lg shadow-forest/20 transition-all hover:scale-[1.02] hover:bg-forest-dark hover:shadow-xl"
+            >
+              Scarica l&apos;anteprima gratuita ↓
+            </a>
+            <p className="mt-3 font-mono text-xs tracking-wide text-sage uppercase">
+              12 min di lettura · nessun acquisto richiesto
             </p>
-            <h1 className="mt-3 font-serif text-3xl text-ink sm:text-4xl">
-              Offerta tecnica per gare d&apos;appalto di pulizia: come si
-              scrive una relazione tecnica efficace
-            </h1>
-            <p className="mt-5 font-serif text-lg leading-relaxed text-ink sm:text-xl">
-              Come strutturare un&apos;offerta tecnica che la Commissione
-              può valutare punto per punto — criteri, organizzazione,
-              migliorie e gli errori che costano punti nelle gare di
-              pulizia.
-            </p>
-            <div className="mt-6 flex flex-wrap items-center gap-4">
-              <span className="font-mono text-xs tracking-wide text-sage uppercase">
-                12 min di lettura
-              </span>
-              <a
-                href="#anteprima-download-1"
-                className="rounded-full bg-forest px-5 py-2.5 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
-              >
-                Scarica l&apos;anteprima gratuita ↓
-              </a>
-            </div>
           </div>
-          <div className="mt-8 lg:mt-0">
-            <ContentImage
-              src="/offerta-tecnica-gare-pulizia/cronoprogramma-avvio.png"
-              alt="Pagina della Relazione Tecnica OMNIA con il cronoprogramma di avvio del servizio"
-              caption="Esempio reale — cronoprogramma di avvio del servizio"
-            />
-          </div>
+          <FlowDiagram
+            steps={["Criteri di gara", "Organizzazione", "Controllo qualità", "Migliorie"]}
+          />
         </div>
 
-        {/* CORPO + INDICE */}
-        <div className="mt-16 lg:grid lg:grid-cols-[220px_1fr] lg:items-start lg:gap-16">
-          <div className="lg:sticky lg:top-24">
-            <Toc items={TOC_ITEMS} />
-          </div>
+        {/* INDICE — colonna 1, alta quanto hero+corpo (lg:row-span-2),
+            cosi' resta a fianco di entrambi invece che solo del corpo. */}
+        <div className="mt-8 lg:sticky lg:top-24 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:mt-0">
+          <Toc items={TOC_ITEMS} />
+        </div>
 
-          <div className="max-w-3xl">
+        {/* CORPO — colonna 2, riga 2 (sotto l'hero) */}
+        <div className="mt-10 max-w-3xl lg:col-start-2 lg:mt-16">
             <p className={p}>
               Nelle gare d&apos;appalto per servizi di pulizia, la qualità
               dell&apos;offerta tecnica può determinare in maniera decisiva
@@ -372,25 +369,18 @@ export default function OffertaTecnicaGarePuliziaPage() {
             <p className={p}>
               Uno degli errori più comuni è considerare la relazione
               tecnica come una presentazione generale dell&apos;impresa.
-            </p>
-            <p className={p}>Non lo è.</p>
-            <p className={p}>
-              Il punto di partenza deve essere sempre la griglia di
-              valutazione prevista dal disciplinare di gara.
+              Non lo è: il punto di partenza deve essere sempre la griglia
+              di valutazione prevista dal disciplinare di gara.
             </p>
             <p className={p}>
               Ogni criterio e ogni sub-criterio rappresentano una domanda
               alla quale l&apos;offerta deve fornire una risposta precisa.
-            </p>
-            <p className={p}>
               Se, ad esempio, vengono attribuiti 8 punti
               all&apos;organizzazione del personale, descrivere per cinque
               pagine la storia dell&apos;azienda non contribuirà
-              necessariamente a ottenere quegli 8 punti.
-            </p>
-            <p className={p}>
-              La Commissione deve poter individuare rapidamente gli
-              elementi che consentono l&apos;attribuzione del punteggio.
+              necessariamente a ottenere quegli 8 punti: la Commissione
+              deve poter individuare rapidamente gli elementi che
+              consentono l&apos;attribuzione del punteggio.
             </p>
             <p className={p}>
               Per questo una relazione tecnica efficace dovrebbe
@@ -575,10 +565,14 @@ export default function OffertaTecnicaGarePuliziaPage() {
                 <li>presidio delle emergenze;</li>
                 <li>passaggio di consegne.</li>
               </ul>
-              <ContentImage
-                src="/offerta-tecnica-gare-pulizia/personale-sostitutivo.png"
-                alt="Pagina della Relazione Tecnica OMNIA sul bacino di emergenza e la gestione del personale sostitutivo"
-                caption="Esempio reale — gestione del personale sostitutivo"
+              <HubDiagram
+                hub="Responsabile di commessa"
+                spokes={[
+                  "Capisquadra / referenti",
+                  "Addetti operativi",
+                  "Controllo qualità",
+                  "Sostituti e reperibilità",
+                ]}
               />
             </ChapterCard>
 
@@ -647,10 +641,9 @@ export default function OffertaTecnicaGarePuliziaPage() {
                 sostituire naturalmente quanto specificamente richiesto
                 dalla singola gara.
               </p>
-              <ContentImage
-                src="/offerta-tecnica-gare-pulizia/sistema-controllo-qualita.png"
-                alt="Pagina della Relazione Tecnica OMNIA sui livelli di servizio garantiti e il sistema sanzionatorio"
-                caption="Esempio reale — livelli di servizio garantiti e indicatori"
+              <FlowDiagram
+                steps={["Controllo", "Misurazione (KPI)", "Non conformità?", "Azione correttiva"]}
+                note="Il ciclo si ripete a ogni verifica programmata"
               />
             </ChapterCard>
 
@@ -679,10 +672,8 @@ export default function OffertaTecnicaGarePuliziaPage() {
                 attraverso indicatori misurabili anziché utilizzare
                 esclusivamente dichiarazioni qualitative.
               </p>
-              <ContentImage
-                src="/offerta-tecnica-gare-pulizia/gestione-rifiuti.png"
-                alt="Pagina della Relazione Tecnica OMNIA sulla gestione dei rifiuti prodotti dal servizio"
-                caption="Esempio reale — gestione dei rifiuti prodotti dal servizio"
+              <FlowDiagram
+                steps={["Produzione", "Separazione", "Stoccaggio", "Conferimento", "Tracciabilità"]}
               />
             </ChapterCard>
 
@@ -691,11 +682,9 @@ export default function OffertaTecnicaGarePuliziaPage() {
             </h2>
             <p className={p}>
               La miglioria migliore non è necessariamente quella che costa
-              di più.
-            </p>
-            <p className={p}>
-              È quella che risolve una criticità della commessa e consente
-              alla Commissione di individuarne chiaramente il beneficio.
+              di più: è quella che risolve una criticità della commessa e
+              consente alla Commissione di individuarne chiaramente il
+              beneficio.
             </p>
             <p className={p}>
               Possono risultare particolarmente interessanti, quando
@@ -944,7 +933,6 @@ export default function OffertaTecnicaGarePuliziaPage() {
                 </details>
               ))}
             </div>
-          </div>
         </div>
       </div>
     </main>
