@@ -112,10 +112,7 @@ function DownloadCta({ variant }: { variant: "prima" | "seconda" }) {
           </p>
           <p className={p}>
             Scarica gratuitamente un&apos;anteprima con indice completo e
-            alcune pagine esemplificative di una{" "}
-            <Link href="/prodotti" className={link}>
-              relazione tecnica
-            </Link>{" "}
+            alcune pagine esemplificative di una relazione tecnica
             strutturata per servizi di pulizia.
           </p>
           <p className={p}>
@@ -128,11 +125,8 @@ function DownloadCta({ variant }: { variant: "prima" | "seconda" }) {
         <>
           <p className="font-serif text-xl text-ink">Guarda prima di acquistare</p>
           <p className={p}>
-            Scarica gratuitamente un&apos;anteprima della nostra{" "}
-            <Link href="/prodotti" className={link}>
-              Relazione Tecnica per servizi di pulizia
-            </Link>
-            .
+            Scarica gratuitamente un&apos;anteprima della nostra Relazione
+            Tecnica per servizi di pulizia.
           </p>
           <p className={p}>Troverai:</p>
           <ul className={ul}>
@@ -204,17 +198,23 @@ export default function OffertaTecnicaGarePuliziaPage() {
           dell&apos;offerta economicamente più vantaggiosa secondo il
           miglior rapporto qualità/prezzo e il punteggio attribuibile alla
           componente economica non può superare il 30%. Nella pratica,
-          quindi, 70, 80 o più punti possono dipendere dalla qualità del
-          progetto tecnico presentato, secondo quanto stabilito dal
-          disciplinare di gara.
+          quindi,{" "}
+          <strong className="text-ink">
+            70, 80 o più punti possono dipendere dalla qualità del progetto
+            tecnico presentato
+          </strong>
+          , secondo quanto stabilito dal disciplinare di gara.
         </p>
         <p className={p}>Ed è proprio qui che molte imprese perdono punti.</p>
         <p className={p}>
           Non necessariamente perché dispongano di un&apos;organizzazione
           inadeguata, di personale insufficiente o di attrezzature poco
-          performanti. Molto più spesso perché non riescono a trasformare
-          la propria organizzazione in un progetto tecnico facilmente
-          valutabile dalla Commissione.
+          performanti. Molto più spesso perché{" "}
+          <strong className="text-ink">
+            non riescono a trasformare la propria organizzazione in un
+            progetto tecnico facilmente valutabile dalla Commissione
+          </strong>
+          .
         </p>
         <p className={p}>
           Una buona relazione tecnica non deve semplicemente
@@ -271,9 +271,10 @@ export default function OffertaTecnicaGarePuliziaPage() {
 
         <h3 className={h3}>La regola più importante</h3>
         <p className={p}>
-          Ogni affermazione dovrebbe rispondere alla domanda:
-          &quot;Come può la Commissione verificare ciò che stiamo
-          dichiarando?&quot;
+          <strong className="text-ink">
+            Ogni affermazione dovrebbe rispondere alla domanda: &quot;Come
+            può la Commissione verificare ciò che stiamo dichiarando?&quot;
+          </strong>
         </p>
         <p className={p}>
           Dire di garantire &quot;un servizio di elevata qualità&quot; ha
@@ -364,8 +365,11 @@ export default function OffertaTecnicaGarePuliziaPage() {
           &quot;metodologie innovative&quot;.
         </p>
         <p className={p}>
-          Occorre spiegare concretamente: chi fa cosa, dove, quando, come e
-          con quali strumenti.
+          Occorre spiegare concretamente:{" "}
+          <strong className="text-ink">
+            chi fa cosa, dove, quando, come e con quali strumenti
+          </strong>
+          .
         </p>
         <p className={p}>La relazione può quindi dettagliare:</p>
         <ul className={ul}>
@@ -543,8 +547,10 @@ export default function OffertaTecnicaGarePuliziaPage() {
           un corrispondente incremento di punteggio.
         </p>
         <p className={p}>
-          Una miglioria deve avere sempre una funzione, un destinatario e
-          un risultato.
+          <strong className="text-ink">
+            Una miglioria deve avere sempre una funzione, un destinatario e
+            un risultato.
+          </strong>
         </p>
 
         <h2 className={h2}>Gli errori più frequenti nelle offerte tecniche di pulizia</h2>
