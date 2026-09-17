@@ -42,6 +42,12 @@ export default async function SiteHeader() {
           >
             Documenti
           </Link>
+          <Link
+            href="/offerta-tecnica-gare-appalto-pulizia"
+            className="hidden font-mono text-xs tracking-wide text-sage uppercase hover:text-ink sm:inline"
+          >
+            Guide
+          </Link>
 
           {user ? (
             <>

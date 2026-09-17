@@ -3,7 +3,14 @@ import { headers } from "next/headers";
 import { BASE_URL, ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
 import { createClient } from "@/lib/supabase/server";
 
-const STATIC_ROUTES = ["/", "/prodotti", "/condizioni-vendita", "/cookie-policy", "/privacy"];
+const STATIC_ROUTES = [
+  "/",
+  "/prodotti",
+  "/condizioni-vendita",
+  "/cookie-policy",
+  "/privacy",
+  "/offerta-tecnica-gare-appalto-pulizia",
+];
 
 // Niente `export const revalidate`: la funzione chiama headers(), quindi
 // la rotta è già dinamica per Next e l'ISR non si applicherebbe comunque
