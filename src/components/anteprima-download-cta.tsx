@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useActionState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -8,16 +8,26 @@ import {
   type AnteprimaDownloadState,
 } from "@/app/actions/anteprima-download";
 
-export const PDF_URL = "/downloads/offerta-tecnica-pulizie-anteprima.pdf";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const initialState: AnteprimaDownloadState = {};
 
-export default function AnteprimaDownloadCta() {
+type FieldErrors = { email?: string; privacy?: string };
+
+export default function AnteprimaDownloadCta({
+  onDark = false,
+}: {
+  // Il pannello di download è pieno verde brand: su quello sfondo il
+  // bottone deve invertirsi (crema su verde) per restare leggibile,
+  // altrimenti si confonde con lo sfondo.
+  onDark?: boolean;
+}) {
   const router = useRouter();
   const uid = useId();
   const emailId = `anteprima-email-${uid}`;
   const aziendaId = `anteprima-azienda-${uid}`;
   const garaId = `anteprima-gara-${uid}`;
   const [open, setOpen] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const submittedRef = useRef(false);
   const [state, formAction, pending] = useActionState(
@@ -25,11 +35,32 @@ export default function AnteprimaDownloadCta() {
     initialState,
   );
 
+  // Il signed URL non esiste finché il server non lo genera (dopo la
+  // validazione): il download può partire solo qui, a risposta ricevuta —
+  // niente window.open (bloccabile come popup dopo un await), un <a
+  // download> cliccato via ref non ha questo problema. Content-Disposition:
+  // attachment è impostato server-side sul signed URL stesso, quindi il
+  // click scarica il file senza far navigare via la pagina corrente.
   useEffect(() => {
-    if (state.success && submittedRef.current) {
-      router.push("/anteprima-scaricata");
+    if (state.success && state.downloadUrl && submittedRef.current) {
+      submittedRef.current = false;
+      // Il click sul download e la navigazione alla thank-you page sono
+      // due effetti indipendenti: se il primo lancia un'eccezione (alcuni
+      // browser/estensioni possono bloccare un click programmato su un
+      // link cross-origin), il secondo deve avvenire comunque — l'utente
+      // ha già superato la validazione, non deve restare bloccato sul
+      // modale solo perché il trigger del download ha avuto un problema.
+      try {
+        if (downloadRef.current) {
+          downloadRef.current.href = state.downloadUrl;
+          downloadRef.current.click();
+        }
+      } catch (err) {
+        console.error("anteprima-download-cta: click sul download fallito", err);
+      }
+      router.push(`/anteprima-scaricata?u=${encodeURIComponent(state.downloadUrl)}`);
     }
-  }, [state.success, router]);
+  }, [state, router]);
 
   useEffect(() => {
     if (!open) return;
@@ -42,12 +73,29 @@ export default function AnteprimaDownloadCta() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
-  // Il download deve partire subito, nello stesso gesture di click
-  // dell'utente sul submit — non dopo l'await della server action,
-  // altrimenti alcuni browser lo trattano come popup/non richiesto.
-  function handleSubmit() {
+  // Validazione client con errori inline sotto i campi: niente alert nativi
+  // del browser (blocchiamo con noValidate sul form). È comunque solo un
+  // filtro di UX — la validazione che conta è quella server-side in
+  // requestAnteprimaDownload, senza la quale il file non verrebbe servito
+  // a prescindere da cosa succede qui.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    const form = e.currentTarget;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value.trim();
+    const privacy = (form.elements.namedItem("privacy") as HTMLInputElement).checked;
+
+    const errors: FieldErrors = {};
+    if (!email) errors.email = "L'email è obbligatoria.";
+    else if (!EMAIL_REGEX.test(email)) errors.email = "Inserisci un indirizzo email valido.";
+    if (!privacy) errors.privacy = "Devi prendere visione dell'informativa privacy per procedere.";
+
+    if (Object.keys(errors).length > 0) {
+      e.preventDefault();
+      setFieldErrors(errors);
+      return;
+    }
+
+    setFieldErrors({});
     submittedRef.current = true;
-    downloadRef.current?.click();
   }
 
   return (
@@ -55,13 +103,16 @@ export default function AnteprimaDownloadCta() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-6 rounded-full bg-forest px-6 py-3 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
+        className={
+          onDark
+            ? "mt-6 rounded-full bg-cream px-8 py-4 font-mono text-sm tracking-wide text-forest uppercase shadow-lg transition-all hover:scale-[1.02] hover:bg-cream-soft hover:shadow-xl"
+            : "mt-6 rounded-full bg-forest px-8 py-4 font-mono text-sm tracking-wide text-cream uppercase shadow-lg shadow-forest/20 transition-all hover:scale-[1.02] hover:bg-forest-dark hover:shadow-xl"
+        }
       >
         Scarica l&apos;anteprima gratuita
       </button>
 
-      <a ref={downloadRef} href={PDF_URL} download className="hidden" aria-hidden />
-
+      <a ref={downloadRef} href="#" download className="hidden" aria-hidden />
 
       {open && (
         <div
@@ -93,13 +144,18 @@ export default function AnteprimaDownloadCta() {
               l&apos;invio.
             </p>
 
-            <form action={formAction} onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <form
+              action={formAction}
+              onSubmit={handleSubmit}
+              noValidate
+              className="mt-6 space-y-4"
+            >
               <div>
                 <label
                   className="font-mono text-xs tracking-wide text-sage uppercase"
                   htmlFor={emailId}
                 >
-                  Email
+                  Email *
                 </label>
                 <input
                   id={emailId}
@@ -107,8 +163,15 @@ export default function AnteprimaDownloadCta() {
                   type="email"
                   required
                   autoComplete="email"
+                  aria-invalid={!!fieldErrors.email}
+                  aria-describedby={fieldErrors.email ? `${emailId}-error` : undefined}
                   className="mt-1.5 w-full rounded-lg border border-border-strong bg-cream px-3 py-2 text-sm text-ink outline-none focus:border-forest"
                 />
+                {fieldErrors.email && (
+                  <p id={`${emailId}-error`} className="mt-1 text-xs text-red-700">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -116,7 +179,7 @@ export default function AnteprimaDownloadCta() {
                   className="font-mono text-xs tracking-wide text-sage uppercase"
                   htmlFor={aziendaId}
                 >
-                  Azienda
+                  Azienda (facoltativo)
                 </label>
                 <input
                   id={aziendaId}
@@ -132,7 +195,7 @@ export default function AnteprimaDownloadCta() {
                   className="font-mono text-xs tracking-wide text-sage uppercase"
                   htmlFor={garaId}
                 >
-                  Per quale gara ti serve?
+                  Per quale gara ti serve? (facoltativo)
                 </label>
                 <textarea
                   id={garaId}
@@ -143,25 +206,41 @@ export default function AnteprimaDownloadCta() {
                 />
               </div>
 
-              <label className="flex items-start gap-2 text-xs text-sage">
-                <input type="checkbox" name="privacy" required className="mt-0.5" />
-                <span>
-                  Ho preso visione dell&apos;
-                  <Link
-                    href="/privacy"
-                    target="_blank"
-                    className="text-forest underline underline-offset-2 hover:text-forest-dark"
-                  >
-                    informativa privacy
-                  </Link>
-                  . *
-                </span>
-              </label>
+              <div>
+                <label className="flex items-start gap-2 text-xs text-sage">
+                  <input
+                    type="checkbox"
+                    name="privacy"
+                    required
+                    aria-invalid={!!fieldErrors.privacy}
+                    aria-describedby={fieldErrors.privacy ? "anteprima-privacy-error" : undefined}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Ho preso visione dell&apos;
+                    <Link
+                      href="/privacy"
+                      target="_blank"
+                      className="text-forest underline underline-offset-2 hover:text-forest-dark"
+                    >
+                      informativa privacy
+                    </Link>
+                    . *
+                  </span>
+                </label>
+                {fieldErrors.privacy && (
+                  <p id="anteprima-privacy-error" className="mt-1 text-xs text-red-700">
+                    {fieldErrors.privacy}
+                  </p>
+                )}
+              </div>
 
               <label className="flex items-start gap-2 text-xs text-sage">
                 <input type="checkbox" name="consenso_commerciale" className="mt-0.5" />
                 <span>Acconsento a essere ricontattato per finalità commerciali.</span>
               </label>
+
+              <p className="text-[11px] text-sage">* Campi obbligatori</p>
 
               {state.error && <p className="text-sm text-red-700">{state.error}</p>}
 
