@@ -65,6 +65,28 @@ export default async function Home() {
         </div>
       </section>
 
+      <section className="border-b border-border bg-cream-soft">
+        <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-6 sm:py-16">
+          <p className="font-mono text-xs tracking-widest text-forest uppercase">
+            Guida gratuita
+          </p>
+          <h2 className="mt-3 font-serif text-2xl text-ink sm:text-3xl">
+            Come si scrive un&apos;offerta tecnica che prende punteggio
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-justify text-sage">
+            La guida spiega struttura, criteri e gli errori da evitare per
+            costruire un&apos;offerta tecnica valutabile dalla Commissione.
+            Include un&apos;anteprima scaricabile della Relazione Tecnica.
+          </p>
+          <Link
+            href="/offerta-tecnica-gare-appalto-pulizia"
+            className="mt-6 inline-block rounded-full bg-forest px-6 py-3 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
+          >
+            Leggi la guida
+          </Link>
+        </div>
+      </section>
+
       {products.length > 0 && (
         <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-20">
           <h2 className="text-center font-serif text-2xl text-ink sm:text-3xl">
