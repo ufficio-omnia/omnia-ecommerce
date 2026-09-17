@@ -2170,6 +2170,81 @@ li {
   color: var(--testo);
 }
 
+/* Campanella notifiche, stesso guscio del menu profilo */
+.omnia-campanella {
+  position: relative;
+  padding: 8px 12px;
+  font-size: 16px;
+}
+.omnia-campanella-contatore {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--rosso);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.omnia-notifiche-dropdown {
+  min-width: 320px;
+  max-width: 380px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.omnia-notifiche-intestazione {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.omnia-notifiche-segna-tutte {
+  padding: 6px 10px !important;
+  width: auto !important;
+  font-size: 11.5px !important;
+  color: var(--verde) !important;
+}
+.omnia-notifica-riga {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+}
+.omnia-notifica-riga:hover {
+  background: var(--vetro-2);
+}
+.omnia-notifica-riga.non-letta {
+  background: rgba(139, 127, 232, 0.08);
+}
+.omnia-notifica-riga .titolo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-notifica-riga .corpo {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--fioco);
+  text-align: left;
+  hyphens: none;
+}
+.omnia-notifica-riga .orario {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--fioco);
+}
+
 @media (max-width: 1180px) {
   .omnia-riquadri-stato {
     grid-template-columns: repeat(3, 1fr);

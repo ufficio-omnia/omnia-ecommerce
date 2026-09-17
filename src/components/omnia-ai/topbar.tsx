@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ProfiloMenu from "./profilo-menu";
+import NotificationBell from "./notification-bell";
 
 export default function Topbar({ nomeSaluto, email }: { nomeSaluto: string; email: string }) {
   return (
@@ -13,6 +14,7 @@ export default function Topbar({ nomeSaluto, email }: { nomeSaluto: string; emai
         <Link href="/dashboard/omnia-ai/gare" className="omnia-btn omnia-btn-nuova-gara">
           Nuova gara
         </Link>
+        <NotificationBell />
         <ProfiloMenu email={email} />
       </div>
     </div>

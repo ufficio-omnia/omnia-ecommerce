@@ -7,6 +7,7 @@ import { ricavaStileOrganigramma } from "@/lib/org-chart-style";
 import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import { logAiUsage } from "@/lib/ai-usage";
+import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
@@ -164,6 +165,22 @@ export async function generaBozzaSezione(params: {
     contenuto,
     ordine: (ultima?.ordine ?? 0) + 1,
   });
+
+  // Deduplicata sulla sola gara (non sulla sezione): la prima bozza mai
+  // generata per questa gara è il segnale di "relazione generata" già
+  // usato per la terza tappa della barra di avanzamento in dashboard —
+  // stesso evento, non uno per ogni criterio sviluppato via via.
+  if (!ultima) {
+    const { data: garaRow } = await supabase.from("gare").select("titolo").eq("id", garaId).single<{ titolo: string }>();
+    await creaNotifica({
+      userId,
+      tipo: "relazione_generata",
+      garaId,
+      titolo: "Relazione generata",
+      corpo: `La relazione tecnica per "${garaRow?.titolo ?? "una gara"}" è in preparazione: la prima sezione è pronta.`,
+      chiaveDedup: garaId,
+    });
+  }
 
   const contieneOrganigramma = CONTIENE_ORGANIGRAMMA.test(contenuto);
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma

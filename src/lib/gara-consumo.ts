@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 
 export type ConsumoResult = { error?: string };
 
@@ -176,6 +177,20 @@ export async function consumeGaraQuotaIfNeeded({
 
     return {};
   }
+
+  // Deduplicata per periodo di fatturazione (non per tentativo): un
+  // cliente che riprova più volte nello stesso periodo non riceve una
+  // notifica per ogni tentativo fallito, solo la prima volta che il
+  // piano risulta davvero esaurito in quel periodo.
+  const periodo = subscription?.current_period_start ?? subscription?.created_at ?? "senza-abbonamento";
+  await creaNotifica({
+    userId,
+    tipo: "gare_piano_esaurite",
+    garaId,
+    titolo: "Gare del piano esaurite",
+    corpo: `Hai esaurito le gare incluse nel piano e i crediti aggiuntivi: "${garaEsistente?.titolo ?? "l'ultima gara"}" resta in attesa.`,
+    chiaveDedup: `${userId}:${periodo}`,
+  });
 
   return { error: MESSAGGIO_QUOTA_ESAURITA };
 }

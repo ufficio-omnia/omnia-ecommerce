@@ -7,6 +7,7 @@ import { createAnthropicClient } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
 import { consumeGaraQuotaIfNeeded } from "@/lib/gara-consumo";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 
 export type ExtractionState = { error?: string; quotaEsaurita?: boolean };
 
@@ -132,9 +133,9 @@ export async function extractGaraData(
   // gara solo se appartiene all'utente corrente.
   const { data: gara } = await supabase
     .from("gare")
-    .select("id")
+    .select("id, titolo")
     .eq("id", garaId)
-    .single<{ id: string }>();
+    .single<{ id: string; titolo: string }>();
 
   if (!gara) return { error: "Gara non trovata." };
 
@@ -273,6 +274,8 @@ export async function extractGaraData(
         relazione_interlinea: number | null;
       }>();
 
+    const estrazioneAggiornataIl = new Date().toISOString();
+
     const { error: updateError } = await supabase
       .from("gare")
       .update({
@@ -293,7 +296,7 @@ export async function extractGaraData(
         requisiti_chiave: result.requisiti_chiave ?? null,
         sub_criteri_tabellari: result.sub_criteri_tabellari ?? null,
         estrazione_stato: "completata",
-        estrazione_aggiornata_il: new Date().toISOString(),
+        estrazione_aggiornata_il: estrazioneAggiornataIl,
       })
       .eq("id", garaId);
 
@@ -301,6 +304,18 @@ export async function extractGaraData(
       console.error("Errore salvataggio estrazione:", updateError);
       throw new Error("Errore nel salvataggio dei dati estratti.");
     }
+
+    // Chiave di dedup sul timestamp appena scritto: una rianalisi
+    // successiva (nuovo estrazione_aggiornata_il) genera di nuovo una
+    // notifica, la stessa conclusione non viene mai notificata due volte.
+    await creaNotifica({
+      userId: user.id,
+      tipo: "analisi_conclusa",
+      garaId,
+      titolo: "Analisi documenti conclusa",
+      corpo: `L'analisi dei documenti per "${gara.titolo}" è conclusa.`,
+      chiaveDedup: `${garaId}:${estrazioneAggiornataIl}`,
+    });
   } catch (err) {
     console.error("Errore estrazione dati gara:", err);
     await supabase

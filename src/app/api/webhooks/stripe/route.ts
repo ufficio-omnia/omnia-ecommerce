@@ -8,6 +8,7 @@ import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
 import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
 import { pianoDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
 import { getOmniaAiBaseUrl } from "@/lib/omnia-ai-request";
+import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -60,6 +61,14 @@ export async function POST(request: NextRequest) {
     case "subscription_schedule.updated":
     case "subscription_schedule.released":
       await handleOmniaAiSubscriptionScheduleEvent(event.data.object as Stripe.SubscriptionSchedule);
+      break;
+    // Evento in tempo reale (non una verifica giornaliera come le
+    // scadenze): un tentativo di addebito del rinnovo fallito. Lo stato
+    // locale della subscription (scaduto/past_due) arriva comunque, a
+    // parte, da customer.subscription.updated — qui serve solo avvisare
+    // il cliente subito.
+    case "invoice.payment_failed":
+      await handleOmniaAiInvoicePaymentFailed(event.data.object as Stripe.Invoice);
       break;
   }
 
@@ -618,6 +627,38 @@ async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscriptio
       console.error("Webhook Stripe (abbonamento AI): errore azzeramento crediti", creditiError);
     }
   }
+}
+
+async function handleOmniaAiInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  // API drift verificata su node_modules/stripe: dalla versione in uso
+  // Invoice non ha più un campo "subscription" diretto, è annidato sotto
+  // parent.subscription_details.subscription.
+  const subscriptionRef = invoice.parent?.subscription_details?.subscription;
+  const stripeSubscriptionId = typeof subscriptionRef === "string" ? subscriptionRef : subscriptionRef?.id;
+
+  if (!stripeSubscriptionId) return;
+
+  const admin = createAdminClient();
+  const { data: sub } = await admin
+    .from("subscriptions")
+    .select("user_id")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle<{ user_id: string }>();
+
+  if (!sub) return;
+
+  // Deduplicata sull'id della fattura Stripe: un nuovo tentativo di
+  // addebito sulla STESSA fattura (comune, Stripe ne fa più di uno prima
+  // di arrendersi) rimanda lo stesso evento più volte, non deve
+  // generare una notifica per ogni ritentativo.
+  await creaNotifica({
+    userId: sub.user_id,
+    tipo: "pagamento_fallito",
+    garaId: null,
+    titolo: "Pagamento non riuscito",
+    corpo: "L'addebito per il rinnovo del tuo abbonamento non è andato a buon fine. Verifica il metodo di pagamento dalla pagina Abbonamento.",
+    chiaveDedup: invoice.id ?? stripeSubscriptionId,
+  });
 }
 
 // Il cambio piano immediato (upgrade) passa dalla Subscription stessa
