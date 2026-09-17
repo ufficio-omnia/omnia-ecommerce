@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
+import DashboardShell from "@/components/omnia-ai/dashboard-shell";
 import ActivateSubscriptionForm from "./activate-subscription-form";
 
 // Avviso non bloccante ma ben visibile: il profilo azienda resta
@@ -122,13 +123,21 @@ export default async function OmniaAiLayout({
   const fatturazioneIncompleta = !company?.codice_sdi && !company?.pec;
 
   return (
-    <>
-      {stato.stato === "sola_lettura" && (
-        <SolaLetturaAvviso dataCancellazione={stato.dataCancellazioneContenuti} />
-      )}
-      {fatturazioneIncompleta && <FatturazioneAvviso />}
-      {profiloIncompleto && <ProfiloAziendaAvviso />}
+    <DashboardShell
+      nomeSaluto={company?.ragione_sociale || user.email || ""}
+      email={user.email ?? ""}
+      nomeAzienda={company?.ragione_sociale ?? null}
+      avvisi={
+        <>
+          {stato.stato === "sola_lettura" && (
+            <SolaLetturaAvviso dataCancellazione={stato.dataCancellazioneContenuti} />
+          )}
+          {fatturazioneIncompleta && <FatturazioneAvviso />}
+          {profiloIncompleto && <ProfiloAziendaAvviso />}
+        </>
+      }
+    >
       {children}
-    </>
+    </DashboardShell>
   );
 }

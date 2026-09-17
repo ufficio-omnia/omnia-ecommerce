@@ -4,23 +4,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { PIANI, PACCHETTI_CREDITI, formatEuro, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
 import ActivateSubscriptionForm from "../activate-subscription-form";
 import AcquistaCreditiForm from "./acquista-crediti-form";
 import DisdiciAbbonamentoButton from "./disdici-abbonamento-button";
 import GestisciPagamentoButton from "./gestisci-pagamento-button";
 import CambiaPianoForm from "./cambia-piano-form";
 import AnnullaCambioPianoButton from "./annulla-cambio-piano-button";
-
-type SubscriptionRow = {
-  id: string;
-  plan: string;
-  current_period_start: string | null;
-  current_period_end: string | null;
-  cancel_at_period_end: boolean;
-  created_at: string;
-  piano_programmato: string | null;
-  piano_programmato_da: string | null;
-};
 
 type ConsumoRow = {
   gara_id: string | null;
@@ -80,21 +70,11 @@ export default async function AbbonamentoPage() {
     );
   }
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select(
-      "id, plan, current_period_start, current_period_end, cancel_at_period_end, created_at, piano_programmato, piano_programmato_da",
-    )
-    .eq("user_id", user.id)
-    .eq("status", "attivo")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<SubscriptionRow>();
+  const consumoPeriodo = await getConsumoPeriodoCorrente(user.id, supabase);
 
-  if (!subscription) return null;
+  if (!consumoPeriodo) return null;
 
-  const piano = PIANI[subscription.plan as PianoSlug];
-  const gareIncluse = piano?.gareIncluse ?? 0;
+  const { subscription, piano, gareIncluse, gareResidue, saldoCrediti } = consumoPeriodo;
   const inizioPeriodo = subscription.current_period_start ?? subscription.created_at;
 
   const { data: consumi } = await supabase
@@ -104,17 +84,6 @@ export default async function AbbonamentoPage() {
     .gte("created_at", inizioPeriodo)
     .order("created_at", { ascending: false })
     .returns<ConsumoRow[]>();
-
-  const consumatePiano = (consumi ?? []).filter((c) => c.tipo === "piano").length;
-  const gareResidue = Math.max(0, gareIncluse - consumatePiano);
-
-  const { data: creditiRow } = await supabase
-    .from("credits")
-    .select("balance")
-    .eq("user_id", user.id)
-    .maybeSingle<{ balance: number }>();
-
-  const saldoCrediti = creditiRow?.balance ?? 0;
 
   const { data: acquisti } = await supabase
     .from("omnia_ai_credit_purchases")

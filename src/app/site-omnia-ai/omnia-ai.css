@@ -128,6 +128,7 @@ a {
   --nero-0: rgba(5, 5, 9, 0); /* stesso colore di fondo, opacità zero — mai "transparent" nei gradienti, vedi sotto */
   --vetro: rgba(255, 255, 255, 0.038);
   --vetro-2: rgba(255, 255, 255, 0.06);
+  --vetro-3: rgba(11, 10, 22, 0.5); /* terzo livello di profondità (superficie annidata) — vedi .omnia-shell */
   --bordo: rgba(150, 140, 255, 0.16);
   --bordo-f: rgba(150, 140, 255, 0.3);
   --viola: #8b7fe8;
@@ -1768,5 +1769,537 @@ li {
   .omnia-app-shell.largo {
     padding-left: 16px;
     padding-right: 16px;
+  }
+}
+
+/* ==================== Dashboard con barra laterale (rebuild) ====================
+   Sostituisce le tre schede-link della home dashboard con una vera shell
+   a due colonne. Riusa i token/ruoli colore già definiti sopra — nessun
+   token nuovo tranne --vetro-3 (terzo livello di profondità, vedi
+   :root). Non tocca .omnia-app-shell: le pagine esistenti continuano a
+   portare il proprio contenitore dentro .omnia-content-interno. */
+
+.omnia-shell {
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+}
+.omnia-sidebar {
+  flex: none;
+  width: 248px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px 16px;
+  background: var(--vetro);
+  border-right: 1px solid var(--bordo);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.omnia-sidebar-marchio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 26px;
+  text-decoration: none;
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--testo);
+}
+.omnia-sidebar-marchio .omnia-marchio-segno {
+  width: 22px;
+  height: 22px;
+}
+.omnia-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.omnia-sidebar-voce {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border-left: 2px solid transparent;
+  font-size: 13.5px;
+  color: var(--fioco);
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.omnia-sidebar-voce:hover {
+  background: var(--vetro-2);
+  color: var(--testo);
+}
+.omnia-sidebar-voce.attiva {
+  background: var(--vetro-2);
+  border-left-color: var(--viola);
+  color: var(--testo);
+}
+.omnia-sidebar-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--bordo);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.omnia-sidebar-footer a {
+  font-size: 13px;
+  color: var(--fioco);
+  text-decoration: none;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.omnia-sidebar-footer a:hover {
+  background: var(--vetro-2);
+  color: var(--testo);
+}
+.omnia-sidebar-azienda {
+  padding: 6px 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--testo);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.omnia-content {
+  flex: 1;
+  min-width: 0;
+}
+/* Solo padding, niente max-width/auto-margin: ogni pagina porta già il
+   proprio .omnia-app-shell (o .largo) che si centra da solo dentro
+   questo spazio — annidare qui un secondo contenitore centrato
+   raddoppierebbe i margini (stesso principio già vale per
+   .omnia-app-shell, vedi sopra). La topbar invece si estende su tutta
+   questa larghezza, senza essere ricentrata. */
+.omnia-content-interno {
+  padding: 24px 32px 0;
+}
+
+.omnia-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 28px;
+}
+.omnia-topbar-saluto {
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: clamp(20px, 2.4vw, 26px);
+}
+.omnia-topbar-saluto .sotto {
+  display: block;
+  margin-top: 4px;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 300;
+  font-size: 13px;
+  color: var(--fioco);
+}
+.omnia-topbar-azioni {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.omnia-topbar-azioni .omnia-btn,
+.omnia-profilo-menu-trigger {
+  white-space: nowrap;
+}
+
+/* Unico gradiente dell'app, riservato al pulsante più importante della
+   piattaforma — ogni altro pulsante primario (.omnia-btn-p) resta piatto. */
+.omnia-btn-nuova-gara {
+  background: linear-gradient(135deg, var(--viola), #6f5fd6);
+  color: #0b0818;
+}
+
+.omnia-riquadri-stato {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 32px;
+}
+.omnia-riquadro-stato {
+  position: relative;
+  overflow: hidden;
+  padding: 18px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+}
+.omnia-riquadro-stato-etichetta {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fioco);
+}
+.omnia-riquadro-stato-valore {
+  margin-top: 8px;
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: 25px;
+  position: relative;
+}
+.omnia-riquadro-stato-valore .unita {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--fioco);
+  margin-left: 3px;
+}
+.omnia-riquadro-stato-nota {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--fioco);
+  position: relative;
+}
+/* Marchio in filigrana: puramente decorativo, statico (non riflette lo
+   stato reale — quello è il compito della spia in testata alla sidebar,
+   qui è solo linguaggio visivo di sfondo), su un solo riquadro. */
+.omnia-riquadro-stato-filigrana .omnia-marchio-segno {
+  position: absolute;
+  right: -14px;
+  bottom: -18px;
+  width: 104px;
+  height: 104px;
+  opacity: 0.05;
+  filter: none;
+  animation: none;
+  color: var(--viola);
+}
+
+.omnia-gare-elenco {
+  display: grid;
+  gap: 10px;
+}
+.omnia-gara-riga {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.omnia-gara-riga:hover {
+  border-color: var(--bordo-f);
+  background: var(--vetro-2);
+}
+.omnia-gara-riga .titolo {
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--testo);
+}
+.omnia-gara-riga .stazione {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--fioco);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.omnia-gara-scadenza {
+  font-size: 12.5px;
+  color: var(--fioco);
+  white-space: nowrap;
+  text-align: right;
+}
+.omnia-gara-scadenza.ambra {
+  color: var(--ambra);
+}
+.omnia-gara-avanzamento {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.omnia-gara-tappa {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vetro-2);
+  border: 1px solid var(--bordo);
+}
+.omnia-gara-tappa.fatta {
+  background: var(--verde);
+  border-color: var(--verde);
+}
+.omnia-gara-indicatore {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.omnia-gara-indicatore .omnia-marchio-segno {
+  width: 16px;
+  height: 16px;
+}
+
+.omnia-scorciatoie {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.omnia-scorciatoia {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-decoration: none;
+  color: var(--testo);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.omnia-scorciatoia:hover {
+  border-color: var(--bordo-f);
+  background: var(--vetro-2);
+}
+
+.omnia-attivita-elenco {
+  margin-top: 16px;
+  display: grid;
+}
+.omnia-attivita-riga {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--bordo);
+  font-size: 13px;
+}
+.omnia-attivita-riga:last-child {
+  border-bottom: 0;
+}
+.omnia-attivita-riga .orario {
+  flex: none;
+  width: 74px;
+  font-size: 11.5px;
+  color: var(--fioco);
+}
+.omnia-attivita-riga .testo {
+  color: var(--testo);
+}
+
+/* Menu profilo, in alto a destra della topbar */
+.omnia-profilo-menu {
+  position: relative;
+}
+.omnia-profilo-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 30px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  font-size: 13px;
+  color: var(--testo);
+  cursor: pointer;
+  font-family: inherit;
+}
+.omnia-profilo-menu-trigger:hover {
+  border-color: var(--bordo-f);
+}
+.omnia-profilo-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro-3);
+  backdrop-filter: blur(16px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.omnia-profilo-menu-email {
+  padding: 9px 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--bordo);
+  font-size: 11.5px;
+  color: var(--fioco);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.omnia-profilo-menu-dropdown a,
+.omnia-profilo-menu-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  color: var(--fioco);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.omnia-profilo-menu-dropdown a:hover,
+.omnia-profilo-menu-dropdown button:hover {
+  background: var(--vetro-2);
+  color: var(--testo);
+}
+
+/* Campanella notifiche, stesso guscio del menu profilo */
+.omnia-campanella {
+  position: relative;
+  padding: 8px 12px;
+  font-size: 16px;
+}
+.omnia-campanella-contatore {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--rosso);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.omnia-notifiche-dropdown {
+  min-width: 320px;
+  max-width: 380px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.omnia-notifiche-intestazione {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.omnia-notifiche-segna-tutte {
+  padding: 6px 10px !important;
+  width: auto !important;
+  font-size: 11.5px !important;
+  color: var(--verde) !important;
+}
+.omnia-notifica-riga {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+}
+.omnia-notifica-riga:hover {
+  background: var(--vetro-2);
+}
+.omnia-notifica-riga.non-letta {
+  background: rgba(139, 127, 232, 0.08);
+}
+.omnia-notifica-riga .titolo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-notifica-riga .corpo {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--fioco);
+  text-align: left;
+  hyphens: none;
+}
+.omnia-notifica-riga .orario {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--fioco);
+}
+
+@media (max-width: 1180px) {
+  .omnia-riquadri-stato {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 880px) {
+  .omnia-shell {
+    flex-direction: column;
+  }
+  .omnia-sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 14px 16px;
+    overflow-x: auto;
+  }
+  .omnia-sidebar-marchio {
+    padding: 0;
+    margin-right: 16px;
+  }
+  .omnia-sidebar-nav {
+    flex-direction: row;
+    flex: none;
+  }
+  .omnia-sidebar-voce {
+    white-space: nowrap;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+  .omnia-sidebar-voce.attiva {
+    border-left-color: transparent;
+    border-bottom-color: var(--viola);
+  }
+  .omnia-sidebar-footer {
+    display: none;
+  }
+  .omnia-content-interno {
+    padding: 24px 16px 0;
+  }
+  .omnia-riquadri-stato {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .omnia-gara-riga {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .omnia-gara-scadenza {
+    text-align: left;
+  }
+}
+@media (max-width: 520px) {
+  .omnia-riquadri-stato {
+    grid-template-columns: 1fr;
   }
 }
