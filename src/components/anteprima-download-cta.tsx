@@ -13,7 +13,14 @@ const initialState: AnteprimaDownloadState = {};
 
 type FieldErrors = { email?: string; privacy?: string };
 
-export default function AnteprimaDownloadCta() {
+export default function AnteprimaDownloadCta({
+  onDark = false,
+}: {
+  // Il pannello di download è pieno verde brand: su quello sfondo il
+  // bottone deve invertirsi (crema su verde) per restare leggibile,
+  // altrimenti si confonde con lo sfondo.
+  onDark?: boolean;
+}) {
   const router = useRouter();
   const uid = useId();
   const emailId = `anteprima-email-${uid}`;
@@ -96,7 +103,11 @@ export default function AnteprimaDownloadCta() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-6 rounded-full bg-forest px-6 py-3 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
+        className={
+          onDark
+            ? "mt-6 rounded-full bg-cream px-6 py-3 font-mono text-xs tracking-wide text-forest uppercase transition-colors hover:bg-cream-soft"
+            : "mt-6 rounded-full bg-forest px-6 py-3 font-mono text-xs tracking-wide text-cream uppercase transition-colors hover:bg-forest-dark"
+        }
       >
         Scarica l&apos;anteprima gratuita
       </button>
