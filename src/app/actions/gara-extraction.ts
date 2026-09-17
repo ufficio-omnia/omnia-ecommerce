@@ -19,6 +19,11 @@ const EXTRACTION_TOOL = {
   input_schema: {
     type: "object" as const,
     properties: {
+      stazione_appaltante: {
+        type: "string",
+        description:
+          "Nome dell'ente/stazione appaltante che ha indetto la gara, così come indicato nel bando/disciplinare (es. 'Comune di Milano', 'ASL Roma 1'). Ometti il campo se non è identificabile nei documenti.",
+      },
       scadenza: {
         type: "string",
         description:
@@ -234,6 +239,7 @@ export async function extractGaraData(
     }
 
     const result = toolUse.input as {
+      stazione_appaltante?: string;
       scadenza?: string;
       importo?: number;
       criteri_valutazione: string;
@@ -270,6 +276,7 @@ export async function extractGaraData(
     const { error: updateError } = await supabase
       .from("gare")
       .update({
+        stazione_appaltante: result.stazione_appaltante || null,
         scadenza: result.scadenza || null,
         importo: result.importo ?? null,
         criteri_valutazione: result.criteri_valutazione,

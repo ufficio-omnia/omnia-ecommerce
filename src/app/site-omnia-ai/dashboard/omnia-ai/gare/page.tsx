@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import GaraRiga, { type GaraRigaProps } from "@/components/omnia-ai/gara-riga";
 import CreateGaraForm from "./create-gara-form";
 
 type GaraRow = {
   id: string;
   titolo: string;
-  created_at: string;
+  stazione_appaltante: string | null;
+  scadenza: string | null;
+  estrazione_stato: string;
 };
 
 export default async function GarePage() {
@@ -21,9 +24,39 @@ export default async function GarePage() {
 
   const { data: gare } = await supabase
     .from("gare")
-    .select("id, titolo, created_at")
-    .order("created_at", { ascending: false })
+    .select("id, titolo, stazione_appaltante, scadenza, estrazione_stato")
+    .order("scadenza", { ascending: true, nullsFirst: false })
     .returns<GaraRow[]>();
+
+  const gareIds = (gare ?? []).map((g) => g.id);
+
+  const [{ data: documentiRaw }, { data: sezioniRaw }] = await Promise.all([
+    supabase
+      .from("gara_documenti")
+      .select("gara_id")
+      .eq("user_id", user.id)
+      .returns<{ gara_id: string }[]>(),
+    gareIds.length > 0
+      ? supabase
+          .from("gara_relazione_sezioni")
+          .select("gara_id")
+          .in("gara_id", gareIds)
+          .returns<{ gara_id: string }[]>()
+      : Promise.resolve({ data: [] as { gara_id: string }[] }),
+  ]);
+
+  const gareConDocumenti = new Set((documentiRaw ?? []).map((d) => d.gara_id));
+  const gareConRelazione = new Set((sezioniRaw ?? []).map((s) => s.gara_id));
+
+  const gareRighe: GaraRigaProps[] = (gare ?? []).map((g) => ({
+    id: g.id,
+    titolo: g.titolo,
+    stazioneAppaltante: g.stazione_appaltante,
+    scadenza: g.scadenza,
+    estrazioneStato: g.estrazione_stato,
+    documentiCaricati: gareConDocumenti.has(g.id),
+    relazioneGenerata: gareConRelazione.has(g.id),
+  }));
 
   return (
     <div className="omnia-app-shell">
@@ -41,14 +74,9 @@ export default async function GarePage() {
         <CreateGaraForm />
       </div>
 
-      <div className="omnia-elenco-riquadri">
-        {gare?.length ? (
-          gare.map((g) => (
-            <Link key={g.id} href={`/dashboard/omnia-ai/gare/${g.id}`} className="omnia-riga-link">
-              <div className="titolo">{g.titolo}</div>
-              <p className="meta">Creata il {new Date(g.created_at).toLocaleDateString("it-IT")}</p>
-            </Link>
-          ))
+      <div className="omnia-gare-elenco" style={{ marginTop: 24 }}>
+        {gareRighe.length ? (
+          gareRighe.map((g) => <GaraRiga key={g.id} {...g} />)
         ) : (
           <p className="omnia-elenco-vuoto">Nessuna gara creata ancora.</p>
         )}
