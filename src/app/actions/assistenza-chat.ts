@@ -83,6 +83,14 @@ export async function sendAssistenzaMessage(
   }
 
   let rispostaFinale = "";
+  // Diagnostica temporanea: prima d'ora un errore qui veniva solo
+  // loggato lato server (console.error, invisibile senza accesso ai log
+  // Vercel) e il client tornava sempre {} — un fallimento della chiamata
+  // a Claude era quindi indistinguibile da "nessuna risposta di testo"
+  // per il cliente, che vedeva la chat restare silenziosa senza errore.
+  // Da togliere (tornare a un messaggio generico) una volta confermata
+  // la causa del bug segnalato in produzione.
+  let erroreDiagnostico: string | null = null;
 
   try {
     const anthropic = createAnthropicClient();
@@ -176,6 +184,7 @@ export async function sendAssistenzaMessage(
     }
   } catch (err) {
     console.error("Errore chat assistenza:", err);
+    erroreDiagnostico = err instanceof Error ? err.message : String(err);
   }
 
   // Quando il tool invia_email_assistenza viene chiamato, la conferma al
@@ -197,7 +206,7 @@ export async function sendAssistenzaMessage(
   }
 
   revalidatePath("/dashboard/omnia-ai/assistenza");
-  return {};
+  return erroreDiagnostico ? { error: `Errore assistente: ${erroreDiagnostico}` } : {};
 }
 
 // Escalation su richiesta diretta del cliente, senza passare dal
