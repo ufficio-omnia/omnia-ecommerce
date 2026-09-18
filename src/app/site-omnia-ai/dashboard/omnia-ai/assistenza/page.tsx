@@ -3,6 +3,14 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import AssistenzaChat, { type AssistenzaMessaggio } from "./assistenza-chat";
 
+// Il server action di invio (sendAssistenzaMessage) può fare fino a 3 giri
+// di chiamata a Claude con "thinking: adaptive": senza questo, il timeout
+// di default della funzione serverless può interrompere la richiesta prima
+// che il modello risponda, lasciando la chat "in attesa" senza errore
+// visibile — Next.js applica il maxDuration della PAGINA anche ai Server
+// Action richiamati da essa (non serve impostarlo sul file dell'azione).
+export const maxDuration = 60;
+
 // Nessun gate di sola scrittura qui (a differenza di gara-chat): questa
 // chat non tocca mai la quota gare, deve restare utilizzabile anche in
 // sola lettura — solo sessione valida richiesta, come ogni altra pagina.
