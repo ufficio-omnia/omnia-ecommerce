@@ -76,7 +76,7 @@ export default function AssistenzaChat({ messaggi }: { messaggi: AssistenzaMessa
                 ) : (
                   <p style={{ whiteSpace: "pre-wrap" }}>{m.contenuto}</p>
                 )}
-                <p className="omnia-msg-ora">{new Date(m.created_at).toLocaleString("it-IT")}</p>
+                <p className="omnia-msg-ora">{new Date(m.created_at).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}</p>
               </div>
             </div>
           ))
