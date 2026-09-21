@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
-import { BASE_URL, ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
+import { BASE_URL, OMNIA_AI_BASE_URL, ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
   // src/proxy.ts risolve già la zona (hostname reale in produzione,
@@ -25,9 +25,33 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
   }
 
   if (zone === "omnia-ai") {
-    // Vetrina non ancora pubblicata: nessun riferimento all'e-commerce,
-    // nessuna sitemap finché non c'è nulla da elencare.
-    return { rules: { userAgent: "*", allow: "/" } };
+    // Nessun riferimento all'e-commerce: sitemap propria, sul dominio
+    // canonico di omnia-ai.it.
+    //
+    // Bloccati: area riservata, admin, /api e /auth (callback Supabase),
+    // più le pagine transazionali che non hanno un meta noindex
+    // (registrazione, attivazione account, checkout diretto /abbonati/*).
+    //
+    // NON bloccati di proposito: /login, /imposta-password e
+    // /abbonamento-attivato. Hanno già un meta noindex, e Google deve
+    // poter scaricare la pagina per leggerlo — un Disallow qui lo
+    // renderebbe inefficace.
+    return {
+      rules: {
+        userAgent: "*",
+        allow: "/",
+        disallow: [
+          "/dashboard/",
+          "/admin/",
+          "/api/",
+          "/auth/",
+          "/registrati",
+          "/attiva-account",
+          "/abbonati/",
+        ],
+      },
+      sitemap: `${OMNIA_AI_BASE_URL}/sitemap.xml`,
+    };
   }
 
   // Zona "console" e qualunque host non riconosciuto: mai indicizzabili
