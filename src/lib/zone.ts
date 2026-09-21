@@ -23,6 +23,13 @@ export const BASE_URL = isPublicSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
   ? process.env.NEXT_PUBLIC_SITE_URL
   : `https://${ECOMMERCE_HOST}`;
 
+// Dominio canonico di omnia-ai.it per sitemap.xml e robots.txt: scritto
+// fisso, NON letto da NEXT_PUBLIC_SITE_URL (che segue l'ambiente e punta
+// all'e-commerce). Sempre https e senza www — www.omnia-ai.it e http://
+// rispondono già con un 308 verso questo indirizzo, quindi in sitemap
+// non deve comparire nessun'altra variante.
+export const OMNIA_AI_BASE_URL = "https://omnia-ai.it";
+
 // Un host non in questa mappa (dominio tecnico *.vercel.app incluso)
 // ricade sulla zona "ecommerce" per il ROUTING (comportamento identico a
 // oggi, non deve rompersi nulla) — ma NON per l'indicizzazione: vedere
