@@ -3,11 +3,14 @@ import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { getCurrentOmniaAiCondizioniAbbonamentoUrl } from "@/lib/omnia-ai-legal";
 import { PIANI, PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
+import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = paginaMetadata({
   title: "Piani e prezzi — OMNIA AI",
-  description: "Abbonamento mensile con gare incluse per generare relazioni tecniche di gara.",
-};
+  description:
+    "Piani e prezzi di OMNIA AI: abbonamento mensile con gare incluse per generare la relazione tecnica delle tue gare d'appalto in Word.",
+  path: "/piani",
+});
 
 export default async function PianiPage() {
   const condizioniUrl = await getCurrentOmniaAiCondizioniAbbonamentoUrl();
@@ -15,7 +18,7 @@ export default async function PianiPage() {
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
-        <h1>Un piano per ogni ritmo di partecipazione a gara.</h1>
+        <h1>OMNIA AI: un piano per ogni ritmo di partecipazione a gara.</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           Abbonamento mensile con un numero di gare incluso. Una gara si consuma quando parte
           l&apos;analisi dei documenti: da lì in poi generazioni e revisioni sulla stessa gara

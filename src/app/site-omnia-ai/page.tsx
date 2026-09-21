@@ -5,11 +5,64 @@ import SiteHeader from "@/components/omnia-ai/site-header";
 import HeroDemo from "@/components/omnia-ai/hero-demo";
 import FaqAccordion from "@/components/omnia-ai/faq-accordion";
 import SiteFooter from "@/components/omnia-ai/site-footer";
+import { OMNIA_AI_BASE_URL } from "@/lib/zone";
+import {
+  OMNIA_AI_LOGO_URL,
+  OMNIA_AI_NOME,
+  OMNIA_AI_NOMI_ALTERNATIVI,
+  paginaMetadata,
+} from "@/lib/omnia-ai-seo";
 
-export const metadata: Metadata = {
-  title: "OMNIA AI — l'assistente per le gare di facility management",
+// Title entro ~60 caratteri, description entro ~155: oltre, Google li taglia.
+export const metadata: Metadata = paginaMetadata({
+  title: "OMNIA AI — Intelligenza artificiale per gare d'appalto",
   description:
-    "OMNIA AI legge bando, disciplinare e capitolato e restituisce la relazione tecnica già impaginata in Word. Il metodo di dieci anni di offerte tecniche per soft e hard facility management, in mano a te.",
+    "OMNIA AI è l'intelligenza artificiale per gare d'appalto: legge bando e capitolato e scrive la relazione tecnica già impaginata in Word.",
+  path: "/",
+});
+
+// Dati strutturati della home: Organization (chi è), SoftwareApplication
+// (cos'è il prodotto) e WebSite (il nome che Google mostra nei risultati),
+// collegati tra loro da @id. Nessun `offers` né `aggregateRating`: non ci
+// sono recensioni da citare, e senza rating Google non mostra comunque il
+// rich result del software.
+const ORGANIZATION_ID = `${OMNIA_AI_BASE_URL}/#organization`;
+
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": ORGANIZATION_ID,
+      name: OMNIA_AI_NOME,
+      alternateName: OMNIA_AI_NOMI_ALTERNATIVI,
+      url: OMNIA_AI_BASE_URL,
+      logo: { "@type": "ImageObject", url: OMNIA_AI_LOGO_URL, width: 512, height: 512 },
+      // Altri profili ufficiali (LinkedIn, ecc.) vanno aggiunti qui.
+      sameAs: ["https://omniaitalia.com"],
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${OMNIA_AI_BASE_URL}/#software`,
+      name: OMNIA_AI_NOME,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      inLanguage: "it",
+      url: `${OMNIA_AI_BASE_URL}/`,
+      description:
+        "OMNIA AI è il software di intelligenza artificiale per gare d'appalto: legge bando, disciplinare e capitolato e genera la relazione tecnica (offerta tecnica) già impaginata in Word, per gare di soft e hard facility management.",
+      publisher: { "@id": ORGANIZATION_ID },
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${OMNIA_AI_BASE_URL}/#website`,
+      name: OMNIA_AI_NOME,
+      alternateName: OMNIA_AI_NOMI_ALTERNATIVI,
+      url: `${OMNIA_AI_BASE_URL}/`,
+      inLanguage: "it",
+      publisher: { "@id": ORGANIZATION_ID },
+    },
+  ],
 };
 
 const FAQ = [
@@ -48,6 +101,12 @@ const FAQ = [
 export default function OmniaAiHomePage() {
   return (
     <MarchioStatoProvider>
+      {/* "<" viene sostituito con < nel JSON serializzato, come indica
+          la guida JSON-LD di Next.js: nessuna stringa può chiudere il tag. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD).replace(/</g, "\\u003c") }}
+      />
       <SiteHeader />
       <HeroDemo />
 

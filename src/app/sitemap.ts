@@ -14,11 +14,11 @@ import { createClient } from "@/lib/supabase/server";
 // adesso" e Google imparerebbe a ignorare il campo. Va aggiornata a mano
 // quando cambia il contenuto della pagina corrispondente.
 const OMNIA_AI_ROUTES: { path: string; lastModified: string }[] = [
-  { path: "/", lastModified: "2026-09-10" },
-  { path: "/come-funziona", lastModified: "2026-09-15" },
-  { path: "/piani", lastModified: "2026-09-15" },
-  { path: "/demo", lastModified: "2026-09-10" },
-  { path: "/contatti", lastModified: "2026-09-10" },
+  { path: "/", lastModified: "2026-09-21" },
+  { path: "/come-funziona", lastModified: "2026-09-21" },
+  { path: "/piani", lastModified: "2026-09-21" },
+  { path: "/demo", lastModified: "2026-09-21" },
+  { path: "/contatti", lastModified: "2026-09-21" },
   { path: "/privacy", lastModified: "2026-09-11" },
   { path: "/cookie-policy", lastModified: "2026-09-11" },
   { path: "/condizioni-abbonamento", lastModified: "2026-09-11" },
