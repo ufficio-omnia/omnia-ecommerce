@@ -25,6 +25,11 @@ const EXTRACTION_TOOL = {
         description:
           "Nome dell'ente/stazione appaltante che ha indetto la gara, così come indicato nel bando/disciplinare (es. 'Comune di Milano', 'ASL Roma 1'). Ometti il campo se non è identificabile nei documenti.",
       },
+      cig: {
+        type: "string",
+        description:
+          "Codice Identificativo Gara (CIG) così come riportato nel bando/disciplinare: 10 caratteri alfanumerici (es. '8123456AB1'), senza la dicitura 'CIG' né spazi. Ometti il campo se non è indicato nei documenti; se ne compaiono più di uno (es. uno per lotto) riporta solo quello della gara principale, mai un valore dedotto.",
+      },
       scadenza: {
         type: "string",
         description:
@@ -241,6 +246,7 @@ export async function extractGaraData(
 
     const result = toolUse.input as {
       stazione_appaltante?: string;
+      cig?: string;
       scadenza?: string;
       importo?: number;
       criteri_valutazione: string;
@@ -280,6 +286,7 @@ export async function extractGaraData(
       .from("gare")
       .update({
         stazione_appaltante: result.stazione_appaltante || null,
+        cig: result.cig?.replace(/\s+/g, "").toUpperCase() || null,
         scadenza: result.scadenza || null,
         importo: result.importo ?? null,
         criteri_valutazione: result.criteri_valutazione,

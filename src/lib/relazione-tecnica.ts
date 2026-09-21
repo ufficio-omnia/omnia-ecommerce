@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
-import { buildDocxBuffer, rimuoviTitoloRidondante } from "@/lib/docx-generator";
+import { buildDocxBuffer, rimuoviTitoloRidondante, type DatiIntestazione } from "@/lib/docx-generator";
 import { sanitizeFileName } from "@/lib/document-text";
 import { ricavaStileOrganigramma } from "@/lib/org-chart-style";
 import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
@@ -106,6 +106,39 @@ async function formattazioneGara(
   return { titolo, font, dimensioneCarattere, interlinea };
 }
 
+// Dati dell'intestazione di pagina del documento Word: stazione appaltante
+// e CIG già estratti dai documenti della gara, ragione sociale dal profilo
+// azienda. Un dato assente resta null e l'intestazione lo omette (vedi
+// costruisciIntestazione in docx-generator.ts) — ma una query che FALLISCE
+// (es. colonna "cig" non ancora creata perché la migrazione 0065 non è
+// stata eseguita) va segnalata nei log, non scambiata per "dato assente".
+async function datiIntestazioneRelazione(garaId: string, userId: string): Promise<DatiIntestazione> {
+  const supabase = await createClient();
+
+  const [{ data: gara, error: garaError }, { data: company }] = await Promise.all([
+    supabase
+      .from("gare")
+      .select("stazione_appaltante, cig")
+      .eq("id", garaId)
+      .maybeSingle<{ stazione_appaltante: string | null; cig: string | null }>(),
+    supabase
+      .from("companies")
+      .select("ragione_sociale")
+      .eq("user_id", userId)
+      .maybeSingle<{ ragione_sociale: string | null }>(),
+  ]);
+
+  if (garaError) {
+    console.error("Errore lettura stazione appaltante/CIG per l'intestazione del documento:", garaError);
+  }
+
+  return {
+    stazioneAppaltante: gara?.stazione_appaltante ?? null,
+    cig: gara?.cig ?? null,
+    concorrente: company?.ragione_sociale ?? null,
+  };
+}
+
 async function caricaDocumento(
   garaId: string,
   nomeFile: string,
@@ -196,6 +229,7 @@ export async function generaBozzaSezione(params: {
     { font: fmt.font, dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea },
     stileOrganigramma ?? undefined,
     loghiOrganigramma,
+    await datiIntestazioneRelazione(garaId, userId),
   );
 
   return caricaDocumento(garaId, `${titoloSezione}.docx`, buffer);
@@ -731,6 +765,7 @@ export async function componiRelazioneFinale(params: {
     { font: fmt.font, dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea },
     stileOrganigramma ?? undefined,
     loghiOrganigramma,
+    await datiIntestazioneRelazione(garaId, userId),
   );
 
   return caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer);
