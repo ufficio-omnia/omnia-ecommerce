@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import PageShell from "@/components/omnia-ai/page-shell";
+import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = paginaMetadata({
   title: "Contatti — OMNIA AI",
-};
+  description:
+    "Contatta OMNIA AI, l'intelligenza artificiale per gare d'appalto di Omnia Consulting: domande, richieste commerciali e assistenza.",
+  path: "/contatti",
+});
 
 export default function ContattiPage() {
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
-        <h1>Contatti</h1>
+        <h1>Contatta OMNIA AI</h1>
       </section>
 
       <section className="omnia-pagina-corpo">
