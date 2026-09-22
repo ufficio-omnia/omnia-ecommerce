@@ -579,33 +579,93 @@ function testoCellaPerPeso(cella: string): string {
     .replace(/!!/g, "");
 }
 
+// Larghezza minima assoluta: evita che una colonna di soli numeri/sigle
+// collassi a pochi millimetri.
+const LARGHEZZA_MINIMA_COLONNA_TWIP = 850;
+
+// Margine interno delle celle (sinistra/destra più ampio del sopra/sotto,
+// come da convenzione tipografica): il testo prima toccava i bordi.
+const MARGINE_CELLA_TWIP = { top: 40, bottom: 40, left: 100, right: 100 };
+
+// Twip per carattere a corpo 12: stessa calibrazione di
+// CARATTERI_PER_RIGA_PIENA_A_12PT in stima-pagine.ts (73 caratteri su
+// LARGHEZZA_UTILE_TWIP), qui invertita per andare da lunghezza testo a
+// larghezza invece che da larghezza pagina a righe — le due vanno tenute
+// coerenti se una cambia.
+const TWIP_PER_CARATTERE_A_12PT = LARGHEZZA_UTILE_TWIP / 73;
+
+function larghezzaTestoTwip(numeroCaratteri: number, dimensioneCarattere: number): number {
+  return numeroCaratteri * TWIP_PER_CARATTERE_A_12PT * (dimensioneCarattere / 12);
+}
+
 // Larghezza di ogni colonna proporzionale al contenuto più lungo che
 // contiene (intestazione inclusa), non equidistribuita sul totale: prima
 // le colonne avevano tutte la stessa larghezza qualunque fosse il
-// contenuto, causando testo compresso in colonne strette (parole spezzate
-// su più righe) accanto a colonne larghe quasi vuote (bug osservato in
-// pratica, es. "periferi-/ci"). Una larghezza minima assoluta evita che
-// una colonna di soli numeri/sigle collassi a pochi millimetri.
-const LARGHEZZA_MINIMA_COLONNA_TWIP = 850;
-
-function calcolaLarghezzeColonneTwip(tabella: string[][]): number[] {
+// contenuto, causando testo compresso in colonne strette accanto a
+// colonne larghe quasi vuote. A questo si aggiunge un PAVIMENTO per
+// colonna pari alla larghezza della sua parola più lunga (più il margine
+// interno): il problema delle parole spezzate a metà non dipendeva dalla
+// sillabazione (ora riattivata, vedi buildDocxBuffer) ma da colonne più
+// strette della parola più lunga che contenevano — es. "periferi-/ci" in
+// una colonna da poche battute. Se i pavimenti sommati non ci stanno
+// nella larghezza utile della pagina (raro: richiede più colonne con
+// parole singole molto lunghe), si scala tutto in proporzione invece di
+// sforare il margine destro.
+function calcolaLarghezzeColonneTwip(tabella: string[][], dimensioneCarattereHalfPt: number | undefined): number[] {
+  const dimensioneCarattere = (dimensioneCarattereHalfPt ?? 24) / 2;
   const numColonne = Math.max(...tabella.map((riga) => riga.length));
+
   const pesi = Array.from({ length: numColonne }, (_, colonna) =>
     Math.max(6, ...tabella.map((riga) => testoCellaPerPeso(riga[colonna] ?? "").length)),
   );
   const pesoTotale = pesi.reduce((somma, p) => somma + p, 0);
 
-  const larghezze = pesi.map((peso) =>
-    Math.max(LARGHEZZA_MINIMA_COLONNA_TWIP, Math.round((LARGHEZZA_UTILE_TWIP * peso) / pesoTotale)),
+  const paddingOrizzontaleTwip = MARGINE_CELLA_TWIP.left + MARGINE_CELLA_TWIP.right;
+  const pavimentoParola = Array.from({ length: numColonne }, (_, colonna) => {
+    const parolaMassima = tabella
+      .flatMap((riga) => testoCellaPerPeso(riga[colonna] ?? "").split(/\s+/))
+      .reduce((max, parola) => Math.max(max, parola.length), 0);
+    return Math.ceil(larghezzaTestoTwip(parolaMassima, dimensioneCarattere)) + paddingOrizzontaleTwip;
+  });
+
+  let larghezze = pesi.map((peso, i) =>
+    Math.max(LARGHEZZA_MINIMA_COLONNA_TWIP, pavimentoParola[i], Math.round((LARGHEZZA_UTILE_TWIP * peso) / pesoTotale)),
   );
-  // L'arrotondamento per colonna può far sforare o restare sotto il
-  // totale di qualche twip: la differenza va tutta sull'ultima colonna,
-  // così la somma corrisponde sempre esattamente alla larghezza utile
-  // della pagina (Word non gradisce che le colonne non tornino).
-  const scarto = LARGHEZZA_UTILE_TWIP - larghezze.reduce((somma, l) => somma + l, 0);
-  larghezze[larghezze.length - 1] += scarto;
+
+  const totale = larghezze.reduce((somma, l) => somma + l, 0);
+  if (totale > LARGHEZZA_UTILE_TWIP) {
+    const fattore = LARGHEZZA_UTILE_TWIP / totale;
+    larghezze = larghezze.map((l) => Math.max(LARGHEZZA_MINIMA_COLONNA_TWIP, Math.round(l * fattore)));
+  } else {
+    // L'arrotondamento per colonna può far restare sotto il totale di
+    // qualche twip: la differenza va tutta sull'ultima colonna, così la
+    // somma corrisponde sempre esattamente alla larghezza utile della
+    // pagina (Word non gradisce che le colonne non tornino).
+    const scarto = LARGHEZZA_UTILE_TWIP - larghezze.reduce((somma, l) => somma + l, 0);
+    larghezze[larghezze.length - 1] += scarto;
+  }
 
   return larghezze;
+}
+
+// Centrato per contenuto breve che sta su una o due righe (numeri, ore,
+// frequenze, quantità, sigle, codici, date, singole parole), giustificato
+// per il testo descrittivo che occupa più righe — calcolato dalla
+// larghezza REALE della colonna, non da un tag "[C]"/"[G]" scelto
+// dall'AI (che sceglieva in modo incoerente, causando testo allineato a
+// sinistra di fatto): la stessa lunghezza di testo sta su una riga in una
+// colonna larga e su più righe in una stretta, la soglia non può essere
+// fissa.
+function allineamentoCella(
+  testoPulito: string,
+  larghezzaColonnaTwip: number,
+  dimensioneCarattereHalfPt: number | undefined,
+): (typeof AlignmentType)[keyof typeof AlignmentType] {
+  const dimensioneCarattere = (dimensioneCarattereHalfPt ?? 24) / 2;
+  const larghezzaUtileCella = Math.max(1, larghezzaColonnaTwip - MARGINE_CELLA_TWIP.left - MARGINE_CELLA_TWIP.right);
+  const caratteriPerRiga = Math.max(1, Math.floor(larghezzaUtileCella / (TWIP_PER_CARATTERE_A_12PT * (dimensioneCarattere / 12))));
+  const righeStimate = Math.max(1, Math.ceil(testoPulito.length / caratteriPerRiga));
+  return righeStimate <= 2 ? AlignmentType.CENTER : AlignmentType.JUSTIFIED;
 }
 
 async function renderTextSegment(
@@ -649,7 +709,7 @@ async function renderTextSegment(
       const coloreColonnaEvidenziata = schiarisciColore(coloreIntestazione, 0.72);
       const coloreBordo = schiarisciColore(coloreIntestazione, 0.55);
       const bordoSottile = { style: BorderStyle.SINGLE, size: 2, color: coloreBordo };
-      const larghezzeColonne = calcolaLarghezzeColonneTwip(tabella);
+      const larghezzeColonne = calcolaLarghezzeColonneTwip(tabella, runProps.size);
       const larghezzaColonna = (indiceColonna: number) => ({
         size: larghezzeColonne[indiceColonna],
         type: WidthType.DXA,
@@ -668,11 +728,13 @@ async function renderTextSegment(
               // colonna deve restare "spaiata" rispetto alle altre.
               const celleGrezzaNormalizzata = normalizzaOrdineTagCella(celleGrezza);
               const allineamentoMatch = celleGrezzaNormalizzata.match(CELLA_ALLINEAMENTO_REGEX);
+              // Il tag va comunque tolto dal testo (contenuto già generato
+              // con "[C]"/"[G]" in testa), ma non decide più l'allineamento
+              // — vedi allineamentoCella.
               const cella = allineamentoMatch
                 ? ricomponiTestoDopoTag(celleGrezzaNormalizzata.slice(allineamentoMatch[0].length), Boolean(allineamentoMatch[1]))
                 : celleGrezzaNormalizzata;
-              const alignment =
-                allineamentoMatch?.[2] === "G" ? AlignmentType.JUSTIFIED : AlignmentType.CENTER;
+              const alignment = allineamentoCella(testoCellaPerPeso(celleGrezza), larghezzeColonne[indiceColonna], runProps.size);
 
               // Le icone e il testo colorato nel corpo tabella usano il
               // colore dell'intestazione: coerenza visiva con il tema
@@ -731,6 +793,7 @@ async function renderTextSegment(
           // larghezze calcolate sul contenuto.
           layout: TableLayoutType.FIXED,
           columnWidths: larghezzeColonne,
+          margins: MARGINE_CELLA_TWIP,
           borders: {
             top: bordoSottile,
             bottom: bordoSottile,
@@ -860,7 +923,12 @@ export async function buildDocxBuffer(
     ? Math.round(formatting.interlinea * 240)
     : undefined;
 
-  const runProps = { font, size };
+  // Lingua italiana su ogni run: necessaria perché la sillabazione
+  // automatica (sotto) usi le regole italiane invece del default
+  // dell'applicazione che apre il file (spesso inglese) — senza questa
+  // dichiarazione esplicita la sillabazione, quando innescata, spezzerebbe
+  // le parole nei punti sbagliati.
+  const runProps = { font, size, language: { value: "it-IT" } };
   const paragraphSpacing = lineSpacing ? { line: lineSpacing } : undefined;
 
   // Pagina del titolo/indice separata dal resto (sezione a sé): serve a
@@ -1063,10 +1131,18 @@ export async function buildDocxBuffer(
     // Fa aggiornare automaticamente a Word l'indice (numeri di pagina)
     // all'apertura del file, invece di richiedere F9 manuale.
     features: { updateFields: true },
-    // Mai andare a capo spezzando una parola con un trattino automatico:
-    // richiesto esplicitamente, oltre a essere già il comportamento di
-    // default di Word in assenza di questa impostazione.
-    hyphenation: { autoHyphenation: false },
+    // Sillabazione automatica attiva (lingua italiana, vedi runProps
+    // sopra): serve soprattutto nelle celle di tabella, dove le colonne
+    // sono più strette del corpo del testo — l'impaginazione a piena
+    // pagina raramente ne ha bisogno. docx non espone un modo per
+    // limitarla alle sole tabelle (nessuna proprietà per sopprimerla per
+    // singolo paragrafo): attiva ovunque, ma scatta solo dove una riga
+    // altrimenti non ci starebbe, quindi nella pratica interviene quasi
+    // solo nelle celle. Le parole intere che non entrano in una colonna
+    // sono già risolte a monte dalle larghezze di colonna (vedi
+    // calcolaLarghezzeColonneTwip): la sillabazione qui è un aiuto in
+    // più, non il correttivo principale.
+    hyphenation: { autoHyphenation: true },
     sections: [
       {
         // Sezione 1: titolo + indice, senza numerazione — nessuna pagina

@@ -36,3 +36,4 @@ function corpoPrompt(nomeFile: string): string {
 // correggiSezioneVersoTarget in relazione-tecnica.ts).
 export const ISTRUZIONI_COMPRESSIONE = corpoPrompt("compressione-omnia.md");
 export const ISTRUZIONI_ESPANSIONE = corpoPrompt("espansione-omnia.md");
+export const ISTRUZIONI_VERIFICA_DATI = corpoPrompt("verifica-dati-omnia.md");
