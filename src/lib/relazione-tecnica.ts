@@ -8,7 +8,7 @@ import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
 import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
-import { REGOLE_OMNIA } from "@/lib/prompts";
+import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
@@ -492,10 +492,25 @@ async function espandiContenutoSezione(
   // insieme sforino il limite di pagine complessivo del disciplinare.
   let istruzioneObiettivo: string;
   if (azione === "espandi") {
+    // Prompt guidato da prompts/espansione-omnia.md (versionato, non
+    // scritto qui): {N} sostituito con le parole mancanti stimate dallo
+    // scarto di pagine reale. "MANTIENI INTEGRALMENTE" resta un'aggiunta
+    // del codice, non del prompt originale — senza questa clausola
+    // esplicita il modello a volte riscriveva/accorciava il contenuto
+    // già presente anche quando gli veniva chiesto solo di espandere
+    // (bug osservato in pratica).
     const paroleEquivalentiMancanti = Math.round(Math.max(0, pagineTarget - pagineAttuali) * 450);
-    istruzioneObiettivo = `È più corta di quanto lo spazio disponibile per questo criterio consentirebbe: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target di ${pagineTarget.toFixed(1)} pagine (conteggio REALE che tiene conto anche di tabelle/immagini, che occupano più spazio per parola del semplice testo — se aggiungi tabelle, ti serve MENO testo nuovo di quanto suggerirebbe un conteggio a sole parole: attualmente ha ${paroleAttuali} parole, e ne basterebbero all'incirca ${paroleEquivalentiMancanti} in più se scrivessi solo prosa, ma sensibilmente meno se usi tabelle). Espandila aggiungendo approfondimento, dettagli operativi, esempi concreti, tabelle o sotto-argomenti coerenti con quanto già presente, fino a raggiungere TRA ${pagineTarget.toFixed(1)} e ${(pagineTarget * 1.05).toFixed(1)} pagine — MAI oltre questo massimo, MAI sotto il target per prudenza. MANTIENI INTEGRALMENTE tutto il contenuto già presente (non tagliare, non riassumere, non riscrivere quanto già scritto).`;
+    istruzioneObiettivo = `${ISTRUZIONI_ESPANSIONE.replace("{N}", String(paroleEquivalentiMancanti))}
+
+Per riferimento: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target di ${pagineTarget.toFixed(1)} (conteggio reale che tiene conto anche di tabelle/immagini, non un conteggio a parole — con tabelle serve meno testo nuovo di quanto il numero di parole sopra farebbe pensare). MANTIENI INTEGRALMENTE tutto il contenuto già presente: non tagliare, non riassumere, non riscrivere quanto già scritto.`;
   } else if (azione === "condensa") {
-    istruzioneObiettivo = `È più LUNGA di quanto lo spazio disponibile per questo criterio consenta: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target massimo di ${pagineTarget.toFixed(1)} pagine (conteggio REALE che tiene conto anche di tabelle/immagini). CONDENSALA fino a rientrare TRA ${pagineTarget.toFixed(1)} e ${(pagineTarget * 1.05).toFixed(1)} pagine, senza perdere alcun contenuto sostanziale (requisiti, impegni, riferimenti normativi, dati tecnici restano tutti presenti) né la formattazione (tabelle/grassetti/evidenziazioni): elimina ridondanze, frasi ripetitive o eccessivamente discorsive, accorpa concetti equivalenti, preferisci frasi dirette. Se un paragrafo lungo descrive elenchi di caratteristiche/confronti/specifiche, valuta di convertirlo in tabella: occupa meno spazio a parità di informazione.`;
+    // Prompt guidato da prompts/compressione-omnia.md (versionato): {N}
+    // sostituito con le parole da togliere stimate dallo scarto di
+    // pagine reale.
+    const paroleDaTogliere = Math.round(Math.max(0, pagineAttuali - pagineTarget) * 450);
+    istruzioneObiettivo = `${ISTRUZIONI_COMPRESSIONE.replace("{N}", String(paroleDaTogliere))}
+
+Per riferimento: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target massimo di ${pagineTarget.toFixed(1)} (conteggio reale che tiene conto anche di tabelle/immagini, non un conteggio a parole).`;
   } else {
     istruzioneObiettivo = `La lunghezza attuale (circa ${pagineAttuali.toFixed(1)} pagine) è già adeguata al criterio: NON aggiungere quasi nessun testo nuovo, resta entro ${(pagineAttuali * 1.05).toFixed(1)} pagine. Il tuo unico compito è migliorare la FORMATTAZIONE di quanto già scritto secondo le regole sopra. MANTIENI INTEGRALMENTE tutto il contenuto già presente (non tagliare, non riassumere, non riscrivere quanto già scritto).`;
   }
