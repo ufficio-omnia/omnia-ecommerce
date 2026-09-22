@@ -6,6 +6,9 @@ import Script from "next/script";
 const CONSENT_KEY = "omnia-ai-cookie-consent";
 const CONSENT_EVENT = "omnia-ai-consent-change";
 
+// Google Analytics 4 (installato da Google Analytics, tag "G-").
+const GA4_ID = "G-W551SWPNE4";
+
 // Nessun ID Google Ads collegato per ora — logica di consenso pronta,
 // il tag resta bloccato comunque (mai da CDN/script prima del consenso)
 // finché questo non viene valorizzato. Quando arriva l'ID, basta
@@ -57,15 +60,16 @@ export default function OmniaAiCookieConsent() {
 
   return (
     <>
-      {status === "accepted" && GADS_ID && (
+      {status === "accepted" && (
         <>
-          <Script src={`https://www.googletagmanager.com/gtag/js?id=${GADS_ID}`} strategy="afterInteractive" />
+          <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`} strategy="afterInteractive" />
           <Script id="omnia-ai-gtag-init" strategy="afterInteractive">
             {`
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
-              gtag('config', '${GADS_ID}');
+              gtag('config', '${GA4_ID}');
+              ${GADS_ID ? `gtag('config', '${GADS_ID}');` : ""}
             `}
           </Script>
         </>
