@@ -7,6 +7,12 @@ const nextConfig: NextConfig = {
     },
   },
   serverExternalPackages: ["pdf-parse", "@napi-rs/canvas", "sharp"],
+  // src/lib/prompts.ts legge prompts/*.md con fs.readFileSync a runtime: un
+  // percorso costruito con process.cwd() non viene tracciato automaticamente
+  // dal build Vercel, quindi va incluso esplicitamente nel bundle serverless.
+  outputFileTracingIncludes: {
+    "/**": ["./prompts/**"],
+  },
   // Next ammette un solo favicon.ico, al livello più alto di app/ (quindi
   // src/app/favicon.ico, quello dell'e-commerce), condiviso da tutti i
   // domini: senza questa regola omnia-ai.it serviva l'icona dell'e-commerce
