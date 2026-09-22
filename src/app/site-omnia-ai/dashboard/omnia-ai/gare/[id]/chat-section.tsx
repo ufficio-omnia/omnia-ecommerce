@@ -34,15 +34,28 @@ export type GaraMessaggio = {
   created_at: string;
   file_nome: string | null;
   file_path: string | null;
+  pagine_stimate: number | null;
   allegati: GaraMessaggioAllegato[];
 };
+
+// Solo una stima (vedi stima-pagine.ts): non un conteggio Word reale, che
+// dipende da font/renderer installati sul computer di chi apre il file.
+function stimaPagineEtichetta(pagineStimate: number | null, limitePagineTotale: number | null): string | null {
+  if (pagineStimate == null) return null;
+  const arrotondate = Math.ceil(pagineStimate);
+  return limitePagineTotale
+    ? `~${arrotondate} pagine stimate (limite disciplinare: ${limitePagineTotale})`
+    : `~${arrotondate} pagine stimate`;
+}
 
 export default function ChatSection({
   garaId,
   messaggi,
+  limitePagineTotale,
 }: {
   garaId: string;
   messaggi: GaraMessaggio[];
+  limitePagineTotale: number | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -111,6 +124,11 @@ export default function ChatSection({
         una bozza a sé). Solo quando tutti i criteri sono stati sviluppati, chiedi di
         &quot;elaborare la relazione finale&quot; per comporli in un unico documento definitivo.
       </p>
+      <p className="omnia-chat-nota">
+        Il numero di pagine indicato sotto ogni documento è una stima: prima di consegnare, apri
+        sempre il file in Word e controlla il numero di pagine effettivo — dipende dal computer su
+        cui lo apri.
+      </p>
 
       <div ref={scrollRef} className="omnia-chat-corpo">
         {messaggi.length ? (
@@ -127,6 +145,11 @@ export default function ChatSection({
                       label="Scarica documento"
                       className="omnia-btn omnia-btn-verde omnia-btn-piccolo"
                     />
+                    {stimaPagineEtichetta(m.pagine_stimate, limitePagineTotale) && (
+                      <span className="omnia-stima-pagine">
+                        {stimaPagineEtichetta(m.pagine_stimate, limitePagineTotale)}
+                      </span>
+                    )}
                   </div>
                 )}
                 {m.allegati.length > 0 && (

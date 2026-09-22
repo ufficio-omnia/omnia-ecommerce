@@ -15,7 +15,7 @@ import {
   LIMITE_BYTE_PER_CATEGORIA,
   MAX_ALLEGATI_PER_MESSAGGIO,
 } from "@/lib/attachment-text";
-import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
 import {
   generaBozzaSezione,
   componiRelazioneFinale,
@@ -64,13 +64,18 @@ function calcolaRipartizionePagine(gara: GaraContesto): string {
     return "";
   }
 
+  // Il target reale resta sotto il limite dichiarato dal disciplinare
+  // (vedi limitePagineConMargine): la stima di pagine non è un conteggio
+  // Word reale, puntare esattamente al limite rischia di sforarlo.
+  const limiteConMargine = limitePagineConMargine(limite_pagine_totale);
+
   const righe = criteri_riepilogo.map((c) => {
     const quota = c.punti_max / punteggio_tecnico_max;
-    const pagine = Math.max(1, Math.round(quota * limite_pagine_totale));
+    const pagine = Math.max(1, Math.round(quota * limiteConMargine));
     return `- Criterio ${c.numero} "${c.titolo}": ${c.punti_max}/${punteggio_tecnico_max} punti (${Math.round(quota * 100)}%) → circa ${pagine} pagine`;
   });
 
-  return `\nRipartizione raccomandata delle ${limite_pagine_totale} pagine totali tra i criteri, calcolata in proporzione al punteggio di ciascuno (usala come target per QUESTO criterio quando decidi quanto scrivere, vedi istruzioni dettagliate nello strumento "genera_bozza_sezione"). ATTENZIONE: una tabella occupa MOLTO più spazio per parola del testo normale (le colonne strette costringono ogni cella ad andare a capo più spesso) — un criterio ricco di tabelle raggiunge il target di pagine con MENO parole di uno scritto solo in prosa: non aggiungere testo extra "per compensare" solo perché hai usato tabelle.\n${righe.join("\n")}\n`;
+  return `\nRipartizione raccomandata delle ${limiteConMargine} pagine (già ridotte di un margine di sicurezza rispetto al limite dichiarato di ${limite_pagine_totale}, per non rischiare di sforarlo) tra i criteri, calcolata in proporzione al punteggio di ciascuno (usala come target per QUESTO criterio quando decidi quanto scrivere, vedi istruzioni dettagliate nello strumento "genera_bozza_sezione"). ATTENZIONE: una tabella occupa MOLTO più spazio per parola del testo normale (le colonne strette costringono ogni cella ad andare a capo più spesso) — un criterio ricco di tabelle raggiunge il target di pagine con MENO parole di uno scritto solo in prosa: non aggiungere testo extra "per compensare" solo perché hai usato tabelle.\n${righe.join("\n")}\n`;
 }
 
 // Elenco AUTORITATIVO (fissato una volta in fase di estrazione documenti,
@@ -390,7 +395,7 @@ export async function sendGaraMessage(
   }
 
   let rispostaFinale = "";
-  let fileGenerato: { nomeFile: string; filePath: string } | null = null;
+  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number } | null = null;
 
   try {
     const queryEmbedding = await embedQuery(messaggio, {
@@ -689,7 +694,7 @@ export async function sendGaraMessage(
             company?.ragione_sociale,
           );
 
-          const { nomeFile, filePath } = await generaBozzaSezione({
+          const { nomeFile, filePath, pagineStimate } = await generaBozzaSezione({
             garaId,
             userId: user.id,
             titoloSezione: input.titolo_sezione,
@@ -699,7 +704,7 @@ export async function sendGaraMessage(
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,
           });
-          fileGenerato = { nomeFile, filePath };
+          fileGenerato = { nomeFile, filePath, pagineStimate };
           strumentiDisponibili = [];
           console.log(
             `sendGaraMessage: bozza generata "${nomeFile}" (${filePath}) per gara ${garaId}, sezione "${input.titolo_sezione}"`,
@@ -794,6 +799,7 @@ export async function sendGaraMessage(
     contenuto: contenutoFinale,
     file_nome: fileGenerato?.nomeFile ?? null,
     file_path: fileGenerato?.filePath ?? null,
+    pagine_stimate: fileGenerato?.pagineStimate ?? null,
   });
 
   if (insertAiError) {

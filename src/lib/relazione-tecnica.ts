@@ -5,7 +5,7 @@ import { buildDocxBuffer, rimuoviTitoloRidondante, type DatiIntestazione } from 
 import { sanitizeFileName } from "@/lib/document-text";
 import { ricavaStileOrganigramma } from "@/lib/org-chart-style";
 import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
-import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 
@@ -106,11 +106,12 @@ async function formattazioneGara(
   return { titolo, font, dimensioneCarattere, interlinea };
 }
 
-// Dati dell'intestazione di pagina del documento Word: stazione appaltante
-// e CIG già estratti dai documenti della gara, ragione sociale dal profilo
-// azienda. Un dato assente resta null e l'intestazione lo omette (vedi
-// costruisciIntestazione in docx-generator.ts) — ma una query che FALLISCE
-// (es. colonna "cig" non ancora creata perché la migrazione 0065 non è
+// Dati dell'intestazione di pagina del documento Word: stazione appaltante,
+// amministrazione committente (quando diversa: gare tramite centrale di
+// committenza) e CIG già estratti dai documenti della gara, ragione sociale
+// dal profilo azienda. Un dato assente resta null e l'intestazione lo
+// omette (vedi costruisciIntestazione in docx-generator.ts) — ma una query
+// che FALLISCE (es. colonna non ancora creata perché una migrazione non è
 // stata eseguita) va segnalata nei log, non scambiata per "dato assente".
 async function datiIntestazioneRelazione(garaId: string, userId: string): Promise<DatiIntestazione> {
   const supabase = await createClient();
@@ -118,9 +119,9 @@ async function datiIntestazioneRelazione(garaId: string, userId: string): Promis
   const [{ data: gara, error: garaError }, { data: company }] = await Promise.all([
     supabase
       .from("gare")
-      .select("stazione_appaltante, cig")
+      .select("stazione_appaltante, amministrazione_committente, cig")
       .eq("id", garaId)
-      .maybeSingle<{ stazione_appaltante: string | null; cig: string | null }>(),
+      .maybeSingle<{ stazione_appaltante: string | null; amministrazione_committente: string | null; cig: string | null }>(),
     supabase
       .from("companies")
       .select("ragione_sociale")
@@ -129,11 +130,12 @@ async function datiIntestazioneRelazione(garaId: string, userId: string): Promis
   ]);
 
   if (garaError) {
-    console.error("Errore lettura stazione appaltante/CIG per l'intestazione del documento:", garaError);
+    console.error("Errore lettura stazione appaltante/amministrazione committente/CIG per l'intestazione del documento:", garaError);
   }
 
   return {
     stazioneAppaltante: gara?.stazione_appaltante ?? null,
+    amministrazioneCommittente: gara?.amministrazione_committente ?? null,
     cig: gara?.cig ?? null,
     concorrente: company?.ragione_sociale ?? null,
   };
@@ -175,7 +177,7 @@ export async function generaBozzaSezione(params: {
   font?: string;
   dimensioneCarattere?: number;
   interlinea?: number;
-}): Promise<{ nomeFile: string; filePath: string }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number }> {
   const { garaId, userId, titoloSezione, contenuto, titoloRelazione, font, dimensioneCarattere, interlinea } =
     params;
 
@@ -232,7 +234,9 @@ export async function generaBozzaSezione(params: {
     await datiIntestazioneRelazione(garaId, userId),
   );
 
-  return caricaDocumento(garaId, `${titoloSezione}.docx`, buffer);
+  const pagineStimate = stimaPagineContenuto(contenuto, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
+
+  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate };
 }
 
 // Rimuove un eventuale prefisso numerico/alfabetico iniziale del titolo
@@ -614,7 +618,7 @@ export async function correggiSezioneVersoTarget(
 export async function componiRelazioneFinale(params: {
   garaId: string;
   userId: string;
-}): Promise<{ nomeFile: string; filePath: string } | { error: string }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number } | { error: string }> {
   const { garaId, userId } = params;
 
   const supabase = await createClient();
@@ -681,6 +685,11 @@ export async function componiRelazioneFinale(params: {
     garaBudget.criteri_riepilogo?.length
   ) {
     const { limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo } = garaBudget;
+    // Il target reale resta sotto il limite dichiarato dal disciplinare
+    // (vedi limitePagineConMargine in stima-pagine.ts): la stima di
+    // pagine non è un conteggio Word reale, puntare esattamente al
+    // limite rischia di sforarlo.
+    const limiteConMargine = limitePagineConMargine(limite_pagine_totale);
     const ordineBase = Math.max(...sezioni.map((s) => s.ordine));
 
     // Le sezioni da espandere sono indipendenti tra loro: eseguire le
@@ -700,13 +709,21 @@ export async function componiRelazioneFinale(params: {
         );
         if (!criterio) return null;
 
-        const pagineTarget = (criterio.punti_max / punteggio_tecnico_max) * limite_pagine_totale;
+        const pagineTarget = (criterio.punti_max / punteggio_tecnico_max) * limiteConMargine;
+        // 4 tentativi invece del default (2): verificato in pratica che una
+        // sezione molto sopra al proprio target può ridursi solo di poco a
+        // ogni passata (il modello non taglia sempre in modo aggressivo) —
+        // con 2 soli tentativi il margine di sicurezza applicato sopra
+        // (limitePagineConMargine) rischiava di non essere rispettato
+        // davvero, restando la sezione ancora sopra target*1.1 al termine
+        // del ciclo.
         const corretto = await correggiSezioneVersoTarget(
           sezione.titolo_sezione,
           sezione.contenuto,
           pagineTarget,
           formattazioneGaraCorrente,
           { userId, garaId },
+          4,
         );
         if (corretto === sezione.contenuto) return null;
 
@@ -768,5 +785,7 @@ export async function componiRelazioneFinale(params: {
     await datiIntestazioneRelazione(garaId, userId),
   );
 
-  return caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer);
+  const pagineStimate = stimaPagineContenuto(contenutoFinale, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
+
+  return { ...(await caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer)), pagineStimate };
 }

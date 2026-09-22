@@ -12,6 +12,7 @@ import {
   AlignmentType,
   ShadingType,
   TableOfContents,
+  TableLayoutType,
   BorderStyle,
   VerticalAlign,
   Footer,
@@ -38,7 +39,14 @@ export type DocxFormatting = {
 // è facoltativo, uno mancante viene semplicemente omesso dalla riga (mai
 // un segnaposto visibile né un vuoto tra i separatori).
 export type DatiIntestazione = {
+  // Il soggetto che conduce la procedura di gara — in una gara tramite
+  // centrale di committenza è la centrale stessa, non l'amministrazione
+  // beneficiaria (vedi amministrazioneCommittente).
   stazioneAppaltante?: string | null;
+  // L'amministrazione per cui si svolge il servizio, quando diversa dalla
+  // stazione appaltante: è quella che il concorrente riconosce, quindi va
+  // in testa alla riga (vedi costruisciIntestazione).
+  amministrazioneCommittente?: string | null;
   cig?: string | null;
   concorrente?: string | null;
 };
@@ -135,15 +143,36 @@ function risolviColoreTabella(parola: string): string {
 // di esso (es. un "[ICONA:...]" isolato senza etichetta) — vedi il
 // commento al punto di chiamata per il bug reale che ha reso necessario
 // questo controllo invece del semplice "guarda solo la prima riga".
-function estraiTagColoreTabella(righe: string[]): { colore: string | null; righe: string[] } {
-  const indiceInizioTabella = righe.findIndex((r) => r.startsWith("|"));
+function estraiTagColoreTabella(righeIn: string[]): { colore: string | null; righe: string[] } {
+  const indiceInizioTabella = righeIn.findIndex((r) => r.startsWith("|"));
+  let colore: string | null = null;
+  let righe = righeIn;
+
   if (indiceInizioTabella === -1) {
     const match = righe[0]?.match(TABELLA_COLORE_REGEX);
-    return { colore: match ? risolviColoreTabella(match[2]) : null, righe: match ? righe.slice(1) : righe };
+    colore = match ? risolviColoreTabella(match[2]) : null;
+    righe = match ? righe.slice(1) : righe;
+  } else {
+    const rigaColore = righe.slice(0, indiceInizioTabella).find((r) => TABELLA_COLORE_REGEX.test(r));
+    const match = rigaColore?.match(TABELLA_COLORE_REGEX);
+    colore = match ? risolviColoreTabella(match[2]) : null;
+    righe = righe.slice(indiceInizioTabella);
   }
-  const rigaColore = righe.slice(0, indiceInizioTabella).find((r) => TABELLA_COLORE_REGEX.test(r));
-  const match = rigaColore?.match(TABELLA_COLORE_REGEX);
-  return { colore: match ? risolviColoreTabella(match[2]) : null, righe: righe.slice(indiceInizioTabella) };
+
+  // L'AI a volte scrive "[TABELLA:colore]" DOPO la tabella invece che
+  // prima (osservato in pratica): senza questo controllo la riga non
+  // veniva mai tolta e parseTableBlock la interpretava come un'ulteriore
+  // riga di dati, producendo il tag letterale in una cella in fondo alla
+  // tabella. Usata solo se non è già stato trovato un colore prima:
+  // un'unica tabella non ha bisogno di due tag.
+  const ultima = righe[righe.length - 1];
+  const matchFinale = ultima?.match(TABELLA_COLORE_REGEX);
+  if (matchFinale) {
+    colore = colore ?? risolviColoreTabella(matchFinale[2]);
+    righe = righe.slice(0, -1);
+  }
+
+  return { colore, righe };
 }
 
 const BLOCCO_SPECIALE_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)\]([\s\S]*?)\[\/\1\]/gi;
@@ -161,6 +190,17 @@ const INLINE_RUN_REGEX = /(\*\*[^*]+\*\*|\*[^*]+\*|!!.+?!!)/g;
 // il tag non è più a inizio stringa una volta capitato dopo il "**" di
 // apertura, e resta testo letterale invece di essere riconosciuto.
 const CELLA_ALLINEAMENTO_REGEX = /^(\*\*)?\[(C|G)\]\s*/;
+
+// L'AI a volte scrive l'icona prima del tag di allineamento
+// ("[ICONA:x][C] testo" invece di "[C][ICONA:x] testo"): CELLA_ALLINEAMENTO_REGEX
+// cerca "[C]"/"[G]" solo in testa alla cella, quindi in quest'ordine il
+// tag non veniva riconosciuto e restava testo letterale dopo l'icona
+// (bug osservato in pratica). Scambia i due tag di posto quando compaiono
+// in quest'ordine, prima di qualunque altra elaborazione della cella.
+const ICONA_PRIMA_DI_ALLINEAMENTO_REGEX = /^(\[ICONA:[a-zA-Z]+\])\s*(\[(?:C|G)\])/;
+function normalizzaOrdineTagCella(testo: string): string {
+  return testo.replace(ICONA_PRIMA_DI_ALLINEAMENTO_REGEX, "$2$1");
+}
 
 // Come CELLA_ALLINEAMENTO_REGEX, ma per righe di testo fuori tabella:
 // "[C]"/"[G]" sono pensati per le celle, ma l'AI a volte li scrive anche
@@ -519,6 +559,55 @@ function paragrafoTitolo(
   });
 }
 
+// Larghezza utile della pagina in twip (1/20 di punto): A4 (11906 twip)
+// meno margini di 2.5cm per lato (1417 twip ciascuno) — stessa geometria
+// dichiarata esplicitamente in buildDocxBuffer e assunta da
+// stima-pagine.ts, non più un default implicito del motore che apre il
+// file.
+const LARGHEZZA_PAGINA_A4_TWIP = 11906;
+const MARGINE_TWIP = 1417;
+const LARGHEZZA_UTILE_TWIP = LARGHEZZA_PAGINA_A4_TWIP - 2 * MARGINE_TWIP;
+
+// Testo "pulito" di una cella, solo per pesare la larghezza della colonna
+// (non per il rendering): niente tag di allineamento/icona/evidenziazione,
+// che altrimenti gonfierebbero il peso di una colonna senza motivo.
+function testoCellaPerPeso(cella: string): string {
+  return normalizzaOrdineTagCella(cella)
+    .replace(CELLA_ALLINEAMENTO_REGEX, "")
+    .replace(/^\[ICONA:[a-zA-Z]+\]\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/!!/g, "");
+}
+
+// Larghezza di ogni colonna proporzionale al contenuto più lungo che
+// contiene (intestazione inclusa), non equidistribuita sul totale: prima
+// le colonne avevano tutte la stessa larghezza qualunque fosse il
+// contenuto, causando testo compresso in colonne strette (parole spezzate
+// su più righe) accanto a colonne larghe quasi vuote (bug osservato in
+// pratica, es. "periferi-/ci"). Una larghezza minima assoluta evita che
+// una colonna di soli numeri/sigle collassi a pochi millimetri.
+const LARGHEZZA_MINIMA_COLONNA_TWIP = 850;
+
+function calcolaLarghezzeColonneTwip(tabella: string[][]): number[] {
+  const numColonne = Math.max(...tabella.map((riga) => riga.length));
+  const pesi = Array.from({ length: numColonne }, (_, colonna) =>
+    Math.max(6, ...tabella.map((riga) => testoCellaPerPeso(riga[colonna] ?? "").length)),
+  );
+  const pesoTotale = pesi.reduce((somma, p) => somma + p, 0);
+
+  const larghezze = pesi.map((peso) =>
+    Math.max(LARGHEZZA_MINIMA_COLONNA_TWIP, Math.round((LARGHEZZA_UTILE_TWIP * peso) / pesoTotale)),
+  );
+  // L'arrotondamento per colonna può far sforare o restare sotto il
+  // totale di qualche twip: la differenza va tutta sull'ultima colonna,
+  // così la somma corrisponde sempre esattamente alla larghezza utile
+  // della pagina (Word non gradisce che le colonne non tornino).
+  const scarto = LARGHEZZA_UTILE_TWIP - larghezze.reduce((somma, l) => somma + l, 0);
+  larghezze[larghezze.length - 1] += scarto;
+
+  return larghezze;
+}
+
 async function renderTextSegment(
   contenuto: string,
   runProps: { font?: string; size?: number },
@@ -560,6 +649,11 @@ async function renderTextSegment(
       const coloreColonnaEvidenziata = schiarisciColore(coloreIntestazione, 0.72);
       const coloreBordo = schiarisciColore(coloreIntestazione, 0.55);
       const bordoSottile = { style: BorderStyle.SINGLE, size: 2, color: coloreBordo };
+      const larghezzeColonne = calcolaLarghezzeColonneTwip(tabella);
+      const larghezzaColonna = (indiceColonna: number) => ({
+        size: larghezzeColonne[indiceColonna],
+        type: WidthType.DXA,
+      });
 
       const righeCorpo = await Promise.all(
         corpo.map(async (riga, indice) => {
@@ -572,10 +666,11 @@ async function renderTextSegment(
               // tratta come etichetta di riga e non marca mai — il
               // default è comunque centrato, MAI sinistra: nessuna
               // colonna deve restare "spaiata" rispetto alle altre.
-              const allineamentoMatch = celleGrezza.match(CELLA_ALLINEAMENTO_REGEX);
+              const celleGrezzaNormalizzata = normalizzaOrdineTagCella(celleGrezza);
+              const allineamentoMatch = celleGrezzaNormalizzata.match(CELLA_ALLINEAMENTO_REGEX);
               const cella = allineamentoMatch
-                ? ricomponiTestoDopoTag(celleGrezza.slice(allineamentoMatch[0].length), Boolean(allineamentoMatch[1]))
-                : celleGrezza;
+                ? ricomponiTestoDopoTag(celleGrezzaNormalizzata.slice(allineamentoMatch[0].length), Boolean(allineamentoMatch[1]))
+                : celleGrezzaNormalizzata;
               const alignment =
                 allineamentoMatch?.[2] === "G" ? AlignmentType.JUSTIFIED : AlignmentType.CENTER;
 
@@ -596,6 +691,7 @@ async function renderTextSegment(
                   : indice % 2 === 1
                     ? { type: ShadingType.CLEAR, fill: coloreRigaAlternata }
                     : undefined,
+                width: larghezzaColonna(indiceColonna),
                 verticalAlign: VerticalAlign.CENTER,
                 children: [new Paragraph({ alignment, spacing: paragraphSpacing, children: runsCella })],
               });
@@ -607,10 +703,11 @@ async function renderTextSegment(
       );
 
       const celleIntestazione = await Promise.all(
-        intestazione.map(async (cella) => {
+        intestazione.map(async (cella, indiceColonna) => {
           const runsCella = await costruisciRunIntestazione(cella, runProps);
           return new TableCell({
             shading: { type: ShadingType.CLEAR, fill: coloreIntestazione },
+            width: larghezzaColonna(indiceColonna),
             verticalAlign: VerticalAlign.CENTER,
             children: [
               new Paragraph({
@@ -629,6 +726,11 @@ async function renderTextSegment(
       children.push(
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
+          // FIXED, non AUTOFIT: con AUTOFIT Word ridistribuisce le
+          // colonne a proprio piacimento all'apertura, vanificando le
+          // larghezze calcolate sul contenuto.
+          layout: TableLayoutType.FIXED,
+          columnWidths: larghezzeColonne,
           borders: {
             top: bordoSottile,
             bottom: bordoSottile,
@@ -700,7 +802,15 @@ function costruisciIntestazione(
   runProps: { font?: string; size?: number },
 ): Header | null {
   const cig = dati?.cig?.trim();
-  const parti = [dati?.stazioneAppaltante?.trim(), cig ? `CIG ${cig}` : undefined, dati?.concorrente?.trim()].filter(
+  const amministrazione = dati?.amministrazioneCommittente?.trim();
+  const stazione = dati?.stazioneAppaltante?.trim();
+  // L'amministrazione committente è quella che il concorrente riconosce:
+  // va per prima. La stazione appaltante (che nelle gare tramite centrale
+  // di committenza è un soggetto diverso, es. "IN.VA. S.p.A.") segue SOLO
+  // se differisce dall'amministrazione — altrimenti sarebbe una ripetizione
+  // dello stesso ente.
+  const enti = amministrazione ? [amministrazione, stazione !== amministrazione ? stazione : undefined] : [stazione];
+  const parti = [...enti, cig ? `CIG ${cig}` : undefined, dati?.concorrente?.trim()].filter(
     (parte): parte is string => Boolean(parte),
   );
   if (parti.length === 0) return null;
@@ -940,22 +1050,35 @@ export async function buildDocxBuffer(
 
   const intestazioneCorpo = costruisciIntestazione(datiIntestazione, runProps);
 
+  // Pagina A4 con margini di 2.5cm dichiarati esplicitamente, non lasciati
+  // al default dell'applicazione che apre il file (che segue le
+  // impostazioni regionali di Word, non necessariamente A4/2.5cm): la
+  // geometria usata per calcolare le larghezze delle colonne di tabella
+  // (LARGHEZZA_UTILE_TWIP) e quella assunta da stima-pagine.ts devono
+  // corrispondere esattamente a quella del file reale, sempre, a
+  // prescindere da chi lo apre.
+  const paginaA4 = { size: { width: LARGHEZZA_PAGINA_A4_TWIP, height: 16838 }, margin: { top: MARGINE_TWIP, bottom: MARGINE_TWIP, left: MARGINE_TWIP, right: MARGINE_TWIP } };
+
   const doc = new Document({
     // Fa aggiornare automaticamente a Word l'indice (numeri di pagina)
     // all'apertura del file, invece di richiedere F9 manuale.
     features: { updateFields: true },
+    // Mai andare a capo spezzando una parola con un trattino automatico:
+    // richiesto esplicitamente, oltre a essere già il comportamento di
+    // default di Word in assenza di questa impostazione.
+    hyphenation: { autoHyphenation: false },
     sections: [
       {
         // Sezione 1: titolo + indice, senza numerazione — nessuna pagina
         // "0" o "1" qui, il conteggio riparte nella sezione successiva.
-        properties: {},
+        properties: { page: paginaA4 },
         footers: { default: footerVuoto },
         children: paginaTitolo,
       },
       {
         // Sezione 2: contenuto vero, numerazione riparte da 1 sulla prima
         // pagina reale invece di continuare dal 2 come sezione unica.
-        properties: { page: { pageNumbers: { start: 1 } } },
+        properties: { page: { ...paginaA4, pageNumbers: { start: 1 } } },
         // Solo questa sezione ha intestazione (copertina e indice no).
         headers: intestazioneCorpo ? { default: intestazioneCorpo } : undefined,
         footers: { default: footerConPaginazione },

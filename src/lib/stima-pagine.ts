@@ -19,12 +19,38 @@ const RIGHE_PER_PAGINA_A_12PT_INTERLINEA_1 = 57;
 const PAGINE_PER_ORGANIGRAMMA = 0.6;
 const PAGINE_PER_IMMAGINE = 0.2;
 
+// Ingombri introdotti dall'impaginazione (docx-generator.ts) che la
+// calibrazione originale non conosceva: l'intestazione di pagina compare
+// su ogni pagina del corpo (assunta sempre presente: sottostimare le
+// pagine è il verso sbagliato in cui sbagliare, vedi MARGINE_SICUREZZA_PAGINE
+// nei chiamanti), le bande dei titoli di criterio/sotto-criterio hanno
+// spaziatura/bordo in più rispetto a un paragrafo normale. Misurati in
+// "righe equivalenti" alla dimensione carattere corrente, come il resto
+// del calcolo.
+const RIGHE_INTESTAZIONE_PER_PAGINA = 1.6;
+const RIGHE_EXTRA_BANDA_CRITERIO = 1.7;
+const RIGHE_EXTRA_BANDA_SOTTOCRITERIO = 1.2;
+
 function caratteriPerRigaPiena(dimensioneCarattere: number): number {
   return CARATTERI_PER_RIGA_PIENA_A_12PT * (12 / dimensioneCarattere);
 }
 
 function righePerPagina(dimensioneCarattere: number, interlinea: number): number {
-  return (RIGHE_PER_PAGINA_A_12PT_INTERLINEA_1 * (12 / dimensioneCarattere)) / interlinea;
+  const righeLorde = (RIGHE_PER_PAGINA_A_12PT_INTERLINEA_1 * (12 / dimensioneCarattere)) / interlinea;
+  return Math.max(1, righeLorde - RIGHE_INTESTAZIONE_PER_PAGINA);
+}
+
+// Stessa numerazione puntata usata in docx-generator.ts (livelloTitolo)
+// per decidere se un titolo è banda di criterio o di sotto-criterio a
+// prescindere da quanti "#" ha scritto l'AI (es. "# 2.1 ..." è comunque
+// un sotto-criterio): le due funzioni vanno tenute allineate, altrimenti
+// la stima e il documento reso non concordano su cosa costa cosa.
+const NUMERAZIONE_PUNTATA_REGEX = /^\s*(?:[A-Za-z]|\d+)((?:\.\d+)+)/;
+
+function livelloTitoloStimato(livelloMarkdown: 1 | 2 | 3, testo: string): 1 | 2 | 3 {
+  const match = testo.match(NUMERAZIONE_PUNTATA_REGEX);
+  if (!match) return livelloMarkdown;
+  return Math.min(match[1].split(".").length, 3) as 1 | 2 | 3;
 }
 
 function pulisciTagFormattazione(testo: string): string {
@@ -33,6 +59,21 @@ function pulisciTagFormattazione(testo: string): string {
     .replace(/^\[ICONA:[a-zA-Z]+\]\s*/, "")
     .replace(/\*\*/g, "")
     .replace(/!!/g, "");
+}
+
+// Margine di sicurezza tra il limite dichiarato dal disciplinare e
+// l'obiettivo reale usato per ripartizione/correzione: la stima resta
+// comunque una stima (non un conteggio Word reale, vedi commento in
+// testa al file), quindi puntare esattamente al limite significa
+// rischiare di sforarlo. Il ciclo automatico punta sempre ad almeno una
+// pagina sotto il limite dichiarato — su un limite di 12 l'obiettivo
+// reale è 11 — usata sia per la ripartizione in chat (gara-chat.ts) sia
+// per la correzione finale (relazione-tecnica.ts), le stesse in ogni
+// punto in cui viene stabilito un target di pagine.
+const MARGINE_SICUREZZA_PAGINE = 1;
+
+export function limitePagineConMargine(limiteDichiarato: number): number {
+  return Math.max(1, limiteDichiarato - MARGINE_SICUREZZA_PAGINE);
 }
 
 export function stimaPagineContenuto(
@@ -72,6 +113,16 @@ export function stimaPagineContenuto(
       for (const riga of righeGrezze) {
         const pulito = pulisciTagFormattazione(riga.replace(/^#{1,3}\s*/, ""));
         righeTotali += Math.max(1, Math.ceil(pulito.length / caratteriRigaPiena));
+
+        // Le bande dei titoli di criterio/sotto-criterio occupano più
+        // spazio di una riga di testo normale (spaziatura verticale e
+        // bordo intorno al testo) — vedi paragrafoTitolo in
+        // docx-generator.ts, che è la stessa fonte di questi costi.
+        if (riga.startsWith("# ")) {
+          righeTotali += livelloTitoloStimato(1, riga.slice(2)) === 1 ? RIGHE_EXTRA_BANDA_CRITERIO : RIGHE_EXTRA_BANDA_SOTTOCRITERIO;
+        } else if (riga.startsWith("## ")) {
+          righeTotali += livelloTitoloStimato(2, riga.slice(3)) === 1 ? RIGHE_EXTRA_BANDA_CRITERIO : RIGHE_EXTRA_BANDA_SOTTOCRITERIO;
+        }
       }
     }
   }
