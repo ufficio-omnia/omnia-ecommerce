@@ -25,6 +25,7 @@ import {
   applicaSostituzioniAnonimizzazione,
 } from "@/lib/relazione-tecnica";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { REGOLE_OMNIA } from "@/lib/prompts";
 
 export type ChatState = { error?: string };
 
@@ -189,6 +190,10 @@ function buildSystemPrompt(
   sezioniEsistenti: string,
 ): string {
   return `Sei OMNIA AI, assistente specializzato in gare d'appalto per servizi di pulizia. Aiuti il cliente ad analizzare la gara "${gara.titolo}" e a preparare l'offerta tecnica ed economica.
+
+=== REGOLE DI SCRITTURA OMNIA (massima priorità, valgono per ogni sezione che generi) ===
+${REGOLE_OMNIA}
+=== FINE REGOLE DI SCRITTURA OMNIA ===
 
 Dati della gara:
 - Scadenza: ${gara.scadenza ?? "non specificata"}
