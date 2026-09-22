@@ -86,7 +86,7 @@ export default async function GaraPage({
         .returns<Documento[]>(),
       supabase
         .from("gara_messaggi")
-        .select("id, ruolo, contenuto, created_at, file_nome, file_path")
+        .select("id, ruolo, contenuto, created_at, file_nome, file_path, pagine_stimate")
         .eq("gara_id", id)
         .order("created_at", { ascending: true })
         .returns<Omit<GaraMessaggio, "allegati">[]>(),
@@ -202,7 +202,7 @@ export default async function GaraPage({
 
       <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} />
 
-      <ChatSection garaId={gara.id} messaggi={messaggi} />
+      <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} />
     </div>
   );
 }

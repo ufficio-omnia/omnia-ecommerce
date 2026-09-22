@@ -23,7 +23,17 @@ const EXTRACTION_TOOL = {
       stazione_appaltante: {
         type: "string",
         description:
-          "Nome dell'ente/stazione appaltante che ha indetto la gara, così come indicato nel bando/disciplinare (es. 'Comune di Milano', 'ASL Roma 1'). Ometti il campo se non è identificabile nei documenti.",
+          "Nome del soggetto che CONDUCE la procedura di gara, così come indicato nel bando/disciplinare (es. 'Comune di Milano', 'ASL Roma 1'). Nelle gare tramite centrale di committenza/soggetto aggregatore, è la centrale stessa (es. 'IN.VA. S.p.A.', 'Consip S.p.A.'), non l'amministrazione beneficiaria del servizio: quella va in 'amministrazione_committente'. Ometti il campo se non è identificabile nei documenti.",
+      },
+      amministrazione_committente: {
+        type: "string",
+        description:
+          "L'amministrazione per cui si svolge EFFETTIVAMENTE il servizio (l'ente committente/beneficiario), quando è un soggetto DIVERSO dalla stazione appaltante che conduce la procedura — tipico nelle gare tramite centrale di committenza/soggetto aggregatore (es. stazione_appaltante='IN.VA. S.p.A.', amministrazione_committente='Comune di Aosta'; nel disciplinare cercala sotto voci come 'Ente Committente' o 'Amministrazione beneficiaria', spesso vicino ma non nella stessa sezione di 'Stazione Appaltante'). OMETTI questo campo se stazione appaltante e amministrazione committente coincidono (nessuna centrale di committenza coinvolta): non ripetere lo stesso nome in entrambi i campi.",
+      },
+      cig: {
+        type: "string",
+        description:
+          "Codice Identificativo Gara (CIG) così come riportato nel bando/disciplinare: 10 caratteri alfanumerici (es. '8123456AB1'), senza la dicitura 'CIG' né spazi. Ometti il campo se non è indicato nei documenti; se ne compaiono più di uno (es. uno per lotto) riporta solo quello della gara principale, mai un valore dedotto.",
       },
       scadenza: {
         type: "string",
@@ -241,6 +251,8 @@ export async function extractGaraData(
 
     const result = toolUse.input as {
       stazione_appaltante?: string;
+      amministrazione_committente?: string;
+      cig?: string;
       scadenza?: string;
       importo?: number;
       criteri_valutazione: string;
@@ -280,6 +292,8 @@ export async function extractGaraData(
       .from("gare")
       .update({
         stazione_appaltante: result.stazione_appaltante || null,
+        amministrazione_committente: result.amministrazione_committente || null,
+        cig: result.cig?.replace(/\s+/g, "").toUpperCase() || null,
         scadenza: result.scadenza || null,
         importo: result.importo ?? null,
         criteri_valutazione: result.criteri_valutazione,

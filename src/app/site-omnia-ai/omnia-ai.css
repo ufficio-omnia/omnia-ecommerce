@@ -1363,6 +1363,12 @@ li {
   font-size: 13.5px;
   color: var(--testo);
 }
+.omnia-stima-pagine {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--fioco);
+  white-space: nowrap;
+}
 
 /* Allegati caricati in chat, pillole piccole */
 .omnia-allegati-pillole {

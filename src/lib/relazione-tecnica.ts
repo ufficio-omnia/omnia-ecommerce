@@ -1,14 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
-import { buildDocxBuffer, rimuoviTitoloRidondante } from "@/lib/docx-generator";
+import { buildDocxBuffer, rimuoviTitoloRidondante, type DatiIntestazione } from "@/lib/docx-generator";
 import { sanitizeFileName } from "@/lib/document-text";
 import { ricavaStileOrganigramma } from "@/lib/org-chart-style";
 import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
-import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
-import { REGOLE_OMNIA } from "@/lib/prompts";
+import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
@@ -107,6 +107,41 @@ async function formattazioneGara(
   return { titolo, font, dimensioneCarattere, interlinea };
 }
 
+// Dati dell'intestazione di pagina del documento Word: stazione appaltante,
+// amministrazione committente (quando diversa: gare tramite centrale di
+// committenza) e CIG già estratti dai documenti della gara, ragione sociale
+// dal profilo azienda. Un dato assente resta null e l'intestazione lo
+// omette (vedi costruisciIntestazione in docx-generator.ts) — ma una query
+// che FALLISCE (es. colonna non ancora creata perché una migrazione non è
+// stata eseguita) va segnalata nei log, non scambiata per "dato assente".
+async function datiIntestazioneRelazione(garaId: string, userId: string): Promise<DatiIntestazione> {
+  const supabase = await createClient();
+
+  const [{ data: gara, error: garaError }, { data: company }] = await Promise.all([
+    supabase
+      .from("gare")
+      .select("stazione_appaltante, amministrazione_committente, cig")
+      .eq("id", garaId)
+      .maybeSingle<{ stazione_appaltante: string | null; amministrazione_committente: string | null; cig: string | null }>(),
+    supabase
+      .from("companies")
+      .select("ragione_sociale")
+      .eq("user_id", userId)
+      .maybeSingle<{ ragione_sociale: string | null }>(),
+  ]);
+
+  if (garaError) {
+    console.error("Errore lettura stazione appaltante/amministrazione committente/CIG per l'intestazione del documento:", garaError);
+  }
+
+  return {
+    stazioneAppaltante: gara?.stazione_appaltante ?? null,
+    amministrazioneCommittente: gara?.amministrazione_committente ?? null,
+    cig: gara?.cig ?? null,
+    concorrente: company?.ragione_sociale ?? null,
+  };
+}
+
 async function caricaDocumento(
   garaId: string,
   nomeFile: string,
@@ -143,7 +178,7 @@ export async function generaBozzaSezione(params: {
   font?: string;
   dimensioneCarattere?: number;
   interlinea?: number;
-}): Promise<{ nomeFile: string; filePath: string }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number }> {
   const { garaId, userId, titoloSezione, contenuto, titoloRelazione, font, dimensioneCarattere, interlinea } =
     params;
 
@@ -197,9 +232,12 @@ export async function generaBozzaSezione(params: {
     { font: fmt.font, dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea },
     stileOrganigramma ?? undefined,
     loghiOrganigramma,
+    await datiIntestazioneRelazione(garaId, userId),
   );
 
-  return caricaDocumento(garaId, `${titoloSezione}.docx`, buffer);
+  const pagineStimate = stimaPagineContenuto(contenuto, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
+
+  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate };
 }
 
 // Rimuove un eventuale prefisso numerico/alfabetico iniziale del titolo
@@ -454,10 +492,25 @@ async function espandiContenutoSezione(
   // insieme sforino il limite di pagine complessivo del disciplinare.
   let istruzioneObiettivo: string;
   if (azione === "espandi") {
+    // Prompt guidato da prompts/espansione-omnia.md (versionato, non
+    // scritto qui): {N} sostituito con le parole mancanti stimate dallo
+    // scarto di pagine reale. "MANTIENI INTEGRALMENTE" resta un'aggiunta
+    // del codice, non del prompt originale — senza questa clausola
+    // esplicita il modello a volte riscriveva/accorciava il contenuto
+    // già presente anche quando gli veniva chiesto solo di espandere
+    // (bug osservato in pratica).
     const paroleEquivalentiMancanti = Math.round(Math.max(0, pagineTarget - pagineAttuali) * 450);
-    istruzioneObiettivo = `È più corta di quanto lo spazio disponibile per questo criterio consentirebbe: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target di ${pagineTarget.toFixed(1)} pagine (conteggio REALE che tiene conto anche di tabelle/immagini, che occupano più spazio per parola del semplice testo — se aggiungi tabelle, ti serve MENO testo nuovo di quanto suggerirebbe un conteggio a sole parole: attualmente ha ${paroleAttuali} parole, e ne basterebbero all'incirca ${paroleEquivalentiMancanti} in più se scrivessi solo prosa, ma sensibilmente meno se usi tabelle). Espandila aggiungendo approfondimento, dettagli operativi, esempi concreti, tabelle o sotto-argomenti coerenti con quanto già presente, fino a raggiungere TRA ${pagineTarget.toFixed(1)} e ${(pagineTarget * 1.05).toFixed(1)} pagine — MAI oltre questo massimo, MAI sotto il target per prudenza. MANTIENI INTEGRALMENTE tutto il contenuto già presente (non tagliare, non riassumere, non riscrivere quanto già scritto).`;
+    istruzioneObiettivo = `${ISTRUZIONI_ESPANSIONE.replace("{N}", String(paroleEquivalentiMancanti))}
+
+Per riferimento: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target di ${pagineTarget.toFixed(1)} (conteggio reale che tiene conto anche di tabelle/immagini, non un conteggio a parole — con tabelle serve meno testo nuovo di quanto il numero di parole sopra farebbe pensare). MANTIENI INTEGRALMENTE tutto il contenuto già presente: non tagliare, non riassumere, non riscrivere quanto già scritto.`;
   } else if (azione === "condensa") {
-    istruzioneObiettivo = `È più LUNGA di quanto lo spazio disponibile per questo criterio consenta: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target massimo di ${pagineTarget.toFixed(1)} pagine (conteggio REALE che tiene conto anche di tabelle/immagini). CONDENSALA fino a rientrare TRA ${pagineTarget.toFixed(1)} e ${(pagineTarget * 1.05).toFixed(1)} pagine, senza perdere alcun contenuto sostanziale (requisiti, impegni, riferimenti normativi, dati tecnici restano tutti presenti) né la formattazione (tabelle/grassetti/evidenziazioni): elimina ridondanze, frasi ripetitive o eccessivamente discorsive, accorpa concetti equivalenti, preferisci frasi dirette. Se un paragrafo lungo descrive elenchi di caratteristiche/confronti/specifiche, valuta di convertirlo in tabella: occupa meno spazio a parità di informazione.`;
+    // Prompt guidato da prompts/compressione-omnia.md (versionato): {N}
+    // sostituito con le parole da togliere stimate dallo scarto di
+    // pagine reale.
+    const paroleDaTogliere = Math.round(Math.max(0, pagineAttuali - pagineTarget) * 450);
+    istruzioneObiettivo = `${ISTRUZIONI_COMPRESSIONE.replace("{N}", String(paroleDaTogliere))}
+
+Per riferimento: occupa circa ${pagineAttuali.toFixed(1)} pagine A4 contro un target massimo di ${pagineTarget.toFixed(1)} (conteggio reale che tiene conto anche di tabelle/immagini, non un conteggio a parole).`;
   } else {
     istruzioneObiettivo = `La lunghezza attuale (circa ${pagineAttuali.toFixed(1)} pagine) è già adeguata al criterio: NON aggiungere quasi nessun testo nuovo, resta entro ${(pagineAttuali * 1.05).toFixed(1)} pagine. Il tuo unico compito è migliorare la FORMATTAZIONE di quanto già scritto secondo le regole sopra. MANTIENI INTEGRALMENTE tutto il contenuto già presente (non tagliare, non riassumere, non riscrivere quanto già scritto).`;
   }
@@ -587,7 +640,7 @@ export async function correggiSezioneVersoTarget(
 export async function componiRelazioneFinale(params: {
   garaId: string;
   userId: string;
-}): Promise<{ nomeFile: string; filePath: string } | { error: string }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number } | { error: string }> {
   const { garaId, userId } = params;
 
   const supabase = await createClient();
@@ -654,6 +707,11 @@ export async function componiRelazioneFinale(params: {
     garaBudget.criteri_riepilogo?.length
   ) {
     const { limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo } = garaBudget;
+    // Il target reale resta sotto il limite dichiarato dal disciplinare
+    // (vedi limitePagineConMargine in stima-pagine.ts): la stima di
+    // pagine non è un conteggio Word reale, puntare esattamente al
+    // limite rischia di sforarlo.
+    const limiteConMargine = limitePagineConMargine(limite_pagine_totale);
     const ordineBase = Math.max(...sezioni.map((s) => s.ordine));
 
     // Le sezioni da espandere sono indipendenti tra loro: eseguire le
@@ -673,13 +731,21 @@ export async function componiRelazioneFinale(params: {
         );
         if (!criterio) return null;
 
-        const pagineTarget = (criterio.punti_max / punteggio_tecnico_max) * limite_pagine_totale;
+        const pagineTarget = (criterio.punti_max / punteggio_tecnico_max) * limiteConMargine;
+        // 4 tentativi invece del default (2): verificato in pratica che una
+        // sezione molto sopra al proprio target può ridursi solo di poco a
+        // ogni passata (il modello non taglia sempre in modo aggressivo) —
+        // con 2 soli tentativi il margine di sicurezza applicato sopra
+        // (limitePagineConMargine) rischiava di non essere rispettato
+        // davvero, restando la sezione ancora sopra target*1.1 al termine
+        // del ciclo.
         const corretto = await correggiSezioneVersoTarget(
           sezione.titolo_sezione,
           sezione.contenuto,
           pagineTarget,
           formattazioneGaraCorrente,
           { userId, garaId },
+          4,
         );
         if (corretto === sezione.contenuto) return null;
 
@@ -738,7 +804,10 @@ export async function componiRelazioneFinale(params: {
     { font: fmt.font, dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea },
     stileOrganigramma ?? undefined,
     loghiOrganigramma,
+    await datiIntestazioneRelazione(garaId, userId),
   );
 
-  return caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer);
+  const pagineStimate = stimaPagineContenuto(contenutoFinale, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
+
+  return { ...(await caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer)), pagineStimate };
 }
