@@ -18,15 +18,9 @@ import {
   Footer,
   Header,
   PageNumber,
-  HorizontalPositionAlign,
-  HorizontalPositionRelativeFrom,
-  VerticalPositionRelativeFrom,
-  TextWrappingType,
-  TextWrappingSide,
 } from "docx";
 import { generateOrgChartPng, type LoghiOrganigramma } from "@/lib/org-chart";
 import type { StileOrganigramma } from "@/lib/org-chart-style";
-import { generateImagePng } from "@/lib/openai-image";
 import { renderIconePng, NOMI_ICONE } from "@/lib/icons";
 
 export type DocxFormatting = {
@@ -998,52 +992,14 @@ export async function buildDocxBuffer(
     }
 
     if (segment.type === "immagine") {
-      try {
-        const buffer = await generateImagePng(segment.contenuto);
-        // gpt-image-1 genera immagini quadrate 1024x1024: le scaliamo
-        // molto per l'inserimento nel documento Word — piccola, "annegata"
-        // nel testo con il testo che le scorre attorno (floating, non un
-        // blocco centrato che spezza il paragrafo), come nei progetti di
-        // riferimento: mai una foto grande che interrompe il flusso.
-        const displaySize = 180;
-        children.push(
-          new Paragraph({
-            children: [
-              new ImageRun({
-                type: "png",
-                data: buffer,
-                transformation: { width: displaySize, height: displaySize },
-                floating: {
-                  horizontalPosition: {
-                    relative: HorizontalPositionRelativeFrom.MARGIN,
-                    align: HorizontalPositionAlign.RIGHT,
-                  },
-                  verticalPosition: {
-                    relative: VerticalPositionRelativeFrom.PARAGRAPH,
-                    offset: 0,
-                  },
-                  wrap: { type: TextWrappingType.SQUARE, side: TextWrappingSide.LEFT },
-                  margins: { left: 200000, bottom: 100000, top: 50000, right: 0 },
-                  allowOverlap: false,
-                },
-              }),
-            ],
-          }),
-        );
-      } catch (err) {
-        console.error("Errore generazione immagine:", err);
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "[Immagine non generata correttamente]",
-                italics: true,
-                ...runProps,
-              }),
-            ],
-          }),
-        );
-      }
+      // Disattivato: le relazioni tecniche non contengono più fotografie o
+      // illustrazioni (R16 in regole-omnia.md) — solo figure schematiche
+      // (organigramma, tabelle). Nessuna chiamata all'API a pagamento,
+      // nessun elemento nel documento: un blocco "[IMMAGINE]" nel testo
+      // (contenuto già generato prima di questa regola, o un modello che
+      // ignorasse l'istruzione) viene silenziosamente scartato invece di
+      // produrre una foto generica scollegata dai dati dichiarati.
+      console.warn('Blocco "[IMMAGINE]" ignorato (generazione fotografie disattivata):', segment.contenuto.slice(0, 80));
       continue;
     }
 

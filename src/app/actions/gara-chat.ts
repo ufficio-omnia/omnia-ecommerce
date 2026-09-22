@@ -15,7 +15,7 @@ import {
   LIMITE_BYTE_PER_CATEGORIA,
   MAX_ALLEGATI_PER_MESSAGGIO,
 } from "@/lib/attachment-text";
-import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
 import {
   generaBozzaSezione,
   componiRelazioneFinale,
@@ -484,19 +484,26 @@ export async function sendGaraMessage(
             numeroCriterio && gara.criteri_riepilogo
               ? gara.criteri_riepilogo.find((c) => c.numero.trim() === numeroCriterio)
               : undefined;
+          // Stesso margine di sicurezza usato per la ripartizione mostrata
+          // al modello (calcolaRipartizionePagine) e per "componi relazione
+          // finale" (componiRelazioneFinale): qui mancava, la correzione
+          // durante la generazione dal vivo puntava ancora al limite esatto
+          // del disciplinare invece che a un target con margine.
           const pagineTarget =
             criterioCorrispondente && gara.punteggio_tecnico_max && gara.limite_pagine_totale
-              ? (criterioCorrispondente.punti_max / gara.punteggio_tecnico_max) * gara.limite_pagine_totale
+              ? (criterioCorrispondente.punti_max / gara.punteggio_tecnico_max) *
+                limitePagineConMargine(gara.limite_pagine_totale)
               : null;
 
           // Se conosciamo il target di pagine per questo criterio,
           // correggiamo qui il contenuto PRIMA di costruire il documento
           // — non lasciamo che sia il cliente, tramite avanti-indietro in
           // chat, a scoprire lo scostamento e a chiedere di rigenerare:
-          // lo stesso ciclo di misura/correzione (fino a 2 tentativi) già
-          // verificato per "componi relazione finale" garantisce che il
-          // file scaricato sia già alla lunghezza giusta, non "un
-          // tentativo" da verificare a mano.
+          // lo stesso ciclo di misura/correzione (4 tentativi, non il
+          // default di 2 — verificato che una sezione molto sopra target
+          // può ridursi di poco a ogni passata) già usato per "componi
+          // relazione finale" garantisce che il file scaricato sia già
+          // alla lunghezza giusta, non "un tentativo" da verificare a mano.
           const contenutoCorretto =
             pagineTarget !== null
               ? await correggiSezioneVersoTarget(
@@ -505,6 +512,7 @@ export async function sendGaraMessage(
                   pagineTarget,
                   formattazioneCorrente,
                   { userId: user.id, garaId },
+                  4,
                 )
               : contenutoConMarcatori;
           // Riapplicate dopo l'eventuale espansione/condensazione: quel

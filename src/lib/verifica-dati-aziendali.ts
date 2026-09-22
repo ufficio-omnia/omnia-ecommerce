@@ -15,17 +15,22 @@ export type CompanyProfiloConfermato = {
   presentazione: string | null;
 } | null;
 
-// Applica R9 di regole-omnia.md ("nessun dato d'impresa inventato") con un
-// controllo effettivo dopo la generazione, non solo con l'istruzione nel
-// prompt: verificato in pratica che il modello scrive comunque monte ore,
-// numero di addetti e reperibilità specifici senza alcuna fonte quando il
-// profilo azienda non li contiene — succede anche quando il testo viene
-// solo condensato/espanso in un secondo momento, perché il prompt di
-// compressione protegge esplicitamente "impegni e valori numerici" (per i
-// dati VERI, giustamente): un numero senza fonte non va protetto, va tolto.
+// Tre controlli in una sola chiamata dopo ogni generazione di sezione
+// (vedi prompts/verifica-dati-omnia.md per il dettaglio):
+// 1. R9 di regole-omnia.md ("nessun dato d'impresa inventato") con un
+//    controllo effettivo, non solo con l'istruzione nel prompt di
+//    generazione: verificato in pratica che il modello scrive comunque
+//    monte ore, numero di addetti e reperibilità senza alcuna fonte
+//    quando il profilo azienda non li contiene — anche quando il testo
+//    viene solo condensato/espanso in un secondo momento, perché il
+//    prompt di compressione protegge esplicitamente "impegni e valori
+//    numerici" (per i dati VERI, giustamente): un numero senza fonte non
+//    va protetto, va tolto.
+// 2. Coerenza numerica tra righe della stessa tabella.
+// 3. Coerenza tra titolo e contenuto di ogni paragrafo.
 // In caso di errore/timeout la chiamata NON deve bloccare la generazione:
-// meglio consegnare la bozza con un dato potenzialmente non verificato che
-// nessuna bozza affatto — ritorna il contenuto originale invariato.
+// meglio consegnare la bozza non verificata che nessuna bozza affatto —
+// ritorna il contenuto originale invariato.
 export async function verificaDatiAziendali(
   contenuto: string,
   companyProfile: CompanyProfiloConfermato,
