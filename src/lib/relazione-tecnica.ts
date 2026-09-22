@@ -8,6 +8,7 @@ import { recuperaLoghiOrganigramma } from "@/lib/org-chart-loghi";
 import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
+import { REGOLE_OMNIA } from "@/lib/prompts";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
@@ -435,7 +436,13 @@ export function applicaMarcatoriTabellari(contenuto: string, subCriteriTabellari
 // osservato in pratica: contenuto espanso corretto nella sostanza ma
 // senza tabelle, colori, grassetti o evidenziazioni, molto diverso dallo
 // stile denso e visivamente strutturato del resto del documento.
-const ISTRUZIONI_FORMATTAZIONE_ESPANSIONE = `Stai espandendo una sezione di un'offerta tecnica per una gara d'appalto. Applica SEMPRE queste convenzioni di formattazione OMNIA, con la stessa densità del resto del documento (quasi ogni paragrafo ha almeno un termine in grassetto o un ruolo colorato: un paragrafo tecnico senza nessuna evidenziazione è un errore):
+const ISTRUZIONI_FORMATTAZIONE_ESPANSIONE = `Stai espandendo una sezione di un'offerta tecnica per una gara d'appalto. Il testo aggiunto deve rispettare le stesse regole di scrittura del resto del documento, anche quando qui non ricevi di nuovo tutto il contesto della gara:
+
+=== REGOLE DI SCRITTURA OMNIA (massima priorità) ===
+${REGOLE_OMNIA}
+=== FINE REGOLE DI SCRITTURA OMNIA ===
+
+Applica SEMPRE anche queste convenzioni di formattazione OMNIA, con la stessa densità del resto del documento (quasi ogni paragrafo ha almeno un termine in grassetto o un ruolo colorato: un paragrafo tecnico senza nessuna evidenziazione è un errore):
 - '**testo**' per termini tecnici chiave, definizioni, risultati/numeri rilevanti, riferimenti normativi (es. '**UNI EN ISO 14001**', '**art. 108 comma 7 del D.Lgs. 36/2023**').
 - '!!testo!!' per nomi di ruoli/figure professionali/uffici/enti quando compaiono nel testo (es. '!!Responsabile di Commessa!!', '!!Ispettore Qualità!!').
 - Tabelle in sintassi markdown ('| colonna | colonna |' seguita da '|---|---|') per qualunque dato tabulare per natura (livelli di controllo, frequenze, certificazioni, KPI, ruoli e responsabilità, confronti): se il contenuto che aggiungi si presta a una tabella e il testo esistente non ne ha già una sull'argomento, AGGIUNGILA, non scriverlo come prosa. Colore intestazione con '[TABELLA:BLU|ROSSA|VERDE|ARANCIONE]' subito sopra (BLU default). Dentro ogni cella, SEMPRE un tag di allineamento a inizio testo ('[C]' per valori brevi/numerici/etichette, '[G]' per testo descrittivo) insieme al grassetto dove pertinente (es. '[C]**ISO 14001**').

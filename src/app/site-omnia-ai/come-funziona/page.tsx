@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import PageShell from "@/components/omnia-ai/page-shell";
 import ComeFunzionaDemo from "@/components/omnia-ai/come-funziona-demo";
+import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = paginaMetadata({
   title: "Come funziona — OMNIA AI",
   description:
     "Come OMNIA AI legge bando, disciplinare e capitolato, recupera i frammenti pertinenti e scrive la relazione tecnica citando la fonte esatta.",
-};
+  path: "/come-funziona",
+});
 
 const PASSI = [
   {
@@ -31,7 +33,7 @@ export default function ComeFunzionaPage() {
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
-        <h1>Non indovina. Recupera, e cita la fonte.</h1>
+        <h1>OMNIA AI non indovina. Recupera, e cita la fonte.</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           La differenza tra un&apos;AI generica e OMNIA AI non è il modello linguistico: è cosa
           succede tra la tua domanda e la risposta. Ecco il percorso, passo per passo.

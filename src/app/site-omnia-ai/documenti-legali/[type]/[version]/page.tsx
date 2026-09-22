@@ -25,6 +25,15 @@ const TITLES: Record<string, string> = {
   "condizioni-abbonamento": "Condizioni di abbonamento",
 };
 
+// Pagina pubblica "corrente" di ciascun documento: le versioni archiviate
+// (/documenti-legali/<tipo>/<n>) ne dichiarano il canonical, così Google
+// le tratta come duplicati e indicizza solo quella.
+const CANONICAL_PATHS: Record<string, string> = {
+  "privacy-policy": "/privacy",
+  "cookie-policy": "/cookie-policy",
+  "condizioni-abbonamento": "/condizioni-abbonamento",
+};
+
 export async function generateMetadata({
   params,
 }: {
@@ -32,8 +41,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { type, version } = await params;
   const title = TITLES[type];
+  const canonical = CANONICAL_PATHS[type];
   return {
     title: title ? `${title} — versione ${version} — OMNIA AI` : "Documento non trovato",
+    ...(canonical ? { alternates: { canonical } } : {}),
   };
 }
 

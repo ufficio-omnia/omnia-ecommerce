@@ -271,10 +271,16 @@ export default function HeroDemo() {
         <section className="omnia-hero">
           <h1>L&apos;unica AI per gare scritta da chi le gare le ha scritte.</h1>
           <p className="omnia-sotto">
-            OMNIA AI legge bando, disciplinare e capitolato e ti restituisce la relazione tecnica
-            in Word: indice, intestazioni con il tuo logo, tabelle formattate, stili e
-            numerazione già a posto. Dietro non c&apos;è un modello generico, ci sono dieci anni
-            di offerte tecniche scritte a mano per soft e hard facility.
+            OMNIA AI è l&apos;intelligenza artificiale per le gare d&apos;appalto. Legge bando,
+            disciplinare e capitolato e ti restituisce la relazione tecnica in Word: indice,
+            intestazioni con il tuo logo, tabelle formattate, stili e numerazione già a posto.
+            Dietro non c&apos;è un modello generico, ci sono dieci anni di offerte tecniche
+            scritte a mano per soft e hard&nbsp;
+            {/* "facility" è inglese: hyphens:auto lo sillaba con le regole
+                dell'italiano ("facili-ty") e lascia "ty." da solo sull'ultima
+                riga. nowrap lo tiene intero, lo spazio non separabile lo lega
+                a "hard". */}
+            <span style={{ whiteSpace: "nowrap" }}>facility.</span>
           </p>
           <div className="omnia-azioni">
             <Link className="omnia-btn omnia-btn-p" href="/demo">

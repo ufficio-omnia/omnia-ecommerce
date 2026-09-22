@@ -2309,3 +2309,236 @@ li {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==================== Mobile: menu, footer, margini, aree di tocco ====================
+   Tutto sta dentro media query: sopra i 900px nulla di quanto segue si
+   applica e la versione desktop resta identica.
+
+   900px è la larghezza a cui la navigazione desktop sparisce
+   (.omnia-nav.omnia-principale, più sopra): l'hamburger compare esattamente
+   da lì, così nessuna larghezza — tablet in verticale compresi — resta senza
+   menu. Sotto i 640px si stringono i margini e si toglie la
+   giustificazione del testo. Aree di tocco: almeno 44px. */
+
+.omnia-hamburger,
+.omnia-menu-mobile {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /* Header: marchio e pulsante da 44px, con l'altezza complessiva quasi
+     invariata (~62px) togliendo il respiro sopra e sotto. */
+  .omnia-bar {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .omnia-marchio {
+    min-height: 44px;
+  }
+
+  /* Pulsante hamburger: stessa veste del pulsante secondario (vetro, bordo
+     viola tenue, angoli a 12px). Il contorno di focus è quello globale
+     :focus-visible di questo file. */
+  .omnia-hamburger {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--bordo);
+    border-radius: 12px;
+    background: var(--vetro);
+    color: var(--testo);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .omnia-hamburger:hover {
+    border-color: var(--bordo-f);
+  }
+  .omnia-hamburger-linea {
+    display: block;
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition:
+      transform 0.25s ease,
+      opacity 0.2s ease;
+  }
+  /* Linee a 2px con 5px di distanza: i centri distano 7px, di qui i
+     translateY(±7px) che le portano a incrociarsi in una X. */
+  .omnia-hamburger[aria-expanded="true"] .omnia-hamburger-linea:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+  .omnia-hamburger[aria-expanded="true"] .omnia-hamburger-linea:nth-child(2) {
+    opacity: 0;
+  }
+  .omnia-hamburger[aria-expanded="true"] .omnia-hamburger-linea:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  /* Pannello a tutto schermo con lo stesso effetto vetro dell'header. Sta
+     sotto l'header (z-index 20) così il pulsante-X resta visibile e
+     cliccabile; il padding alto lascia libera la fascia dell'header. Il
+     cookie banner (z-index 50) resta sopra, com'è giusto. */
+  .omnia-menu-mobile {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    padding: 84px 32px 32px;
+    background: rgba(5, 5, 9, 0.9);
+    /* Solo la forma standard, come .omnia-header: la pipeline CSS aggiunge da
+       sé il prefisso -webkit- dove serve. Scrivendo a mano anche la versione
+       prefissata, la standard veniva eliminata e Chrome non sfocava nulla. */
+    backdrop-filter: blur(22px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    /* visibility scatta DOPO la dissolvenza, così l'uscita si vede. */
+    transition:
+      opacity 0.22s ease,
+      transform 0.22s ease,
+      visibility 0s linear 0.22s;
+  }
+  .omnia-menu-mobile[data-aperto="true"] {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition:
+      opacity 0.22s ease,
+      transform 0.22s ease,
+      visibility 0s;
+  }
+  .omnia-menu-mobile nav {
+    display: flex;
+    flex-direction: column;
+    max-width: 520px;
+    margin: 0 auto;
+  }
+  /* Voci: menu = Space Grotesk (Syne solo sopra i 24px, vedi Tipografia). */
+  .omnia-menu-voce {
+    display: flex;
+    align-items: center;
+    min-height: 56px;
+    border-bottom: 1px solid var(--bordo);
+    color: var(--testo);
+    font-size: 18px;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .omnia-menu-voce:hover {
+    color: var(--viola);
+  }
+  .omnia-menu-accedi {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    margin-top: 28px;
+  }
+
+  /* Scroll della pagina bloccato a menu aperto (classe messa da
+     site-header.tsx). */
+  html.omnia-menu-aperto,
+  html.omnia-menu-aperto body {
+    overflow: hidden;
+  }
+
+  /* Footer: le voci vanno a capo invece di uscire dallo schermo (era la
+     causa dello scroll orizzontale su telefono) e diventano da 44px. */
+  .omnia-footer nav {
+    flex-wrap: wrap;
+    gap: 0 22px;
+  }
+  .omnia-footer nav a,
+  .omnia-footer nav button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* Pagina di acquisto (/abbonati/…): caselle più grandi e collegamenti
+     alle clausole con area di tocco estesa. Il padding di un <a> inline
+     allarga la zona sensibile senza spostare il testo; il margine
+     negativo orizzontale ne compensa l'ingombro. Solo stile: nessuna
+     modifica a markup o logica del modulo. */
+  .omnia-check-riga {
+    gap: 14px;
+    min-height: 44px;
+  }
+  .omnia-check-riga input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+    /* Centra la casella sulla prima riga del testo (che parte 10px più in
+       basso per il padding dell'etichetta). */
+    margin-top: 8px;
+  }
+  .omnia-check-riga label {
+    padding-block: 10px;
+  }
+  .omnia-check-riga a {
+    padding: 14px 8px;
+    margin: 0 -8px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Margini laterali da 32 a 20px: su 375px lasciavano 311px al testo. */
+  .omnia-wrap {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .omnia-bar {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .omnia-menu-mobile {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  /* Titolo delle pagine interne: il minimo di 32px in Syne extra-large non
+     contiene le parole lunghe ("partecipazione" misura 374px, "abbonamento"
+     362px) nei ~335px utili di un telefono, e la pagina scorreva di lato.
+     overflow-wrap è la rete di sicurezza per le larghezze ancora più
+     strette: spezza la parola invece di far sbordare la pagina. */
+  .omnia-pagina-hero h1 {
+    font-size: clamp(26px, 7.4vw, 32px);
+    overflow-wrap: anywhere;
+  }
+
+  /* Testo a sinistra: giustificato su colonne così strette apre buchi
+     enormi tra le parole. Le classi che dichiarano un proprio allineamento
+     (centrato, ecc.) restano com'erano: questa regola ha la specificità del
+     selettore globale e vince solo su di esso. */
+  p,
+  li {
+    text-align: left;
+  }
+}
+
+@media (max-width: 340px) {
+  /* Telefoni molto stretti (320px): la cifra del prezzo è nowrap e a 34px
+     allarga la scheda oltre lo schermo. */
+  .omnia-prezzo {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+  .omnia-prezzo-valore {
+    font-size: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .omnia-hamburger-linea,
+  .omnia-menu-mobile,
+  .omnia-menu-mobile[data-aperto="true"] {
+    transition: none;
+  }
+}

@@ -1,7 +1,28 @@
 import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
-import { BASE_URL, ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
+import { BASE_URL, OMNIA_AI_BASE_URL, ZONE_HEADER, ZONE_RECOGNIZED_HEADER, isZone } from "@/lib/zone";
 import { createClient } from "@/lib/supabase/server";
+
+// Pagine pubbliche di omnia-ai.it. Restano fuori di proposito: login,
+// registrazione, attivazione account, impostazione password, checkout
+// diretto (/abbonati/*), conferma pagamento, dashboard, /api, /auth e
+// le versioni archiviate /documenti-legali/* (duplicano le pagine legali
+// qui sotto).
+//
+// lastModified è una data FISSA, quella dell'ultima modifica reale dei
+// contenuti (dalla storia git): con new Date() ogni fetch direbbe "cambiato
+// adesso" e Google imparerebbe a ignorare il campo. Va aggiornata a mano
+// quando cambia il contenuto della pagina corrispondente.
+const OMNIA_AI_ROUTES: { path: string; lastModified: string }[] = [
+  { path: "/", lastModified: "2026-09-21" },
+  { path: "/come-funziona", lastModified: "2026-09-21" },
+  { path: "/piani", lastModified: "2026-09-21" },
+  { path: "/demo", lastModified: "2026-09-21" },
+  { path: "/contatti", lastModified: "2026-09-21" },
+  { path: "/privacy", lastModified: "2026-09-11" },
+  { path: "/cookie-policy", lastModified: "2026-09-11" },
+  { path: "/condizioni-abbonamento", lastModified: "2026-09-11" },
+];
 
 const STATIC_ROUTES = [
   "/",
@@ -24,9 +45,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const zone = isZone(zoneHeader) ? zoneHeader : "ecommerce";
   const recognized = hdrs.get(ZONE_RECOGNIZED_HEADER) === "1";
 
-  // Solo l'e-commerce riconosciuto ha oggi qualcosa da elencare: un host
-  // sconosciuto che il routing fa comunque funzionare come l'e-commerce
-  // (vedi robots.ts) non deve ricevere lo stesso elenco di URL.
+  // omnia-ai.it: elenco statico, nessuna query — risponde anche se
+  // Supabase non è raggiungibile.
+  if (zone === "omnia-ai") {
+    return OMNIA_AI_ROUTES.map(({ path, lastModified }) => ({
+      url: `${OMNIA_AI_BASE_URL}${path}`,
+      lastModified,
+    }));
+  }
+
+  // Per le altre zone solo l'e-commerce riconosciuto ha qualcosa da
+  // elencare: un host sconosciuto che il routing fa comunque funzionare
+  // come l'e-commerce (vedi robots.ts) non deve ricevere lo stesso
+  // elenco di URL.
   if (zone !== "ecommerce" || !recognized) return [];
 
   const staticEntries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => ({
