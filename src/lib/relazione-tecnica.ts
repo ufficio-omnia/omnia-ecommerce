@@ -9,6 +9,7 @@ import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
+import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
@@ -174,17 +175,36 @@ export async function generaBozzaSezione(params: {
   userId: string;
   titoloSezione: string;
   contenuto: string;
+  companyProfile?: CompanyProfiloConfermato;
+  contestoDocumenti?: string;
   titoloRelazione?: string;
   font?: string;
   dimensioneCarattere?: number;
   interlinea?: number;
 }): Promise<{ nomeFile: string; filePath: string; pagineStimate: number }> {
-  const { garaId, userId, titoloSezione, contenuto, titoloRelazione, font, dimensioneCarattere, interlinea } =
-    params;
+  const {
+    garaId,
+    userId,
+    titoloSezione,
+    contenuto: contenutoGrezzo,
+    companyProfile = null,
+    contestoDocumenti = "",
+    titoloRelazione,
+    font,
+    dimensioneCarattere,
+    interlinea,
+  } = params;
 
   const supabase = await createClient();
 
   const fmt = await formattazioneGara(garaId, { titoloRelazione, font, dimensioneCarattere, interlinea });
+
+  // R9 ("nessun dato d'impresa inventato"), applicata con un controllo
+  // effettivo qui, non solo con l'istruzione nel prompt di generazione —
+  // vedi verifica-dati-aziendali.ts. Il testo verificato è quello che
+  // viene salvato E reso in Word: un numero senza fonte non deve
+  // sopravvivere né nel database né nel documento scaricabile.
+  const contenuto = await verificaDatiAziendali(contenutoGrezzo, companyProfile, contestoDocumenti, { userId, garaId });
 
   const { data: ultima } = await supabase
     .from("gara_relazione_sezioni")

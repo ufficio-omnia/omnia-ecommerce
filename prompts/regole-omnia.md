@@ -77,6 +77,14 @@ scrivendo per far assegnare punti.
   servono a mostrare il livello di profondità e il modo di argomentare, non
   le frasi. Riscrivi tutto per questa gara. Se una frase potrebbe stare
   identica in un'altra offerta, riformulala.
+- **R11-bis — Mai evidenziare un limite dell'impresa, mai formule concessive
+  su di sé.** Niente "benché", "pur essendo", "nonostante le dimensioni
+  ridotte" o simili: ammettere spontaneamente un limite non richiesto è un
+  autogol, non trasparenza — nessuna commissione lo chiede, e chi lo scrive
+  sta segnalando alla concorrenza dove colpire. La dimensione aziendale
+  (numero di addetti, fatturato) si dichiara SOLO se il disciplinare la
+  richiede esplicitamente come dato da fornire, mai come premessa o
+  giustificazione spontanea.
 
 ## Come si scrive
 
@@ -98,9 +106,12 @@ scrivendo per far assegnare punti.
   scrivere "addetto". Il commissario cerca le sue parole.
 - **R16 — Scegli il formato giusto.** Tabella per dati confrontabili e
   frequenze, elenco per sequenze di azioni, paragrafo per argomentazioni,
-  organigramma o immagine solo quando chiariscono davvero qualcosa che a
-  parole richiederebbe più spazio. Non inserire un elemento visivo per
-  decorare.
+  organigramma solo quando chiarisce davvero una struttura che a parole
+  richiederebbe più spazio. Non inserire un elemento visivo per decorare.
+  MAI fotografie o illustrazioni: solo figure schematiche (organigrammi,
+  diagrammi di flusso, cronoprogrammi) coerenti con i dati dichiarati — una
+  foto generica di un operatore/ambiente non prova nessun impegno e non
+  aggiunge nulla che la commissione possa verificare.
 - **R17 — Criteri tabellari: solo la dichiarazione di possesso.** Quando il
   sistema ti segnala che un sub-criterio è tabellare, nessuna descrizione,
   nessuna argomentazione: il punteggio è automatico, qualsiasi parola in più
