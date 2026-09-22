@@ -177,6 +177,7 @@ export async function generaBozzaSezione(params: {
   contenuto: string;
   companyProfile?: CompanyProfiloConfermato;
   contestoDocumenti?: string;
+  datiGaraStrutturati?: string;
   titoloRelazione?: string;
   font?: string;
   dimensioneCarattere?: number;
@@ -189,6 +190,7 @@ export async function generaBozzaSezione(params: {
     contenuto: contenutoGrezzo,
     companyProfile = null,
     contestoDocumenti = "",
+    datiGaraStrutturati = "",
     titoloRelazione,
     font,
     dimensioneCarattere,
@@ -204,7 +206,19 @@ export async function generaBozzaSezione(params: {
   // vedi verifica-dati-aziendali.ts. Il testo verificato è quello che
   // viene salvato E reso in Word: un numero senza fonte non deve
   // sopravvivere né nel database né nel documento scaricabile.
-  const contenuto = await verificaDatiAziendali(contenutoGrezzo, companyProfile, contestoDocumenti, { userId, garaId });
+  // datiGaraStrutturati (sedi/personale uscente) è passato SEPARATO da
+  // contestoDocumenti: quest'ultimo dipende dalla ricerca per somiglianza
+  // sull'ultimo messaggio in chat e può non contenere il dettaglio
+  // sede/personale rilevante per questa sezione, mentre datiGaraStrutturati
+  // arriva sempre completo dall'estrazione, indipendentemente da cosa la
+  // ricerca ha trovato.
+  const contenuto = await verificaDatiAziendali(
+    contenutoGrezzo,
+    companyProfile,
+    contestoDocumenti,
+    datiGaraStrutturati,
+    { userId, garaId },
+  );
 
   const { data: ultima } = await supabase
     .from("gara_relazione_sezioni")
