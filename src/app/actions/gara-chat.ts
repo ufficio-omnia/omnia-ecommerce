@@ -28,6 +28,7 @@ import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 import {
   buildSystemPrompt,
   buildGeneraBozzaTool,
+  formattaDatiGaraStrutturati,
   type GaraContesto,
   type CompanyContesto,
 } from "@/lib/gara-chat-prompt";
@@ -112,7 +113,7 @@ export async function sendGaraMessage(
   const { data: gara } = await supabase
     .from("gare")
     .select(
-      "titolo, scadenza, importo, criteri_valutazione, requisiti, limiti_formattazione, limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo, relazione_dimensione_carattere, relazione_interlinea, sub_criteri_tabellari",
+      "titolo, scadenza, importo, criteri_valutazione, requisiti, limiti_formattazione, limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo, relazione_dimensione_carattere, relazione_interlinea, sub_criteri_tabellari, sedi, personale_uscente",
     )
     .eq("id", garaId)
     .single<GaraContesto>();
@@ -534,6 +535,7 @@ export async function sendGaraMessage(
             contenuto: contenutoFinale,
             companyProfile: company,
             contestoDocumenti,
+            datiGaraStrutturati: formattaDatiGaraStrutturati(gara),
             font: input.font,
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,

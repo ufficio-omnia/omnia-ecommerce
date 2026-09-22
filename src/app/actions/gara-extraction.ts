@@ -114,6 +114,65 @@ const EXTRACTION_TOOL = {
           "Codici dei sub-criteri (es. '2.2', '4.1' — usa la numerazione ESATTA del disciplinare) per cui il disciplinare NON richiede una descrizione/proposta tecnica ma la sola compilazione di una tabella, griglia o checklist di conformità già predisposta (riconoscibile da formulazioni come 'il concorrente barra le caratteristiche possedute', 'dichiara sì/no per ciascuna voce', 'compila la tabella allegata', 'autodichiarazione del possesso'). Questo elenco verrà usato per SALTARE la generazione di contenuto discorsivo per questi sub-criteri (verrà scritta solo una dicitura segnaposto): includi un sub-criterio SOLO se sei sicuro che non richieda alcun testo libero, nel dubbio ometti l'elemento. Lascia vuoto se il disciplinare non prevede sub-criteri di questo tipo.",
         items: { type: "string" },
       },
+      sedi: {
+        type: "array",
+        description:
+          "Elenco di TUTTE le sedi/immobili/strutture in cui va svolto il servizio, così come risultano dai documenti di gara (es. schede sede, capitolato, planimetrie, allegati tecnici) — una voce per sede, anche quando ogni sede ha una propria scheda separata: se i documenti elencano 10 sedi, riporta 10 voci, non un riassunto. Questi dati verranno passati SEMPRE alla generazione dell'offerta (non solo se richiamati per somiglianza): è importante non ometterne nessuna.",
+        items: {
+          type: "object",
+          properties: {
+            denominazione: {
+              type: "string",
+              description: "Nome/denominazione della sede così come indicato nei documenti (es. 'Hotel de Ville', 'Biblioteca Bruno Salvadori').",
+            },
+            indirizzo: { type: "string", description: "Indirizzo della sede, se indicato. Ometti se non presente." },
+            superficie_mq: {
+              type: "number",
+              description: "Superficie complessiva della sede in metri quadri, solo numero, se indicata. Ometti se non presente.",
+            },
+            orari_apertura: {
+              type: "string",
+              description: "Orari di apertura/accesso della sede rilevanti per il servizio, così come descritti nei documenti (es. 'Lun-Ven 8:00-18:00'). Ometti se non indicati.",
+            },
+            frequenze: {
+              type: "string",
+              description: "Sintesi delle frequenze/cadenze di intervento previste dal capitolato per QUESTA sede (es. 'pulizia giornaliera servizi igienici, settimanale uffici, mensile vetri'). Ometti se non specificate per questa sede.",
+            },
+          },
+          required: ["denominazione"],
+        },
+      },
+      personale_uscente: {
+        type: "array",
+        description:
+          "Elenco del personale interessato dalla clausola sociale (subentro), così come riportato nel documento 'elenco del personale'/'clausola sociale' o equivalente del bando — una voce per addetto o per gruppo omogeneo di addetti (usa una voce per ogni riga del documento, anche se anonimizzata con un codice tipo 'Addetto 1'), riportando ESATTAMENTE i dati presenti, senza calcolarne o stimarne di mancanti. NON riportare MAI, in nessun campo, nominativi, codici fiscali o numeri di matricola, anche se presenti nel documento originale: questi dati vengono salvati e possono comparire nel documento Word finale, che la commissione di gara legge — identificano persone reali e non servono a formulare l'offerta. Se il documento elenca il personale per nome, usa comunque un riferimento anonimo posizionale (es. 'Addetto 1', 'Addetto 2' nell'ordine in cui compaiono), MAI il nome reale.",
+        items: {
+          type: "object",
+          properties: {
+            livello_contrattuale: {
+              type: "string",
+              description: "Livello/qualifica contrattuale di questo addetto o gruppo (es. 'Livello 3 - Operaio, CCNL Multiservizi, tempo indeterminato').",
+            },
+            numero_addetti: {
+              type: "number",
+              description: "Numero di addetti in questo livello/gruppo (usa 1 se il documento elenca ogni persona singolarmente riga per riga, invece di aggregarle per livello).",
+            },
+            ore_settimanali: {
+              type: "number",
+              description: "Ore settimanali di questo addetto/gruppo, solo numero. Ometti se non indicate.",
+            },
+            anzianita: {
+              type: "string",
+              description: "Anzianità di servizio così come indicata (es. data di assunzione, anni di anzianità). Ometti se non indicata.",
+            },
+            note: {
+              type: "string",
+              description: "Altre informazioni rilevanti riportate sulla stessa riga (es. articolazione oraria, settore/reparto) — MAI nome, cognome, codice fiscale o matricola. Ometti se non presenti.",
+            },
+          },
+          required: ["livello_contrattuale", "numero_addetti"],
+        },
+      },
     },
     required: ["criteri_valutazione", "requisiti", "limiti_formattazione"],
   },
@@ -206,14 +265,17 @@ export async function extractGaraData(
 
     const response = await anthropic.messages.create({
       model: MODEL,
-      // criteri_valutazione ora richiede la struttura COMPLETA e
-      // letterale (ogni sub-criterio ed ogni punto a)/b)/c), non un
-      // riassunto): su bandi articolati può superare da sola diverse
-      // migliaia di caratteri. Con un limite più basso la risposta
-      // veniva troncata prima di completare tutti i campi (bug
-      // osservato più volte: campi successivi come limiti_formattazione
-      // o font/dimensione/interlinea restavano sempre vuoti).
-      max_tokens: 8000,
+      // criteri_valutazione richiede la struttura COMPLETA e letterale
+      // (ogni sub-criterio ed ogni punto a)/b)/c), non un riassunto), e
+      // ora si aggiungono anche sedi (una voce per ognuna, anche 10+ su
+      // gare con più immobili) e personale_uscente (una voce per riga
+      // del documento clausola sociale): su bandi articolati la risposta
+      // può superare diverse migliaia di caratteri. Con un limite più
+      // basso la risposta veniva troncata prima di completare tutti i
+      // campi (bug osservato più volte: campi successivi come
+      // limiti_formattazione o font/dimensione/interlinea restavano
+      // sempre vuoti).
+      max_tokens: 16000,
       thinking: { type: "disabled" },
       tools: [EXTRACTION_TOOL],
       tool_choice: { type: "tool", name: "estrai_dati_gara" },
@@ -267,6 +329,20 @@ export async function extractGaraData(
       criteri_riepilogo?: { numero: string; titolo: string; punti_max: number }[];
       requisiti_chiave?: string[];
       sub_criteri_tabellari?: string[];
+      sedi?: {
+        denominazione: string;
+        indirizzo?: string;
+        superficie_mq?: number;
+        orari_apertura?: string;
+        frequenze?: string;
+      }[];
+      personale_uscente?: {
+        livello_contrattuale: string;
+        numero_addetti: number;
+        ore_settimanali?: number;
+        anzianita?: string;
+        note?: string;
+      }[];
     };
 
     // Font/dimensione/interlinea vengono fissati qui, appena i documenti
@@ -309,6 +385,8 @@ export async function extractGaraData(
         criteri_riepilogo: result.criteri_riepilogo ?? null,
         requisiti_chiave: result.requisiti_chiave ?? null,
         sub_criteri_tabellari: result.sub_criteri_tabellari ?? null,
+        sedi: result.sedi ?? null,
+        personale_uscente: result.personale_uscente ?? null,
         estrazione_stato: "completata",
         estrazione_aggiornata_il: estrazioneAggiornataIl,
       })
