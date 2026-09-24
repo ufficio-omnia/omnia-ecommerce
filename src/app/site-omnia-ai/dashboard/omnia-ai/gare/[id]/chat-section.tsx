@@ -48,6 +48,17 @@ function stimaPagineEtichetta(pagineStimate: number | null, limitePagineTotale: 
     : `~${arrotondate} pagine stimate`;
 }
 
+// Confronto deterministico su un dato già persistito (pagine_stimate del
+// messaggio, limite già disponibile lato client dalla scheda gara) — non
+// un avviso che dipende da come l'AI formula la sua risposta in chat: la
+// generazione tenta un taglio deciso quando serve (vedi
+// componiRelazioneFinale), ma se anche quello non basta il cliente deve
+// vederlo qui, in modo esplicito, PRIMA di scaricare — mai un documento
+// oltre il limite consegnato senza segnalarlo.
+function superaLimitePagine(pagineStimate: number | null, limitePagineTotale: number | null): boolean {
+  return pagineStimate != null && limitePagineTotale != null && Math.ceil(pagineStimate) > limitePagineTotale;
+}
+
 export default function ChatSection({
   garaId,
   messaggi,
@@ -146,8 +157,17 @@ export default function ChatSection({
                       className="omnia-btn omnia-btn-verde omnia-btn-piccolo"
                     />
                     {stimaPagineEtichetta(m.pagine_stimate, limitePagineTotale) && (
-                      <span className="omnia-stima-pagine">
+                      <span
+                        className={
+                          superaLimitePagine(m.pagine_stimate, limitePagineTotale)
+                            ? "omnia-stima-pagine avviso"
+                            : "omnia-stima-pagine"
+                        }
+                      >
+                        {superaLimitePagine(m.pagine_stimate, limitePagineTotale) && "⚠ "}
                         {stimaPagineEtichetta(m.pagine_stimate, limitePagineTotale)}
+                        {superaLimitePagine(m.pagine_stimate, limitePagineTotale) &&
+                          " — supera il limite, riduci il contenuto prima di consegnarlo"}
                       </span>
                     )}
                   </div>

@@ -5,9 +5,12 @@
   "//xlsx": "La voce 'xlsx' sotto è un tarball ufficiale SheetJS pinnato alla 0.20.3, non un pacchetto npm: la build 'xlsx' su npm si è fermata alla 0.18, le versioni successive sono distribuite solo da cdn.sheetjs.com (vedi https://docs.sheetjs.com/docs/getting-started/installation/nodejs).",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "tsx scripts/verifica-livello1.ts",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verifica:livello1": "tsx scripts/verifica-livello1.ts",
+    "verifica:livello2": "tsx scripts/verifica-livello2.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
@@ -32,7 +35,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "jszip": "^3.10.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

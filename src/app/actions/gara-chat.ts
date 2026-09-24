@@ -437,10 +437,18 @@ export async function sendGaraMessage(
               console.log(
                 `sendGaraMessage: relazione finale composta "${risultato.nomeFile}" (${risultato.filePath}) per gara ${garaId}`,
               );
+              // Avviso secondario, in chat: la garanzia VERA è il confronto
+              // deterministico pagine_stimate/limite_pagine_totale già
+              // mostrato dalla UI accanto al pulsante di download (vedi
+              // chat-section.tsx) — questo serve solo a far commentare
+              // anche il testo della risposta, non a sostituire quel
+              // controllo.
+              const superaLimite =
+                gara.limite_pagine_totale != null && Math.ceil(risultato.pagineStimate) > gara.limite_pagine_totale;
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: toolUse.id,
-                content: `Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze. Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta. Scrivi solo 1-2 frasi di conferma.`,
+                content: `Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
               });
             }
           } catch (err) {

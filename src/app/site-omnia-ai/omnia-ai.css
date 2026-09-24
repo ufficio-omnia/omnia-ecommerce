@@ -1346,6 +1346,7 @@ li {
    sottolineato. */
 .omnia-allegato-generato {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
@@ -1368,6 +1369,12 @@ li {
   font-size: 12px;
   color: var(--fioco);
   white-space: nowrap;
+}
+.omnia-stima-pagine.avviso {
+  flex-basis: 100%;
+  font-weight: 600;
+  color: var(--rosso);
+  white-space: normal;
 }
 
 /* Allegati caricati in chat, pillole piccole */

@@ -653,6 +653,185 @@ export async function correggiSezioneVersoTarget(
   return contenuto;
 }
 
+// Garantisce che il documento COMPOSTO (tutte le sezioni insieme, non una
+// alla volta) resti entro il limite VERO di pagine del disciplinare — non
+// solo entro il margine di sicurezza usato come target per-sezione più
+// sotto. Estratta come funzione pura (nessuna lettura/scrittura DB: solo
+// testo in ingresso/uscita) per lo stesso motivo di buildSystemPrompt in
+// gara-chat-prompt.ts — riusabile da uno script di test (generazione reale
+// su una copia locale, senza scrivere nella gara del cliente) con la
+// STESSA logica esatta di produzione, non una riscrittura parallela a
+// rischio di disallinearsi.
+//
+// Due fasi:
+// 1. Ogni sezione viene corretta verso la propria quota proporzionale di
+//    pagine (in base al punteggio del criterio), fino a 4 tentativi
+//    ciascuna — la stessa logica di sempre.
+// 2. Anche se OGNI sezione rispetta la propria soglia individuale (fino al
+//    110% del proprio target, SOGLIA_RIDUZIONE), la SOMMA può comunque
+//    superare il limite dichiarato — osservato in pratica (12,57 pagine su
+//    un limite di 12, margine di sicurezza a 11: nessuna sezione singola
+//    sforava la propria soglia, ma il totale sì). Qui si controlla il
+//    documento INTERO e, se serve, si applica un taglio deciso aggiuntivo
+//    (non un altro ciclo di tentativi generalizzato) sulle sezioni a MINOR
+//    valore per il punteggio, una alla volta, finché il totale non rientra
+//    o non restano più sezioni su cui intervenire. Se anche questo non
+//    basta, il documento viene generato comunque (meglio qualcosa da
+//    correggere a mano che niente) — MAI però in silenzio: il chiamante
+//    deve confrontare la pagineStimate finale con il limite e avvisare
+//    esplicitamente il cliente (vedi componiRelazioneFinale e, lato UI,
+//    chat-section.tsx).
+export async function assicuraBudgetPagine(
+  sezioniIniziali: { titolo_sezione: string; contenuto: string }[],
+  budget: {
+    limitePagineTotale: number;
+    punteggioTecnicoMax: number;
+    criteriRiepilogo: CriterioRiepilogo[];
+    subCriteriTabellari: string[] | null;
+  },
+  nomeAzienda: string | null | undefined,
+  formattazione: { dimensioneCarattere?: number; interlinea?: number },
+  context: { userId: string | null; garaId: string | null },
+): Promise<{
+  sezioni: { titolo_sezione: string; contenuto: string }[];
+  righeDaSalvare: { titolo_sezione: string; contenuto: string }[];
+}> {
+  const { limitePagineTotale, punteggioTecnicoMax, criteriRiepilogo, subCriteriTabellari } = budget;
+  const sezioni = sezioniIniziali.map((s) => ({ ...s }));
+  const righeDaSalvare: { titolo_sezione: string; contenuto: string }[] = [];
+
+  // Il target reale resta sotto il limite dichiarato dal disciplinare
+  // (vedi limitePagineConMargine in stima-pagine.ts): la stima di pagine
+  // non è un conteggio Word reale, puntare esattamente al limite rischia
+  // di sforarlo.
+  const limiteConMargine = limitePagineConMargine(limitePagineTotale);
+
+  function trovaCriterio(titoloSezione: string): CriterioRiepilogo | undefined {
+    const numeroSezione = estraiNumeroCriterioTopLevel(titoloSezione);
+    return criteriRiepilogo.find(
+      (c) =>
+        (numeroSezione && c.numero.trim().toLowerCase() === numeroSezione) ||
+        normalizzaTitoloSezione(c.titolo) === normalizzaTitoloSezione(titoloSezione),
+    );
+  }
+
+  // Fase 1: correzione proporzionale per sezione, in parallelo (sezioni
+  // indipendenti tra loro — bug di lentezza osservato in pratica: comporre
+  // una relazione da 4 criteri in sequenza poteva richiedere 10+ minuti).
+  const risultati = await Promise.all(
+    sezioni.map(async (sezione, indice) => {
+      const criterio = trovaCriterio(sezione.titolo_sezione);
+      if (!criterio) return null;
+
+      const pagineTarget = (criterio.punti_max / punteggioTecnicoMax) * limiteConMargine;
+      // 4 tentativi invece del default (2): verificato in pratica che una
+      // sezione molto sopra al proprio target può ridursi solo di poco a
+      // ogni passata — con 2 soli tentativi il margine di sicurezza
+      // rischiava di non essere rispettato davvero.
+      const corretto = await correggiSezioneVersoTarget(
+        sezione.titolo_sezione,
+        sezione.contenuto,
+        pagineTarget,
+        formattazione,
+        context,
+        4,
+      );
+      if (corretto === sezione.contenuto) return null;
+
+      // Riapplicate dopo l'espansione/condensazione: quel passaggio non sa
+      // nulla né dei marcatori tabellari né dell'anonimizzazione.
+      const contenuto = applicaSostituzioniAnonimizzazione(
+        applicaMarcatoriTabellari(corretto, subCriteriTabellari),
+        nomeAzienda,
+      );
+
+      return { indice, contenuto };
+    }),
+  );
+
+  for (const r of risultati) {
+    if (!r) continue;
+    sezioni[r.indice] = { ...sezioni[r.indice], contenuto: r.contenuto };
+    righeDaSalvare.push({ titolo_sezione: sezioni[r.indice].titolo_sezione, contenuto: r.contenuto });
+  }
+
+  // Fase 2: verifica sul TOTALE reale, taglio deciso se serve.
+  const componiTesto = () =>
+    sezioni.map((s) => `# ${s.titolo_sezione}\n\n${rimuoviTitoloRidondante(s.contenuto, s.titolo_sezione)}`).join("\n\n");
+
+  let pagineProva = stimaPagineContenuto(componiTesto(), formattazione);
+
+  if (pagineProva > limitePagineTotale) {
+    // Più round, non un solo passaggio: verificato in pratica che un
+    // singolo taglio deciso può avvicinarsi al limite senza rientrarci
+    // davvero (12,57 pagine ridotte a 12,14 su un limite di 12 — il
+    // modello non centra mai esattamente il target di una singola
+    // richiesta, vedi correggiSezioneVersoTarget). Ripete l'intervento,
+    // ordinando di nuovo per valore a ogni round (una sezione già tagliata
+    // può non essere più la più conveniente da tagliare ancora), finché il
+    // totale rientra, nessuna sezione è più riducibile, o si raggiunge il
+    // tetto di round.
+    const MAX_ROUND_TAGLIO = 3;
+    for (let round = 0; round < MAX_ROUND_TAGLIO && pagineProva > limitePagineTotale; round++) {
+      const sezioniOrdinatePerValore = sezioni
+        .map((sezione, indice) => ({ indice, puntiMax: trovaCriterio(sezione.titolo_sezione)?.punti_max ?? Number.POSITIVE_INFINITY }))
+        .sort((a, b) => a.puntiMax - b.puntiMax);
+
+      let tagliatoQualcosaInQuestoRound = false;
+
+      for (const { indice } of sezioniOrdinatePerValore) {
+        if (pagineProva <= limitePagineTotale) break;
+
+        const sezione = sezioni[indice];
+        const pagineSezioneAttuali = stimaPagineContenuto(sezione.contenuto, formattazione);
+        // Una sezione già ridotta quasi al minimo non vale più un'altra
+        // chiamata: passa alla successiva a minor valore.
+        if (pagineSezioneAttuali <= 0.6) continue;
+
+        const eccesso = pagineProva - limitePagineTotale;
+        // Margine extra (0.2 pagine) oltre l'eccesso misurato: il modello
+        // tende a fermarsi appena sopra il target richiesto, non esattamente
+        // su di esso — chiedere un target leggermente più basso del
+        // minimo indispensabile compensa questa imprecisione osservata in
+        // pratica, invece di scoprirla solo al giro successivo. Non sotto
+        // il 55% della lunghezza attuale: distruggerebbe il contenuto
+        // invece di comprimerlo.
+        const targetSezione = Math.max(pagineSezioneAttuali * 0.55, pagineSezioneAttuali - eccesso - 0.2);
+        if (targetSezione >= pagineSezioneAttuali * 0.98) continue; // taglio trascurabile, non vale la chiamata
+
+        const tagliato = await correggiSezioneVersoTarget(
+          sezione.titolo_sezione,
+          sezione.contenuto,
+          targetSezione,
+          formattazione,
+          context,
+          2,
+        );
+        if (tagliato === sezione.contenuto) continue;
+
+        const contenutoTagliato = applicaSostituzioniAnonimizzazione(
+          applicaMarcatoriTabellari(tagliato, subCriteriTabellari),
+          nomeAzienda,
+        );
+        sezioni[indice] = { ...sezione, contenuto: contenutoTagliato };
+        righeDaSalvare.push({ titolo_sezione: sezione.titolo_sezione, contenuto: contenutoTagliato });
+        tagliatoQualcosaInQuestoRound = true;
+
+        pagineProva = stimaPagineContenuto(componiTesto(), formattazione);
+      }
+
+      if (!tagliatoQualcosaInQuestoRound) break; // nessun progresso possibile: fermarsi, non insistere a vuoto
+    }
+
+    // Se anche dopo tutti i round il documento supera ancora il limite, si
+    // esce comunque: il chiamante deve avvisare esplicitamente (mai in
+    // silenzio), qui si è fatto il possibile senza distruggere il
+    // contenuto delle sezioni a più basso punteggio.
+  }
+
+  return { sezioni, righeDaSalvare };
+}
+
 // Assembla la Relazione Tecnica definitiva da TUTTE le bozze di sezione
 // generate finora per la gara. Quando la stessa gara ha ricevuto più
 // rielaborazioni dello stesso criterio (frequente: ogni volta che il
@@ -740,79 +919,36 @@ export async function componiRelazioneFinale(params: {
     garaBudget.punteggio_tecnico_max &&
     garaBudget.criteri_riepilogo?.length
   ) {
-    const { limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo } = garaBudget;
-    // Il target reale resta sotto il limite dichiarato dal disciplinare
-    // (vedi limitePagineConMargine in stima-pagine.ts): la stima di
-    // pagine non è un conteggio Word reale, puntare esattamente al
-    // limite rischia di sforarlo.
-    const limiteConMargine = limitePagineConMargine(limite_pagine_totale);
+    const formattazioneGaraCorrente = { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea };
     const ordineBase = Math.max(...sezioni.map((s) => s.ordine));
 
-    // Le sezioni da espandere sono indipendenti tra loro: eseguire le
-    // chiamate in parallelo invece che una alla volta (bug di lentezza
-    // osservato in pratica — comporre una relazione da 4 criteri poteva
-    // richiedere 10+ minuti in sequenza) riduce il tempo totale a quello
-    // della sezione più lenta, non alla somma di tutte.
-    const formattazioneGaraCorrente = { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea };
-
-    const risultati = await Promise.all(
-      sezioniFinali.map(async (sezione, indice) => {
-        const numeroSezione = estraiNumeroCriterioTopLevel(sezione.titolo_sezione);
-        const criterio = criteri_riepilogo.find(
-          (c) =>
-            (numeroSezione && c.numero.trim().toLowerCase() === numeroSezione) ||
-            normalizzaTitoloSezione(c.titolo) === normalizzaTitoloSezione(sezione.titolo_sezione),
-        );
-        if (!criterio) return null;
-
-        const pagineTarget = (criterio.punti_max / punteggio_tecnico_max) * limiteConMargine;
-        // 4 tentativi invece del default (2): verificato in pratica che una
-        // sezione molto sopra al proprio target può ridursi solo di poco a
-        // ogni passata (il modello non taglia sempre in modo aggressivo) —
-        // con 2 soli tentativi il margine di sicurezza applicato sopra
-        // (limitePagineConMargine) rischiava di non essere rispettato
-        // davvero, restando la sezione ancora sopra target*1.1 al termine
-        // del ciclo.
-        const corretto = await correggiSezioneVersoTarget(
-          sezione.titolo_sezione,
-          sezione.contenuto,
-          pagineTarget,
-          formattazioneGaraCorrente,
-          { userId, garaId },
-          4,
-        );
-        if (corretto === sezione.contenuto) return null;
-
-        // Riapplicate dopo l'espansione/condensazione: quel passaggio non
-        // sa nulla né dei marcatori tabellari né dell'anonimizzazione, e
-        // può aver riscritto/ampliato il testo reintroducendo "l'operatore
-        // economico" al posto del nome reale (bug osservato in pratica,
-        // stesso motivo dei marcatori tabellari).
-        const contenuto = applicaSostituzioniAnonimizzazione(
-          applicaMarcatoriTabellari(corretto, garaBudget.sub_criteri_tabellari),
-          companyBudget?.ragione_sociale,
-        );
-
-        return { indice, contenuto };
-      }),
+    const { sezioni: sezioniCorrette, righeDaSalvare } = await assicuraBudgetPagine(
+      sezioniFinali,
+      {
+        limitePagineTotale: garaBudget.limite_pagine_totale,
+        punteggioTecnicoMax: garaBudget.punteggio_tecnico_max,
+        criteriRiepilogo: garaBudget.criteri_riepilogo,
+        subCriteriTabellari: garaBudget.sub_criteri_tabellari,
+      },
+      companyBudget?.ragione_sociale,
+      formattazioneGaraCorrente,
+      { userId, garaId },
     );
 
-    const espansioniRiuscite = risultati.filter((r): r is { indice: number; contenuto: string } => r !== null);
-
-    if (espansioniRiuscite.length > 0) {
+    if (righeDaSalvare.length > 0) {
       await supabase.from("gara_relazione_sezioni").insert(
-        espansioniRiuscite.map((r, i) => ({
+        righeDaSalvare.map((r, i) => ({
           gara_id: garaId,
           user_id: userId,
-          titolo_sezione: sezioniFinali[r.indice].titolo_sezione,
+          titolo_sezione: r.titolo_sezione,
           contenuto: r.contenuto,
           ordine: ordineBase + 1 + i,
         })),
       );
+    }
 
-      for (const r of espansioniRiuscite) {
-        sezioniFinali[r.indice] = { ...sezioniFinali[r.indice], contenuto: r.contenuto };
-      }
+    for (let i = 0; i < sezioniFinali.length; i++) {
+      sezioniFinali[i] = { ...sezioniFinali[i], contenuto: sezioniCorrette[i].contenuto };
     }
   }
 
