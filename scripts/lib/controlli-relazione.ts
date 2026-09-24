@@ -7,8 +7,20 @@
 // senso come riferimento del livello 1.
 import { buildDocxBuffer, rimuoviTitoloRidondante } from "../../src/lib/docx-generator";
 import { stimaPagineContenuto } from "../../src/lib/stima-pagine";
+import { estraiTestiPerNodo, estraiTestiVisibili } from "./xml-word";
+import {
+  abbinaSorgente,
+  estraiFigureDocumento,
+  estraiSorgenteFigure,
+  formattaManifest,
+  riepilogoFigure,
+  verificaFigure,
+  type FiguraDocumento,
+} from "./immagini-relazione";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const JSZip = require("jszip");
+
+export { estraiTestiPerNodo, estraiTestiVisibili };
 
 export type FixtureRelazione = {
   titolo: string;
@@ -30,7 +42,25 @@ const MARCATORI_RESIDUI: [string, RegExp][] = [
   ["[ORGANIGRAMMA]/[/ORGANIGRAMMA]", /\[\/?ORGANIGRAMMA\]/],
   ["** (grassetto markdown non convertito)", /\*\*/],
   ["!! (colore ruolo non convertito)", /!!/],
+  // Qualunque backslash nel testo: un'escape markdown ("\*") non convertita
+  // lascia il backslash visibile, e può stare in un nodo di testo mentre
+  // l'asterisco è nel nodo successivo (così lo rendeva il renderer prima
+  // della correzione), quindi non si cerca la coppia "\*" ma il solo "\".
+  ["\\ (backslash visibile: escape markdown non convertita)", /\\/],
 ];
+
+// Cerca i marcatori residui nodo per nodo (non su testo concatenato: vedi
+// estraiTestiPerNodo).
+export function trovaMarcatoriResidui(nodi: string[]): string[] {
+  const errori: string[] = [];
+  for (const [nome, pattern] of MARCATORI_RESIDUI) {
+    const occorrenze = nodi.reduce((tot, nodo) => tot + contaOccorrenze(nodo, pattern), 0);
+    if (occorrenze > 0) {
+      errori.push(`Marcatore residuo: "${nome}" compare ${occorrenze} volta/e come testo letterale nel corpo del documento.`);
+    }
+  }
+  return errori;
+}
 
 const FRASI_ECONOMICHE_VIETATE = [
   "a costo zero",
@@ -42,37 +72,6 @@ const FRASI_ECONOMICHE_VIETATE = [
   "€",
 ];
 
-function decodeEntitaXml(testo: string): string {
-  return testo
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
-
-// Testo di OGNI nodo <w:t>, separatamente (non concatenato in una sola
-// stringa): un marcatore di sintassi non convertito (es. "**testo**") vive
-// SEMPRE interamente dentro un singolo nodo di testo, non a cavallo di due
-// — la stessa sequenza di caratteri può comparire per puro accostamento
-// tra due nodi indipendenti e corretti (es. un asterisco singolo a fine
-// cella di tabella seguito, in un nodo completamente diverso, dall'asterisco
-// singolo iniziale della nota sotto la tabella: "* " + "*Valori..." letti
-// insieme sembrano "**" ma sono due marcatori legittimi, non uno residuo).
-export function estraiTestiPerNodo(xml: string): string[] {
-  const match = xml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [];
-  return match.map((m) => decodeEntitaXml(m.replace(/^<w:t[^>]*>/, "").replace(/<\/w:t>$/, "")));
-}
-
-export function estraiTestiVisibili(xml: string): string {
-  // Solo il contenuto dei nodi <w:t>, nell'ordine: è il testo che un
-  // lettore vede davvero, senza markup XML che genererebbe falsi positivi.
-  // Usata per controlli su testo "letto per intero" (intestazione, celle,
-  // frasi vietate) — per i marcatori residui vedi estraiTestiPerNodo sopra,
-  // che non concatena nodi diversi tra loro.
-  return estraiTestiPerNodo(xml).join("");
-}
-
 function contaOccorrenze(testo: string, pattern: RegExp): number {
   return (testo.match(new RegExp(pattern, "g")) || []).length;
 }
@@ -83,9 +82,18 @@ export function componiMarkdown(fixture: Pick<FixtureRelazione, "sezioni">): str
     .join("\n\n");
 }
 
-export async function eseguiControlliStrutturali(
-  fixture: FixtureRelazione,
-): Promise<{ errori: string[]; riepilogo: string; celle: number; immagini: number; pagineStimate: number }> {
+export type EsitoControlliStrutturali = {
+  errori: string[];
+  riepilogo: string;
+  celle: number;
+  immagini: number;
+  pagineStimate: number;
+  figure: FiguraDocumento[];
+  manifestFigure: string[];
+  buffer: Buffer;
+};
+
+export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Promise<EsitoControlliStrutturali> {
   const errori: string[] = [];
   const contenutoMarkdown = componiMarkdown(fixture);
 
@@ -162,13 +170,7 @@ export async function eseguiControlliStrutturali(
   // nodo (non su testoCorpo concatenato): un marcatore non convertito vive
   // sempre interamente in un singolo <w:t>, mai a cavallo di due nodi
   // indipendenti (vedi estraiTestiPerNodo).
-  const nodiCorpo = estraiTestiPerNodo(documentXml);
-  for (const [nome, pattern] of MARCATORI_RESIDUI) {
-    const occorrenze = nodiCorpo.reduce((tot, nodo) => tot + contaOccorrenze(nodo, pattern), 0);
-    if (occorrenze > 0) {
-      errori.push(`Marcatore residuo: "${nome}" compare ${occorrenze} volta/e come testo letterale nel corpo del documento.`);
-    }
-  }
+  errori.push(...trovaMarcatoriResidui(estraiTestiPerNodo(documentXml)));
 
   // 5. Nessuna cella di tabella vuota.
   const celle = documentXml.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g) || [];
@@ -184,17 +186,26 @@ export async function eseguiControlliStrutturali(
     errori.push(`Tabelle: nessuna cella trovata nel documento — atteso almeno una tabella.`);
   }
 
-  // 6. Nessuna fotografia: l'unica fonte di immagini oggi è l'organigramma
-  // (il codice che generava immagini AI è stato rimosso) — il numero di
-  // immagini nel pacchetto deve combaciare esattamente con il numero di
-  // blocchi [ORGANIGRAMMA] nel testo sorgente.
-  const numeroOrganigrammi = (contenutoMarkdown.match(/\[ORGANIGRAMMA\]/g) || []).length;
-  const numeroImmagini = nomiFile.filter((n: string) => n.startsWith("word/media/") && !n.endsWith("/")).length;
-  if (numeroImmagini !== numeroOrganigrammi) {
-    errori.push(
-      `Immagini: ${numeroImmagini} immagine/i nel documento contro ${numeroOrganigrammi} blocco/hi [ORGANIGRAMMA] nel testo — l'unica fonte di immagini legittima è l'organigramma, un numero diverso indica un'immagine indebita o un organigramma non renderizzato.`,
-    );
+  // 6. Nessuna fotografia, numero di figure pari a quello atteso. Il
+  // renderer produce solo due tipi di figura — organigramma (uno per blocco
+  // [ORGANIGRAMMA]) e icona (una per tag [ICONA:nome] valido): ogni figura
+  // dichiara il proprio tipo nel testo alternativo e il numero per tipo
+  // deve coincidere con quello del testo sorgente. Un primo controllo che
+  // contava solo gli organigrammi sbagliava per difetto (le icone sono
+  // immagini a loro volta): qui si contano le figure per tipo, non i file
+  // media (icone identiche per nome e colore condividono lo stesso file).
+  // Un errore riporta il manifest completo: quale figura, in quale parte
+  // del testo e da quale sorgente, per diagnosticare senza rigenerare.
+  const sorgenteFigure = estraiSorgenteFigure(contenutoMarkdown);
+  const figure = await estraiFigureDocumento(zip);
+  abbinaSorgente(figure, sorgenteFigure);
+  const manifestFigure = formattaManifest(figure);
+  const erroriFigure = verificaFigure(figure, sorgenteFigure);
+  if (erroriFigure.length > 0) {
+    errori.push(...erroriFigure);
+    errori.push(`Manifest delle figure del documento (${riepilogoFigure(figure)}):\n${manifestFigure.map((r) => `     ${r}`).join("\n")}`);
   }
+  const numeroImmagini = figure.length;
 
   // 7. Nessuna frase sull'offerta economica (R8), solo nel corpo.
   for (const frase of FRASI_ECONOMICHE_VIETATE) {
@@ -209,7 +220,7 @@ export async function eseguiControlliStrutturali(
     errori.push(`Pagine: stima ${pagineStimate.toFixed(2)} supera il limite dichiarato di ${fixture.limitePagineTotale}.`);
   }
 
-  const riepilogo = `${fixture.sezioni.length} sezioni, ${celle.length} celle, ${numeroImmagini} immagini, ${pagineStimate.toFixed(2)} pagine stimate (limite ${fixture.limitePagineTotale}).`;
+  const riepilogo = `${fixture.sezioni.length} sezioni, ${celle.length} celle, figure: ${riepilogoFigure(figure)}, ${pagineStimate.toFixed(2)} pagine stimate (limite ${fixture.limitePagineTotale}).`;
 
-  return { errori, riepilogo, celle: celle.length, immagini: numeroImmagini, pagineStimate };
+  return { errori, riepilogo, celle: celle.length, immagini: numeroImmagini, pagineStimate, figure, manifestFigure, buffer };
 }

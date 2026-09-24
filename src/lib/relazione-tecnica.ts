@@ -695,10 +695,16 @@ export async function assicuraBudgetPagine(
 ): Promise<{
   sezioni: { titolo_sezione: string; contenuto: string }[];
   righeDaSalvare: { titolo_sezione: string; contenuto: string }[];
+  // Stato dopo la sola correzione proporzionale (fase 1) e titoli delle
+  // sezioni toccate dal taglio deciso (fase 2): servono a confrontare cosa
+  // ha tolto l'una e cosa l'altra (scripts/lib/confronto-tagli.ts).
+  sezioniDopoFase1: { titolo_sezione: string; contenuto: string }[];
+  sezioniTagliateDecisamente: string[];
 }> {
   const { limitePagineTotale, punteggioTecnicoMax, criteriRiepilogo, subCriteriTabellari } = budget;
   const sezioni = sezioniIniziali.map((s) => ({ ...s }));
   const righeDaSalvare: { titolo_sezione: string; contenuto: string }[] = [];
+  const sezioniTagliateDecisamente = new Set<string>();
 
   // Il target reale resta sotto il limite dichiarato dal disciplinare
   // (vedi limitePagineConMargine in stima-pagine.ts): la stima di pagine
@@ -754,6 +760,8 @@ export async function assicuraBudgetPagine(
     sezioni[r.indice] = { ...sezioni[r.indice], contenuto: r.contenuto };
     righeDaSalvare.push({ titolo_sezione: sezioni[r.indice].titolo_sezione, contenuto: r.contenuto });
   }
+
+  const sezioniDopoFase1 = sezioni.map((s) => ({ ...s }));
 
   // Fase 2: verifica sul TOTALE reale, taglio deciso se serve.
   const componiTesto = () =>
@@ -815,6 +823,7 @@ export async function assicuraBudgetPagine(
         );
         sezioni[indice] = { ...sezione, contenuto: contenutoTagliato };
         righeDaSalvare.push({ titolo_sezione: sezione.titolo_sezione, contenuto: contenutoTagliato });
+        sezioniTagliateDecisamente.add(sezione.titolo_sezione);
         tagliatoQualcosaInQuestoRound = true;
 
         pagineProva = stimaPagineContenuto(componiTesto(), formattazione);
@@ -829,7 +838,7 @@ export async function assicuraBudgetPagine(
     // contenuto delle sezioni a più basso punteggio.
   }
 
-  return { sezioni, righeDaSalvare };
+  return { sezioni, righeDaSalvare, sezioniDopoFase1, sezioniTagliateDecisamente: [...sezioniTagliateDecisamente] };
 }
 
 // Assembla la Relazione Tecnica definitiva da TUTTE le bozze di sezione

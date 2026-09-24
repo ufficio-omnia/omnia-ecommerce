@@ -13,6 +13,10 @@
 # testing
 /coverage
 
+# dump diagnostici del controllo di livello 2 (contenuto REALE non
+# anonimizzato: mai nel repository, solo per indagare un'anomalia in locale)
+/test/diagnostica/
+
 # next.js
 /.next/
 /out/

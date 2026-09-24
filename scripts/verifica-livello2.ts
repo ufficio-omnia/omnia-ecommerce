@@ -26,7 +26,6 @@
 // per lo user_id nullo, non va eliminata — vedi ai-usage.ts).
 import fs from "fs";
 import path from "path";
-import os from "os";
 for (const line of fs.readFileSync(path.join(__dirname, "..", ".env.local"), "utf-8").split("\n")) {
   const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
   if (m) process.env[m[1]] = m[2].trim();
@@ -42,6 +41,7 @@ import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
 import { eseguiControlliStrutturali, componiMarkdown, estraiTestiVisibili, type FixtureRelazione } from "./lib/controlli-relazione";
+import { confrontaSubCriteri, estraiRequisitiDaCriteri, formattaConfronto, problemiContratto } from "./lib/confronto-tagli";
 
 const GARA = "7e33e075-7c3a-4321-8751-c75d34f09dfa"; // Aosta — gara di riferimento fissa per il livello 2
 const MODEL = "claude-sonnet-5";
@@ -384,12 +384,17 @@ function anonimizza(
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
-  const { sezioni: sezioniCorrette } = await assicuraBudgetPagine(
+  const { sezioni: sezioniCorrette, sezioniDopoFase1, sezioniTagliateDecisamente } = await assicuraBudgetPagine(
     sezioni,
     { limitePagineTotale: gara.limite_pagine_totale, punteggioTecnicoMax: gara.punteggio_tecnico_max, criteriRiepilogo: gara.criteri_riepilogo, subCriteriTabellari: gara.sub_criteri_tabellari },
     companyContesto?.ragione_sociale,
     formattazione,
     { userId: null, garaId: GARA },
+  );
+  console.log(
+    sezioniTagliateDecisamente.length > 0
+      ? `Taglio deciso applicato a: ${sezioniTagliateDecisamente.join("; ")}`
+      : "Taglio deciso non necessario (la correzione proporzionale è bastata).",
   );
 
   // Intestazione REALE per la generazione/i controlli (stazione appaltante
@@ -412,24 +417,56 @@ function anonimizza(
     limitePagineTotale: gara.limite_pagine_totale,
   };
 
-  // Dump diagnostico locale (non nel repo, non anonimizzato): se i
-  // controlli sotto falliscono, serve materiale per capire perché senza
-  // dover rilanciare un'intera generazione reale (spesa e tempo) solo per
-  // guardare il contenuto grezzo.
-  const dumpPath = path.join(os.tmpdir(), `livello2-dump-${Date.now()}.json`);
-  fs.writeFileSync(dumpPath, JSON.stringify({ fixtureReale, estratti }, null, 2));
-  console.log(`Dump diagnostico scritto in: ${dumpPath}`);
-
   // --- Controlli di livello 1 (strutturali, riusati) ---
   console.log(`\n=== CONTROLLI ===`);
-  const { errori: erroriStrutturali, riepilogo } = await eseguiControlliStrutturali(fixtureReale);
+  const esitoStrutturale = await eseguiControlliStrutturali(fixtureReale);
+  const { errori: erroriStrutturali, riepilogo } = esitoStrutturale;
   console.log(`Strutturali: ${riepilogo}`);
 
-  // --- Controlli aggiuntivi di livello 2 ---
+  // Manifest delle figure: SEMPRE registrato (non solo in caso di errore),
+  // così un'anomalia sul numero/tipo di immagini si diagnostica anche a
+  // posteriori, senza rigenerare — quale figura, in quale parte del testo,
+  // da quale sorgente.
+  console.log(`\nFigure del documento (${esitoStrutturale.figure.length}):`);
+  for (const r of esitoStrutturale.manifestFigure) console.log(`  ${r}`);
+
+  // --- Controlli aggiuntivi di livello 2 (deterministici) ---
   const markdown = componiMarkdown(fixtureReale);
   const erroriArithmetica = controllaCoerenzaTabelle(markdown);
   const erroriSedi = controllaSediCoperte(markdown, gara.sedi!);
   const erroriSegnaposto = controllaSegnapostoSuDatiGara(markdown, gara.sedi!);
+
+  // --- Confronto prima/dopo dei tagli, sotto-criterio per sotto-criterio:
+  // il testo verificato PRIMA di assicuraBudgetPagine contro quello dopo,
+  // per confermare che il contratto di compressione (impegni e valori,
+  // citazioni del capitolato, figure, elementi richiesti dal sub-criterio)
+  // sia rispettato. Il confronto "dopo la fase 1 → dopo il taglio deciso"
+  // isola l'effetto del solo taglio deciso, se è scattato.
+  const requisiti = estraiRequisitiDaCriteri(gara.criteri_valutazione ?? "");
+  const confronti = confrontaSubCriteri(sezioni, sezioniCorrette, formattazione, requisiti);
+  const { errori: erroriTagli, avvisi: avvisiTagli } = problemiContratto(confronti);
+  let reportConfronto = `CONFRONTO COMPLESSIVO (testo verificato prima della composizione → documento finale)\n${formattaConfronto(confronti)}`;
+  if (sezioniTagliateDecisamente.length > 0) {
+    const filtra = (elenco: { titolo_sezione: string; contenuto: string }[]) => elenco.filter((x) => sezioniTagliateDecisamente.includes(x.titolo_sezione));
+    const soloDeciso = confrontaSubCriteri(filtra(sezioniDopoFase1), filtra(sezioniCorrette), formattazione, []);
+    const { errori: erroriSoloDeciso } = problemiContratto(soloDeciso);
+    reportConfronto += `\n\nEFFETTO DEL SOLO TAGLIO DECISO (dopo la fase 1 → finale, sezioni: ${sezioniTagliateDecisamente.join("; ")})\n${formattaConfronto(soloDeciso)}\n\nErrori del solo taglio deciso: ${erroriSoloDeciso.length ? "\n - " + erroriSoloDeciso.join("\n - ") : "nessuno"}`;
+  }
+  reportConfronto += `\n\nAVVISI (da giudicare):\n${avvisiTagli.length ? avvisiTagli.map((a) => ` - ${a}`).join("\n") : " nessuno"}`;
+
+  // Dump diagnostico locale (cartella test/diagnostica/, ignorata da git:
+  // contiene contenuto REALE non anonimizzato). Scritto PRIMA dell'audit AI
+  // (che può fallire per crediti o rete): se qualcosa non torna, serve il
+  // materiale per capire perché senza rigenerare a pagamento — contenuto
+  // grezzo, il documento Word, il manifest delle figure e il confronto.
+  const cartellaDump = path.join(__dirname, "..", "test", "diagnostica", `livello2-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+  fs.mkdirSync(cartellaDump, { recursive: true });
+  fs.writeFileSync(path.join(cartellaDump, "dump.json"), JSON.stringify({ fixtureReale, estratti, sezioniPrimaDellaComposizione: sezioni, sezioniDopoFase1, sezioniTagliateDecisamente }, null, 2));
+  fs.writeFileSync(path.join(cartellaDump, "documento.docx"), esitoStrutturale.buffer);
+  fs.writeFileSync(path.join(cartellaDump, "immagini-manifest.json"), JSON.stringify(esitoStrutturale.figure, null, 2));
+  fs.writeFileSync(path.join(cartellaDump, "confronto-tagli.txt"), reportConfronto);
+  console.log(`\nDump diagnostico (contenuto reale, non nel repository) in: ${cartellaDump}`);
+
   const erroriAudit = await auditDatiSenzaFonte(markdown, companyContesto, datiGaraStrutturati);
   void estraiTestiVisibili; // riesportata dal modulo condiviso, non serve qui direttamente
 
@@ -438,11 +475,17 @@ function anonimizza(
     ...erroriArithmetica.map((e) => `[Aritmetica tabelle] ${e}`),
     ...erroriSedi.map((e) => `[Copertura sedi] ${e}`),
     ...erroriSegnaposto.map((e) => `[Segnaposto su dati di gara] ${e}`),
+    ...erroriTagli.map((e) => `[Tagli] ${e}`),
     ...erroriAudit.map((e) => `[Audit dati d'impresa] ${e}`),
   ];
 
   console.log(`\n${tuttiGliErrori.length === 0 ? "TUTTI I CONTROLLI SUPERATI" : `${tuttiGliErrori.length} PROBLEMA/I TROVATO/I`}:`);
   for (const e of tuttiGliErrori) console.log(` - ${e}`);
+  if (avvisiTagli.length > 0) {
+    console.log(`\nAvvisi sui tagli, da giudicare a mano (dettaglio in confronto-tagli.txt):`);
+    for (const a of avvisiTagli) console.log(` - ${a}`);
+  }
+
 
   // --- Costo reale (non cancellato) ---
   const { data: righe } = await admin.from("ai_operazioni").select("costo_stimato").is("user_id", null).eq("gara_id", GARA).gte("created_at", inizioTest);
@@ -475,6 +518,18 @@ function anonimizza(
     datiIntestazione: { stazioneAppaltante: "Centrale Appalti Esempio S.p.A.", amministrazioneCommittente: "Comune di Esempio", cig: "A1B2C3D4E5", concorrente: "IMPRESA ESEMPIO SRL" },
     limitePagineTotale: gara.limite_pagine_totale,
   };
+
+  // Il riferimento anonimizzato deve a sua volta superare i controlli
+  // strutturali: la sostituzione di nomi/indirizzi potrebbe alterare
+  // qualcosa (intestazione, tabelle, figure) senza che nessuno se ne accorga
+  // finché il livello 1 non fallisce in build.
+  const { errori: erroriAnonimo } = await eseguiControlliStrutturali(fixtureAnonimo);
+  if (erroriAnonimo.length > 0) {
+    console.error(`\nIl riferimento anonimizzato NON supera i controlli strutturali:`);
+    for (const e of erroriAnonimo) console.error(` - ${e}`);
+    console.error("Fixture di livello 1 NON aggiornato.");
+    process.exit(1);
+  }
 
   fs.writeFileSync(FIXTURE_PATH, JSON.stringify(fixtureAnonimo, null, 2));
   console.log(`\nOK — test/fixtures/relazione-riferimento.json aggiornato con il nuovo riferimento approvato.`);

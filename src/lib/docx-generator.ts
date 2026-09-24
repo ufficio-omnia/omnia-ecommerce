@@ -328,16 +328,32 @@ function rimuoviGrassettoRidondante(testo: string): string {
 // mai convertito). Il colore del testo evidenziato segue il tema del
 // contesto (colore intestazione della tabella, o brand altrove) — come
 // le parole/termini chiave colorati visti nei progetti di riferimento.
+// Un asterisco con escape ("\*", markdown valido) è un asterisco LETTERALE:
+// il modello lo scrive in pratica quando riscrive/condensa una sezione
+// (es. "**Entro 7 giorni lavorativi \***"), e senza questo il backslash
+// restava visibile nel Word ("Entro 7 giorni lavorativi \*"). Un segnaposto
+// (carattere privato) lo tiene fuori dal riconoscimento di grassetto/corsivo
+// e viene riportato ad "*" solo al momento di creare il testo del run.
+const ASTERISCO_ESCAPATO = "";
+function proteggiAsterischiEscapati(testo: string): string {
+  return testo.replace(/\\\*/g, ASTERISCO_ESCAPATO);
+}
+function ripristinaAsterischi(testo: string): string {
+  return testo.split(ASTERISCO_ESCAPATO).join("*");
+}
+
 function parseInlineRuns(
   testo: string,
   runProps: { font?: string; size?: number; color?: string; bold?: boolean },
   coloreAccento: string = COLORE_BRAND,
 ): TextRun[] {
-  const parti = rimuoviGrassettoRidondante(testo).split(INLINE_RUN_REGEX).filter((p) => p.length > 0);
+  const parti = proteggiAsterischiEscapati(rimuoviGrassettoRidondante(testo))
+    .split(INLINE_RUN_REGEX)
+    .filter((p) => p.length > 0);
 
   return parti.flatMap((parte) => {
     if (parte.startsWith("**") && parte.endsWith("**")) {
-      const interno = parte.slice(2, -2);
+      const interno = ripristinaAsterischi(parte.slice(2, -2));
       // L'AI a volte avvolge nel grassetto una frase INTERA che contiene
       // al suo interno un "!!testo!!" (es. "**valutata dall'!!Ispettore
       // Qualità!!**") invece di lasciarlo fuori dal grassetto — osservato
@@ -359,19 +375,19 @@ function parseInlineRuns(
       return [new TextRun({ text: interno, bold: true, ...runProps })];
     }
     if (parte.startsWith("*") && parte.endsWith("*")) {
-      return [new TextRun({ text: parte.slice(1, -1), italics: true, ...runProps })];
+      return [new TextRun({ text: ripristinaAsterischi(parte.slice(1, -1)), italics: true, ...runProps })];
     }
     if (parte.startsWith("!!") && parte.endsWith("!!")) {
       return [
         new TextRun({
-          text: parte.slice(2, -2),
+          text: ripristinaAsterischi(parte.slice(2, -2)),
           bold: true,
           ...runProps,
           color: coloreAccento,
         }),
       ];
     }
-    return [new TextRun({ text: parte, ...runProps })];
+    return [new TextRun({ text: ripristinaAsterischi(parte), ...runProps })];
   });
 }
 
@@ -405,6 +421,20 @@ function estraiTagIcona(testo: string): { nome: string; resto: string; grassetto
   return { nome, resto: resto.replace(/^\s+/, ""), grassettoEtichetta };
 }
 
+// Ogni immagine del documento dichiara nel proprio testo alternativo (name
+// + description in <wp:docPr>) che cos'è — "organigramma" oppure
+// "icona:<nome>" — così un'anomalia sul numero/tipo di immagini si
+// diagnostica dal file Word stesso, senza rigenerare (vedi
+// scripts/lib/controlli-relazione.ts, che legge questi attributi). Le
+// uniche immagini che il renderer può produrre sono queste due: nessun
+// altro tipo di figura è ammesso (R16, niente fotografie).
+export const NOME_IMMAGINE_ORGANIGRAMMA = "organigramma";
+export const PREFISSO_NOME_IMMAGINE_ICONA = "icona:";
+
+function descrizioneImmagineIcona(nome: string, colore: string): { name: string; description: string } {
+  return { name: `${PREFISSO_NOME_IMMAGINE_ICONA}${nome}`, description: `Icona ${nome} (colore ${colore})` };
+}
+
 // Se il testo inizia con "[ICONA:nome]" (una delle icone della libreria
 // fissa in icons.ts), la renderizza come piccola immagine inline prima
 // del testo — come le icone di attrezzature/certificazioni affiancate
@@ -433,7 +463,12 @@ async function costruisciRunConIcona(
   const testoConEventualeGrassetto = estratto.grassettoEtichetta ? `**${estratto.resto}**` : estratto.resto;
 
   return [
-    new ImageRun({ type: "png", data: iconaBuffer, transformation: { width: 16, height: 16 } }),
+    new ImageRun({
+      type: "png",
+      data: iconaBuffer,
+      transformation: { width: 16, height: 16 },
+      altText: descrizioneImmagineIcona(estratto.nome.toLowerCase(), colore),
+    }),
     new TextRun({ text: "  ", ...runProps }),
     ...parseInlineRuns(testoConEventualeGrassetto, runProps, colore),
   ];
@@ -455,17 +490,22 @@ async function costruisciRunIntestazione(
   const estratto = estraiTagIcona(testo);
 
   if (!estratto || !NOMI_ICONE.includes(estratto.nome.toLowerCase())) {
-    const testoPulito = (estratto ? estratto.resto : testo).replace(/\*\*/g, "");
+    const testoPulito = (estratto ? estratto.resto : testo).replace(/\*\*/g, "").replace(/\\\*/g, "*");
     return [new TextRun({ text: testoPulito, ...testoBase })];
   }
 
   const iconaBuffer = await renderIconePng(estratto.nome.toLowerCase(), "FFFFFF");
-  if (!iconaBuffer) return [new TextRun({ text: estratto.resto.replace(/\*\*/g, ""), ...testoBase })];
+  if (!iconaBuffer) return [new TextRun({ text: estratto.resto.replace(/\*\*/g, "").replace(/\\\*/g, "*"), ...testoBase })];
 
   return [
-    new ImageRun({ type: "png", data: iconaBuffer, transformation: { width: 16, height: 16 } }),
+    new ImageRun({
+      type: "png",
+      data: iconaBuffer,
+      transformation: { width: 16, height: 16 },
+      altText: descrizioneImmagineIcona(estratto.nome.toLowerCase(), "FFFFFF"),
+    }),
     new TextRun({ text: "  ", ...runProps }),
-    new TextRun({ text: estratto.resto.replace(/\*\*/g, ""), ...testoBase }),
+    new TextRun({ text: estratto.resto.replace(/\*\*/g, "").replace(/\\\*/g, "*"), ...testoBase }),
   ];
 }
 
@@ -969,6 +1009,7 @@ export async function buildDocxBuffer(
                 type: "png",
                 data: buffer,
                 transformation: { width, height },
+                altText: { name: NOME_IMMAGINE_ORGANIGRAMMA, description: "Organigramma" },
               }),
             ],
           }),

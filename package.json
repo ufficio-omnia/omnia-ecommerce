@@ -5,11 +5,11 @@
   "//xlsx": "La voce 'xlsx' sotto è un tarball ufficiale SheetJS pinnato alla 0.20.3, non un pacchetto npm: la build 'xlsx' su npm si è fermata alla 0.18, le versioni successive sono distribuite solo da cdn.sheetjs.com (vedi https://docs.sheetjs.com/docs/getting-started/installation/nodejs).",
   "scripts": {
     "dev": "next dev",
-    "prebuild": "tsx scripts/verifica-livello1.ts",
+    "prebuild": "npm run verifica:livello1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verifica:livello1": "tsx scripts/verifica-livello1.ts",
+    "verifica:livello1": "tsx scripts/verifica-controlli.ts && tsx scripts/verifica-livello1.ts",
     "verifica:livello2": "tsx scripts/verifica-livello2.ts"
   },
   "dependencies": {
