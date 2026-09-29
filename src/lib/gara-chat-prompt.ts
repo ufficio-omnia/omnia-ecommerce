@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { limitePagineConMargine } from "@/lib/stima-pagine";
 import { REGOLE_OMNIA } from "@/lib/prompts";
+import { calcolaBudgetSottoCriteri, formattaBudgetPerPrompt, formattaTettiPerStrumento, type BudgetGara } from "@/lib/sotto-criteri";
 
 // Estratto da src/app/actions/gara-chat.ts: quel file ha "use server", che
 // impone che OGNI export sia una funzione async (i Server Action di
@@ -63,10 +64,37 @@ export type CompanyContesto = {
 // — un semplice calcolo aritmetico, niente per cui valga la pena rischiare
 // un'interpretazione sbagliata dell'AI su numeri che abbiamo già
 // estratti in forma strutturata.
+// Budget per SOTTO-CRITERIO (proporzionale ai punti), o null se dal
+// disciplinare non si ricavano sotto-criteri con i punti: in quel caso resta
+// il solo budget per criterio qui sotto.
+export function budgetSottoCriteriDiGara(gara: GaraContesto): BudgetGara | null {
+  return calcolaBudgetSottoCriteri({
+    criteriValutazione: gara.criteri_valutazione,
+    criteriRiepilogo: gara.criteri_riepilogo,
+    punteggioTecnicoMax: gara.punteggio_tecnico_max,
+    limitePagineTotale: gara.limite_pagine_totale,
+    subCriteriTabellari: gara.sub_criteri_tabellari,
+    formattazione: {
+      dimensioneCarattere: gara.relazione_dimensione_carattere ?? undefined,
+      interlinea: gara.relazione_interlinea ?? undefined,
+    },
+  });
+}
+
 function calcolaRipartizionePagine(gara: GaraContesto): string {
   const { limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo } = gara;
   if (!limite_pagine_totale || !punteggio_tecnico_max || !criteri_riepilogo?.length) {
     return "";
+  }
+
+  // Con i sotto-criteri disponibili la ripartizione è per SOTTO-CRITERIO e
+  // vale come vincolo (tetto), non come raccomandazione: sostituisce quella
+  // per solo criterio, che lasciava al modello la libertà di distribuire le
+  // pagine dentro il criterio e produceva documenti del 50% più lunghi.
+  const budgetGara = budgetSottoCriteriDiGara(gara);
+  if (budgetGara) {
+    const titoli = new Map(criteri_riepilogo.map((c) => [c.numero.trim(), c.titolo]));
+    return `\n${formattaBudgetPerPrompt(budgetGara, titoli)}\n`;
   }
 
   // Il target reale resta sotto il limite dichiarato dal disciplinare
@@ -163,6 +191,19 @@ export function buildGeneraBozzaTool(gara: GaraContesto): Anthropic.Tool {
     ? `PRIMA DI SCRIVERE QUALSIASI COSA — I sub-criteri ${gara.sub_criteri_tabellari.join(", ")} di questa gara sono TABELLARI (elenco definitivo, verificato, non rivalutarlo): per QUESTI, quando arrivi al loro '## ' o '### ', scrivi ESCLUSIVAMENTE la dicitura "CRITERIO TABELLARE - COMPILARE" come unico testo di quel sub-criterio — non un titolo seguito da descrizione, non una tabella, NULLA altro. Questo vale anche se stai rielaborando/aggiornando una bozza già fatta in precedenza: non tornare a scrivere contenuto discorsivo per questi sub-criteri solo perché la versione precedente lo aveva. Tutti gli altri sub-criteri restano invece normali (descrizione completa come da istruzioni sotto). `
     : "";
 
+  // Vincolo di lunghezza per sotto-criterio, ripetuto qui (oltre che nel
+  // prompt di sistema) per lo stesso motivo dell'avviso tabellare sopra: è
+  // qui che il modello decide quanto scrivere. Sostituisce l'invito a non
+  // "scrivere troppo poco", che con un tetto vincolante è fuorviante.
+  const budgetGara = budgetSottoCriteriDiGara(gara);
+  const descrizioneContenuto = budgetGara
+    ? formattaTettiPerStrumento(budgetGara) +
+      CONTENUTO_SEZIONE_DESCRIZIONE_BASE.replace(
+        "Un contenuto troppo corto rispetto al target è un'occasione persa quanto un contenuto che lo supera ampiamente: entrambi vanno evitati.",
+        "Il tetto per sotto-criterio (VINCOLO DI LUNGHEZZA all'inizio di questa descrizione) prevale su ogni altra indicazione di lunghezza: scrivere sotto il tetto è accettabile, superarlo no.",
+      )
+    : CONTENUTO_SEZIONE_DESCRIZIONE_BASE;
+
   return {
     name: "genera_bozza_sezione",
     description:
@@ -183,7 +224,7 @@ export function buildGeneraBozzaTool(gara: GaraContesto): Anthropic.Tool {
         contenuto: {
           type: "string",
           description:
-            avvisoTabellare + CONTENUTO_SEZIONE_DESCRIZIONE_BASE,
+            avvisoTabellare + descrizioneContenuto,
         },
         font: {
           type: "string",

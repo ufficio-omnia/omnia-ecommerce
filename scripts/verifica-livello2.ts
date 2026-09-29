@@ -37,6 +37,7 @@ const { createClient } = require("@supabase/supabase-js");
 import { buildSystemPrompt, buildGeneraBozzaTool, formattaDatiGaraStrutturati, type GaraContesto, type CompanyContesto } from "../src/lib/gara-chat-prompt";
 import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
+import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
 import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
@@ -384,9 +385,20 @@ function anonimizza(
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
-  const { sezioni: sezioniCorrette, sezioniDopoFase1, sezioniTagliateDecisamente } = await assicuraBudgetPagine(
+  const { sezioni: sezioniCorrette, sezioniDopoFase1, sezioniTagliateDecisamente, esitiCompressione } = await assicuraBudgetPagine(
     sezioni,
-    { limitePagineTotale: gara.limite_pagine_totale, punteggioTecnicoMax: gara.punteggio_tecnico_max, criteriRiepilogo: gara.criteri_riepilogo, subCriteriTabellari: gara.sub_criteri_tabellari },
+    {
+      limitePagineTotale: gara.limite_pagine_totale,
+      punteggioTecnicoMax: gara.punteggio_tecnico_max,
+      criteriRiepilogo: gara.criteri_riepilogo,
+      subCriteriTabellari: gara.sub_criteri_tabellari,
+      // Con questo campo presente e criteri_valutazione interpretabile,
+      // assicuraBudgetPagine usa il budget per SOTTO-criterio (compressione
+      // mirata + ripristino) invece del vecchio budget per solo criterio —
+      // senza, il livello 2 proverebbe un percorso diverso da quello reale
+      // usato in produzione.
+      criteriValutazione: gara.criteri_valutazione,
+    },
     companyContesto?.ragione_sociale,
     formattazione,
     { userId: null, garaId: GARA },
@@ -396,6 +408,10 @@ function anonimizza(
       ? `Taglio deciso applicato a: ${sezioniTagliateDecisamente.join("; ")}`
       : "Taglio deciso non necessario (la correzione proporzionale è bastata).",
   );
+  if (esitiCompressione.length > 0) {
+    console.log(`\nCompressione per sotto-criterio (${esitiCompressione.length} riga/righe):`);
+    for (const riga of esitiCompressione) console.log(`  ${riga}`);
+  }
 
   // Intestazione REALE per la generazione/i controlli (stazione appaltante
   // e amministrazione committente non sono nello schema di estrazione
@@ -443,8 +459,22 @@ function anonimizza(
   // sia rispettato. Il confronto "dopo la fase 1 → dopo il taglio deciso"
   // isola l'effetto del solo taglio deciso, se è scattato.
   const requisiti = estraiRequisitiDaCriteri(gara.criteri_valutazione ?? "");
+  // Tetti per sotto-criterio (stesso calcolo usato dalla generazione/
+  // compressione): senza, il controllo "svuotato" giudicherebbe ogni
+  // sotto-criterio contro la propria lunghezza originale (spesso ben sopra
+  // il tetto perché generata prima del vincolo) invece che contro quanto
+  // gli spetta — un falso allarme su una riduzione corretta.
+  const budgetTetti = calcolaBudgetSottoCriteri({
+    criteriValutazione: gara.criteri_valutazione,
+    criteriRiepilogo: gara.criteri_riepilogo,
+    punteggioTecnicoMax: gara.punteggio_tecnico_max,
+    limitePagineTotale: gara.limite_pagine_totale,
+    subCriteriTabellari: gara.sub_criteri_tabellari,
+    formattazione,
+  });
+  const tettiParole = budgetTetti ? new Map(budgetTetti.sottoCriteri.map((s) => [s.chiave, s.parolePreviste])) : undefined;
   const confronti = confrontaSubCriteri(sezioni, sezioniCorrette, formattazione, requisiti);
-  const { errori: erroriTagli, avvisi: avvisiTagli } = problemiContratto(confronti);
+  const { errori: erroriTagli, avvisi: avvisiTagli } = problemiContratto(confronti, 0.4, tettiParole);
   let reportConfronto = `CONFRONTO COMPLESSIVO (testo verificato prima della composizione → documento finale)\n${formattaConfronto(confronti)}`;
   if (sezioniTagliateDecisamente.length > 0) {
     const filtra = (elenco: { titolo_sezione: string; contenuto: string }[]) => elenco.filter((x) => sezioniTagliateDecisamente.includes(x.titolo_sezione));
@@ -488,9 +518,15 @@ function anonimizza(
 
 
   // --- Costo reale (non cancellato) ---
-  const { data: righe } = await admin.from("ai_operazioni").select("costo_stimato").is("user_id", null).eq("gara_id", GARA).gte("created_at", inizioTest);
+  const { data: righe } = await admin.from("ai_operazioni").select("costo_stimato, operazione").is("user_id", null).eq("gara_id", GARA).gte("created_at", inizioTest);
   const costoTotale = (righe ?? []).reduce((tot: number, r: { costo_stimato: number | null }) => tot + (r.costo_stimato ?? 0), 0);
-  console.log(`\nCosto reale di questa prova: $${costoTotale.toFixed(4)} (${(righe ?? []).length} operazioni)`);
+  const costoPerOperazione = new Map<string, number>();
+  for (const r of righe ?? []) costoPerOperazione.set(r.operazione, (costoPerOperazione.get(r.operazione) ?? 0) + (r.costo_stimato ?? 0));
+
+  console.log(`\n=== RIEPILOGO FINALE ===`);
+  console.log(`Pagine finali: ${esitoStrutturale.pagineStimate.toFixed(2)} (limite dichiarato ${gara.limite_pagine_totale})${esitoStrutturale.pagineStimate > gara.limite_pagine_totale ? " — SOPRA IL LIMITE" : ""}`);
+  console.log(`Costo totale della gara (con tutti gli interventi attivi): $${costoTotale.toFixed(4)} su ${(righe ?? []).length} operazioni`);
+  for (const [op, costo] of [...costoPerOperazione].sort((a, b) => b[1] - a[1])) console.log(`  ${op}: $${costo.toFixed(4)}`);
 
   if (tuttiGliErrori.length > 0) {
     console.error("\nFixture di livello 1 NON aggiornato: correggere i problemi sopra e rilanciare.");

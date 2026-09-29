@@ -35,5 +35,8 @@ function corpoPrompt(nomeFile: string): string {
 // aggiungere, calcolato in base allo scarto di pagine reale (vedi
 // correggiSezioneVersoTarget in relazione-tecnica.ts).
 export const ISTRUZIONI_COMPRESSIONE = corpoPrompt("compressione-omnia.md");
+// Compressione di UN sotto-criterio con punteggio e requisiti del
+// disciplinare (segnaposto elencati nel file).
+export const ISTRUZIONI_COMPRESSIONE_MIRATA = corpoPrompt("compressione-mirata-omnia.md");
 export const ISTRUZIONI_ESPANSIONE = corpoPrompt("espansione-omnia.md");
 export const ISTRUZIONI_VERIFICA_DATI = corpoPrompt("verifica-dati-omnia.md");

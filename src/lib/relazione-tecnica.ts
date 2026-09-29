@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createAnthropicClient } from "@/lib/anthropic";
+import { createAnthropicClient, MODELLO_PRINCIPALE } from "@/lib/anthropic";
 import { buildDocxBuffer, rimuoviTitoloRidondante, type DatiIntestazione } from "@/lib/docx-generator";
 import { sanitizeFileName } from "@/lib/document-text";
 import { ricavaStileOrganigramma } from "@/lib/org-chart-style";
@@ -10,11 +10,20 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
 import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
+import { calcolaBudgetSottoCriteri } from "@/lib/sotto-criteri";
+import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
+import { ripristinaDaTestoVerificato, riepilogoRipristino } from "@/lib/ripristino-verificato";
+import type { FunzioneCompressione } from "@/lib/compressione-mirata";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
 const TITOLO_DEFAULT = "Relazione Tecnica";
-const MODEL = "claude-sonnet-5";
+// Percorso usato anche nelle generazioni reali dei clienti (ripiego per
+// criterio quando i sotto-criteri non sono ricavabili): sempre il modello
+// principale, mai modelloAttivo(). Il modello leggero è riservato alla sola
+// compressione mirata per sotto-criterio (src/lib/compressione-mirata.ts),
+// l'unico percorso pensato anche per le prove di meccanismo.
+const MODEL = MODELLO_PRINCIPALE;
 // Sotto questa quota del target di pagine calcolato per il criterio (in
 // pagine REALI stimate, non parole — vedi stima-pagine.ts: un conteggio a
 // parole ignora quanto spazio occupano tabelle/immagini, causa di uno
@@ -653,6 +662,60 @@ export async function correggiSezioneVersoTarget(
   return contenuto;
 }
 
+// Correzione di lunghezza di UNA sezione appena generata (percorso dal vivo
+// in chat, prima del salvataggio e della verifica dei dati). Con i
+// sotto-criteri disponibili riduce ogni sotto-criterio oltre il proprio
+// tetto con le garanzie della compressione mirata (nessuna espansione: un
+// testo sotto il tetto è accettato); altrimenti ricade sul ciclo
+// espandi/condensa per criterio di sempre.
+export async function correggiSezioneConBudget(params: {
+  titoloSezione: string;
+  contenuto: string;
+  criteriValutazione: string | null;
+  criteriRiepilogo: CriterioRiepilogo[] | null;
+  punteggioTecnicoMax: number | null;
+  limitePagineTotale: number | null;
+  subCriteriTabellari: string[] | null;
+  formattazione: { dimensioneCarattere?: number; interlinea?: number };
+  context: { userId: string | null; garaId: string | null };
+  comprimi?: FunzioneCompressione;
+}): Promise<{
+  contenuto: string;
+  modalita: "sotto-criteri" | "criterio" | "nessuna";
+  // Target per l'intero criterio (solo modalità "criterio") e riepilogo
+  // delle riduzioni per sotto-criterio (solo modalità "sotto-criteri").
+  pagineTargetCriterio: number | null;
+  esiti: string[];
+}> {
+  const { titoloSezione, contenuto, criteriValutazione, criteriRiepilogo, punteggioTecnicoMax, limitePagineTotale, subCriteriTabellari, formattazione, context } = params;
+
+  const budgetGara =
+    limitePagineTotale && punteggioTecnicoMax && criteriRiepilogo?.length
+      ? calcolaBudgetSottoCriteri({ criteriValutazione, criteriRiepilogo, punteggioTecnicoMax, limitePagineTotale, subCriteriTabellari, formattazione })
+      : null;
+
+  if (budgetGara && dividiInBlocchi(contenuto).some((b) => b.chiave && budgetGara.sottoCriteri.some((s) => s.chiave.toLowerCase() === b.chiave!.toLowerCase()))) {
+    const ctx = contestoDaCriteri(budgetGara, criteriValutazione, { punteggioTecnico: punteggioTecnicoMax ?? undefined, formattazione, context, comprimi: params.comprimi });
+    const risultato = await comprimiSezionePerSottoCriteri(titoloSezione, contenuto, contenuto, ctx);
+    return { contenuto: risultato.contenuto, modalita: "sotto-criteri", pagineTargetCriterio: null, esiti: riepilogoEsiti(risultato.esiti) };
+  }
+
+  const numeroSezione = estraiNumeroCriterioTopLevel(titoloSezione);
+  const criterio = criteriRiepilogo?.find(
+    (c) =>
+      (numeroSezione && c.numero.trim().toLowerCase() === numeroSezione) ||
+      normalizzaTitoloSezione(c.titolo) === normalizzaTitoloSezione(titoloSezione),
+  );
+  if (!criterio || !limitePagineTotale || !punteggioTecnicoMax) {
+    return { contenuto, modalita: "nessuna", pagineTargetCriterio: null, esiti: [] };
+  }
+  // Stesso margine di sicurezza usato per la ripartizione mostrata al
+  // modello e per "componi relazione finale".
+  const pagineTarget = (criterio.punti_max / punteggioTecnicoMax) * limitePagineConMargine(limitePagineTotale);
+  const corretto = await correggiSezioneVersoTarget(titoloSezione, contenuto, pagineTarget, formattazione, context, 4);
+  return { contenuto: corretto, modalita: "criterio", pagineTargetCriterio: pagineTarget, esiti: [] };
+}
+
 // Garantisce che il documento COMPOSTO (tutte le sezioni insieme, non una
 // alla volta) resti entro il limite VERO di pagine del disciplinare — non
 // solo entro il margine di sicurezza usato come target per-sezione più
@@ -681,6 +744,20 @@ export async function correggiSezioneVersoTarget(
 //    deve confrontare la pagineStimate finale con il limite e avvisare
 //    esplicitamente il cliente (vedi componiRelazioneFinale e, lato UI,
 //    chat-section.tsx).
+export type RisultatoBudgetPagine = {
+  sezioni: { titolo_sezione: string; contenuto: string }[];
+  righeDaSalvare: { titolo_sezione: string; contenuto: string }[];
+  // Stato dopo la sola correzione proporzionale (fase 1) e titoli delle
+  // sezioni toccate dal taglio deciso (fase 2): servono a confrontare cosa
+  // ha tolto l'una e cosa l'altra (src/lib/confronto-tagli.ts).
+  sezioniDopoFase1: { titolo_sezione: string; contenuto: string }[];
+  sezioniTagliateDecisamente: string[];
+  // Una riga per ogni riduzione tentata per sotto-criterio (esito, pagine,
+  // cosa è stato ripristinato, perché rifiutata): vuoto se la gara non ha
+  // sotto-criteri ricavabili e si è usato il budget per solo criterio.
+  esitiCompressione: string[];
+};
+
 export async function assicuraBudgetPagine(
   sezioniIniziali: { titolo_sezione: string; contenuto: string }[],
   budget: {
@@ -688,20 +765,43 @@ export async function assicuraBudgetPagine(
     punteggioTecnicoMax: number;
     criteriRiepilogo: CriterioRiepilogo[];
     subCriteriTabellari: string[] | null;
+    // Testo dei criteri di valutazione del disciplinare: serve a ricavare i
+    // sotto-criteri con i loro punti e i loro requisiti. Se assente (o non
+    // interpretabile) si usa il budget per solo criterio, come prima.
+    criteriValutazione?: string | null;
   },
   nomeAzienda: string | null | undefined,
   formattazione: { dimensioneCarattere?: number; interlinea?: number },
   context: { userId: string | null; garaId: string | null },
-): Promise<{
-  sezioni: { titolo_sezione: string; contenuto: string }[];
-  righeDaSalvare: { titolo_sezione: string; contenuto: string }[];
-  // Stato dopo la sola correzione proporzionale (fase 1) e titoli delle
-  // sezioni toccate dal taglio deciso (fase 2): servono a confrontare cosa
-  // ha tolto l'una e cosa l'altra (scripts/lib/confronto-tagli.ts).
-  sezioniDopoFase1: { titolo_sezione: string; contenuto: string }[];
-  sezioniTagliateDecisamente: string[];
-}> {
+  // Solo per i test: sostituisce la chiamata al modello nella compressione.
+  opzioni: { comprimi?: FunzioneCompressione } = {},
+): Promise<RisultatoBudgetPagine> {
   const { limitePagineTotale, punteggioTecnicoMax, criteriRiepilogo, subCriteriTabellari } = budget;
+
+  const budgetGara = calcolaBudgetSottoCriteri({
+    criteriValutazione: budget.criteriValutazione,
+    criteriRiepilogo,
+    punteggioTecnicoMax,
+    limitePagineTotale,
+    subCriteriTabellari,
+    formattazione,
+  });
+  if (budgetGara) {
+    return assicuraBudgetPerSottoCriteri({
+      sezioniIniziali,
+      budgetGara,
+      criteriRiepilogo,
+      criteriValutazione: budget.criteriValutazione,
+      punteggioTecnicoMax,
+      limitePagineTotale,
+      subCriteriTabellari,
+      nomeAzienda,
+      formattazione,
+      context,
+      comprimi: opzioni.comprimi,
+    });
+  }
+
   const sezioni = sezioniIniziali.map((s) => ({ ...s }));
   const righeDaSalvare: { titolo_sezione: string; contenuto: string }[] = [];
   const sezioniTagliateDecisamente = new Set<string>();
@@ -838,7 +938,136 @@ export async function assicuraBudgetPagine(
     // contenuto delle sezioni a più basso punteggio.
   }
 
-  return { sezioni, righeDaSalvare, sezioniDopoFase1, sezioniTagliateDecisamente: [...sezioniTagliateDecisamente] };
+  return { sezioni, righeDaSalvare, sezioniDopoFase1, sezioniTagliateDecisamente: [...sezioniTagliateDecisamente], esitiCompressione: [] };
+}
+
+// Stessa garanzia di assicuraBudgetPagine (documento entro il limite VERO,
+// mai un taglio in silenzio) ma con il budget ripartito per SOTTO-CRITERIO
+// in proporzione ai punti e una compressione che sa cosa vale ogni blocco
+// e cosa richiede il disciplinare:
+//  1. ogni sotto-criterio oltre il proprio tetto (+10%) viene ridotto da
+//     solo, senza espansioni: scrivere sotto il tetto è accettato (un'
+//     espansione aggiungerebbe testo mai verificato sui dati d'impresa);
+//  2. se il documento supera ancora il limite, si taglia partendo dai blocchi
+//     che rendono meno punti per pagina;
+//  3. ogni riduzione è controllata contro il testo VERIFICATO di partenza
+//     (elementi richiesti, citazioni, asterischi, figure): asterischi e
+//     citazioni persi vengono rimessi in modo deterministico, il resto fa
+//     rifiutare la riduzione (il blocco resta com'è);
+//  4. a fine giro un ultimo ripristino per sezione contro il testo verificato.
+async function assicuraBudgetPerSottoCriteri(params: {
+  sezioniIniziali: { titolo_sezione: string; contenuto: string }[];
+  budgetGara: NonNullable<ReturnType<typeof calcolaBudgetSottoCriteri>>;
+  criteriRiepilogo: CriterioRiepilogo[];
+  criteriValutazione: string | null | undefined;
+  punteggioTecnicoMax: number;
+  limitePagineTotale: number;
+  subCriteriTabellari: string[] | null;
+  nomeAzienda: string | null | undefined;
+  formattazione: { dimensioneCarattere?: number; interlinea?: number };
+  context: { userId: string | null; garaId: string | null };
+  comprimi?: FunzioneCompressione;
+}): Promise<RisultatoBudgetPagine> {
+  const { sezioniIniziali, budgetGara, criteriRiepilogo, criteriValutazione, punteggioTecnicoMax, limitePagineTotale, subCriteriTabellari, nomeAzienda, formattazione, context } = params;
+  const sezioni = sezioniIniziali.map((s) => ({ ...s }));
+  const originali = sezioniIniziali.map((s) => ({ ...s }));
+  const righeDaSalvare: { titolo_sezione: string; contenuto: string }[] = [];
+  const cambiate = new Set<number>();
+  const esiti: EsitoBlocco[] = [];
+
+  const ctx = contestoDaCriteri(budgetGara, criteriValutazione, { punteggioTecnico: punteggioTecnicoMax, formattazione, context, comprimi: params.comprimi });
+
+  const ripulisci = (contenuto: string) =>
+    applicaSostituzioniAnonimizzazione(applicaMarcatoriTabellari(contenuto, subCriteriTabellari), nomeAzienda);
+
+  const misuraTotale = (elenco: { titolo_sezione: string; contenuto: string }[]) =>
+    stimaPagineContenuto(
+      elenco.map((s) => `# ${s.titolo_sezione}\n\n${rimuoviTitoloRidondante(s.contenuto, s.titolo_sezione)}`).join("\n\n"),
+      formattazione,
+    );
+
+  // Fase 1: per sezione, in parallelo (sezioni indipendenti). Una sezione
+  // senza sotto-criteri riconoscibili (nessun "## x.y" con un tetto noto)
+  // ricade sul vecchio budget per criterio, come prima.
+  await Promise.all(
+    sezioni.map(async (sezione, indice) => {
+      const haBlocchiNoti = dividiInBlocchi(sezione.contenuto).some((b) => b.chiave && budgetGara.sottoCriteri.some((s) => s.chiave.toLowerCase() === b.chiave!.toLowerCase()));
+      if (!haBlocchiNoti) {
+        const numeroSezione = estraiNumeroCriterioTopLevel(sezione.titolo_sezione);
+        const criterio = criteriRiepilogo.find(
+          (c) =>
+            (numeroSezione && c.numero.trim().toLowerCase() === numeroSezione) ||
+            normalizzaTitoloSezione(c.titolo) === normalizzaTitoloSezione(sezione.titolo_sezione),
+        );
+        if (!criterio) return;
+        const corretto = await correggiSezioneVersoTarget(
+          sezione.titolo_sezione,
+          sezione.contenuto,
+          (criterio.punti_max / punteggioTecnicoMax) * budgetGara.limiteConMargine,
+          formattazione,
+          context,
+          4,
+        );
+        if (corretto !== sezione.contenuto) {
+          sezioni[indice] = { ...sezione, contenuto: ripulisci(corretto) };
+          cambiate.add(indice);
+        }
+        return;
+      }
+      const { contenuto, esiti: esitiSezione } = await comprimiSezionePerSottoCriteri(sezione.titolo_sezione, sezione.contenuto, originali[indice].contenuto, ctx);
+      esiti.push(...esitiSezione);
+      if (contenuto !== sezione.contenuto) {
+        sezioni[indice] = { ...sezione, contenuto: ripulisci(contenuto) };
+        cambiate.add(indice);
+      }
+    }),
+  );
+
+  const sezioniDopoFase1 = sezioni.map((s) => ({ ...s }));
+
+  // Fase 2: sul TOTALE reale, partendo dai blocchi che rendono meno punti
+  // per pagina.
+  const sezioniTagliateDecisamente: string[] = [];
+  if (misuraTotale(sezioni) > limitePagineTotale) {
+    const rifiutatiInFase1 = new Set(esiti.filter((e) => e.esito !== "compresso").map((e) => e.chiave));
+    const risultato = await tagliaPerValore(sezioni, originali, limitePagineTotale, misuraTotale, ctx, { saltare: rifiutatiInFase1 });
+    esiti.push(...risultato.esiti);
+    sezioniTagliateDecisamente.push(...risultato.sezioniTagliate);
+    sezioni.forEach((s, i) => {
+      if (risultato.sezioniTagliate.includes(s.titolo_sezione)) {
+        sezioni[i] = { ...s, contenuto: ripulisci(s.contenuto) };
+        cambiate.add(i);
+      }
+    });
+  }
+
+  // Ultimo controllo per sezione contro il testo verificato di partenza:
+  // asterischi, note e citazioni scomparsi lungo tutto il percorso (non solo
+  // in una singola riduzione) vengono rimessi. È un ripristino di testo già
+  // verificato, non una nuova verifica: costa zero e non può introdurre
+  // contenuto nuovo.
+  const ripristini: string[] = [];
+  sezioni.forEach((s, i) => {
+    if (!cambiate.has(i)) return;
+    const esito = ripristinaDaTestoVerificato(originali[i].contenuto, s.contenuto);
+    const cambiato = esito.testo !== s.contenuto;
+    if (cambiato) sezioni[i] = { ...s, contenuto: esito.testo };
+    if (cambiato || esito.nonRipristinabili.length) ripristini.push(`[ripristino finale] ${s.titolo_sezione}: ${riepilogoRipristino(esito)}`);
+  });
+
+  for (const i of cambiate) righeDaSalvare.push({ titolo_sezione: sezioni[i].titolo_sezione, contenuto: sezioni[i].contenuto });
+
+  return {
+    sezioni,
+    righeDaSalvare,
+    sezioniDopoFase1,
+    sezioniTagliateDecisamente,
+    esitiCompressione: [
+      ...riepilogoEsiti(esiti),
+      ...ripristini,
+      `chiamate di compressione: ${ctx.chiamate.usate} (tetto ${ctx.chiamate.max})${ctx.chiamate.usate >= ctx.chiamate.max ? " — TETTO RAGGIUNTO: alcune riduzioni non sono state tentate" : ""}`,
+    ],
+  };
 }
 
 // Assembla la Relazione Tecnica definitiva da TUTTE le bozze di sezione
@@ -901,13 +1130,14 @@ export async function componiRelazioneFinale(params: {
   // esattamente ciò che causava il troncamento a metà criterio.
   const { data: garaBudget } = await supabase
     .from("gare")
-    .select("limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo, sub_criteri_tabellari")
+    .select("limite_pagine_totale, punteggio_tecnico_max, criteri_riepilogo, sub_criteri_tabellari, criteri_valutazione")
     .eq("id", garaId)
     .single<{
       limite_pagine_totale: number | null;
       punteggio_tecnico_max: number | null;
       criteri_riepilogo: CriterioRiepilogo[] | null;
       sub_criteri_tabellari: string[] | null;
+      criteri_valutazione: string | null;
     }>();
 
   // Riapplicati qui perché il passaggio di espansione/condensazione più
@@ -931,18 +1161,23 @@ export async function componiRelazioneFinale(params: {
     const formattazioneGaraCorrente = { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea };
     const ordineBase = Math.max(...sezioni.map((s) => s.ordine));
 
-    const { sezioni: sezioniCorrette, righeDaSalvare } = await assicuraBudgetPagine(
+    const { sezioni: sezioniCorrette, righeDaSalvare, esitiCompressione } = await assicuraBudgetPagine(
       sezioniFinali,
       {
         limitePagineTotale: garaBudget.limite_pagine_totale,
         punteggioTecnicoMax: garaBudget.punteggio_tecnico_max,
         criteriRiepilogo: garaBudget.criteri_riepilogo,
         subCriteriTabellari: garaBudget.sub_criteri_tabellari,
+        criteriValutazione: garaBudget.criteri_valutazione,
       },
       companyBudget?.ragione_sociale,
       formattazioneGaraCorrente,
       { userId, garaId },
     );
+
+    // Diagnostica: cosa è stato ridotto, cosa rimesso dal ripristino, quali
+    // riduzioni sono state rifiutate perché violavano il contratto.
+    for (const riga of esitiCompressione) console.log(`componiRelazioneFinale [${garaId}] ${riga}`);
 
     if (righeDaSalvare.length > 0) {
       await supabase.from("gara_relazione_sezioni").insert(

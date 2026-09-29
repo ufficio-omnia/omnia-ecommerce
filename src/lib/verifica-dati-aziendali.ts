@@ -1,9 +1,14 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { createAnthropicClient } from "@/lib/anthropic";
+import { createAnthropicClient, MODELLO_PRINCIPALE } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
 import { ISTRUZIONI_VERIFICA_DATI } from "@/lib/prompts";
 
-const MODEL = "claude-sonnet-5";
+// SEMPRE il modello principale, senza eccezioni — mai modelloAttivo() qui:
+// questa è la verifica di livello 2 prima di ogni pubblicazione (istruzione
+// esplicita dell'utente). Il modello leggero esiste solo per le prove di
+// meccanismo su compressione/budget (src/lib/anthropic.ts) e non deve poter
+// raggiungere questa funzione nemmeno per un env var impostato per errore.
+const MODEL = MODELLO_PRINCIPALE;
 
 // Il testo corretto arriva SOLO tramite questo strumento, non come
 // risposta testuale libera: verificato in pratica che una semplice
