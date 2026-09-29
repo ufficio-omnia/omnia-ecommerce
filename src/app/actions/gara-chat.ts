@@ -15,12 +15,12 @@ import {
   LIMITE_BYTE_PER_CATEGORIA,
   MAX_ALLEGATI_PER_MESSAGGIO,
 } from "@/lib/attachment-text";
-import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine";
+import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import {
   generaBozzaSezione,
   componiRelazioneFinale,
   elencoSezioniEsistenti,
-  correggiSezioneVersoTarget,
+  correggiSezioneConBudget,
   applicaMarcatoriTabellari,
   applicaSostituzioniAnonimizzazione,
 } from "@/lib/relazione-tecnica";
@@ -493,37 +493,31 @@ export async function sendGaraMessage(
             numeroCriterio && gara.criteri_riepilogo
               ? gara.criteri_riepilogo.find((c) => c.numero.trim() === numeroCriterio)
               : undefined;
-          // Stesso margine di sicurezza usato per la ripartizione mostrata
-          // al modello (calcolaRipartizionePagine) e per "componi relazione
-          // finale" (componiRelazioneFinale): qui mancava, la correzione
-          // durante la generazione dal vivo puntava ancora al limite esatto
-          // del disciplinare invece che a un target con margine.
-          const pagineTarget =
-            criterioCorrispondente && gara.punteggio_tecnico_max && gara.limite_pagine_totale
-              ? (criterioCorrispondente.punti_max / gara.punteggio_tecnico_max) *
-                limitePagineConMargine(gara.limite_pagine_totale)
-              : null;
 
-          // Se conosciamo il target di pagine per questo criterio,
-          // correggiamo qui il contenuto PRIMA di costruire il documento
-          // — non lasciamo che sia il cliente, tramite avanti-indietro in
-          // chat, a scoprire lo scostamento e a chiedere di rigenerare:
-          // lo stesso ciclo di misura/correzione (4 tentativi, non il
-          // default di 2 — verificato che una sezione molto sopra target
-          // può ridursi di poco a ogni passata) già usato per "componi
-          // relazione finale" garantisce che il file scaricato sia già
-          // alla lunghezza giusta, non "un tentativo" da verificare a mano.
-          const contenutoCorretto =
-            pagineTarget !== null
-              ? await correggiSezioneVersoTarget(
-                  input.titolo_sezione,
-                  contenutoConMarcatori,
-                  pagineTarget,
-                  formattazioneCorrente,
-                  { userId: user.id, garaId },
-                  4,
-                )
-              : contenutoConMarcatori;
+          // Correggiamo qui il contenuto PRIMA di costruire il documento —
+          // non lasciamo che sia il cliente, tramite avanti-indietro in
+          // chat, a scoprire lo scostamento e a chiedere di rigenerare.
+          // Con i sotto-criteri del disciplinare, ogni sotto-criterio oltre
+          // il proprio tetto (in proporzione ai punti) viene ridotto da
+          // solo, sapendo cosa vale e cosa richiede, con il controllo che
+          // nulla di richiesto vada perso; senza, resta il ciclo di
+          // misura/correzione per criterio (4 tentativi, verso il target
+          // con margine di sicurezza già usato per "componi relazione
+          // finale"). Vedi correggiSezioneConBudget.
+          const correzione = await correggiSezioneConBudget({
+            titoloSezione: input.titolo_sezione,
+            contenuto: contenutoConMarcatori,
+            criteriValutazione: gara.criteri_valutazione,
+            criteriRiepilogo: gara.criteri_riepilogo,
+            punteggioTecnicoMax: gara.punteggio_tecnico_max,
+            limitePagineTotale: gara.limite_pagine_totale,
+            subCriteriTabellari: gara.sub_criteri_tabellari,
+            formattazione: formattazioneCorrente,
+            context: { userId: user.id, garaId },
+          });
+          const contenutoCorretto = correzione.contenuto;
+          const pagineTarget = correzione.pagineTargetCriterio;
+          for (const riga of correzione.esiti) console.log(`sendGaraMessage [${garaId}] ${riga}`);
           // Riapplicate dopo l'eventuale espansione/condensazione: quel
           // passaggio non sa nulla né dei marcatori tabellari né
           // dell'anonimizzazione, e può riscrivere/ampliare il testo
@@ -565,11 +559,20 @@ export async function sendGaraMessage(
             pagineTarget !== null && criterioCorrispondente
               ? ` Target per l'intero criterio ${criterioCorrispondente.numero} (${criterioCorrispondente.punti_max}/${gara.punteggio_tecnico_max} punti): ~${pagineTarget.toFixed(1)} pagine totali (eventualmente da dividere tra più bozze se il criterio ha più sub-criteri e generi in invii separati) — la lunghezza è già stata corretta automaticamente verso questo target.`
               : "";
+          const rifiutate = correzione.esiti.filter((e) => e.includes("rifiutato")).length;
+          // Con i tetti per sotto-criterio la lunghezza è un MASSIMO: un
+          // testo sotto il tetto è corretto, e non va proposto di ampliarlo
+          // per raggiungere un numero di pagine (il vecchio invito ad
+          // ampliare vale solo per il budget per criterio).
+          const istruzioneLunghezza =
+            correzione.modalita === "sotto-criteri"
+              ? ` La lunghezza è controllata per sotto-criterio, con un tetto in proporzione ai punti: i sotto-criteri oltre il tetto sono già stati ridotti automaticamente senza perdere ciò che il disciplinare richiede.${rifiutate > 0 ? ` In ${rifiutate} caso/i la riduzione non è stata possibile senza perdere contenuto richiesto e quel sotto-criterio resta più lungo del tetto: dillo al cliente in una frase.` : ""} Scrivere sotto il tetto è corretto: NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
+              : ` Se questo numero è ANCORA sensibilmente sotto l'obiettivo (tuo o del cliente) nonostante la correzione automatica, dillo chiaramente nella risposta invece di dichiarare il target raggiunto, e proponi di ampliarla — non limitarti a descrivere quanto hai scritto "in astratto". Altrimenti scrivi solo 1-2 frasi su cosa contiene questa sezione.`;
 
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta. Se questo numero è ANCORA sensibilmente sotto l'obiettivo (tuo o del cliente) nonostante la correzione automatica, dillo chiaramente nella risposta invece di dichiarare il target raggiunto, e proponi di ampliarla — non limitarti a descrivere quanto hai scritto "in astratto". Altrimenti scrivi solo 1-2 frasi su cosa contiene questa sezione.`,
+            content: `Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);

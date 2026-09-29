@@ -1,5 +1,6 @@
 "use server";
 
+import type Anthropic from "@anthropic-ai/sdk";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -257,9 +258,27 @@ export async function extractGaraData(
             media_type: "application/pdf" as const,
             data: buffer.toString("base64"),
           },
+          cache_control: undefined as Anthropic.Messages.CacheControlEphemeral | undefined,
         };
       }),
     );
+
+    // Prompt caching sui documenti: sono la parte più cara della chiamata
+    // (misurato: 279.249 dei 279.269 token di input di un'estrazione reale)
+    // e restano IDENTICI a ogni rianalisi della stessa gara finché il
+    // cliente non aggiunge/toglie documenti — oggi vengono ripagati per
+    // intero a ogni chiamata. cache_control sull'ULTIMO blocco documento
+    // marca l'intero prefisso (tutti i PDF, nell'ordine in cui compaiono
+    // qui) come punto di cache: una rianalisi entro 5 minuti dalla
+    // precedente paga quel prefisso a un decimo della tariffa invece che
+    // per intero. TTL di default (5 minuti, non richiesto esplicitamente):
+    // le rianalisi ravvicinate (il cliente che ricarica un documento e
+    // rianalizza subito, o una prova di sviluppo) sono il caso che vale la
+    // pena ottimizzare; un TTL più lungo costerebbe il doppio in scrittura
+    // per un riuso via via meno probabile.
+    if (documentBlocks.length > 0) {
+      documentBlocks[documentBlocks.length - 1].cache_control = { type: "ephemeral" };
+    }
 
     const anthropic = createAnthropicClient();
 
@@ -301,6 +320,8 @@ export async function extractGaraData(
       model: MODEL,
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
+      cacheCreationTokens: response.usage.cache_creation_input_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens,
     });
 
     const toolUse = response.content.find(
