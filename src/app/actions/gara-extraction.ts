@@ -200,14 +200,21 @@ export async function extractGaraData(
   if (!garaId) return { error: "Gara non valida." };
 
   // La RLS ("gare_all_own") garantisce che questa select restituisca la
-  // gara solo se appartiene all'utente corrente.
+  // gara solo se appartiene all'utente corrente. estrazione_stato e
+  // criteri_valutazione servono solo a distinguere prima analisi da
+  // rianalisi (vedi giaAnalizzata sotto, per il prompt caching) — stessa
+  // condizione già usata in gara-consumo.ts per la stessa distinzione
+  // (lì per la quota, qui per la cache), non un secondo criterio da
+  // tenere allineato a mano.
   const { data: gara } = await supabase
     .from("gare")
-    .select("id, titolo")
+    .select("id, titolo, estrazione_stato, criteri_valutazione")
     .eq("id", garaId)
-    .single<{ id: string; titolo: string }>();
+    .single<{ id: string; titolo: string; estrazione_stato: string | null; criteri_valutazione: string | null }>();
 
   if (!gara) return { error: "Gara non trovata." };
+
+  const giaAnalizzata = gara.estrazione_stato === "completata" || !!gara.criteri_valutazione;
 
   const { data: documenti } = await supabase
     .from("gara_documenti")
@@ -266,17 +273,25 @@ export async function extractGaraData(
     // Prompt caching sui documenti: sono la parte più cara della chiamata
     // (misurato: 279.249 dei 279.269 token di input di un'estrazione reale)
     // e restano IDENTICI a ogni rianalisi della stessa gara finché il
-    // cliente non aggiunge/toglie documenti — oggi vengono ripagati per
-    // intero a ogni chiamata. cache_control sull'ULTIMO blocco documento
-    // marca l'intero prefisso (tutti i PDF, nell'ordine in cui compaiono
-    // qui) come punto di cache: una rianalisi entro 5 minuti dalla
-    // precedente paga quel prefisso a un decimo della tariffa invece che
-    // per intero. TTL di default (5 minuti, non richiesto esplicitamente):
-    // le rianalisi ravvicinate (il cliente che ricarica un documento e
-    // rianalizza subito, o una prova di sviluppo) sono il caso che vale la
-    // pena ottimizzare; un TTL più lungo costerebbe il doppio in scrittura
-    // per un riuso via via meno probabile.
-    if (documentBlocks.length > 0) {
+    // cliente non aggiunge/toglie documenti. NON incondizionato: scrivere
+    // in cache costa 1,25x (misurato: +24% sulla chiamata che scrive) ed è
+    // un costo che si ripaga SOLO se qualcuno rilegge quello stesso
+    // prefisso entro 5 minuti — su una prima analisi isolata (il caso più
+    // comune: un cliente che analizza una gara una volta sola) non c'è
+    // nessuna rilettura attesa, quindi il 24% in più sarebbe pagato per
+    // niente. Si attiva solo dove una rilettura a breve è un'ipotesi
+    // ragionevole: una RIANALISI (la gara è già stata analizzata prima —
+    // un cliente che rianalizza è tipicamente in un ciclo di modifica/prova
+    // ravvicinato, non un evento isolato) o una prova di sviluppo/script
+    // (che per costruzione chiama l'estrazione più volte di seguito sugli
+    // stessi documenti, vedi OMNIA_AI_SCRIPT_PROVE in src/lib/anthropic.ts).
+    // cache_control sull'ULTIMO blocco documento marca l'intero prefisso
+    // (tutti i PDF, nell'ordine in cui compaiono qui) come punto di cache;
+    // TTL di default (5 minuti): il caso che vale la pena ottimizzare è la
+    // rilettura ravvicinata, un TTL più lungo costerebbe il doppio in
+    // scrittura per un riuso via via meno probabile.
+    const usaCache = giaAnalizzata || process.env.OMNIA_AI_SCRIPT_PROVE === "1";
+    if (documentBlocks.length > 0 && usaCache) {
       documentBlocks[documentBlocks.length - 1].cache_control = { type: "ephemeral" };
     }
 
