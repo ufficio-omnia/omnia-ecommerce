@@ -9,7 +9,7 @@
 import { buildDocxBuffer } from "../src/lib/docx-generator";
 import { abbinaSorgente, estraiFigureDocumento, estraiSorgenteFigure, verificaFigure } from "./lib/immagini-relazione";
 import { trovaMarcatoriResidui } from "./lib/controlli-relazione";
-import { estraiTestiPerNodo } from "./lib/xml-word";
+import { estraiTestiPerNodo, estraiTestiVisibili } from "./lib/xml-word";
 import { confrontaSubCriteri, problemiContratto, type Sezione } from "./lib/confronto-tagli";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const JSZip = require("jszip");
@@ -146,7 +146,70 @@ async function main() {
     atteso("l'estrazione dei nodi di testo non contiene markup XML", nodi.every((n) => !n.includes("<w:")), nodi.find((n) => n.includes("<w:"))?.slice(0, 80) ?? "");
   }
 
-  // 7. Confronto prima/dopo dei tagli (scripts/lib/confronto-tagli.ts).
+  // 7. Un delimitatore isolato (nessun contenuto reale tra due delimitatori
+  // uguali: "*", "**", "!!") non deve sparire — bug osservato in pratica su
+  // una cella con solo "*" (marcatore R9 "nessun valore da proporre"): il
+  // parser la scambiava per un corsivo vuoto e la svuotava. Prova sia in
+  // cella di tabella (il caso reale) sia in un paragrafo normale, e
+  // controlla anche che il testo CON contenuto reale (non isolato) continui
+  // a funzionare, per non introdurre una regressione opposta.
+  {
+    const md = [
+      "# Prova",
+      "",
+      "[TABELLA:BLU]",
+      "| Macchina | Valore |",
+      "|---|---|",
+      "| [G]Riga con solo asterisco | [C]* |",
+      "| [G]Riga con solo doppio asterisco | [C]** |",
+      "| [G]Riga con solo evidenziazione | [C]!! |",
+      "| [G]Riga con valore normale | [C]**150 ore** |",
+      "",
+      "Paragrafo con un asterisco isolato: * qui non deve sparire.",
+      "Paragrafo con corsivo vero: *questo sì*.",
+    ].join("\n");
+    const buffer = await buildDocxBuffer("Prova", md, { font: "Calibri", dimensioneCarattere: 12 }, undefined, undefined, {});
+    const zip = (await JSZip.loadAsync(buffer)) as ZipProva;
+    const xml = (await zip.file("word/document.xml")?.async("string")) ?? "";
+    const celle = xml.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g) || [];
+    const testoCelle = celle.map((c) => estraiTestiPerNodo(c).join(""));
+    atteso("cella con solo '*': l'asterisco resta visibile (cella non vuota)", testoCelle.some((t) => t.trim() === "*"), testoCelle.join(" | "));
+    atteso("cella con solo '**': il testo resta visibile (cella non vuota)", testoCelle.some((t) => t.trim() === "**"), testoCelle.join(" | "));
+    atteso("cella con solo '!!': il testo resta visibile (cella non vuota)", testoCelle.some((t) => t.trim() === "!!"), testoCelle.join(" | "));
+    atteso("cella con valore normale ('**150 ore**'): ancora in grassetto, senza asterischi letterali", testoCelle.some((t) => t.trim() === "150 ore"), testoCelle.join(" | "));
+    const nodiCorpo = estraiTestiPerNodo(xml);
+    atteso("paragrafo con asterisco isolato: resta visibile", nodiCorpo.some((n) => n.includes("isolato: *") || n.includes("* qui")), nodiCorpo.filter((n) => /isolato|qui/.test(n)).join(" | "));
+    atteso("paragrafo con corsivo vero: ancora reso come corsivo (testo senza asterischi letterali)", nodiCorpo.some((n) => n.trim() === "questo sì"), nodiCorpo.filter((n) => /questo/.test(n)).join(" | "));
+    // Nessuna cella vuota nel documento: stesso controllo del livello 1/2,
+    // qui applicato a un documento pensato apposta per farlo fallire se il
+    // bug tornasse.
+    let celleVuote = 0;
+    for (const c of celle) if (estraiTestiVisibili(c).trim().length === 0) celleVuote++;
+    atteso("nessuna cella vuota nel documento di prova", celleVuote === 0, `${celleVuote} cella/e vuota/e`);
+  }
+
+  // 7b. Bug reale osservato in produzione: un asterisco isolato (nota/
+  // marcatore R9) che precede un "**grassetto**" più avanti nella stessa
+  // frase confondeva la vecchia scansione a una sola regex, che "rubava"
+  // il primo asterisco del grassetto per chiudere un finto corsivo,
+  // lasciando un "**" orfano come testo letterale ("Marcatore residuo:
+  // grassetto markdown non convertito"). La correzione (due passate:
+  // grassetto isolato su tutto il testo, poi corsivo/evidenziazione solo
+  // nel resto) deve riconoscere comunque il grassetto ed evitare il "**"
+  // orfano, anche se lascia visibile l'asterisco iniziale (onesto: meglio
+  // un asterisco in più visibile che un "**" di markdown non convertito).
+  {
+    const md = "# Prova\n\n*Il monte ore proposto è pari a **144,5 ore settimanali*** (dato da confermare in sede di offerta).\n";
+    const buffer = await buildDocxBuffer("Prova", md, { font: "Calibri", dimensioneCarattere: 12 }, undefined, undefined, {});
+    const zip = (await JSZip.loadAsync(buffer)) as ZipProva;
+    const xml = (await zip.file("word/document.xml")?.async("string")) ?? "";
+    const nodi = estraiTestiPerNodo(xml);
+    const residui = trovaMarcatoriResidui(nodi);
+    atteso("nota con asterisco isolato prima di un grassetto: nessun '**' orfano nel documento", residui.length === 0, residui.join(" / "));
+    atteso("il valore resta in grassetto (rendering coerente)", nodi.some((n) => n.trim() === "144,5 ore settimanali"), JSON.stringify(nodi));
+  }
+
+  // 8. Confronto prima/dopo dei tagli (scripts/lib/confronto-tagli.ts).
   {
     const fmt = { dimensioneCarattere: 12 };
     const lungo = Array.from({ length: 120 }, (_, i) => `parola${i}`).join(" ");

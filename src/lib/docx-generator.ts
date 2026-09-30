@@ -170,10 +170,13 @@ function estraiTagColoreTabella(righeIn: string[]): { colore: string | null; rig
 }
 
 const BLOCCO_SPECIALE_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)\]([\s\S]*?)\[\/\1\]/gi;
-// "**grassetto**", "*corsivo*" o "!!testo colorato!!" — un solo asterisco
-// non seguito/preceduto da spazio per evitare falsi positivi su testo con
-// asterischi isolati.
-const INLINE_RUN_REGEX = /(\*\*[^*]+\*\*|\*[^*]+\*|!!.+?!!)/g;
+// Grassetto isolato in una prima passata su TUTTO il testo (vedi
+// parseInlineRuns): "*corsivo*"/"!!testo!!" si cercano SOLO nei frammenti
+// che restano dopo aver tolto i "**grassetto**", non nello stesso passaggio.
+const BOLD_REGEX = /(\*\*[^*]+\*\*)/g;
+// "*corsivo*" o "!!testo colorato!!", cercati SOLO dentro un frammento già
+// privato dei "**grassetto**" (vedi BOLD_REGEX sopra).
+const ITALICO_O_COLORE_REGEX = /(\*[^*]+\*|!!.+?!!)/g;
 // Allineamento di una singola cella tabella: "[C]" per centrato, "[G]"
 // per giustificato, nessun tag per sinistra (default) — come nei
 // progetti di riferimento, dove valori brevi/categorici sono centrati e
@@ -322,6 +325,29 @@ function rimuoviGrassettoRidondante(testo: string): string {
   return testo.replace(/\*\*(!!.+?!!)\*\*/g, "$1").replace(/\*\*(\[ICONA:[a-zA-Z]+\])\*\*/gi, "$1");
 }
 
+// Guardia di lunghezza minima (bug osservato in pratica, entrambe le
+// passate sotto): un pezzo VERAMENTE prodotto da un match della regex ha
+// sempre contenuto (il "+"/".+?" tra i delimitatori non è mai vuoto), ma
+// .split() restituisce anche i pezzi NON abbinati tra un match e l'altro, e
+// un pezzo non abbinato può COINCIDERE per forma con un delimitatore senza
+// esserlo — un singolo "*" isolato (es. una cella con solo l'asterisco R9
+// "nessun valore da proporre") supera "startsWith('*') && endsWith('*')"
+// pur essendo un solo carattere: slice(1,-1) lo svuota e l'asterisco
+// sparisce dal documento invece di restare visibile. La lunghezza minima
+// (5 per "**x**"/"!!x!!", 3 per "*x*") distingue un match vero da un
+// avanzo troppo corto per contenere qualcosa: sotto quella soglia si ricade
+// nel ramo finale (testo letterale), che il "*"/"**"/"!!" isolato deve
+// percorrere.
+function eRunGrassetto(parte: string): boolean {
+  return parte.length >= 5 && parte.startsWith("**") && parte.endsWith("**");
+}
+function eRunCorsivo(parte: string): boolean {
+  return parte.length >= 3 && parte.startsWith("*") && parte.endsWith("*");
+}
+function eRunColorato(parte: string): boolean {
+  return parte.length >= 5 && parte.startsWith("!!") && parte.endsWith("!!");
+}
+
 // Interpreta "**grassetto**", "*corsivo*" e "!!testo colorato!!" dentro
 // una riga di testo e produce i run Word corrispondenti, invece di
 // mostrare i marcatori letterali (bug precedente: il markdown non veniva
@@ -334,6 +360,14 @@ function rimuoviGrassettoRidondante(testo: string): string {
 // restava visibile nel Word ("Entro 7 giorni lavorativi \*"). Un segnaposto
 // (carattere privato) lo tiene fuori dal riconoscimento di grassetto/corsivo
 // e viene riportato ad "*" solo al momento di creare il testo del run.
+// ATTENZIONE: la stringa qui sotto contiene un carattere INVISIBILE (area a
+// uso privato Unicode, U+E000), non è vuota — appare vuota in ogni editor e
+// terminale. Non riscrivere questa riga a mano nè copiarla come testo
+// visibile: un carattere invisibile perso silenziosamente la trasforma in
+// una stringa VERAMENTE vuota, e "x".split("") spezza ogni singolo
+// carattere del testo invece di dividerlo sul segnaposto — bug osservato
+// in pratica proprio su questa riga. Dopo qualunque modifica qui,
+// verificare con un dump a byte, mai a occhio.
 const ASTERISCO_ESCAPATO = "";
 function proteggiAsterischiEscapati(testo: string): string {
   return testo.replace(/\\\*/g, ASTERISCO_ESCAPATO);
@@ -342,53 +376,73 @@ function ripristinaAsterischi(testo: string): string {
   return testo.split(ASTERISCO_ESCAPATO).join("*");
 }
 
+// Due passate, non una sola: il grassetto va isolato su TUTTO il testo
+// PRIMA di cercare corsivo/evidenziazione, non nello stesso passaggio a
+// scansione unica — bug osservato in pratica. Un asterisco singolo che
+// precede un "**grassetto**" più avanti nella stessa frase (es. una nota
+// che inizia con "*" seguita più avanti da "**144,5 ore settimanali***",
+// dove il "*" finale è il marcatore R9) veniva letto come apertura di un
+// (finto) corsivo dalla vecchia scansione a una sola regex combinata: il
+// motore regex, non trovando "**" in apertura, ripiegava sul corsivo e
+// "rubava" il PRIMO dei due asterischi del grassetto successivo per
+// chiuderlo, lasciando un "**" orfano che finiva come testo letterale nel
+// documento invece che come grassetto riconosciuto. Isolando prima tutti i
+// "**...**" su tutta la frase (una regex che non può MAI confondersi con un
+// singolo asterisco, dato che richiede sempre la coppia), il grassetto è
+// sempre riconosciuto correttamente indipendentemente da un asterisco
+// isolato altrove nella stessa frase; il corsivo/l'evidenziazione si
+// cercano poi solo nei frammenti che restano, dove un asterisco isolato
+// senza partner (come il marcatore R9 sopra) ricade correttamente nel ramo
+// finale (testo letterale, resta visibile) invece di essere confuso con
+// un grassetto vicino.
 function parseInlineRuns(
   testo: string,
   runProps: { font?: string; size?: number; color?: string; bold?: boolean },
   coloreAccento: string = COLORE_BRAND,
 ): TextRun[] {
-  const parti = proteggiAsterischiEscapati(rimuoviGrassettoRidondante(testo))
-    .split(INLINE_RUN_REGEX)
-    .filter((p) => p.length > 0);
+  const pulito = proteggiAsterischiEscapati(rimuoviGrassettoRidondante(testo));
 
-  return parti.flatMap((parte) => {
-    if (parte.startsWith("**") && parte.endsWith("**")) {
-      const interno = ripristinaAsterischi(parte.slice(2, -2));
-      // L'AI a volte avvolge nel grassetto una frase INTERA che contiene
-      // al suo interno un "!!testo!!" (es. "**valutata dall'!!Ispettore
-      // Qualità!!**") invece di lasciarlo fuori dal grassetto — osservato
-      // in pratica. INLINE_RUN_REGEX tratta '**[^*]+**' come un unico
-      // blocco letterale, quindi senza questo controllo il "!!...!!"
-      // annidato non viene mai ri-analizzato e resta testo letterale.
-      // Qui il grassetto resta su tutta la frase, ma la porzione tra
-      // "!!" riceve anche il colore.
-      if (interno.includes("!!")) {
-        return interno
-          .split(/(!!.+?!!)/g)
-          .filter((s) => s.length > 0)
-          .map((segmento) =>
-            segmento.startsWith("!!") && segmento.endsWith("!!")
-              ? new TextRun({ text: segmento.slice(2, -2), bold: true, ...runProps, color: coloreAccento })
-              : new TextRun({ text: segmento, bold: true, ...runProps }),
-          );
+  return pulito
+    .split(BOLD_REGEX)
+    .filter((p) => p.length > 0)
+    .flatMap((parte): TextRun[] => {
+      if (eRunGrassetto(parte)) {
+        const interno = ripristinaAsterischi(parte.slice(2, -2));
+        // L'AI a volte avvolge nel grassetto una frase INTERA che contiene
+        // al suo interno un "!!testo!!" (es. "**valutata dall'!!Ispettore
+        // Qualità!!**") invece di lasciarlo fuori dal grassetto — osservato
+        // in pratica. Senza questo controllo il "!!...!!" annidato non
+        // viene mai ri-analizzato e resta testo letterale. Qui il
+        // grassetto resta su tutta la frase, ma la porzione tra "!!"
+        // riceve anche il colore.
+        if (interno.includes("!!")) {
+          return interno
+            .split(/(!!.+?!!)/g)
+            .filter((s) => s.length > 0)
+            .map((segmento) =>
+              segmento.startsWith("!!") && segmento.endsWith("!!")
+                ? new TextRun({ text: segmento.slice(2, -2), bold: true, ...runProps, color: coloreAccento })
+                : new TextRun({ text: segmento, bold: true, ...runProps }),
+            );
+        }
+        return [new TextRun({ text: interno, bold: true, ...runProps })];
       }
-      return [new TextRun({ text: interno, bold: true, ...runProps })];
-    }
-    if (parte.startsWith("*") && parte.endsWith("*")) {
-      return [new TextRun({ text: ripristinaAsterischi(parte.slice(1, -1)), italics: true, ...runProps })];
-    }
-    if (parte.startsWith("!!") && parte.endsWith("!!")) {
-      return [
-        new TextRun({
-          text: ripristinaAsterischi(parte.slice(2, -2)),
-          bold: true,
-          ...runProps,
-          color: coloreAccento,
-        }),
-      ];
-    }
-    return [new TextRun({ text: ripristinaAsterischi(parte), ...runProps })];
-  });
+
+      // Frammento SENZA grassetto (già tolto sopra): qui, e solo qui, si
+      // cerca corsivo/evidenziazione.
+      return parte
+        .split(ITALICO_O_COLORE_REGEX)
+        .filter((s) => s.length > 0)
+        .flatMap((sotto): TextRun[] => {
+          if (eRunCorsivo(sotto)) {
+            return [new TextRun({ text: ripristinaAsterischi(sotto.slice(1, -1)), italics: true, ...runProps })];
+          }
+          if (eRunColorato(sotto)) {
+            return [new TextRun({ text: ripristinaAsterischi(sotto.slice(2, -2)), bold: true, ...runProps, color: coloreAccento })];
+          }
+          return [new TextRun({ text: ripristinaAsterischi(sotto), ...runProps })];
+        });
+    });
 }
 
 // Estrae un tag "[ICONA:nome]" in testa al testo, tollerando che l'AI lo

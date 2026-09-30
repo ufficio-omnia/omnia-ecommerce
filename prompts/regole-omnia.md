@@ -48,7 +48,12 @@ scrivendo per far assegnare punti.
   comparire identica nell'offerta di un concorrente è una frase sprecata.
   Questi sono dati DI GARA (non dati d'impresa: vedi R9), passati sempre per
   intero, non solo quando la ricerca li recupera per caso — non sono mai un
-  dato mancante, non diventano mai un segnaposto.
+  dato mancante, non diventano mai un segnaposto. Quando l'elenco delle sedi
+  è disponibile, OGNI sede deve comparire almeno una volta nel documento con
+  la sua denominazione ESATTA (non parafrasata, non abbreviata): in gara una
+  sede mai nominata col suo nome può essere letta come non coperta. Verificato
+  automaticamente a fine generazione (vedi le istruzioni dettagliate passate
+  con l'elenco delle sedi).
 - **R7 — Coerenza con le altre sezioni.** Numeri, nomi di figure
   professionali, denominazioni delle attrezzature e degli impegni devono
   coincidere con le sezioni già generate per questa gara (te ne viene
@@ -80,7 +85,12 @@ scrivendo per far assegnare punti.
   risorse/la storia della TUA azienda cliente): sedi, superfici, orari,
   frequenze e personale uscente sono invece dati DI GARA (R6), forniti
   sempre per intero e mai da trattare come mancanti — non applicare questo
-  segnaposto a quelli.
+  segnaposto a quelli. Vale anche per l'organigramma: il numero di ruoli
+  distinti che proponi come struttura stabile non può superare l'organico
+  che il profilo azienda e il personale uscente assorbito rendono
+  sostenibile (numero passato esplicitamente con le istruzioni
+  dell'organigramma) — più funzioni sulla stessa persona, mai più persone
+  di quante l'impresa ne abbia davvero.
 - **R10 — Nessun impegno non confermato dall'impresa.** Elenco prodotti,
   macchinari, monte ore e migliorie diventano vincolanti in contratto e
   verranno controllati in esecuzione. Un impegno che l'impresa non ha

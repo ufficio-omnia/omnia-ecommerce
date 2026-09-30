@@ -34,7 +34,7 @@ for (const line of fs.readFileSync(path.join(__dirname, "..", ".env.local"), "ut
 import type Anthropic from "@anthropic-ai/sdk";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createClient } = require("@supabase/supabase-js");
-import { buildSystemPrompt, buildGeneraBozzaTool, formattaDatiGaraStrutturati, type GaraContesto, type CompanyContesto } from "../src/lib/gara-chat-prompt";
+import { buildSystemPrompt, buildGeneraBozzaTool, formattaDatiGaraStrutturati, organicoDisponibile, type GaraContesto, type CompanyContesto } from "../src/lib/gara-chat-prompt";
 import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
 import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
@@ -181,6 +181,34 @@ function controllaSediCoperte(markdown: string, sedi: { denominazione: string }[
     }
   }
   return problemi;
+}
+
+// --- Controllo: coerenza organigramma/organico ---
+// Conta le "caselle" distinte nel blocco [ORGANIGRAMMA] più grande del
+// documento (righe non vuote, esclusi i banner): ogni riga (casella
+// indentata, "• " terminale, casella laterale "<"/">" ) rappresenta una
+// persona per la sintassi definita in gara-chat-prompt.ts. Il MASSIMO tra
+// i blocchi, non la somma: più organigrammi nello stesso documento sono
+// tipicamente viste parziali della STESSA struttura (es. uno zoom su un
+// singolo sotto-criterio), sommarli conterebbe la stessa persona più volte.
+function contaMaxFigureOrganigramma(markdown: string): number {
+  const blocchi = [...markdown.matchAll(/\[ORGANIGRAMMA\]([\s\S]*?)\[\/ORGANIGRAMMA\]/gi)].map((m) => m[1]);
+  return blocchi.reduce((max, blocco) => {
+    const nodi = blocco
+      .split("\n")
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0 && !/^\[\/?BANNER\]/i.test(r));
+    return Math.max(max, nodi.length);
+  }, 0);
+}
+
+function controllaCoerenzaOrganico(markdown: string, organico: number | null): string[] {
+  if (organico == null) return [];
+  const figure = contaMaxFigureOrganigramma(markdown);
+  if (figure > organico) {
+    return [`L'organigramma propone ${figure} ruoli/figure distinte ma l'organico disponibile (profilo azienda + personale uscente assorbito) è di ${organico} persone: la struttura non è sostenibile con l'organico dichiarato.`];
+  }
+  return [];
 }
 
 // --- Controllo 4: nessun segnaposto su dati di gara ---
@@ -451,6 +479,7 @@ function anonimizza(
   const erroriArithmetica = controllaCoerenzaTabelle(markdown);
   const erroriSedi = controllaSediCoperte(markdown, gara.sedi!);
   const erroriSegnaposto = controllaSegnapostoSuDatiGara(markdown, gara.sedi!);
+  const erroriOrganico = controllaCoerenzaOrganico(markdown, organicoDisponibile(gara, companyContesto));
 
   // --- Confronto prima/dopo dei tagli, sotto-criterio per sotto-criterio:
   // il testo verificato PRIMA di assicuraBudgetPagine contro quello dopo,
@@ -505,6 +534,7 @@ function anonimizza(
     ...erroriArithmetica.map((e) => `[Aritmetica tabelle] ${e}`),
     ...erroriSedi.map((e) => `[Copertura sedi] ${e}`),
     ...erroriSegnaposto.map((e) => `[Segnaposto su dati di gara] ${e}`),
+    ...erroriOrganico.map((e) => `[Coerenza organico] ${e}`),
     ...erroriTagli.map((e) => `[Tagli] ${e}`),
     ...erroriAudit.map((e) => `[Audit dati d'impresa] ${e}`),
   ];
