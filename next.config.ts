@@ -7,11 +7,15 @@ const nextConfig: NextConfig = {
     },
   },
   serverExternalPackages: ["pdf-parse", "@napi-rs/canvas", "sharp"],
-  // src/lib/prompts.ts legge prompts/*.md con fs.readFileSync a runtime: un
-  // percorso costruito con process.cwd() non viene tracciato automaticamente
-  // dal build Vercel, quindi va incluso esplicitamente nel bundle serverless.
+  // src/lib/prompts.ts legge prompts/*.md e src/lib/org-chart.ts legge i
+  // font in src/assets/fonts/ con fs.readFileSync a runtime: un percorso
+  // costruito con process.cwd() non viene tracciato automaticamente dal
+  // build Vercel, quindi va incluso esplicitamente nel bundle serverless —
+  // senza, i font mancano in produzione (bug osservato in pratica: nessun
+  // errore, ma il font non risolvibile fa disegnare a librsvg riquadri
+  // vuoti al posto del testo, vedi org-chart.ts).
   outputFileTracingIncludes: {
-    "/**": ["./prompts/**"],
+    "/**": ["./prompts/**", "./src/assets/fonts/**"],
   },
   // Next ammette un solo favicon.ico, al livello più alto di app/ (quindi
   // src/app/favicon.ico, quello dell'e-commerce), condiviso da tutti i

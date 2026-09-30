@@ -1,5 +1,58 @@
 import sharp from "sharp";
+import path from "path";
+import { GlobalFonts, createCanvas } from "@napi-rs/canvas";
 import type { StileOrganigramma } from "@/lib/org-chart-style";
+
+// Le FORME (rettangoli, linee, loghi) restano SVG rasterizzato da sharp
+// (libvips/librsvg) come prima — solo il TESTO non è più un <text> SVG.
+// Il testo tramite librsvg risolve "font-family" con i font DI SISTEMA
+// (fontconfig): presenti in locale (dove il rendering sembrava corretto)
+// ma ASSENTI nell'ambiente serverless di Vercel — senza un font
+// risolvibile, librsvg disegna ogni carattere come un riquadro vuoto
+// ("tofu"), anche il testo normale, non solo gli accentati — bug osservato
+// in produzione su un organigramma reale, invisibile finché non si genera
+// davvero lì (in locale non si presenta mai). Il primo tentativo
+// (incorporare il font nell'SVG con "@font-face" in base64) NON risolve:
+// verificato che questa build di librsvg lo ignora silenziosamente e
+// ricade comunque su un font sostitutivo di sistema, che è quello che
+// probabilmente manca su Vercel — un test locale che sembra funzionare non
+// lo dimostra, perché la build sharp di Windows può avere un fallback che
+// quella Linux non ha.
+//
+// Soluzione: il testo è disegnato a parte su un canvas (@napi-rs/canvas,
+// motore Skia) con il font caricato ESPLICITAMENTE da file
+// (GlobalFonts.registerFromPath) — un meccanismo diverso da fontconfig,
+// che non cerca font di sistema per nome: il file è la sola fonte del
+// glifo, quindi il risultato è identico a prescindere dai font installati
+// sulla macchina che esegue il rendering (verificato: funziona anche
+// registrando il file sotto un nome di fantasia mai esistito come font di
+// sistema). Il canvas del testo viene poi sovrapposto (sharp .composite)
+// all'immagine SVG delle sole forme.
+//
+// Font: Liberation Sans (licenza SIL Open Font License 1.1, redistribuzione
+// libera — vedi src/assets/fonts/LICENSE_LIBERATION), scelto perché
+// compatibile per metriche con Arial (il nome già usato qui prima) e già
+// presente nell'albero delle dipendenze (pdfjs-dist lo usa come font
+// standard per il rendering PDF) — qui è una copia propria nel repository,
+// non un percorso dentro node_modules di un altro pacchetto, per non
+// dipendere da un dettaglio interno che potrebbe cambiare a ogni versione.
+const NOME_FONT_ORGANIGRAMMA = "OmniaOrgChart";
+let fontRegistrato = false;
+function assicuraFontRegistrato(): void {
+  if (fontRegistrato) return;
+  const cartellaFont = path.join(process.cwd(), "src", "assets", "fonts");
+  GlobalFonts.registerFromPath(path.join(cartellaFont, "LiberationSans-Regular.ttf"), NOME_FONT_ORGANIGRAMMA);
+  GlobalFonts.registerFromPath(path.join(cartellaFont, "LiberationSans-Bold.ttf"), NOME_FONT_ORGANIGRAMMA);
+  fontRegistrato = true;
+}
+
+// Un'operazione di disegno testo, raccolta durante la costruzione dell'SVG
+// invece di finire in un <text> — riprodotta poi su un canvas dedicato.
+// "anchor"/coordinate hanno lo stesso significato dei corrispondenti
+// text-anchor/x/y SVG che sostituiscono (compreso il fatto che "y" è la
+// baseline del testo, non il bordo superiore: la baseline di default di
+// Canvas2D coincide con quella di SVG, nessuna conversione necessaria).
+type TextOp = { x: number; y: number; text: string; anchor: "start" | "middle"; bold: boolean; fontSize: number; color: string };
 
 const STILE_DEFAULT: StileOrganigramma = {
   boxFill: "#2E86C1",
@@ -154,14 +207,6 @@ function wrapText(text: string, maxCharsPerLine: number, maxLines: number): stri
   }
 
   return lines.length ? lines : [""];
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 // Schiarisce un colore esadecimale verso il bianco di una frazione
@@ -333,7 +378,8 @@ function renderSvg(
   livelli: string[],
   banner: string[],
   loghi: LoghiOrganigramma,
-): string {
+): { svg: string; textOps: TextOp[] } {
+  const textOps: TextOp[] = [];
   const haLoghi = !!(loghi.aziendale || loghi.software || loghi.cliente);
   const offsetLoghi = haLoghi ? LOGO_STRIP_ALTEZZA : 0;
   const offsetLegenda = livelli.length > 0 ? LEGENDA_ALTEZZA + 10 : 0;
@@ -411,26 +457,19 @@ function renderSvg(
 
     const haElenco = node.bulletItems.length > 0;
     if (haElenco) {
-      const titolo = `<tspan x="${x + 10}" y="${y + BOX_PADDING_V}" font-weight="bold">${escapeXml(node.lines[0])}</tspan>`;
-      const voci = node.lines
-        .slice(1)
-        .map((riga, i) => `<tspan x="${x + 10}" y="${y + BOX_PADDING_V + LINE_HEIGHT * (i + 1) + 6}">${escapeXml(riga)}</tspan>`)
-        .join("");
-      return `
-        <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${stile.boxRadius}" fill="white" stroke="${fill}" stroke-width="1.6" filter="url(#ombra)" />
-        <text text-anchor="start" font-family="Arial, sans-serif" font-size="11" fill="#1B2631">${titolo}${voci}</text>
-      `;
+      textOps.push({ x: x + 10, y: y + BOX_PADDING_V, text: node.lines[0], anchor: "start", bold: true, fontSize: 11, color: "#1B2631" });
+      node.lines.slice(1).forEach((riga, i) => {
+        textOps.push({ x: x + 10, y: y + BOX_PADDING_V + LINE_HEIGHT * (i + 1) + 6, text: riga, anchor: "start", bold: false, fontSize: 11, color: "#1B2631" });
+      });
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${stile.boxRadius}" fill="white" stroke="${fill}" stroke-width="1.6" filter="url(#ombra)" />`;
     }
 
     const startY = y + h / 2 - ((node.lines.length - 1) * LINE_HEIGHT) / 2;
-    const tspans = node.lines
-      .map((riga, i) => `<tspan x="${x + w / 2}" y="${startY + i * LINE_HEIGHT}">${escapeXml(riga)}</tspan>`)
-      .join("");
+    node.lines.forEach((riga, i) => {
+      textOps.push({ x: x + w / 2, y: startY + i * LINE_HEIGHT, text: riga, anchor: "middle", bold: false, fontSize: 11.5, color: stile.fontColor });
+    });
 
-    return `
-      <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${stile.boxRadius}" fill="${fill}" stroke="${stile.boxStroke}" stroke-width="1.2" filter="url(#ombra)" />
-      <text text-anchor="middle" font-family="Arial, sans-serif" font-size="11.5" fill="${stile.fontColor}">${tspans}</text>
-    `;
+    return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${stile.boxRadius}" fill="${fill}" stroke="${stile.boxStroke}" stroke-width="1.2" filter="url(#ombra)" />`;
   });
 
   // Legenda su un'unica riga orizzontale in alto: più semplice da
@@ -442,9 +481,9 @@ function renderSvg(
     .map((l) => {
       const cx = legendaX + 6;
       const cerchio = `<circle cx="${cx}" cy="${legendaY}" r="6" fill="${colorePerLivello.get(l)}" />`;
-      const testo = `<text x="${cx + 12}" y="${legendaY + 4}" font-family="Arial, sans-serif" font-size="10.5" fill="#1B2631">${escapeXml(l)}</text>`;
+      textOps.push({ x: cx + 12, y: legendaY + 4, text: l, anchor: "start", bold: false, fontSize: 10.5, color: "#1B2631" });
       legendaX += 24 + l.length * 6.5 + 24;
-      return cerchio + testo;
+      return cerchio;
     })
     .join("");
 
@@ -472,17 +511,14 @@ function renderSvg(
     .map((testoBanner, i) => {
       const y = totalHeightAlbero + i * 42;
       const righeBanner = wrapText(testoBanner, Math.floor((width - 20) / 6), 2);
-      const testoTspan = righeBanner
-        .map((r, j) => `<tspan x="${totalWidth / 2}" y="${y + 20 + j * 14}">${escapeXml(r)}</tspan>`)
-        .join("");
-      return `
-        <rect x="${MARGIN}" y="${y + 4}" width="${width}" height="34" rx="6" fill="${stile.boxStroke}" filter="url(#ombra)" />
-        <text text-anchor="middle" font-family="Arial, sans-serif" font-size="10.5" fill="#FFFFFF">${testoTspan}</text>
-      `;
+      righeBanner.forEach((r, j) => {
+        textOps.push({ x: totalWidth / 2, y: y + 20 + j * 14, text: r, anchor: "middle", bold: false, fontSize: 10.5, color: "#FFFFFF" });
+      });
+      return `<rect x="${MARGIN}" y="${y + 4}" width="${width}" height="34" rx="6" fill="${stile.boxStroke}" filter="url(#ombra)" />`;
     })
     .join("");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${totalHeight}" viewBox="0 0 ${totalWidth} ${totalHeight}">
     <defs>
       <filter id="ombra" x="-20%" y="-20%" width="140%" height="140%">
         <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#000000" flood-opacity="0.22" />
@@ -498,6 +534,7 @@ function renderSvg(
     ${boxes.join("\n")}
     ${bannerSvg}
   </svg>`;
+  return { svg, textOps };
 }
 
 // Genera un organigramma come immagine PNG a partire da un elenco a
@@ -524,7 +561,7 @@ export async function generateOrgChartPng(
 
   const roots = parseHierarchy(testoSenzaBanner);
   const { allNodes, width, height, livelli } = layout(roots);
-  const svg = renderSvg(roots, allNodes, width, height, stile, livelli, banner, loghi);
+  const { svg, textOps } = renderSvg(roots, allNodes, width, height, stile, livelli, banner, loghi);
 
   const offsetLoghi = loghi.aziendale || loghi.software || loghi.cliente ? LOGO_STRIP_ALTEZZA : 0;
   const offsetLegenda = livelli.length > 0 ? LEGENDA_ALTEZZA + 10 : 0;
@@ -532,7 +569,24 @@ export async function generateOrgChartPng(
   const totalWidth = width + MARGIN * 2;
   const totalHeight = height + MARGIN * 2 + offsetLoghi + offsetLegenda + bannerHeight;
 
-  const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+  const basePng = await sharp(Buffer.from(svg)).png().toBuffer();
+
+  // Il testo è disegnato qui, non nell'SVG sopra (vedi il commento in testa
+  // al file sul perché) — un canvas trasparente delle stesse dimensioni
+  // dell'immagine, con ogni operazione di testo raccolta da renderSvg nelle
+  // stesse coordinate che avrebbe avuto come <text> SVG, poi sovrapposto
+  // all'immagine delle sole forme con un unico composite.
+  assicuraFontRegistrato();
+  const canvasTesto = createCanvas(Math.round(totalWidth), Math.round(totalHeight));
+  const ctx = canvasTesto.getContext("2d");
+  for (const op of textOps) {
+    ctx.font = `${op.bold ? "bold " : ""}${op.fontSize}px "${NOME_FONT_ORGANIGRAMMA}"`;
+    ctx.fillStyle = op.color;
+    ctx.textAlign = op.anchor === "middle" ? "center" : "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(op.text, op.x, op.y);
+  }
+  const buffer = textOps.length > 0 ? await sharp(basePng).composite([{ input: canvasTesto.toBuffer("image/png") }]).png().toBuffer() : basePng;
 
   // Riscala per l'inserimento nel documento Word (max ~600px di larghezza).
   const maxDisplayWidth = 600;
