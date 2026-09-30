@@ -10,7 +10,7 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
 import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
-import { calcolaBudgetSottoCriteri } from "@/lib/sotto-criteri";
+import { calcolaBudgetSottoCriteri, trovaBudgetSottoCriterio } from "@/lib/sotto-criteri";
 import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
 import { ripristinaDaTestoVerificato, riepilogoRipristino } from "@/lib/ripristino-verificato";
 import type { FunzioneCompressione } from "@/lib/compressione-mirata";
@@ -695,9 +695,32 @@ export async function correggiSezioneConBudget(params: {
       : null;
 
   if (budgetGara && dividiInBlocchi(contenuto).some((b) => b.chiave && budgetGara.sottoCriteri.some((s) => s.chiave.toLowerCase() === b.chiave!.toLowerCase()))) {
-    const ctx = contestoDaCriteri(budgetGara, criteriValutazione, { punteggioTecnico: punteggioTecnicoMax ?? undefined, formattazione, context, comprimi: params.comprimi });
-    const risultato = await comprimiSezionePerSottoCriteri(titoloSezione, contenuto, contenuto, ctx);
-    return { contenuto: risultato.contenuto, modalita: "sotto-criteri", pagineTargetCriterio: null, esiti: riepilogoEsiti(risultato.esiti) };
+    // NIENTE compressione dal vivo qui (bug reale osservato in produzione:
+    // 504 "Vercel Runtime Timeout" — vedi sotto). Il vincolo di budget è
+    // già nel prompt di generazione (formattaBudgetPerPrompt/
+    // formattaTettiPerStrumento in gara-chat-prompt.ts, "passalo alla
+    // generazione come vincolo" nell'istruzione originale): la correzione
+    // per sotto-criterio con le sue garanzie resta comunque applicata,
+    // solo non qui — è già la stessa identica funzione chiamata da
+    // componiRelazioneFinale/assicuraBudgetPagine, il punto corretto per
+    // farlo. Chiamarla anche qui, per OGNI singolo criterio generato in
+    // chat, impilava nella STESSA richiesta: generazione (adaptive
+    // thinking) + fino a 3 tentativi di compressione per ciascun
+    // sotto-criterio fuori budget + verifica dati (adaptive thinking) —
+    // abbastanza da superare il limite della funzione serverless e far
+    // fallire la generazione con un errore generico, non solo produrre
+    // un documento più lungo del previsto. Qui si segnala soltanto se
+    // il criterio supera ancora il proprio budget, senza correggerlo.
+    const pagineReali = stimaPagineContenuto(contenuto, formattazione);
+    const pagineTarget = dividiInBlocchi(contenuto)
+      .map((b) => (b.chiave ? trovaBudgetSottoCriterio(budgetGara, b.chiave) : undefined))
+      .reduce((tot, s) => tot + (s?.paginePreviste ?? 0), 0);
+    return {
+      contenuto,
+      modalita: "sotto-criteri",
+      pagineTargetCriterio: pagineReali > pagineTarget * 1.1 ? pagineTarget : null,
+      esiti: [],
+    };
   }
 
   const numeroSezione = estraiNumeroCriterioTopLevel(titoloSezione);

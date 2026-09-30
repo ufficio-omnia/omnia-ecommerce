@@ -555,18 +555,29 @@ export async function sendGaraMessage(
           // gli si chiede di aggiustare il tiro), quindi il feedback
           // esplicito resta comunque necessario come ultima rete.
           const pagineReali = stimaPagineContenuto(contenutoFinale, formattazioneCorrente);
+          // pagineTarget ha due significati diversi a seconda di
+          // correzione.modalita (vedi correggiSezioneConBudget): in
+          // "criterio" è il target verso cui il testo è STATO corretto dal
+          // vivo qui; in "sotto-criteri" non c'è più alcuna correzione dal
+          // vivo (bug reale osservato in produzione, 504 Vercel Runtime
+          // Timeout: generazione + fino a 3 tentativi di compressione per
+          // sotto-criterio + verifica dati, tutto nella stessa richiesta
+          // serverless, superava il limite di 60s) — è solo un avviso che
+          // il criterio resta oltre il totale previsto, corretto per
+          // davvero solo componendo la relazione finale.
           const infoTarget =
-            pagineTarget !== null && criterioCorrispondente
+            correzione.modalita === "criterio" && pagineTarget !== null && criterioCorrispondente
               ? ` Target per l'intero criterio ${criterioCorrispondente.numero} (${criterioCorrispondente.punti_max}/${gara.punteggio_tecnico_max} punti): ~${pagineTarget.toFixed(1)} pagine totali (eventualmente da dividere tra più bozze se il criterio ha più sub-criteri e generi in invii separati) — la lunghezza è già stata corretta automaticamente verso questo target.`
               : "";
-          const rifiutate = correzione.esiti.filter((e) => e.includes("rifiutato")).length;
           // Con i tetti per sotto-criterio la lunghezza è un MASSIMO: un
           // testo sotto il tetto è corretto, e non va proposto di ampliarlo
           // per raggiungere un numero di pagine (il vecchio invito ad
           // ampliare vale solo per il budget per criterio).
           const istruzioneLunghezza =
             correzione.modalita === "sotto-criteri"
-              ? ` La lunghezza è controllata per sotto-criterio, con un tetto in proporzione ai punti: i sotto-criteri oltre il tetto sono già stati ridotti automaticamente senza perdere ciò che il disciplinare richiede.${rifiutate > 0 ? ` In ${rifiutate} caso/i la riduzione non è stata possibile senza perdere contenuto richiesto e quel sotto-criterio resta più lungo del tetto: dillo al cliente in una frase.` : ""} Scrivere sotto il tetto è corretto: NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
+              ? pagineTarget !== null
+                ? ` La lunghezza per sotto-criterio è vincolata da un tetto in proporzione ai punti già dato al modello in fase di scrittura (non una correzione automatica qui): il criterio risulta comunque sopra il totale previsto (~${pagineTarget.toFixed(1)} pagine) — dillo chiaramente al cliente in una frase, la riduzione avviene in automatico solo componendo la relazione finale. NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
+                : ` La lunghezza è controllata per sotto-criterio, con un tetto in proporzione ai punti già rispettato in fase di scrittura: NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
               : ` Se questo numero è ANCORA sensibilmente sotto l'obiettivo (tuo o del cliente) nonostante la correzione automatica, dillo chiaramente nella risposta invece di dichiarare il target raggiunto, e proponi di ampliarla — non limitarti a descrivere quanto hai scritto "in astratto". Altrimenti scrivi solo 1-2 frasi su cosa contiene questa sezione.`;
 
           toolResults.push({
