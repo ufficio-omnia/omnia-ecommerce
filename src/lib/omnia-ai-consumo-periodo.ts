@@ -1,4 +1,4 @@
-import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, normalizzaPianoSlug, type PianoSlug } from "@/lib/omnia-ai-plans";
 import type { createClient } from "@/lib/supabase/server";
 
 export type SubscriptionAttivaRow = {
@@ -45,7 +45,12 @@ export async function getConsumoPeriodoCorrente(
 
   if (!subscription) return null;
 
-  const piano = PIANI[subscription.plan as PianoSlug];
+  // normalizzaPianoSlug tollera maiuscole/spazi in subscription.plan (bug
+  // osservato in pratica: un valore come "Enterprise" impostato da admin
+  // via un form di testo libero non veniva riconosciuto con un confronto
+  // diretto, mostrando "0/0 gare disponibili" a un abbonamento attivo).
+  const pianoSlug = normalizzaPianoSlug(subscription.plan);
+  const piano = pianoSlug ? PIANI[pianoSlug] : undefined;
   const gareIncluse = piano?.gareIncluse ?? 0;
   const inizioPeriodo = subscription.current_period_start ?? subscription.created_at;
 

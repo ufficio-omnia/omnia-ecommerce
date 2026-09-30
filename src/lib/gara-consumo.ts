@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 
 export type ConsumoResult = { error?: string };
@@ -96,9 +96,13 @@ export async function consumeGaraQuotaIfNeeded({
     (!subscription.current_period_end ||
       new Date(subscription.current_period_end).getTime() > Date.now());
 
-  const gareIncluse = subscriptionAttiva
-    ? (PIANI[subscription.plan as PianoSlug]?.gareIncluse ?? 0)
-    : 0;
+  // normalizzaPianoSlug tollera maiuscole/spazi in subscription.plan — bug
+  // osservato in pratica: un piano impostato da admin con un valore come
+  // "Enterprise" (form di testo libero, nessuna validazione) non veniva
+  // riconosciuto con un confronto diretto, azzerando le gare incluse di un
+  // abbonamento davvero attivo.
+  const pianoSlug = subscriptionAttiva ? normalizzaPianoSlug(subscription.plan) : null;
+  const gareIncluse = pianoSlug ? (PIANI[pianoSlug]?.gareIncluse ?? 0) : 0;
 
   if (subscriptionAttiva && gareIncluse > 0) {
     const inizioPeriodo = subscription.current_period_start ?? subscription.created_at;

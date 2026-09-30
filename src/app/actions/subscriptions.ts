@@ -17,7 +17,13 @@ export async function setSubscription(
   }
 
   const userId = String(formData.get("userId") ?? "");
-  const plan = String(formData.get("plan") ?? "").trim();
+  // Minuscolo: subscriptions.plan viene confrontato con gli slug di
+  // PIANI (src/lib/omnia-ai-plans.ts: "starter"/"professional"/
+  // "enterprise") in modo case-sensitive in più punti — un admin che
+  // scrive "Enterprise" da questo form di testo libero (bug osservato in
+  // pratica) otteneva un piano non riconosciuto e il cliente vedeva "0/0
+  // gare disponibili" nonostante l'abbonamento fosse attivo.
+  const plan = String(formData.get("plan") ?? "").trim().toLowerCase();
   const status = String(formData.get("status") ?? "");
   const periodEndRaw = String(formData.get("currentPeriodEnd") ?? "").trim();
 

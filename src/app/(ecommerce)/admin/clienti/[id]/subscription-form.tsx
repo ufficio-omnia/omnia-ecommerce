@@ -47,10 +47,13 @@ export default function SubscriptionForm({
           name="plan"
           type="text"
           required
-          placeholder="es. BASIC, MEDIUM, PREMIUM"
+          placeholder="starter, professional o enterprise"
           defaultValue={subscription?.plan ?? ""}
           className={inputClass}
         />
+        <p className="mt-1 text-xs text-ink/60">
+          Minuscolo, esattamente uno di questi (viene comunque salvato in minuscolo): starter, professional, enterprise.
+        </p>
       </div>
       <div>
         <label htmlFor="status" className={labelClass}>

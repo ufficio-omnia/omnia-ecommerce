@@ -63,6 +63,20 @@ export const PIANI: Record<PianoSlug, Piano> = {
 
 export const PIANI_ORDINE: PianoSlug[] = ["starter", "professional", "enterprise"];
 
+// Riconosce un valore grezzo (dal DB, da un form, da Stripe) come uno dei
+// piani noti, tollerando maiuscole/spazi — bug osservato in pratica:
+// subscriptions.plan impostato da admin tramite un form di testo libero
+// (nessuna validazione, solo un trim) come "Enterprise" invece di
+// "enterprise": il confronto/lookup con PIANI è case-sensitive, quindi il
+// piano non veniva riconosciuto e il cliente vedeva "0/0 gare disponibili"
+// nonostante l'abbonamento fosse attivo. Va usata ovunque si legga
+// subscription.plan per un confronto/lookup, non solo dove si è già
+// manifestato il problema.
+export function normalizzaPianoSlug(valore: string | null | undefined): PianoSlug | null {
+  const pulito = (valore ?? "").trim().toLowerCase();
+  return pulito in PIANI ? (pulito as PianoSlug) : null;
+}
+
 export type PacchettoCreditiSlug = "singola" | "pacchetto5";
 
 export type PacchettoCrediti = {
