@@ -48,6 +48,23 @@ export function mediaTypeImmagine(nomeFile: string): "image/png" | "image/jpeg" 
   return MEDIA_TYPE_PER_ESTENSIONE_IMMAGINE[estensione] ?? "image/png";
 }
 
+// Conversione Excel/CSV -> testo, condivisa con l'indicizzazione dei
+// documenti di gara (src/lib/gara-indexing.ts): stessa identica logica,
+// un'unica implementazione invece di due copie che rischierebbero di
+// disallinearsi.
+export function convertiTabellaATesto(nomeFile: string, buffer: Buffer): string {
+  const estensione = nomeFile.toLowerCase().split(".").pop();
+  if (estensione === "csv") {
+    return buffer.toString("utf-8");
+  }
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  return workbook.SheetNames.map((nomeFoglio) => {
+    const foglio = workbook.Sheets[nomeFoglio];
+    const csv = XLSX.utils.sheet_to_csv(foglio);
+    return `--- Foglio "${nomeFoglio}" ---\n${csv}`;
+  }).join("\n\n");
+}
+
 // Estrae il testo di un allegato Word o Excel/CSV caricato in chat, per
 // includerlo come contesto testuale nel messaggio — immagini e PDF non
 // passano da qui: vengono allegati come blocchi nativi (vedi
@@ -61,16 +78,7 @@ export async function estraiTestoAllegato(nomeFile: string, buffer: Buffer): Pro
   }
 
   if (categoria === "excel") {
-    const estensione = nomeFile.toLowerCase().split(".").pop();
-    if (estensione === "csv") {
-      return buffer.toString("utf-8");
-    }
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    return workbook.SheetNames.map((nomeFoglio) => {
-      const foglio = workbook.Sheets[nomeFoglio];
-      const csv = XLSX.utils.sheet_to_csv(foglio);
-      return `--- Foglio "${nomeFoglio}" ---\n${csv}`;
-    }).join("\n\n");
+    return convertiTabellaATesto(nomeFile, buffer);
   }
 
   throw new Error(`estraiTestoAllegato chiamato su una categoria non testuale: ${categoria}`);

@@ -225,7 +225,7 @@ export async function uploadGaraDocumento(
     }
   } else {
     warning =
-      "Documento caricato, ma il formato non è supportato per la chat AI (solo PDF e Word .docx). Se il file è un vecchio .doc, risalvalo come .docx da Word e ricaricalo.";
+      "Documento caricato, ma il formato non è supportato per la chat AI (formati supportati: PDF, Word .docx, Excel .xlsx/.xls, CSV, testo .txt, immagini PNG/JPG/GIF/WEBP). Se il file è un vecchio .doc, risalvalo come .docx da Word e ricaricalo.";
   }
 
   revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);

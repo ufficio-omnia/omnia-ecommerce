@@ -40,3 +40,6 @@ export const ISTRUZIONI_COMPRESSIONE = corpoPrompt("compressione-omnia.md");
 export const ISTRUZIONI_COMPRESSIONE_MIRATA = corpoPrompt("compressione-mirata-omnia.md");
 export const ISTRUZIONI_ESPANSIONE = corpoPrompt("espansione-omnia.md");
 export const ISTRUZIONI_VERIFICA_DATI = corpoPrompt("verifica-dati-omnia.md");
+// Trascrizione di un'immagine (documento di gara) in testo, prima
+// dell'indicizzazione — vedi src/lib/gara-indexing.ts.
+export const ISTRUZIONI_TRASCRIZIONE_IMMAGINE = corpoPrompt("trascrizione-immagine-omnia.md");
