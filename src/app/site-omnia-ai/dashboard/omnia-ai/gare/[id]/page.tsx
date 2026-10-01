@@ -11,6 +11,17 @@ import GaraTitolo from "./gara-titolo";
 import ExtractionSection, { type Estrazione } from "./extraction-section";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 
+// sendGaraMessage (chiamato da questa pagina) fa sempre almeno due chiamate
+// reali al modello in sequenza quando genera una bozza di sezione
+// (generazione con "thinking: adaptive" + verificaDatiAziendali, altrettanto
+// con ragionamento esteso): su un criterio grande, osservato in produzione
+// ~150s ciascuna, a sufficienza da superare da sole il tetto di 300s del
+// piano Hobby (504 "Vercel Runtime Timeout" reale, non teorico — due volte
+// nello stesso giorno). Col piano Pro il tetto generale disponibile è 800s;
+// Next.js applica il maxDuration della PAGINA anche ai Server Action
+// richiamati da essa (non serve impostarlo sul file dell'azione).
+export const maxDuration = 800;
+
 type Gara = {
   id: string;
   titolo: string;
