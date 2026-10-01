@@ -678,7 +678,6 @@ export async function correggiSezioneConBudget(params: {
   subCriteriTabellari: string[] | null;
   formattazione: { dimensioneCarattere?: number; interlinea?: number };
   context: { userId: string | null; garaId: string | null };
-  comprimi?: FunzioneCompressione;
 }): Promise<{
   contenuto: string;
   modalita: "sotto-criteri" | "criterio" | "nessuna";
@@ -687,7 +686,11 @@ export async function correggiSezioneConBudget(params: {
   pagineTargetCriterio: number | null;
   esiti: string[];
 }> {
-  const { titoloSezione, contenuto, criteriValutazione, criteriRiepilogo, punteggioTecnicoMax, limitePagineTotale, subCriteriTabellari, formattazione, context } = params;
+  // context non è più usato qui: nessuna delle due modalità fa più una
+  // chiamata al modello dal vivo (vedi sotto) — resta nel contratto della
+  // funzione perché i chiamanti lo passano sempre, non è un parametro da
+  // togliere solo perché momentaneamente inutilizzato.
+  const { titoloSezione, contenuto, criteriValutazione, criteriRiepilogo, punteggioTecnicoMax, limitePagineTotale, subCriteriTabellari, formattazione } = params;
 
   const budgetGara =
     limitePagineTotale && punteggioTecnicoMax && criteriRiepilogo?.length
@@ -732,11 +735,22 @@ export async function correggiSezioneConBudget(params: {
   if (!criterio || !limitePagineTotale || !punteggioTecnicoMax) {
     return { contenuto, modalita: "nessuna", pagineTargetCriterio: null, esiti: [] };
   }
+  // NIENTE correzione dal vivo qui — stesso bug reale osservato in
+  // produzione del ramo sotto-criteri qui sopra (504 Vercel Runtime
+  // Timeout), capitato anche su un criterio SENZA sotto-criteri
+  // tabellari: fino a 4 tentativi reali di espandi/condensa (ciascuno
+  // un'intera chiamata al modello, osservato ~100s l'uno) dentro la
+  // STESSA richiesta della generazione iniziale erano già sufficienti da
+  // soli a superare il limite della funzione serverless. Il target di
+  // pagine è già dato al modello nel prompt di generazione (vedi
+  // gara-chat-prompt.ts, elenco "circa X pagine" per criterio); la
+  // correzione vera, con le stesse garanzie (correggiSezioneVersoTarget),
+  // resta applicata solo in "componi relazione finale"
+  // (assicuraBudgetPagine), fuori dal percorso a caldo della chat.
   // Stesso margine di sicurezza usato per la ripartizione mostrata al
   // modello e per "componi relazione finale".
   const pagineTarget = (criterio.punti_max / punteggioTecnicoMax) * limitePagineConMargine(limitePagineTotale);
-  const corretto = await correggiSezioneVersoTarget(titoloSezione, contenuto, pagineTarget, formattazione, context, 4);
-  return { contenuto: corretto, modalita: "criterio", pagineTargetCriterio: pagineTarget, esiti: [] };
+  return { contenuto, modalita: "criterio", pagineTargetCriterio: pagineTarget, esiti: [] };
 }
 
 // Garantisce che il documento COMPOSTO (tutte le sezioni insieme, non una

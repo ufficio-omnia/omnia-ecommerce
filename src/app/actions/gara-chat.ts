@@ -567,7 +567,7 @@ export async function sendGaraMessage(
           // davvero solo componendo la relazione finale.
           const infoTarget =
             correzione.modalita === "criterio" && pagineTarget !== null && criterioCorrispondente
-              ? ` Target per l'intero criterio ${criterioCorrispondente.numero} (${criterioCorrispondente.punti_max}/${gara.punteggio_tecnico_max} punti): ~${pagineTarget.toFixed(1)} pagine totali (eventualmente da dividere tra più bozze se il criterio ha più sub-criteri e generi in invii separati) — la lunghezza è già stata corretta automaticamente verso questo target.`
+              ? ` Target per l'intero criterio ${criterioCorrispondente.numero} (${criterioCorrispondente.punti_max}/${gara.punteggio_tecnico_max} punti): ~${pagineTarget.toFixed(1)} pagine totali (eventualmente da dividere tra più bozze se il criterio ha più sub-criteri e generi in invii separati) — non ancora corretto automaticamente qui, solo componendo la relazione finale: confronta con le pagine reali qui sopra.`
               : "";
           // Con i tetti per sotto-criterio la lunghezza è un MASSIMO: un
           // testo sotto il tetto è corretto, e non va proposto di ampliarlo
@@ -578,7 +578,7 @@ export async function sendGaraMessage(
               ? pagineTarget !== null
                 ? ` La lunghezza per sotto-criterio è vincolata da un tetto in proporzione ai punti già dato al modello in fase di scrittura (non una correzione automatica qui): il criterio risulta comunque sopra il totale previsto (~${pagineTarget.toFixed(1)} pagine) — dillo chiaramente al cliente in una frase, la riduzione avviene in automatico solo componendo la relazione finale. NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
                 : ` La lunghezza è controllata per sotto-criterio, con un tetto in proporzione ai punti già rispettato in fase di scrittura: NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
-              : ` Se questo numero è ANCORA sensibilmente sotto l'obiettivo (tuo o del cliente) nonostante la correzione automatica, dillo chiaramente nella risposta invece di dichiarare il target raggiunto, e proponi di ampliarla — non limitarti a descrivere quanto hai scritto "in astratto". Altrimenti scrivi solo 1-2 frasi su cosa contiene questa sezione.`;
+              : ` Se questo numero è sensibilmente sotto l'obiettivo (tuo o del cliente), dillo chiaramente nella risposta invece di dichiarare il target raggiunto, e proponi di ampliarla — non limitarti a descrivere quanto hai scritto "in astratto". Se invece è sensibilmente sopra un target di pagine noto per questo criterio, ricorda che viene rifinito in automatico solo componendo la relazione finale: non serve intervenire ora, basta segnalarlo in una frase. Altrimenti scrivi solo 1-2 frasi su cosa contiene questa sezione.`;
 
           toolResults.push({
             type: "tool_result",
