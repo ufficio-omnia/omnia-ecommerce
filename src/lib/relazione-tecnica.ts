@@ -13,6 +13,8 @@ import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/veri
 import { calcolaBudgetSottoCriteri, trovaBudgetSottoCriterio } from "@/lib/sotto-criteri";
 import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
 import { ripristinaDaTestoVerificato, riepilogoRipristino } from "@/lib/ripristino-verificato";
+import { garantisciSenzaRiferimentiEconomici } from "@/lib/garanzia-senza-economico";
+import type { AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
 import type { FunzioneCompressione } from "@/lib/compressione-mirata";
 
 const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
@@ -191,7 +193,7 @@ export async function generaBozzaSezione(params: {
   font?: string;
   dimensioneCarattere?: number;
   interlinea?: number;
-}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] }> {
   const {
     garaId,
     userId,
@@ -221,13 +223,26 @@ export async function generaBozzaSezione(params: {
   // sede/personale rilevante per questa sezione, mentre datiGaraStrutturati
   // arriva sempre completo dall'estrazione, indipendentemente da cosa la
   // ricerca ha trovato.
-  const contenuto = await verificaDatiAziendali(
+  const contenutoVerificato = await verificaDatiAziendali(
     contenutoGrezzo,
     companyProfile,
     contestoDocumenti,
     datiGaraStrutturati,
     { userId, garaId },
   );
+
+  // R8 (nessun riferimento all'offerta economica) controllata in CODICE su
+  // ogni bozza, dopo la verifica dati (che riscrive il testo con un modello)
+  // e prima di salvarla e di costruire il Word: una formula come "senza oneri
+  // aggiuntivi" in un'offerta tecnica può costare l'esclusione. Le righe
+  // interessate vengono riformulate; se dopo il secondo tentativo la formula
+  // c'è ancora, il documento esce comunque ma con l'avviso che la UI mostra
+  // accanto al pulsante di scaricamento — vedi garanzia-senza-economico.ts.
+  const garanziaEconomica = await garantisciSenzaRiferimentiEconomici(contenutoVerificato, {
+    titoloSezione,
+    context: { userId, garaId },
+  });
+  const contenuto = garanziaEconomica.testo;
 
   const { data: ultima } = await supabase
     .from("gara_relazione_sezioni")
@@ -280,7 +295,7 @@ export async function generaBozzaSezione(params: {
 
   const pagineStimate = stimaPagineContenuto(contenuto, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
 
-  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate };
+  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi };
 }
 
 // Rimuove un eventuale prefisso numerico/alfabetico iniziale del titolo
@@ -1128,7 +1143,7 @@ async function assicuraBudgetPerSottoCriteri(params: {
 export async function componiRelazioneFinale(params: {
   garaId: string;
   userId: string;
-}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number } | { error: string }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] } | { error: string }> {
   const { garaId, userId } = params;
 
   const supabase = await createClient();
@@ -1158,6 +1173,10 @@ export async function componiRelazioneFinale(params: {
     .maybeSingle<{ ragione_sociale: string | null }>();
 
   const sezioniFinali = raggruppaEDeduplicaSezioni(sezioni);
+  // Ultimo "ordine" già usato: ogni riga nuova salvata qui sotto (compressione,
+  // garanzia R8) prende il successivo e, essendo la più recente del suo
+  // criterio, sostituisce la precedente nelle composizioni future.
+  let ordineMassimo = Math.max(...sezioni.map((s) => s.ordine));
 
   // Se il criterio di questa sezione ha ricevuto meno pagine di quanto il
   // suo punteggio giustificherebbe (vedi calcolaRipartizionePagine in
@@ -1196,7 +1215,6 @@ export async function componiRelazioneFinale(params: {
     garaBudget.criteri_riepilogo?.length
   ) {
     const formattazioneGaraCorrente = { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea };
-    const ordineBase = Math.max(...sezioni.map((s) => s.ordine));
 
     const { sezioni: sezioniCorrette, righeDaSalvare, esitiCompressione } = await assicuraBudgetPagine(
       sezioniFinali,
@@ -1223,14 +1241,49 @@ export async function componiRelazioneFinale(params: {
           user_id: userId,
           titolo_sezione: r.titolo_sezione,
           contenuto: r.contenuto,
-          ordine: ordineBase + 1 + i,
+          ordine: ordineMassimo + 1 + i,
         })),
       );
+      ordineMassimo += righeDaSalvare.length;
     }
 
     for (let i = 0; i < sezioniFinali.length; i++) {
       sezioniFinali[i] = { ...sezioniFinali[i], contenuto: sezioniCorrette[i].contenuto };
     }
+  }
+
+  // R8 sul testo FINALE, sezione per sezione, prima di comporre il documento:
+  // copre le bozze salvate prima che esistesse la garanzia in
+  // generaBozzaSezione e ciò che compressione/espansione (modelli anche loro)
+  // potrebbero aver riscritto. Le sezioni riformulate vengono salvate come
+  // righe più recenti, così la correzione resta per le composizioni
+  // successive. Gli avvisi di ciò che non si è riusciti a togliere arrivano
+  // fino alla UI.
+  const avvisiEconomici: AvvisoRiferimentoEconomico[] = [];
+  const garanzie = await Promise.all(
+    sezioniFinali.map((s) =>
+      garantisciSenzaRiferimentiEconomici(s.contenuto, { titoloSezione: s.titolo_sezione, context: { userId, garaId } }),
+    ),
+  );
+  const righeRiformulate: { titolo_sezione: string; contenuto: string }[] = [];
+  garanzie.forEach((g, i) => {
+    avvisiEconomici.push(...g.avvisi);
+    if (g.testo !== sezioniFinali[i].contenuto) {
+      sezioniFinali[i] = { ...sezioniFinali[i], contenuto: g.testo };
+      righeRiformulate.push({ titolo_sezione: sezioniFinali[i].titolo_sezione, contenuto: g.testo });
+    }
+  });
+  if (righeRiformulate.length > 0) {
+    await supabase.from("gara_relazione_sezioni").insert(
+      righeRiformulate.map((r, i) => ({
+        gara_id: garaId,
+        user_id: userId,
+        titolo_sezione: r.titolo_sezione,
+        contenuto: r.contenuto,
+        ordine: ordineMassimo + 1 + i,
+      })),
+    );
+    ordineMassimo += righeRiformulate.length;
   }
 
   const contenutoFinale = sezioniFinali
@@ -1260,5 +1313,5 @@ export async function componiRelazioneFinale(params: {
 
   const pagineStimate = stimaPagineContenuto(contenutoFinale, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
 
-  return { ...(await caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer)), pagineStimate };
+  return { ...(await caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer)), pagineStimate, avvisiEconomici };
 }

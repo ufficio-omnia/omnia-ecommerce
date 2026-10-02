@@ -39,6 +39,8 @@ import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
 import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
 import { analizzaColoriSorgente } from "../src/lib/colori-semantici";
+import { garantisciSenzaRiferimentiEconomici } from "../src/lib/garanzia-senza-economico";
+import { descriviAvvisoEconomico, trovaRiferimentiEconomici, type AvvisoRiferimentoEconomico } from "../src/lib/riferimenti-economici";
 import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
@@ -381,6 +383,10 @@ function anonimizza(
   const datiGaraStrutturati = formattaDatiGaraStrutturati(gara);
 
   const sezioni: { titolo_sezione: string; contenuto: string }[] = [];
+  // Garanzia R8 (stessa funzione di produzione, chiamata nello stesso punto:
+  // dopo la verifica dati di ogni bozza e poi sul testo finale composto).
+  const avvisiEconomiciResidui: AvvisoRiferimentoEconomico[] = [];
+  const interventiEconomici: string[] = [];
 
   for (const criterio of gara.criteri_riepilogo) {
     const messaggioUtente = `Sviluppa il criterio ${criterio.numero}. ${criterio.titolo}.`;
@@ -423,7 +429,16 @@ function anonimizza(
     const conMarcatori = applicaMarcatoriTabellari(senzaPlaceholder, gara.sub_criteri_tabellari ?? null);
     const verificato = await verificaDatiAziendali(conMarcatori, companyContesto, contestoDocumenti, datiGaraStrutturati, { userId: null, garaId: GARA });
 
-    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: verificato });
+    // Cosa il modello ha scritto PRIMA della garanzia R8, per riferire quanto
+    // ha dovuto intervenire (non per giudicare: il risultato finale conta).
+    const formuleGrezze = trovaRiferimentiEconomici(verificato).map((r) => r.formula);
+    const garanzia = await garantisciSenzaRiferimentiEconomici(verificato, { titoloSezione: input.titolo_sezione, context: { userId: null, garaId: GARA } });
+    if (formuleGrezze.length > 0) {
+      interventiEconomici.push(`"${input.titolo_sezione}": ${formuleGrezze.length} formula/e (${[...new Set(formuleGrezze)].join(", ")}) → ${garanzia.righeRiformulate} riga/righe riformulate in ${garanzia.chiamate} chiamata/e, ${garanzia.avvisi.length} residua/e`);
+    }
+    avvisiEconomiciResidui.push(...garanzia.avvisi);
+
+    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: garanzia.testo });
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
@@ -445,6 +460,16 @@ function anonimizza(
     formattazione,
     { userId: null, garaId: GARA },
   );
+  // Garanzia R8 sul testo finale composto, come in componiRelazioneFinale.
+  for (let i = 0; i < sezioniCorrette.length; i++) {
+    const formuleGrezze = trovaRiferimentiEconomici(sezioniCorrette[i].contenuto).map((r) => r.formula);
+    const garanzia = await garantisciSenzaRiferimentiEconomici(sezioniCorrette[i].contenuto, { titoloSezione: sezioniCorrette[i].titolo_sezione, context: { userId: null, garaId: GARA } });
+    if (formuleGrezze.length > 0) {
+      interventiEconomici.push(`composizione "${sezioniCorrette[i].titolo_sezione}": ${formuleGrezze.length} formula/e → ${garanzia.righeRiformulate} riga/righe riformulate, ${garanzia.avvisi.length} residua/e`);
+    }
+    sezioniCorrette[i] = { ...sezioniCorrette[i], contenuto: garanzia.testo };
+    avvisiEconomiciResidui.push(...garanzia.avvisi);
+  }
   console.log(
     sezioniTagliateDecisamente.length > 0
       ? `Taglio deciso applicato a: ${sezioniTagliateDecisamente.join("; ")}`
@@ -550,6 +575,9 @@ function anonimizza(
     ...erroriSegnaposto.map((e) => `[Segnaposto su dati di gara] ${e}`),
     ...erroriOrganico.map((e) => `[Coerenza organico] ${e}`),
     ...erroriTagli.map((e) => `[Tagli] ${e}`),
+    // Un riferimento economico rimasto dopo i due tentativi significa che il
+    // cliente vedrebbe l'avviso in rosso: non è un livello 2 pulito.
+    ...avvisiEconomiciResidui.map((a) => `[R8 offerta economica] riferimento non eliminato dalla garanzia: ${descriviAvvisoEconomico(a)}`),
     ...erroriAudit.map((e) => `[Audit dati d'impresa] ${e}`),
   ];
 
@@ -564,6 +592,9 @@ function anonimizza(
   // comunque corretto perché il renderer applica le stesse regole (e i
   // controlli strutturali sopra lo verificano), ma qui si vede se il modello
   // le ha rispettate o se è il renderer a correggerlo — da giudicare a mano.
+  console.log(`
+Garanzia R8 (riferimenti all'offerta economica): ${interventiEconomici.length === 0 ? "il modello non ha scritto nessuna formula vietata, nessun intervento" : ""}`);
+  for (const i of interventiEconomici) console.log(` - ${i}`);
   const coloriSorgente = analizzaColoriSorgente(markdown);
   console.log(`\nColori semantici dichiarati dal modello: ${[...coloriSorgente.tipiDichiarati].join(", ") || "nessuno"}`);
   if (coloriSorgente.tagColore.length > 0) {

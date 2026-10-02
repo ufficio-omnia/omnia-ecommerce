@@ -7,6 +7,7 @@
 // senso come riferimento del livello 1.
 import { buildDocxBuffer, rimuoviTitoloRidondante } from "../../src/lib/docx-generator";
 import { stimaPagineContenuto } from "../../src/lib/stima-pagine";
+import { estrattoIntorno, trovaRigheConRiferimentiEconomici, trovaRiferimentiEconomici } from "../../src/lib/riferimenti-economici";
 import { estraiTestiPerNodo, estraiTestiVisibili } from "./xml-word";
 import { verificaColoriDocumento } from "./controlli-colori";
 import {
@@ -63,16 +64,6 @@ export function trovaMarcatoriResidui(nodi: string[]): string[] {
   }
   return errori;
 }
-
-const FRASI_ECONOMICHE_VIETATE = [
-  "a costo zero",
-  "senza oneri aggiuntivi",
-  "compreso nel prezzo",
-  "incluso nel prezzo",
-  "gratuitamente",
-  "ribasso",
-  "€",
-];
 
 function contaOccorrenze(testo: string, pattern: RegExp): number {
   return (testo.match(new RegExp(pattern, "g")) || []).length;
@@ -215,11 +206,20 @@ export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Pro
   }
   const numeroImmagini = figure.length;
 
-  // 7. Nessuna frase sull'offerta economica (R8), solo nel corpo.
-  for (const frase of FRASI_ECONOMICHE_VIETATE) {
-    if (testoCorpo.toLowerCase().includes(frase.toLowerCase())) {
-      errori.push(`Offerta economica: frase vietata "${frase}" trovata nel corpo del documento (R8).`);
-    }
+  // 7. Nessun riferimento all'offerta economica (R8), solo nel corpo. Lo
+  // stesso rilevatore che in produzione ripulisce ogni generazione (vedi
+  // riferimenti-economici.ts): un'unica definizione dell'elenco, anche per le
+  // formulazioni indirette. Controllato sul testo SORGENTE di ogni riga e sul
+  // corpo del documento reso: un riferimento non deve esserci in nessuno dei due.
+  const righeEconomiche = new Set<string>();
+  for (const r of trovaRigheConRiferimentiEconomici(contenutoMarkdown)) {
+    for (const rif of r.riferimenti) righeEconomiche.add(`"${rif.formula}" in «${estrattoIntorno(r.riga, rif, 60)}»`);
+  }
+  for (const rif of trovaRiferimentiEconomici(testoCorpo)) {
+    righeEconomiche.add(`"${rif.formula}" nel corpo del documento`);
+  }
+  for (const voce of righeEconomiche) {
+    errori.push(`Offerta economica: riferimento vietato ${voce} (R8).`);
   }
 
   // 8. Pagine entro il limite del disciplinare.

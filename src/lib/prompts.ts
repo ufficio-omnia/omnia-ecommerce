@@ -55,6 +55,10 @@ export const ISTRUZIONI_COMPRESSIONE = corpoPrompt("compressione-omnia.md");
 export const ISTRUZIONI_COMPRESSIONE_MIRATA = corpoPrompt("compressione-mirata-omnia.md");
 export const ISTRUZIONI_ESPANSIONE = corpoPrompt("espansione-omnia.md");
 export const ISTRUZIONI_VERIFICA_DATI = corpoPrompt("verifica-dati-omnia.md");
+// Riformulazione di righe che rimandano all'offerta economica (R8) —
+// vedi src/lib/garanzia-senza-economico.ts. Segnaposto: {TITOLO_SEZIONE},
+// {CORREZIONI}.
+export const ISTRUZIONI_RIFORMULAZIONE_SENZA_ECONOMICO = corpoPrompt("riformulazione-senza-economico-omnia.md");
 // Trascrizione di un'immagine (documento di gara) in testo, prima
 // dell'indicizzazione — vedi src/lib/gara-indexing.ts.
 export const ISTRUZIONI_TRASCRIZIONE_IMMAGINE = corpoPrompt("trascrizione-immagine-omnia.md");

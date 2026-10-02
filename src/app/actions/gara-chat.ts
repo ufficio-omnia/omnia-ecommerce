@@ -16,6 +16,7 @@ import {
   MAX_ALLEGATI_PER_MESSAGGIO,
 } from "@/lib/attachment-text";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { descriviAvvisoEconomico, testoAvvisoEconomico, type AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
 import {
   generaBozzaSezione,
   componiRelazioneFinale,
@@ -220,7 +221,7 @@ export async function sendGaraMessage(
   }
 
   let rispostaFinale = "";
-  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number } | null = null;
+  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] } | null = null;
 
   try {
     const queryEmbedding = await embedQuery(messaggio, {
@@ -448,7 +449,7 @@ export async function sendGaraMessage(
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: toolUse.id,
-                content: `Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
+                content: `${testoAvvisoEconomico(risultato.avvisiEconomici)}Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
               });
             }
           } catch (err) {
@@ -529,7 +530,7 @@ export async function sendGaraMessage(
             company?.ragione_sociale,
           );
 
-          const { nomeFile, filePath, pagineStimate } = await generaBozzaSezione({
+          const { nomeFile, filePath, pagineStimate, avvisiEconomici } = await generaBozzaSezione({
             garaId,
             userId: user.id,
             titoloSezione: input.titolo_sezione,
@@ -542,7 +543,7 @@ export async function sendGaraMessage(
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,
           });
-          fileGenerato = { nomeFile, filePath, pagineStimate };
+          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici };
           strumentiDisponibili = [];
           console.log(
             `sendGaraMessage: bozza generata "${nomeFile}" (${filePath}) per gara ${garaId}, sezione "${input.titolo_sezione}"`,
@@ -583,7 +584,7 @@ export async function sendGaraMessage(
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
+            content: `${testoAvvisoEconomico(avvisiEconomici)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);
@@ -650,7 +651,7 @@ export async function sendGaraMessage(
     }`,
   );
 
-  const { error: insertAiError } = await supabase.from("gara_messaggi").insert({
+  const rigaMessaggio = {
     gara_id: garaId,
     user_id: user.id,
     ruolo: "assistente",
@@ -658,7 +659,28 @@ export async function sendGaraMessage(
     file_nome: fileGenerato?.nomeFile ?? null,
     file_path: fileGenerato?.filePath ?? null,
     pagine_stimate: fileGenerato?.pagineStimate ?? null,
-  });
+  };
+  // Riferimenti all'offerta economica rimasti nel documento (R8): salvati
+  // con il messaggio perché la UI li mostri in rosso accanto al pulsante di
+  // scaricamento. La chiave si aggiunge SOLO quando ci sono avvisi: senza,
+  // l'inserimento resta identico a prima anche se la colonna non fosse
+  // ancora stata creata (migrazione 0070).
+  const avvisiEconomici = fileGenerato?.avvisiEconomici ?? [];
+  let { error: insertAiError } = await supabase
+    .from("gara_messaggi")
+    .insert((avvisiEconomici.length > 0 ? { ...rigaMessaggio, avvisi_economici: avvisiEconomici } : rigaMessaggio) as typeof rigaMessaggio);
+
+  // Mai consegnare in silenzio: se la colonna manca (migrazione non ancora
+  // eseguita) l'avviso viaggia comunque nel testo del messaggio.
+  if (insertAiError && avvisiEconomici.length > 0 && /avvisi_economici/.test(insertAiError.message ?? "")) {
+    console.error("Colonna gara_messaggi.avvisi_economici assente (migrazione 0070 non eseguita): avviso nel testo del messaggio.", insertAiError);
+    ({ error: insertAiError } = await supabase.from("gara_messaggi").insert({
+      ...rigaMessaggio,
+      contenuto: `${contenutoFinale}
+
+**⚠ Attenzione — riferimento all'offerta economica nel documento (causa di esclusione dalla gara), da togliere prima di consegnare:** ${avvisiEconomici.map(descriviAvvisoEconomico).join(" · ")}`,
+    }));
+  }
 
   if (insertAiError) {
     console.error("Errore salvataggio risposta AI:", insertAiError);

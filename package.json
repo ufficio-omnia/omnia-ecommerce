@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verifica:livello1": "tsx scripts/verifica-controlli.ts && tsx scripts/verifica-colori.ts && tsx scripts/verifica-budget.ts && tsx scripts/verifica-livello1.ts && tsx scripts/verifica-compressione.ts",
+    "verifica:livello1": "tsx scripts/verifica-controlli.ts && tsx scripts/verifica-colori.ts && tsx scripts/verifica-economico.ts && tsx scripts/verifica-budget.ts && tsx scripts/verifica-livello1.ts && tsx scripts/verifica-compressione.ts",
     "verifica:livello2": "tsx scripts/verifica-livello2.ts"
   },
   "dependencies": {

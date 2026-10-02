@@ -87,7 +87,7 @@ export default async function GaraPage({
     notFound();
   }
 
-  const [{ data: documenti }, { data: messaggiRaw }, { data: chunksRaw }, { data: allegatiRaw }] =
+  const [{ data: documenti }, { data: messaggiConAvvisi, error: erroreMessaggi }, { data: chunksRaw }, { data: allegatiRaw }] =
     await Promise.all([
       supabase
         .from("gara_documenti")
@@ -97,7 +97,7 @@ export default async function GaraPage({
         .returns<Documento[]>(),
       supabase
         .from("gara_messaggi")
-        .select("id, ruolo, contenuto, created_at, file_nome, file_path, pagine_stimate")
+        .select("id, ruolo, contenuto, created_at, file_nome, file_path, pagine_stimate, avvisi_economici")
         .eq("gara_id", id)
         .order("created_at", { ascending: true })
         .returns<Omit<GaraMessaggio, "allegati">[]>(),
@@ -113,6 +113,20 @@ export default async function GaraPage({
         .order("created_at", { ascending: true })
         .returns<{ id: string; messaggio_id: string; nome_file: string }[]>(),
     ]);
+
+  // Colonna avvisi_economici non ancora creata (migrazione 0070): senza
+  // questo ripiego la query intera fallirebbe e la chat apparirebbe vuota.
+  let messaggiRaw = messaggiConAvvisi;
+  if (erroreMessaggi) {
+    console.error("Lettura messaggi con avvisi_economici fallita, ripiego senza la colonna:", erroreMessaggi);
+    const { data } = await supabase
+      .from("gara_messaggi")
+      .select("id, ruolo, contenuto, created_at, file_nome, file_path, pagine_stimate")
+      .eq("gara_id", id)
+      .order("created_at", { ascending: true })
+      .returns<Omit<GaraMessaggio, "allegati" | "avvisi_economici">[]>();
+    messaggiRaw = (data ?? []).map((m) => ({ ...m, avvisi_economici: null }));
+  }
 
   const allegatiPerMessaggio = new Map<string, { id: string; nome_file: string }[]>();
   for (const a of allegatiRaw ?? []) {

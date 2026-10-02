@@ -1376,6 +1376,35 @@ li {
   color: var(--rosso);
   white-space: normal;
 }
+/* Riferimento all'offerta economica (R8) rimasto nel documento: dentro la
+   stessa scheda del pulsante di scaricamento, a tutta larghezza, in rosso e
+   sempre visibile — in un'offerta tecnica è causa di esclusione. */
+.omnia-avviso-economico {
+  flex-basis: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--rosso);
+  border-radius: 10px;
+  background: rgba(232, 93, 61, 0.14);
+  color: var(--rosso);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.omnia-avviso-economico strong {
+  display: block;
+  font-weight: 700;
+}
+.omnia-avviso-economico ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--testo);
+}
+.omnia-avviso-economico .dove {
+  font-weight: 600;
+}
+.omnia-avviso-economico .formula {
+  color: var(--rosso);
+  font-weight: 600;
+}
 
 /* Allegati caricati in chat, pillole piccole */
 .omnia-allegati-pillole {
