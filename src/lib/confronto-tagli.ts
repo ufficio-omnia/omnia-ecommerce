@@ -320,9 +320,20 @@ const STOPWORD = new Set([
 // a radice di 6 caratteri per tollerare le flessioni.
 export function estraiRequisitiDaCriteri(criteriValutazione: string): RequisitoDisciplinare[] {
   const requisiti: RequisitoDisciplinare[] = [];
+  const ultimoIndice = new Map<string, number>();
   for (const riga of criteriValutazione.split("\n")) {
-    const m = riga.match(/^\s*(\d+\.\d+)\s+(.+?)\s*-\s*\d+\s*punt/i);
+    // Con o senza punti propri: "- 10 punti", "- max 6 punti", oppure solo
+    // "1.1 Modalità di organizzazione" (punti solo del criterio). Senza
+    // punti il titolo si ferma al primo trattino o parentesi (il resto è
+    // descrizione, non il nome del sotto-criterio), e la riga è accettata
+    // solo se prosegue la numerazione del criterio (N.1, N.2, ...): un
+    // "2.5 volte il valore" a inizio riga non è un sotto-criterio.
+    const conPunti = riga.match(/^\s*(\d+\.\d+)\s+(.+?)\s*-\s*(?:max(?:imo)?\.?\s+|fino\s+a\s+(?:un\s+massimo\s+di\s+)?)?\d+\s*punt/i);
+    const m = conPunti ?? riga.match(/^\s*(\d+\.\d+)[.)]?\s+(?!punt[oi]\b)([A-Za-zÀ-ÿ][^(]*?)\s*(?:[(]|\s-\s|$)/);
     if (!m) continue;
+    const [numeroCriterio, indice] = m[1].split(".");
+    if (!conPunti && Number(indice) !== (ultimoIndice.get(numeroCriterio) ?? 0) + 1) continue;
+    ultimoIndice.set(numeroCriterio, Number(indice));
     const parole = m[2]
       .toLowerCase()
       .replace(/[()/,;:]/g, " ")
