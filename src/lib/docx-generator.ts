@@ -22,6 +22,21 @@ import {
 import { generateOrgChartPng, type LoghiOrganigramma } from "@/lib/org-chart";
 import type { StileOrganigramma } from "@/lib/org-chart-style";
 import { renderIconePng, NOMI_ICONE } from "@/lib/icons";
+import {
+  COLORE_PIENO,
+  COLORE_PRIMARIO,
+  COLORE_SECONDARIO,
+  COLORE_SEGNALE_TABELLARE,
+  ETICHETTA_LEGENDA,
+  TIPI_SEMANTICI,
+  analizzaEvidenziazioniTabella,
+  riconosciTipoSemantico,
+  schiarisciColore,
+  tintaEvidenziazione,
+  tintaRiquadro,
+  togliMarcatoriEvidenziazione,
+  type TipoSemantico,
+} from "@/lib/colori-semantici";
 
 export type DocxFormatting = {
   font?: string;
@@ -45,29 +60,12 @@ export type DatiIntestazione = {
   concorrente?: string | null;
 };
 
-// Azzurro chiaro, colore usato per titoli e intestazioni di tabella nei
-// documenti Word generati (richiesto esplicitamente al posto del verde
-// di brand OMNIA usato nell'interfaccia della piattaforma). È il colore
-// "primario" del documento: bande dei titoli di criterio, filetto
-// dell'intestazione di pagina, intestazioni di tabella.
-const COLORE_BRAND = "2E86C1";
-
-// Colore "secondario": filetto sotto i titoli di sotto-criterio. Un blu
-// più profondo del primario, così il filetto si distingue dal testo
-// azzurro del titolo senza introdurre un terzo colore di famiglia diversa.
-const COLORE_SECONDARIO = "1B4F72";
-
-// Varianti di colore per intestazioni tabella, scelte dall'AI in base al
-// contenuto (es. rossa per obblighi normativi, verde per aspetti
-// ambientali) invece di un unico colore fisso per ogni tabella — come
-// nei progetti di riferimento, che alternano colori diversi per dare
-// significato visivo a tabelle di natura diversa.
-const COLORI_TABELLA: Record<string, string> = {
-  BLU: COLORE_BRAND,
-  ROSSA: "C0392B",
-  VERDE: "27974C",
-  ARANCIONE: "D68910",
-};
+// Colore "primario" del documento (azzurro, richiesto esplicitamente al
+// posto del verde di brand OMNIA usato nell'interfaccia della piattaforma):
+// bande dei titoli di criterio, filetto dell'intestazione di pagina,
+// intestazioni di tabella. Palette, tipi e tinte vivono in
+// colori-semantici.ts: qui si usano soltanto.
+const COLORE_BRAND = COLORE_PRIMARIO;
 
 // Dicitura fissa usata per i sub-criteri "tabellari" (il disciplinare
 // chiede solo di compilare una griglia/checklist, non una descrizione):
@@ -88,19 +86,6 @@ function eMarcatoreTabellare(testo: string): boolean {
       .toUpperCase() === MARCATORE_TABELLARE
   );
 }
-// Schiarisce un colore esadecimale (senza #) verso il bianco di una
-// frazione (0-1) — usato per righe alternate e bordi di tabella intonati
-// al colore dell'intestazione invece di un grigio neutro fisso: nei
-// progetti di riferimento i bordi sono sottilissimi e la riga alternata
-// ha una tinta azzurrina coerente col tema della tabella, non grigia.
-function schiarisciColore(hex: string, frazione: number): string {
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
-  const mix = (canale: number) => Math.round(canale + (255 - canale) * frazione);
-  return [mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, "0")).join("");
-}
-
 const TABLE_SEPARATOR_ROW = /^\|?[\s:|-]+\|?$/;
 // Riconosce QUALSIASI parola dopo "[TABELLA:", non solo le 4 valide: se il
 // tag non viene riconosciuto come tale (es. l'AI scrive un colore diverso
@@ -113,63 +98,64 @@ const TABLE_SEPARATOR_ROW = /^\|?[\s:|-]+\|?$/;
 // Il "(\*\*)?...(\*\*)?" tollera che l'AI avvolga anche questo tag nel
 // grassetto (stesso errore già visto su "[C]"/"[G]"/icone) — qui non
 // serve ricomporre nulla dopo, il tag va comunque tolto per intero.
-const TABELLA_COLORE_REGEX = /^(\*\*)?\[TABELLA:([A-ZÀ-Ý]+)\](\*\*)?$/i;
-// Varianti/refusi osservati in pratica, oltre alle 4 parole valide in
-// COLORI_TABELLA (che restano il riconoscimento primario).
-const ALIAS_COLORE_TABELLA: Record<string, string> = {
-  ARANGE: "ARANCIONE",
-  ORANGE: "ARANCIONE",
-  ARANCIO: "ARANCIONE",
-  RED: "ROSSA",
-  ROSSO: "ROSSA",
-  GREEN: "VERDE",
-  BLUE: "BLU",
-  BLU_: "BLU",
-};
-function risolviColoreTabella(parola: string): string {
-  const chiave = parola.toUpperCase();
-  return COLORI_TABELLA[chiave] ?? COLORI_TABELLA[ALIAS_COLORE_TABELLA[chiave] ?? ""] ?? COLORE_BRAND;
+const TABELLA_COLORE_REGEX = /^(\*\*)?\[TABELLA:([A-ZÀ-Ý_]+)\](\*\*)?$/i;
+
+// Tema dichiarato da "[TABELLA:TIPO]": l'intestazione è SEMPRE nel colore
+// primario, salvo che l'intera tabella tratti un tema ambientale
+// (AMBIENTE → verde) o di sicurezza (SICUREZZA → arancio). Qualunque altra
+// parola — CAPITOLATO (il primario è già il colore del capitolato), una
+// parola di colore delle versioni precedenti (BLU, ROSSA, VERDE,
+// ARANCIONE...), un refuso — lascia il primario: il colore non lo sceglie
+// il modello, e le tabelle verdi/arancio/rosse "senza criterio" delle
+// generazioni precedenti non si riproducono nemmeno rigenerando il Word da
+// testo già salvato.
+function risolviTemaTabella(parola: string): TipoSemantico | null {
+  const tipo = riconosciTipoSemantico(parola);
+  return tipo === "AMBIENTE" || tipo === "SICUREZZA" ? tipo : null;
 }
 
-// Trova il tag "[TABELLA:colore]" e l'inizio vero della tabella (la
+// Trova il tag "[TABELLA:tipo]" e l'inizio vero della tabella (la
 // prima riga che comincia con "|") dentro le righe di un blocco,
 // tollerando righe "decorative" scritte per errore tra il tag e/o prima
 // di esso (es. un "[ICONA:...]" isolato senza etichetta) — vedi il
 // commento al punto di chiamata per il bug reale che ha reso necessario
 // questo controllo invece del semplice "guarda solo la prima riga".
-function estraiTagColoreTabella(righeIn: string[]): { colore: string | null; righe: string[] } {
+function estraiTagTemaTabella(righeIn: string[]): { tema: TipoSemantico | null; righe: string[] } {
   const indiceInizioTabella = righeIn.findIndex((r) => r.startsWith("|"));
-  let colore: string | null = null;
+  let tema: TipoSemantico | null = null;
   let righe = righeIn;
 
   if (indiceInizioTabella === -1) {
     const match = righe[0]?.match(TABELLA_COLORE_REGEX);
-    colore = match ? risolviColoreTabella(match[2]) : null;
+    tema = match ? risolviTemaTabella(match[2]) : null;
     righe = match ? righe.slice(1) : righe;
   } else {
-    const rigaColore = righe.slice(0, indiceInizioTabella).find((r) => TABELLA_COLORE_REGEX.test(r));
-    const match = rigaColore?.match(TABELLA_COLORE_REGEX);
-    colore = match ? risolviColoreTabella(match[2]) : null;
+    const rigaTag = righe.slice(0, indiceInizioTabella).find((r) => TABELLA_COLORE_REGEX.test(r));
+    const match = rigaTag?.match(TABELLA_COLORE_REGEX);
+    tema = match ? risolviTemaTabella(match[2]) : null;
     righe = righe.slice(indiceInizioTabella);
   }
 
-  // L'AI a volte scrive "[TABELLA:colore]" DOPO la tabella invece che
+  // L'AI a volte scrive "[TABELLA:tipo]" DOPO la tabella invece che
   // prima (osservato in pratica): senza questo controllo la riga non
   // veniva mai tolta e parseTableBlock la interpretava come un'ulteriore
   // riga di dati, producendo il tag letterale in una cella in fondo alla
-  // tabella. Usata solo se non è già stato trovato un colore prima:
+  // tabella. Usato solo se non è già stato trovato un tema prima:
   // un'unica tabella non ha bisogno di due tag.
   const ultima = righe[righe.length - 1];
   const matchFinale = ultima?.match(TABELLA_COLORE_REGEX);
   if (matchFinale) {
-    colore = colore ?? risolviColoreTabella(matchFinale[2]);
+    tema = tema ?? risolviTemaTabella(matchFinale[2]);
     righe = righe.slice(0, -1);
   }
 
-  return { colore, righe };
+  return { tema, righe };
 }
 
-const BLOCCO_SPECIALE_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)\]([\s\S]*?)\[\/\1\]/gi;
+// "[BOX]" (riquadro generico, nel primario) oppure "[BOX:TIPO]" con il tipo
+// di impegno; il parametro vale anche per gli altri blocchi speciali ma lì
+// non ha effetto.
+const BLOCCO_SPECIALE_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)(?::([A-Za-zÀ-ÿ_]+))?\]([\s\S]*?)\[\/\1\]/gi;
 // Grassetto isolato in una prima passata su TUTTO il testo (vedi
 // parseInlineRuns): "*corsivo*"/"!!testo!!" si cercano SOLO nei frammenti
 // che restano dopo aver tolto i "**grassetto**", non nello stesso passaggio.
@@ -225,7 +211,10 @@ function ricomponiTestoDopoTag(resto: string, eraAvvoltoNelGrassetto: boolean): 
   return resto;
 }
 
-type Segment = { type: "testo" | "organigramma" | "immagine" | "box"; contenuto: string };
+// tipoSemantico: solo per i riquadri "[BOX:TIPO]" con un tipo riconosciuto;
+// un "[BOX]" senza tipo (o con una parola che non è un tipo) resta un
+// riquadro nel colore primario.
+type Segment = { type: "testo" | "organigramma" | "immagine" | "box"; contenuto: string; tipoSemantico?: TipoSemantico | null };
 
 const TIPO_SEGMENTO_PER_TAG: Record<string, Segment["type"]> = {
   ORGANIGRAMMA: "organigramma",
@@ -233,7 +222,11 @@ const TIPO_SEGMENTO_PER_TAG: Record<string, Segment["type"]> = {
   BOX: "box",
 };
 
-const TAG_APERTURA_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)\]/i;
+const TAG_APERTURA_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)(?::([A-Za-zÀ-ÿ_]+))?\]/i;
+
+function tipoSemanticoDelTag(tag: string, parametro: string | undefined): TipoSemantico | null {
+  return tag.toUpperCase() === "BOX" ? riconosciTipoSemantico(parametro) : null;
+}
 
 // L'AI a volte dimentica il tag di chiusura (es. "[IMMAGINE]descrizione"
 // senza mai "[/IMMAGINE]"): senza questo recupero il blocco restava
@@ -261,6 +254,7 @@ function recuperaTagNonChiusi(segments: Segment[]): Segment[] {
       risultato.push({
         type: TIPO_SEGMENTO_PER_TAG[match[1].toUpperCase()],
         contenuto: contenutoBlocco.trim(),
+        tipoSemantico: tipoSemanticoDelTag(match[1], match[2]),
       });
       resto = fineBlocco === -1 ? "" : dopoTag.slice(fineBlocco);
     }
@@ -303,7 +297,8 @@ function splitSegments(contenuto: string): Segment[] {
     }
     segments.push({
       type: TIPO_SEGMENTO_PER_TAG[match[1].toUpperCase()],
-      contenuto: match[2],
+      contenuto: match[3],
+      tipoSemantico: tipoSemanticoDelTag(match[1], match[2]),
     });
     lastIndex = match.index + match[0].length;
   }
@@ -502,7 +497,7 @@ async function costruisciRunConIcona(
 ): Promise<(TextRun | ImageRun)[]> {
   const testo = rimuoviGrassettoRidondante(testoGrezzo);
   if (eMarcatoreTabellare(testo)) {
-    return [new TextRun({ text: MARCATORE_TABELLARE, bold: true, ...runProps, color: COLORI_TABELLA.ROSSA })];
+    return [new TextRun({ text: MARCATORE_TABELLARE, bold: true, ...runProps, color: COLORE_SEGNALE_TABELLARE })];
   }
   const estratto = estraiTagIcona(testo);
   if (!estratto) return parseInlineRuns(testo, runProps, colore);
@@ -660,7 +655,7 @@ const LARGHEZZA_UTILE_TWIP = LARGHEZZA_PAGINA_A4_TWIP - 2 * MARGINE_TWIP;
 // (non per il rendering): niente tag di allineamento/icona/evidenziazione,
 // che altrimenti gonfierebbero il peso di una colonna senza motivo.
 function testoCellaPerPeso(cella: string): string {
-  return normalizzaOrdineTagCella(cella)
+  return normalizzaOrdineTagCella(togliMarcatoriEvidenziazione(cella))
     .replace(CELLA_ALLINEAMENTO_REGEX, "")
     .replace(/^\[ICONA:[a-zA-Z]+\]\s*/, "")
     .replace(/\*\*/g, "")
@@ -756,10 +751,18 @@ function allineamentoCella(
   return righeStimate <= 2 ? AlignmentType.CENTER : AlignmentType.JUSTIFIED;
 }
 
+const TAG_TABELLA_IN_PROSA_REGEX = /\[(?:TABELLA|RIGA|CELLA):[^\]]*\]\s*/gi;
+
+// Spessore del bordo sinistro in colore pieno: riquadri d'impegno e righe
+// di tabella evidenziate per intero (ottavi di punto).
+const BORDO_SINISTRO_RIQUADRO = 24;
+const BORDO_SINISTRO_RIGA_EVIDENZIATA = 18;
+
 async function renderTextSegment(
   contenuto: string,
   runProps: { font?: string; size?: number },
   paragraphSpacing: { line: number } | undefined,
+  tipiUsati: Set<TipoSemantico>,
 ): Promise<(Paragraph | Table)[]> {
   const children: (Paragraph | Table)[] = [];
   const blocchi = contenuto.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
@@ -767,23 +770,31 @@ async function renderTextSegment(
   for (const blocco of blocchi) {
     const righeGrezze = blocco.split("\n").map((r) => r.trim()).filter(Boolean);
 
-    // Un tag "[TABELLA:colore]" sceglie il colore dell'intestazione della
-    // tabella che segue (rossa per obblighi normativi, verde per aspetti
-    // ambientali, ecc.). Non basta controllare solo la primissima riga
-    // del blocco: l'AI a volte inserisce righe "decorative" prima del
-    // tag (osservato in pratica: un "[ICONA:...]" isolato su una riga a
-    // sé, senza etichetta, invece che dentro una cella) — se il tag
-    // colore non è la primissima riga, l'intero blocco falliva il
-    // riconoscimento come tabella e appariva come testo markdown
+    // Un tag "[TABELLA:tipo]" dichiara che l'INTERA tabella che segue
+    // tratta un tema ambientale o di sicurezza (vedi risolviTemaTabella);
+    // senza tag l'intestazione è nel colore primario. Non basta controllare
+    // solo la primissima riga del blocco: l'AI a volte inserisce righe
+    // "decorative" prima del tag (osservato in pratica: un "[ICONA:...]"
+    // isolato su una riga a sé, senza etichetta, invece che dentro una
+    // cella) — se il tag non è la primissima riga, l'intero blocco falliva
+    // il riconoscimento come tabella e appariva come testo markdown
     // letterale (bug serio: azzera completamente la formattazione).
-    // estraiTagColoreTabella cerca il tag in tutte le righe prima
+    // estraiTagTemaTabella cerca il tag in tutte le righe prima
     // dell'inizio vero della tabella (la prima che comincia con "|") e
     // scarta ciò che precede.
-    const { colore: coloreMatch, righe } = estraiTagColoreTabella(righeGrezze);
-    const coloreIntestazione = coloreMatch ?? COLORE_BRAND;
+    const { tema, righe } = estraiTagTemaTabella(righeGrezze);
+    const coloreIntestazione = tema ? COLORE_PIENO[tema] : COLORE_BRAND;
 
-    const tabella = parseTableBlock(righe);
-    if (tabella) {
+    const tabellaGrezza = parseTableBlock(righe);
+    if (tabellaGrezza) {
+      // Marcatori "[RIGA:TIPO]"/"[CELLA:TIPO]" separati dal testo, con le
+      // regole di R22-bis già applicate (mai in una tabella di soli dati,
+      // al massimo due righe, mai un'intera colonna): vedi
+      // analizzaEvidenziazioniTabella. Da qui in poi la tabella non contiene
+      // più nessun marcatore.
+      const evidenziazioni = analizzaEvidenziazioniTabella(tabellaGrezza);
+      const tabella = evidenziazioni.tabella;
+      if (tema) tipiUsati.add(tema);
       const [intestazione, ...corpo] = tabella;
       // Riga alternata e bordi intonati al colore dell'intestazione
       // (tinta chiara), non un grigio neutro fisso: come nei progetti di
@@ -805,9 +816,16 @@ async function renderTextSegment(
 
       const righeCorpo = await Promise.all(
         corpo.map(async (riga, indice) => {
+          const tipoRiga = evidenziazioni.riga[indice] ?? null;
           const celle = await Promise.all(
             riga.map(async (celleGrezza, indiceColonna) => {
               const primaColonna = indiceColonna === 0;
+              // L'evidenziazione di riga (o di cella) SOSTITUISCE i fondi
+              // della tabella su quelle celle — alternanza delle righe e
+              // tinta della prima colonna — non vi si somma.
+              const tipoEvidenziato = tipoRiga ?? evidenziazioni.cella[indice]?.[indiceColonna] ?? null;
+              if (tipoEvidenziato) tipiUsati.add(tipoEvidenziato);
+              const coloreContenuto = tipoEvidenziato ? COLORE_PIENO[tipoEvidenziato] : coloreIntestazione;
               // "[C]"/"[G]" in testa alla cella sceglie l'allineamento
               // orizzontale (centrato/giustificato). Se manca il tag —
               // succede sistematicamente sulla prima colonna, che l'AI
@@ -825,21 +843,32 @@ async function renderTextSegment(
               const alignment = allineamentoCella(testoCellaPerPeso(celleGrezza), larghezzeColonne[indiceColonna], runProps.size);
 
               // Le icone e il testo colorato nel corpo tabella usano il
-              // colore dell'intestazione: coerenza visiva con il tema
-              // scelto per quella tabella (rossa/verde/arancione/blu).
+              // colore dell'intestazione (primario, o il tema ambientale/
+              // di sicurezza della tabella) — e, su una riga o cella
+              // evidenziata, il colore del suo tipo.
               const runsCella = await costruisciRunConIcona(
                 cella,
-                coloreIntestazione,
+                coloreContenuto,
                 primaColonna ? { ...runProps, bold: true } : runProps,
               );
               return new TableCell({
                 // Righe alternate (pari/dispari) come nei progetti di
                 // riferimento, per leggibilità su tabelle lunghe; la
                 // prima colonna ha sempre la propria tinta più marcata.
-                shading: primaColonna
-                  ? { type: ShadingType.CLEAR, fill: coloreColonnaEvidenziata }
-                  : indice % 2 === 1
-                    ? { type: ShadingType.CLEAR, fill: coloreRigaAlternata }
+                // Una riga/cella evidenziata ha invece solo la tinta tenue
+                // del proprio tipo.
+                shading: tipoEvidenziato
+                  ? { type: ShadingType.CLEAR, fill: tintaEvidenziazione(tipoEvidenziato) }
+                  : primaColonna
+                    ? { type: ShadingType.CLEAR, fill: coloreColonnaEvidenziata }
+                    : indice % 2 === 1
+                      ? { type: ShadingType.CLEAR, fill: coloreRigaAlternata }
+                      : undefined,
+                // Riga evidenziata per intero: bordo sinistro spesso nel
+                // colore pieno, sulla prima cella.
+                borders:
+                  tipoRiga && primaColonna
+                    ? { left: { style: BorderStyle.SINGLE, size: BORDO_SINISTRO_RIGA_EVIDENZIATA, color: COLORE_PIENO[tipoRiga] } }
                     : undefined,
                 width: larghezzaColonna(indiceColonna),
                 verticalAlign: VerticalAlign.CENTER,
@@ -902,7 +931,14 @@ async function renderTextSegment(
       continue;
     }
 
-    for (const riga of righe) {
+    for (const rigaGrezza of righe) {
+      // Un tag di tabella ("[TABELLA:..]", "[RIGA:..]", "[CELLA:..]") dentro
+      // una riga di testo non ha nessun significato (osservato in pratica: il
+      // modello ha scritto una frase che inizia con "[TABELLA:AMBIENTE] non
+      // si applica qui", commentando i tag invece di usarli): non deve mai
+      // restare come testo letterale nel documento.
+      const riga = rigaGrezza.replace(TAG_TABELLA_IN_PROSA_REGEX, "").trim();
+      if (riga === "") continue;
       if (riga.startsWith("### ")) {
         children.push(paragrafoTitolo(riga.slice(4), 3, runProps, paragraphSpacing));
       } else if (riga.startsWith("## ")) {
@@ -980,6 +1016,23 @@ function costruisciIntestazione(
   });
 }
 
+// Titolo della legenda dei colori semantici: esportato perché i controlli
+// la riconoscono nel documento (scripts/lib/controlli-colori.ts).
+export const TITOLO_LEGENDA_COLORI = "Legenda dei colori";
+
+// Legenda compatta: titolo e una riga con un quadrato pieno per ciascuno dei
+// tre colori e la sua etichetta. Va in coda all'indice (vedi buildDocxBuffer).
+function costruisciLegenda(runProps: { font?: string; size?: number }): Paragraph[] {
+  const voci = TIPI_SEMANTICI.flatMap((tipo, indice): TextRun[] => [
+    new TextRun({ text: indice === 0 ? "■ " : "     ■ ", color: COLORE_PIENO[tipo], ...runProps }),
+    new TextRun({ text: ETICHETTA_LEGENDA[tipo], ...runProps }),
+  ]);
+  return [
+    new Paragraph({ spacing: { before: 240, after: 60 }, children: [new TextRun({ text: TITOLO_LEGENDA_COLORI, bold: true, ...runProps })] }),
+    new Paragraph({ spacing: { after: 0 }, children: voci }),
+  ];
+}
+
 // Interpreta un contenuto testuale semplice (paragrafi separati da riga
 // vuota, righe che iniziano con "# "/"## "/"### " per tre livelli di
 // titolo/sottotitolo/sotto-sottotitolo, "**grassetto**"/"*corsivo*"
@@ -1044,6 +1097,9 @@ export async function buildDocxBuffer(
   ];
 
   const children: (Paragraph | Table)[] = [];
+  // Tipi semantici effettivamente usati nel corpo (riquadri, righe e celle
+  // evidenziate, intestazioni a tema): decide se serve la legenda.
+  const tipiUsati = new Set<TipoSemantico>();
 
   const segments = splitSegments(rimuoviTitoloRidondante(contenuto, titolo));
 
@@ -1099,10 +1155,15 @@ export async function buildDocxBuffer(
     }
 
     if (segment.type === "box") {
-      // Box evidenziato con sfondo colorato e bordo a sinistra, come i
-      // riquadri per contenuti normativi/importanti visti nei progetti di
-      // riferimento — realizzato con una tabella a cella singola perché
-      // "docx" non supporta uno sfondo di paragrafo diretto.
+      // Riquadro d'impegno: bordo sinistro spesso nel colore pieno del TIPO
+      // dichiarato dal modello e fondo molto tenue dello stesso colore —
+      // il modello dichiara solo il tipo ([BOX:AMBIENTE|SICUREZZA|
+      // CAPITOLATO]), il colore lo decide il codice. Un "[BOX]" senza tipo
+      // resta nel colore primario (stessa resa del colore del capitolato).
+      // Realizzato con una tabella a cella singola perché "docx" non
+      // supporta uno sfondo di paragrafo diretto.
+      const tipoBox: TipoSemantico = segment.tipoSemantico ?? "CAPITOLATO";
+      tipiUsati.add(tipoBox);
       const paragrafiBox = segment.contenuto
         .split(/\n\s*\n/)
         .map((p) => p.trim())
@@ -1112,7 +1173,7 @@ export async function buildDocxBuffer(
             new Paragraph({
               spacing: paragraphSpacing,
               alignment: AlignmentType.JUSTIFIED,
-              children: parseInlineRuns(paragrafo, runProps),
+              children: parseInlineRuns(paragrafo, runProps, COLORE_PIENO[tipoBox]),
             }),
         );
       children.push(
@@ -1123,9 +1184,9 @@ export async function buildDocxBuffer(
               cantSplit: true,
               children: [
                 new TableCell({
-                  shading: { type: ShadingType.CLEAR, fill: "EAF2FA" },
+                  shading: { type: ShadingType.CLEAR, fill: tintaRiquadro(tipoBox) },
                   borders: {
-                    left: { style: BorderStyle.SINGLE, size: 24, color: COLORE_BRAND },
+                    left: { style: BorderStyle.SINGLE, size: BORDO_SINISTRO_RIQUADRO, color: COLORE_PIENO[tipoBox] },
                     top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
                     bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
                     right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
@@ -1141,8 +1202,14 @@ export async function buildDocxBuffer(
       continue;
     }
 
-    children.push(...(await renderTextSegment(segment.contenuto, runProps, paragraphSpacing)));
+    children.push(...(await renderTextSegment(segment.contenuto, runProps, paragraphSpacing, tipiUsati)));
   }
+
+  // Più di due colori semantici in uso → legenda compatta in coda
+  // all'indice (sulla pagina del titolo, fuori dal conteggio delle pagine
+  // di contenuto): senza, un lettore che vede tre colori non sa cosa
+  // significhino.
+  if (tipiUsati.size > 2) paginaTitolo.push(...costruisciLegenda(runProps));
 
   // "Pag. X di N" centrato nel piè di pagina — assente su copertina/indice,
   // che non si numerano mai in un documento professionale. Sia X sia N sono

@@ -47,6 +47,7 @@ export type EsitoRipristino = {
 function radici(testo: string): Set<string> {
   const pulito = testo
     .replace(/\[(?:C|G)\]/g, " ")
+    .replace(/\[(?:RIGA|CELLA):[^\]]*\]/gi, " ")
     .replace(/\[ICONA:[^\]]*\]/g, " ")
     .replace(/[*!|#]/g, " ")
     .toLowerCase();
@@ -94,6 +95,7 @@ function eRigaTabella(riga: string): boolean {
 function pulisciCellaPerValore(cella: string): string {
   return cella
     .replace(/\[(?:C|G)\]/g, "")
+    .replace(/\[(?:RIGA|CELLA):[^\]]*\]/gi, "")
     .replace(/\[ICONA:[^\]]*\]/g, "")
     .replace(/\*\*([^*]*?)\*\*/g, "$1")
     .trim();
@@ -271,7 +273,7 @@ function unitaDelTesto(righe: string[]): Unita[] {
       if (/\[\/ORGANIGRAMMA\]/i.test(t)) dentroOrganigramma = false;
       return;
     }
-    if (/^#{1,3}\s/.test(t) || /^\[TABELLA:/i.test(t) || /^\[\/?BOX\]$/i.test(t)) return;
+    if (/^#{1,3}\s/.test(t) || /^\[TABELLA:/i.test(t) || /^\[\/?BOX(?::[^\]]*)?\]$/i.test(t)) return;
     if (t.startsWith("|")) {
       if (!RIGA_SEPARATORE.test(t)) unita.push({ tipo: "riga", testo: t, riga: i });
       return;
@@ -280,7 +282,7 @@ function unitaDelTesto(righe: string[]): Unita[] {
       unita.push({ tipo: "elenco", testo: t, riga: i });
       return;
     }
-    const contenuto = t.replace(/^\[BOX\]/i, "").replace(/\[\/BOX\]$/i, "");
+    const contenuto = t.replace(/^\[BOX(?::[^\]]*)?\]/i, "").replace(/\[\/BOX\]$/i, "");
     const frasi = contenuto.split(SEPARATORE_FRASI).filter((f) => f.trim());
     for (const f of frasi) unita.push({ tipo: "frase", testo: f.trim(), riga: i });
   });

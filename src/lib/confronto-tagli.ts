@@ -84,6 +84,7 @@ export function suddividiInSubCriteri(sezioni: Sezione[]): Map<string, BloccoSub
 function pulisciCella(cella: string): string {
   return cella
     .replace(/\[(?:C|G)\]/g, "")
+    .replace(/\[(?:RIGA|CELLA):[^\]]*\]/gi, "")
     .replace(/\[ICONA:[^\]]*\]/g, "")
     .replace(/\*\*/g, "")
     .replace(/\*/g, "")
@@ -120,7 +121,7 @@ function strutturale(testo: string): Strutturale {
     tabelle: tabelle.length,
     righeTabella: tabelle.reduce((t, x) => t + x.righe.length, 0),
     elenchi: (testo.match(/^\s*-\s+/gm) || []).length,
-    box: (testo.match(/\[BOX\]/g) || []).length,
+    box: (testo.match(/\[BOX(?::[^\]]*)?\]/g) || []).length,
     organigrammi: (testo.match(/\[ORGANIGRAMMA\]/g) || []).length,
   };
 }
@@ -226,7 +227,7 @@ export function estraiValoriMarcati(testo: string): string[] {
   for (const riga of testo.split("\n")) {
     if (!riga.trim().startsWith("|") || /^\s*\|[-:\s|]+\|\s*$/.test(riga)) continue;
     for (const cella of riga.trim().replace(/^\|/, "").replace(/\|$/, "").split("|")) {
-      const senzaTag = cella.replace(/\[(?:C|G)\]/g, "").replace(/\[ICONA:[^\]]*\]/g, "");
+      const senzaTag = cella.replace(/\[(?:C|G)\]/g, "").replace(/\[(?:RIGA|CELLA):[^\]]*\]/gi, "").replace(/\[ICONA:[^\]]*\]/g, "");
       const senzaGrassetto = senzaTag.replace(/\*\*([^*]*?)\*\*/g, "$1");
       const m = senzaGrassetto.trim().match(/^(.*?\S)\s*\*$/);
       if (m) valori.push(m[1].replace(/\s+/g, " ").trim().toLowerCase());

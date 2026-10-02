@@ -7,7 +7,9 @@
 // senso come riferimento del livello 1.
 import { buildDocxBuffer, rimuoviTitoloRidondante } from "../../src/lib/docx-generator";
 import { stimaPagineContenuto } from "../../src/lib/stima-pagine";
+import { estrattoIntorno, trovaRigheConRiferimentiEconomici, trovaRiferimentiEconomici } from "../../src/lib/riferimenti-economici";
 import { estraiTestiPerNodo, estraiTestiVisibili } from "./xml-word";
+import { verificaColoriDocumento } from "./controlli-colori";
 import {
   abbinaSorgente,
   estraiFigureDocumento,
@@ -38,7 +40,8 @@ const MARCATORI_RESIDUI: [string, RegExp][] = [
   ["[C] (tag allineamento cella)", /\[C\]/],
   ["[G] (tag allineamento cella)", /\[G\]/],
   ["[ICONA:nome]", /\[ICONA:[^\]]*\]/],
-  ["[BOX]/[/BOX]", /\[\/?BOX\]/],
+  ["[BOX]/[BOX:tipo]/[/BOX]", /\[\/?BOX(?::[^\]]*)?\]/],
+  ["[RIGA:tipo]/[CELLA:tipo] (evidenziazione di tabella)", /\[(?:RIGA|CELLA):[^\]]*\]/],
   ["[ORGANIGRAMMA]/[/ORGANIGRAMMA]", /\[\/?ORGANIGRAMMA\]/],
   ["** (grassetto markdown non convertito)", /\*\*/],
   ["!! (colore ruolo non convertito)", /!!/],
@@ -61,16 +64,6 @@ export function trovaMarcatoriResidui(nodi: string[]): string[] {
   }
   return errori;
 }
-
-const FRASI_ECONOMICHE_VIETATE = [
-  "a costo zero",
-  "senza oneri aggiuntivi",
-  "compreso nel prezzo",
-  "incluso nel prezzo",
-  "gratuitamente",
-  "ribasso",
-  "€",
-];
 
 function contaOccorrenze(testo: string, pattern: RegExp): number {
   return (testo.match(new RegExp(pattern, "g")) || []).length;
@@ -172,6 +165,12 @@ export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Pro
   // indipendenti (vedi estraiTestiPerNodo).
   errori.push(...trovaMarcatoriResidui(estraiTestiPerNodo(documentXml)));
 
+  // 4-bis. Colori semantici: nessun colore fuori dai tre previsti, nessuna
+  // evidenziazione nelle tabelle di soli dati, legenda coerente (vedi
+  // controlli-colori.ts).
+  const esitoColori = verificaColoriDocumento(documentXml, headerXml, footerXml);
+  errori.push(...esitoColori.errori);
+
   // 5. Nessuna cella di tabella vuota.
   const celle = documentXml.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g) || [];
   let celleVuote = 0;
@@ -207,11 +206,20 @@ export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Pro
   }
   const numeroImmagini = figure.length;
 
-  // 7. Nessuna frase sull'offerta economica (R8), solo nel corpo.
-  for (const frase of FRASI_ECONOMICHE_VIETATE) {
-    if (testoCorpo.toLowerCase().includes(frase.toLowerCase())) {
-      errori.push(`Offerta economica: frase vietata "${frase}" trovata nel corpo del documento (R8).`);
-    }
+  // 7. Nessun riferimento all'offerta economica (R8), solo nel corpo. Lo
+  // stesso rilevatore che in produzione ripulisce ogni generazione (vedi
+  // riferimenti-economici.ts): un'unica definizione dell'elenco, anche per le
+  // formulazioni indirette. Controllato sul testo SORGENTE di ogni riga e sul
+  // corpo del documento reso: un riferimento non deve esserci in nessuno dei due.
+  const righeEconomiche = new Set<string>();
+  for (const r of trovaRigheConRiferimentiEconomici(contenutoMarkdown)) {
+    for (const rif of r.riferimenti) righeEconomiche.add(`"${rif.formula}" in «${estrattoIntorno(r.riga, rif, 60)}»`);
+  }
+  for (const rif of trovaRiferimentiEconomici(testoCorpo)) {
+    righeEconomiche.add(`"${rif.formula}" nel corpo del documento`);
+  }
+  for (const voce of righeEconomiche) {
+    errori.push(`Offerta economica: riferimento vietato ${voce} (R8).`);
   }
 
   // 8. Pagine entro il limite del disciplinare.
@@ -220,7 +228,7 @@ export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Pro
     errori.push(`Pagine: stima ${pagineStimate.toFixed(2)} supera il limite dichiarato di ${fixture.limitePagineTotale}.`);
   }
 
-  const riepilogo = `${fixture.sezioni.length} sezioni, ${celle.length} celle, figure: ${riepilogoFigure(figure)}, ${pagineStimate.toFixed(2)} pagine stimate (limite ${fixture.limitePagineTotale}).`;
+  const riepilogo = `${fixture.sezioni.length} sezioni, ${celle.length} celle, figure: ${riepilogoFigure(figure)}, ${pagineStimate.toFixed(2)} pagine stimate (limite ${fixture.limitePagineTotale}), colori semantici in uso: ${[...esitoColori.tipiUsati].join(", ") || "nessuno"}.`;
 
   return { errori, riepilogo, celle: celle.length, immagini: numeroImmagini, pagineStimate, figure, manifestFigure, buffer };
 }

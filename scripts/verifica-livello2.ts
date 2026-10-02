@@ -38,6 +38,9 @@ import { buildSystemPrompt, buildGeneraBozzaTool, formattaDatiGaraStrutturati, o
 import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
 import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
+import { analizzaColoriSorgente } from "../src/lib/colori-semantici";
+import { garantisciSenzaRiferimentiEconomici } from "../src/lib/garanzia-senza-economico";
+import { descriviAvvisoEconomico, trovaRiferimentiEconomici, type AvvisoRiferimentoEconomico } from "../src/lib/riferimenti-economici";
 import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
@@ -233,28 +236,41 @@ async function auditDatiSenzaFonte(
   datiGaraStrutturati: string,
 ): Promise<string[]> {
   const anthropic = createAnthropicClient();
-  const stream = anthropic.messages.stream({
-    model: MODEL,
-    max_tokens: 8000,
-    thinking: { type: "adaptive" },
-    system:
-      "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che il monte ore/organico OFFERTO (proposto dall'impresa) è legittimo se marcato con un asterisco come proposta da confermare. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
-    tools: [AUDIT_TOOL],
-    tool_choice: { type: "auto" },
-    messages: [
-      {
-        role: "user",
-        content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nTesto da auditare:\n\n${markdown}`,
-      },
-    ],
-  });
-  const response = await stream.finalMessage();
-  await logAiUsage({ userId: null, garaId: GARA, operazione: "audit_livello2", provider: "anthropic", model: MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
+  let motivoUltimoTentativo = "";
+  // Fino a due tentativi: con il ragionamento esteso il pensiero consuma lo
+  // stesso max_tokens della risposta, e quando lo esaurisce prima di
+  // chiamare lo strumento (osservato su un documento di ~10 pagine con
+  // max_tokens 8000) l'audit non produce nessun esito. Il tetto è un limite,
+  // non un budget pagato in anticipo; il secondo tentativo copre il caso in
+  // cui il modello risponda comunque a parole.
+  for (let tentativo = 1; tentativo <= 2; tentativo++) {
+    const stream = anthropic.messages.stream({
+      model: MODEL,
+      max_tokens: 32000,
+      thinking: { type: "adaptive" },
+      system:
+        "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che il monte ore/organico OFFERTO (proposto dall'impresa) è legittimo se marcato con un asterisco come proposta da confermare. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
+      tools: [AUDIT_TOOL],
+      tool_choice: { type: "auto" },
+      messages: [
+        {
+          role: "user",
+          content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nTesto da auditare:\n\n${markdown}`,
+        },
+      ],
+    });
+    const response = await stream.finalMessage();
+    await logAiUsage({ userId: null, garaId: GARA, operazione: "audit_livello2", provider: "anthropic", model: MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
 
-  const toolUse = response.content.find((b) => b.type === "tool_use" && b.name === "restituisci_audit");
-  if (!toolUse || toolUse.type !== "tool_use") return ["Audit AI: nessuna chiamata allo strumento nella risposta — impossibile verificare, trattato come fallimento."];
-  const esito = toolUse.input as { conforme: boolean; problemi: string[] };
-  return esito.conforme ? [] : esito.problemi;
+    const toolUse = response.content.find((b) => b.type === "tool_use" && b.name === "restituisci_audit");
+    if (toolUse && toolUse.type === "tool_use") {
+      const esito = toolUse.input as { conforme: boolean; problemi: string[] };
+      return esito.conforme ? [] : esito.problemi;
+    }
+    motivoUltimoTentativo = `stop_reason "${response.stop_reason}", ${response.usage.output_tokens} token in uscita`;
+    console.warn(`Audit AI: tentativo ${tentativo} senza chiamata allo strumento (${motivoUltimoTentativo}).`);
+  }
+  return [`Audit AI: nessuna chiamata allo strumento in due tentativi (${motivoUltimoTentativo}) — impossibile verificare, trattato come fallimento.`];
 }
 
 // --- Anonimizzazione generica, ricostruita ad ogni run dai dati reali
@@ -367,6 +383,10 @@ function anonimizza(
   const datiGaraStrutturati = formattaDatiGaraStrutturati(gara);
 
   const sezioni: { titolo_sezione: string; contenuto: string }[] = [];
+  // Garanzia R8 (stessa funzione di produzione, chiamata nello stesso punto:
+  // dopo la verifica dati di ogni bozza e poi sul testo finale composto).
+  const avvisiEconomiciResidui: AvvisoRiferimentoEconomico[] = [];
+  const interventiEconomici: string[] = [];
 
   for (const criterio of gara.criteri_riepilogo) {
     const messaggioUtente = `Sviluppa il criterio ${criterio.numero}. ${criterio.titolo}.`;
@@ -409,7 +429,16 @@ function anonimizza(
     const conMarcatori = applicaMarcatoriTabellari(senzaPlaceholder, gara.sub_criteri_tabellari ?? null);
     const verificato = await verificaDatiAziendali(conMarcatori, companyContesto, contestoDocumenti, datiGaraStrutturati, { userId: null, garaId: GARA });
 
-    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: verificato });
+    // Cosa il modello ha scritto PRIMA della garanzia R8, per riferire quanto
+    // ha dovuto intervenire (non per giudicare: il risultato finale conta).
+    const formuleGrezze = trovaRiferimentiEconomici(verificato).map((r) => r.formula);
+    const garanzia = await garantisciSenzaRiferimentiEconomici(verificato, { titoloSezione: input.titolo_sezione, context: { userId: null, garaId: GARA } });
+    if (formuleGrezze.length > 0) {
+      interventiEconomici.push(`"${input.titolo_sezione}": ${formuleGrezze.length} formula/e (${[...new Set(formuleGrezze)].join(", ")}) → ${garanzia.righeRiformulate} riga/righe riformulate in ${garanzia.chiamate} chiamata/e, ${garanzia.avvisi.length} residua/e`);
+    }
+    avvisiEconomiciResidui.push(...garanzia.avvisi);
+
+    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: garanzia.testo });
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
@@ -431,6 +460,16 @@ function anonimizza(
     formattazione,
     { userId: null, garaId: GARA },
   );
+  // Garanzia R8 sul testo finale composto, come in componiRelazioneFinale.
+  for (let i = 0; i < sezioniCorrette.length; i++) {
+    const formuleGrezze = trovaRiferimentiEconomici(sezioniCorrette[i].contenuto).map((r) => r.formula);
+    const garanzia = await garantisciSenzaRiferimentiEconomici(sezioniCorrette[i].contenuto, { titoloSezione: sezioniCorrette[i].titolo_sezione, context: { userId: null, garaId: GARA } });
+    if (formuleGrezze.length > 0) {
+      interventiEconomici.push(`composizione "${sezioniCorrette[i].titolo_sezione}": ${formuleGrezze.length} formula/e → ${garanzia.righeRiformulate} riga/righe riformulate, ${garanzia.avvisi.length} residua/e`);
+    }
+    sezioniCorrette[i] = { ...sezioniCorrette[i], contenuto: garanzia.testo };
+    avvisiEconomiciResidui.push(...garanzia.avvisi);
+  }
   console.log(
     sezioniTagliateDecisamente.length > 0
       ? `Taglio deciso applicato a: ${sezioniTagliateDecisamente.join("; ")}`
@@ -536,6 +575,9 @@ function anonimizza(
     ...erroriSegnaposto.map((e) => `[Segnaposto su dati di gara] ${e}`),
     ...erroriOrganico.map((e) => `[Coerenza organico] ${e}`),
     ...erroriTagli.map((e) => `[Tagli] ${e}`),
+    // Un riferimento economico rimasto dopo i due tentativi significa che il
+    // cliente vedrebbe l'avviso in rosso: non è un livello 2 pulito.
+    ...avvisiEconomiciResidui.map((a) => `[R8 offerta economica] riferimento non eliminato dalla garanzia: ${descriviAvvisoEconomico(a)}`),
     ...erroriAudit.map((e) => `[Audit dati d'impresa] ${e}`),
   ];
 
@@ -544,6 +586,23 @@ function anonimizza(
   if (avvisiTagli.length > 0) {
     console.log(`\nAvvisi sui tagli, da giudicare a mano (dettaglio in confronto-tagli.txt):`);
     for (const a of avvisiTagli) console.log(` - ${a}`);
+  }
+
+  // Conformità del MODELLO ai colori semantici (R20, R22-bis): il documento è
+  // comunque corretto perché il renderer applica le stesse regole (e i
+  // controlli strutturali sopra lo verificano), ma qui si vede se il modello
+  // le ha rispettate o se è il renderer a correggerlo — da giudicare a mano.
+  console.log(`
+Garanzia R8 (riferimenti all'offerta economica): ${interventiEconomici.length === 0 ? "il modello non ha scritto nessuna formula vietata, nessun intervento" : ""}`);
+  for (const i of interventiEconomici) console.log(` - ${i}`);
+  const coloriSorgente = analizzaColoriSorgente(markdown);
+  console.log(`\nColori semantici dichiarati dal modello: ${[...coloriSorgente.tipiDichiarati].join(", ") || "nessuno"}`);
+  if (coloriSorgente.tagColore.length > 0) {
+    console.log(`Avviso: parole di colore al posto di un tipo (il renderer le ignora, usa il primario): ${[...new Set(coloriSorgente.tagColore)].join(", ")}`);
+  }
+  if (coloriSorgente.evidenziazioniScartate.length > 0) {
+    console.log(`Avviso: evidenziazioni dichiarate dal modello e NON applicate dal renderer (R22-bis):`);
+    for (const s of coloriSorgente.evidenziazioniScartate) console.log(` - ${s}`);
   }
 
 

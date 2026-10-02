@@ -7,6 +7,7 @@ import { downloadGaraMessaggioFile, downloadAllegatoMessaggio } from "@/app/acti
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import BrandMark from "@/components/omnia-ai/brand-mark";
 import ThinkingIndicator from "./thinking-indicator";
+import type { AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
 
 const initialState: ChatState = {};
 
@@ -35,6 +36,9 @@ export type GaraMessaggio = {
   file_nome: string | null;
   file_path: string | null;
   pagine_stimate: number | null;
+  // Riferimenti all'offerta economica (R8) rimasti nel documento: sempre
+  // mostrati in rosso accanto al pulsante di scaricamento.
+  avvisi_economici: AvvisoRiferimentoEconomico[] | null;
   allegati: GaraMessaggioAllegato[];
 };
 
@@ -169,6 +173,22 @@ export default function ChatSection({
                         {superaLimitePagine(m.pagine_stimate, limitePagineTotale) &&
                           " — supera il limite, riduci il contenuto prima di consegnarlo"}
                       </span>
+                    )}
+                    {m.avvisi_economici && m.avvisi_economici.length > 0 && (
+                      <div className="omnia-avviso-economico" role="alert">
+                        <strong>
+                          ⚠ Riferimento all&apos;offerta economica nel documento — causa di esclusione dalla gara. Toglilo
+                          prima di consegnare:
+                        </strong>
+                        <ul>
+                          {m.avvisi_economici.map((a, i) => (
+                            <li key={i}>
+                              <span className="dove">{a.sottoCriterio ? `${a.sezione} › ${a.sottoCriterio}` : a.sezione}</span>:
+                              {" "}«{a.estratto}» <span className="formula">(formula «{a.formula}»)</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
                   </div>
                 )}

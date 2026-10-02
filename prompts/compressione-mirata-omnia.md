@@ -33,7 +33,7 @@ Cosa non toccare MAI. Il testo ridotto viene controllato automaticamente su ognu
 - ogni impegno con il suo valore numerico e ogni indicatore misurabile;
 - ogni citazione di un articolo del capitolato, di un paragrafo del disciplinare o di una norma ("art. 13.2", "D.Lgs. 36/2023", "UNI EN ISO 14001"), scritta come nel testo di partenza;
 - ogni asterisco "*" posto dopo un valore e la nota che lo spiega ("*Valori proposti da confermare..."): sono ciò che distingue una proposta dell'impresa da un dato confermato; toglierlo trasforma una proposta in un impegno;
-- le figure ([ORGANIGRAMMA]...[/ORGANIGRAMMA]) e i tag di formattazione ([C], [G], [TABELLA:...], [ICONA:...], [BOX], !!...!!, **...**), usati come nel testo di partenza;
+- le figure ([ORGANIGRAMMA]...[/ORGANIGRAMMA]) e i tag di formattazione ([C], [G], [TABELLA:...], [ICONA:...], [BOX] e [BOX:tipo], [RIGA:tipo], [CELLA:tipo], !!...!!, **...**), usati come nel testo di partenza — il TIPO di un riquadro o di una riga/cella evidenziata non si cambia e non si toglie;
 - il titolo "## {CHIAVE}" e i sotto-titoli "###" con la loro numerazione.
 
 Non aggiungere nulla: nessun dato, numero, impegno, articolo o affermazione che non sia già nel testo di partenza. Riduci soltanto.

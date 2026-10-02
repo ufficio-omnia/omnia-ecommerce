@@ -55,6 +55,7 @@ function livelloTitoloStimato(livelloMarkdown: 1 | 2 | 3, testo: string): 1 | 2 
 
 function pulisciTagFormattazione(testo: string): string {
   return testo
+    .replace(/\[(?:RIGA|CELLA):[^\]]*\]\s*/gi, "")
     .replace(/^\[(C|G)\]\s*/, "")
     .replace(/^\[ICONA:[a-zA-Z]+\]\s*/, "")
     .replace(/\*\*/g, "")
