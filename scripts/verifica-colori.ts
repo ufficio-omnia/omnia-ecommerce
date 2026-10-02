@@ -283,6 +283,28 @@ async function main() {
     atteso("tag colore delle versioni precedenti: nessun marcatore lasciato come testo", trovaMarcatoriResidui(estraiTestiPerNodo(xml)).length === 0, trovaMarcatoriResidui(estraiTestiPerNodo(xml)).join(" / "));
   }
 
+  // --- 2-bis. Tag di tabella scritti nel testo (osservato in una generazione
+  // reale: "[TABELLA:AMBIENTE] non si applica qui; ...") ---
+  {
+    const { xml } = await documento(`# 1. Criterio di prova
+
+## 1.1 Tag citati nel testo
+
+[TABELLA:AMBIENTE] non si applica qui; si riporta invece la tabella delle verifiche operative:
+
+- [RIGA:SICUREZZA] Elemento di elenco con un tag fuori posto
+- [CELLA:AMBIENTE] Altro elemento
+
+[CELLA:CAPITOLATO]
+
+Paragrafo normale che resta.
+`);
+    const residui = trovaMarcatoriResidui(estraiTestiPerNodo(xml));
+    atteso("tag di tabella scritti nel testo: nessun marcatore lasciato come testo", residui.length === 0, residui.join(" / "));
+    atteso("tag di tabella scritti nel testo: il resto della frase e degli elenchi resta", /non si applica qui/.test(xml) && /Elemento di elenco con un tag fuori posto/.test(xml) && /Paragrafo normale che resta/.test(xml), "");
+    atteso("tag di tabella scritti nel testo: nessun colore semantico conteggiato", valuta(xml).errori.length === 0 && valuta(xml).tipiUsati.size === 0, valuta(xml).errori.join(" / "));
+  }
+
   // --- 3. Le regole sono applicate dal renderer, non solo chieste al modello ---
   {
     const { xml } = await documento(MD_DATI);

@@ -751,6 +751,8 @@ function allineamentoCella(
   return righeStimate <= 2 ? AlignmentType.CENTER : AlignmentType.JUSTIFIED;
 }
 
+const TAG_TABELLA_IN_PROSA_REGEX = /\[(?:TABELLA|RIGA|CELLA):[^\]]*\]\s*/gi;
+
 // Spessore del bordo sinistro in colore pieno: riquadri d'impegno e righe
 // di tabella evidenziate per intero (ottavi di punto).
 const BORDO_SINISTRO_RIQUADRO = 24;
@@ -929,7 +931,14 @@ async function renderTextSegment(
       continue;
     }
 
-    for (const riga of righe) {
+    for (const rigaGrezza of righe) {
+      // Un tag di tabella ("[TABELLA:..]", "[RIGA:..]", "[CELLA:..]") dentro
+      // una riga di testo non ha nessun significato (osservato in pratica: il
+      // modello ha scritto una frase che inizia con "[TABELLA:AMBIENTE] non
+      // si applica qui", commentando i tag invece di usarli): non deve mai
+      // restare come testo letterale nel documento.
+      const riga = rigaGrezza.replace(TAG_TABELLA_IN_PROSA_REGEX, "").trim();
+      if (riga === "") continue;
       if (riga.startsWith("### ")) {
         children.push(paragrafoTitolo(riga.slice(4), 3, runProps, paragraphSpacing));
       } else if (riga.startsWith("## ")) {
