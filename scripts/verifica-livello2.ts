@@ -234,28 +234,41 @@ async function auditDatiSenzaFonte(
   datiGaraStrutturati: string,
 ): Promise<string[]> {
   const anthropic = createAnthropicClient();
-  const stream = anthropic.messages.stream({
-    model: MODEL,
-    max_tokens: 8000,
-    thinking: { type: "adaptive" },
-    system:
-      "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che il monte ore/organico OFFERTO (proposto dall'impresa) è legittimo se marcato con un asterisco come proposta da confermare. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
-    tools: [AUDIT_TOOL],
-    tool_choice: { type: "auto" },
-    messages: [
-      {
-        role: "user",
-        content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nTesto da auditare:\n\n${markdown}`,
-      },
-    ],
-  });
-  const response = await stream.finalMessage();
-  await logAiUsage({ userId: null, garaId: GARA, operazione: "audit_livello2", provider: "anthropic", model: MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
+  let motivoUltimoTentativo = "";
+  // Fino a due tentativi: con il ragionamento esteso il pensiero consuma lo
+  // stesso max_tokens della risposta, e quando lo esaurisce prima di
+  // chiamare lo strumento (osservato su un documento di ~10 pagine con
+  // max_tokens 8000) l'audit non produce nessun esito. Il tetto è un limite,
+  // non un budget pagato in anticipo; il secondo tentativo copre il caso in
+  // cui il modello risponda comunque a parole.
+  for (let tentativo = 1; tentativo <= 2; tentativo++) {
+    const stream = anthropic.messages.stream({
+      model: MODEL,
+      max_tokens: 32000,
+      thinking: { type: "adaptive" },
+      system:
+        "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che il monte ore/organico OFFERTO (proposto dall'impresa) è legittimo se marcato con un asterisco come proposta da confermare. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
+      tools: [AUDIT_TOOL],
+      tool_choice: { type: "auto" },
+      messages: [
+        {
+          role: "user",
+          content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nTesto da auditare:\n\n${markdown}`,
+        },
+      ],
+    });
+    const response = await stream.finalMessage();
+    await logAiUsage({ userId: null, garaId: GARA, operazione: "audit_livello2", provider: "anthropic", model: MODEL, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens });
 
-  const toolUse = response.content.find((b) => b.type === "tool_use" && b.name === "restituisci_audit");
-  if (!toolUse || toolUse.type !== "tool_use") return ["Audit AI: nessuna chiamata allo strumento nella risposta — impossibile verificare, trattato come fallimento."];
-  const esito = toolUse.input as { conforme: boolean; problemi: string[] };
-  return esito.conforme ? [] : esito.problemi;
+    const toolUse = response.content.find((b) => b.type === "tool_use" && b.name === "restituisci_audit");
+    if (toolUse && toolUse.type === "tool_use") {
+      const esito = toolUse.input as { conforme: boolean; problemi: string[] };
+      return esito.conforme ? [] : esito.problemi;
+    }
+    motivoUltimoTentativo = `stop_reason "${response.stop_reason}", ${response.usage.output_tokens} token in uscita`;
+    console.warn(`Audit AI: tentativo ${tentativo} senza chiamata allo strumento (${motivoUltimoTentativo}).`);
+  }
+  return [`Audit AI: nessuna chiamata allo strumento in due tentativi (${motivoUltimoTentativo}) — impossibile verificare, trattato come fallimento.`];
 }
 
 // --- Anonimizzazione generica, ricostruita ad ogni run dai dati reali
