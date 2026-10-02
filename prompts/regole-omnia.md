@@ -7,10 +7,16 @@ qui ha effetto immediato sulla prossima generazione, senza toccare TypeScript.
 
 Questo file copre SOLO le regole di contenuto — cosa scrivere, come
 argomentarlo, cosa è vietato. La sintassi dei tag di formattazione
-(`[TABELLA:colore]`, `[C]`/`[G]`, `**grassetto**`, `!!testo!!`,
-`[ICONA:nome]`, `[BOX]`, `[ORGANIGRAMMA]`, `[IMMAGINE]`) resta definita dove
-già viene data al modello, insieme all'istruzione di generazione: non è
-ripetuta qui per evitare due fonti di verità sulla stessa sintassi.
+(`[TABELLA:tipo]`, `[C]`/`[G]`, `**grassetto**`, `!!testo!!`,
+`[ICONA:nome]`, `[BOX:tipo]`, `[RIGA:tipo]`, `[CELLA:tipo]`,
+`[ORGANIGRAMMA]`, `[IMMAGINE]`) resta definita dove già viene data al
+modello, insieme all'istruzione di generazione: non è ripetuta qui per
+evitare due fonti di verità sulla stessa sintassi.
+
+Le regole racchiuse nei commenti HTML INIZIO/FINE "COLORE SEMANTICO" (R20,
+R22-bis) vengono inviate al modello solo se
+`RENDERER_SUPPORTA_COLORI_SEMANTICI` (src/lib/colori-semantici.ts) è vera: il
+renderer deve interpretare quei tag prima che le regole li richiedano.
 
 ## Chi legge quello che scrivi
 
@@ -151,6 +157,21 @@ scrivendo per far assegnare punti.
 
 ## Impatto visivo
 
+<!-- INIZIO COLORE SEMANTICO -->
+- **R20 — Il colore ha un significato fisso, e non lo scegli tu.** Esistono
+  solo tre colori, ciascuno legato a un TIPO di impegno: verde per gli
+  impegni ambientali (CAM, Ecolabel, riduzione dei consumi, gestione dei
+  rifiuti), arancio per sicurezza, dispositivi di protezione, formazione e
+  salute del personale, blu primario per gli impegni verso la stazione
+  appaltante e i richiami al capitolato. Tu dichiari soltanto il TIPO
+  (AMBIENTE, SICUREZZA, CAPITOLATO) con i tag descritti nello strumento; il
+  colore lo applica il generatore, uguale in tutto il documento. Mai una
+  parola di colore al posto del tipo, mai un tipo per decorazione: un
+  riquadro o un'evidenziazione c'è solo se l'impegno appartiene davvero a
+  uno dei tre tipi. L'intestazione di una tabella è sempre nel colore
+  primario, salvo che l'INTERA tabella tratti un tema ambientale o di
+  sicurezza: solo allora dichiari quel tema per tutta la tabella.
+<!-- FINE COLORE SEMANTICO -->
 - **R21 — Grassetto solo sui valori vincolanti.** Frequenze, quantità, tempi
   di intervento, target degli indicatori, denominazioni di norme e
   certificazioni. Mai su intere frasi, mai su aggettivi.
@@ -158,6 +179,14 @@ scrivendo per far assegnare punti.
   due dimensioni da incrociare — aree e frequenze, attività e responsabili,
   indicatori e valori obiettivo. Una tabella di due righe è un elenco
   travestito: usa l'elenco.
+<!-- INIZIO COLORE SEMANTICO -->
+- **R22-bis — Evidenziazione dentro le tabelle.** Marca con il tipo (stessi
+  tre tipi di R20) una singola riga o una singola cella che contiene un
+  impegno di quel tipo: al massimo due righe evidenziate per tabella, mai
+  un'intera colonna, mai in una tabella di soli dati (numeri, quantità,
+  SI/NO) — lì non c'è nessun impegno da distinguere. L'evidenziazione
+  sostituisce l'alternanza dei fondi su quella riga.
+<!-- FINE COLORE SEMANTICO -->
 - **R25 — Distribuisci gli elementi visivi.** Nessuna sequenza di più
   pagine di solo testo. Ma non forzare: se una sezione non ha nulla da
   rappresentare, resta testo.
@@ -173,22 +202,14 @@ scrivendo per far assegnare punti.
 ## Regole rimandate alla migrazione a blocchi JSON
 
 Le regole seguenti presuppongono capacità del renderer non ancora
-implementate in `docx-generator.ts` (colore semantico fisso a livello di
-intero documento, evidenziazione di singola riga/cella nelle tabelle, figure
-di flusso, diagrammi temporali/cronoprogramma). Restano qui come riferimento
-per quando la migrazione a blocchi JSON sarà completata. Il loader
-(`src/lib/prompts.ts`) si ferma al marcatore sopra e non le invia al modello:
-inviarle oggi produrrebbe tag che il renderer attuale non sa interpretare.
+implementate in `docx-generator.ts` (figure di flusso, diagrammi
+temporali/cronoprogramma). Restano qui come riferimento per quando la
+migrazione a blocchi JSON sarà completata. Il loader (`src/lib/prompts.ts`)
+si ferma al marcatore sopra e non le invia al modello: inviarle oggi
+produrrebbe tag che il renderer attuale non sa interpretare. (R20 e R22-bis,
+colore semantico e evidenziazione in tabella, sono ora nella parte attiva:
+il renderer le supporta.)
 
-- **R20 — Il colore ha un significato fisso.** Verde per gli impegni
-  ambientali (CAM, Ecolabel, riduzione dei consumi), arancio per sicurezza,
-  dispositivi di protezione e formazione, colore primario per gli impegni
-  verso la stazione appaltante e i richiami al capitolato — stesso criterio
-  in tutto il documento, non a discrezione del modello per singola tabella
-  come oggi.
-- **R22-bis — Evidenziazione dentro le tabelle.** Colore semantico (stessa
-  corrispondenza di R20) su una singola riga o singola cella, al massimo due
-  righe evidenziate per tabella, mai un'intera colonna.
 - **R23 — Figura di flusso solo se chiarisce un processo.** Da tre a sei
   passi in sequenza, per processi come la gestione di una non conformità o
   l'avvio di una commessa.

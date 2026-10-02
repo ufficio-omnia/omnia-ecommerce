@@ -8,6 +8,7 @@
 import { buildDocxBuffer, rimuoviTitoloRidondante } from "../../src/lib/docx-generator";
 import { stimaPagineContenuto } from "../../src/lib/stima-pagine";
 import { estraiTestiPerNodo, estraiTestiVisibili } from "./xml-word";
+import { verificaColoriDocumento } from "./controlli-colori";
 import {
   abbinaSorgente,
   estraiFigureDocumento,
@@ -38,7 +39,8 @@ const MARCATORI_RESIDUI: [string, RegExp][] = [
   ["[C] (tag allineamento cella)", /\[C\]/],
   ["[G] (tag allineamento cella)", /\[G\]/],
   ["[ICONA:nome]", /\[ICONA:[^\]]*\]/],
-  ["[BOX]/[/BOX]", /\[\/?BOX\]/],
+  ["[BOX]/[BOX:tipo]/[/BOX]", /\[\/?BOX(?::[^\]]*)?\]/],
+  ["[RIGA:tipo]/[CELLA:tipo] (evidenziazione di tabella)", /\[(?:RIGA|CELLA):[^\]]*\]/],
   ["[ORGANIGRAMMA]/[/ORGANIGRAMMA]", /\[\/?ORGANIGRAMMA\]/],
   ["** (grassetto markdown non convertito)", /\*\*/],
   ["!! (colore ruolo non convertito)", /!!/],
@@ -172,6 +174,12 @@ export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Pro
   // indipendenti (vedi estraiTestiPerNodo).
   errori.push(...trovaMarcatoriResidui(estraiTestiPerNodo(documentXml)));
 
+  // 4-bis. Colori semantici: nessun colore fuori dai tre previsti, nessuna
+  // evidenziazione nelle tabelle di soli dati, legenda coerente (vedi
+  // controlli-colori.ts).
+  const esitoColori = verificaColoriDocumento(documentXml, headerXml, footerXml);
+  errori.push(...esitoColori.errori);
+
   // 5. Nessuna cella di tabella vuota.
   const celle = documentXml.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g) || [];
   let celleVuote = 0;
@@ -220,7 +228,7 @@ export async function eseguiControlliStrutturali(fixture: FixtureRelazione): Pro
     errori.push(`Pagine: stima ${pagineStimate.toFixed(2)} supera il limite dichiarato di ${fixture.limitePagineTotale}.`);
   }
 
-  const riepilogo = `${fixture.sezioni.length} sezioni, ${celle.length} celle, figure: ${riepilogoFigure(figure)}, ${pagineStimate.toFixed(2)} pagine stimate (limite ${fixture.limitePagineTotale}).`;
+  const riepilogo = `${fixture.sezioni.length} sezioni, ${celle.length} celle, figure: ${riepilogoFigure(figure)}, ${pagineStimate.toFixed(2)} pagine stimate (limite ${fixture.limitePagineTotale}), colori semantici in uso: ${[...esitoColori.tipiUsati].join(", ") || "nessuno"}.`;
 
   return { errori, riepilogo, celle: celle.length, immagini: numeroImmagini, pagineStimate, figure, manifestFigure, buffer };
 }

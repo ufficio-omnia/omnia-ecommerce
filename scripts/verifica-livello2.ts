@@ -38,6 +38,7 @@ import { buildSystemPrompt, buildGeneraBozzaTool, formattaDatiGaraStrutturati, o
 import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
 import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
+import { analizzaColoriSorgente } from "../src/lib/colori-semantici";
 import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
@@ -544,6 +545,20 @@ function anonimizza(
   if (avvisiTagli.length > 0) {
     console.log(`\nAvvisi sui tagli, da giudicare a mano (dettaglio in confronto-tagli.txt):`);
     for (const a of avvisiTagli) console.log(` - ${a}`);
+  }
+
+  // Conformità del MODELLO ai colori semantici (R20, R22-bis): il documento è
+  // comunque corretto perché il renderer applica le stesse regole (e i
+  // controlli strutturali sopra lo verificano), ma qui si vede se il modello
+  // le ha rispettate o se è il renderer a correggerlo — da giudicare a mano.
+  const coloriSorgente = analizzaColoriSorgente(markdown);
+  console.log(`\nColori semantici dichiarati dal modello: ${[...coloriSorgente.tipiDichiarati].join(", ") || "nessuno"}`);
+  if (coloriSorgente.tagColore.length > 0) {
+    console.log(`Avviso: parole di colore al posto di un tipo (il renderer le ignora, usa il primario): ${[...new Set(coloriSorgente.tagColore)].join(", ")}`);
+  }
+  if (coloriSorgente.evidenziazioniScartate.length > 0) {
+    console.log(`Avviso: evidenziazioni dichiarate dal modello e NON applicate dal renderer (R22-bis):`);
+    for (const s of coloriSorgente.evidenziazioniScartate) console.log(` - ${s}`);
   }
 
 
