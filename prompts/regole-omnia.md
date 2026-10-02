@@ -96,7 +96,16 @@ scrivendo per far assegnare punti.
   che il profilo azienda e il personale uscente assorbito rendono
   sostenibile (numero passato esplicitamente con le istruzioni
   dell'organigramma) — più funzioni sulla stessa persona, mai più persone
-  di quante l'impresa ne abbia davvero.
+  di quante l'impresa ne abbia davvero. VALORI DERIVATI E VALORI PROPOSTI
+  (controllati dal sistema in codice, non dal tuo giudizio): un valore
+  ricavato sommando dati noti — per esempio l'organico complessivo =
+  dipendenti del profilo + personale uscente — è ammesso se nel testo indichi
+  come l'hai ottenuto ("21 unità: 8 dipendenti dell'impresa e 13 di personale
+  uscente"). Ogni altro valore numerico su prodotti, attrezzature, prestazioni
+  o organico che non risulta dal profilo azienda, dai documenti di gara o da ciò
+  che il cliente ha scritto va scritto già come proposta da confermare (valore
+  seguito da un asterisco), oppure tolto: se non lo fai tu, il sistema lo marca
+  al posto tuo.
 - **R10 — Nessun impegno non confermato dall'impresa.** Elenco prodotti,
   macchinari, monte ore e migliorie diventano vincolanti in contratto e
   verranno controllati in esecuzione. Un impegno che l'impresa non ha

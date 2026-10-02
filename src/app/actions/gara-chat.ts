@@ -17,6 +17,7 @@ import {
 } from "@/lib/attachment-text";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import { descriviAvvisoEconomico, testoAvvisoEconomico, type AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
+import { testoValoriPerModello } from "@/lib/valori-impresa";
 import {
   generaBozzaSezione,
   componiRelazioneFinale,
@@ -24,6 +25,7 @@ import {
   correggiSezioneConBudget,
   applicaMarcatoriTabellari,
   applicaSostituzioniAnonimizzazione,
+  type EsitoValoriImpresa,
 } from "@/lib/relazione-tecnica";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 import {
@@ -221,7 +223,7 @@ export async function sendGaraMessage(
   }
 
   let rispostaFinale = "";
-  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] } | null = null;
+  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa } | null = null;
 
   try {
     const queryEmbedding = await embedQuery(messaggio, {
@@ -449,7 +451,7 @@ export async function sendGaraMessage(
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: toolUse.id,
-                content: `${testoAvvisoEconomico(risultato.avvisiEconomici)}Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
+                content: `${testoAvvisoEconomico(risultato.avvisiEconomici)}${testoValoriPerModello(risultato.valoriImpresa.marcati, risultato.valoriImpresa.derivati)}Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
               });
             }
           } catch (err) {
@@ -530,7 +532,7 @@ export async function sendGaraMessage(
             company?.ragione_sociale,
           );
 
-          const { nomeFile, filePath, pagineStimate, avvisiEconomici } = await generaBozzaSezione({
+          const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa } = await generaBozzaSezione({
             garaId,
             userId: user.id,
             titoloSezione: input.titolo_sezione,
@@ -543,7 +545,7 @@ export async function sendGaraMessage(
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,
           });
-          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici };
+          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa };
           strumentiDisponibili = [];
           console.log(
             `sendGaraMessage: bozza generata "${nomeFile}" (${filePath}) per gara ${garaId}, sezione "${input.titolo_sezione}"`,
@@ -584,7 +586,7 @@ export async function sendGaraMessage(
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `${testoAvvisoEconomico(avvisiEconomici)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
+            content: `${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);

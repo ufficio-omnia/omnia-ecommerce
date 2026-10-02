@@ -41,6 +41,7 @@ import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
 import { analizzaColoriSorgente } from "../src/lib/colori-semantici";
 import { garantisciSenzaRiferimentiEconomici } from "../src/lib/garanzia-senza-economico";
 import { descriviAvvisoEconomico, trovaRiferimentiEconomici, type AvvisoRiferimentoEconomico } from "../src/lib/riferimenti-economici";
+import { applicaGuardiaValori, costruisciEvidenza, indicizzaEvidenza, trovaValoriSenzaRiscontro, type ValoreDerivato, type ValoreMarcato } from "../src/lib/valori-impresa";
 import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
@@ -234,6 +235,7 @@ async function auditDatiSenzaFonte(
   markdown: string,
   companyContesto: CompanyContesto,
   datiGaraStrutturati: string,
+  derivati: string[] = [],
 ): Promise<string[]> {
   const anthropic = createAnthropicClient();
   let motivoUltimoTentativo = "";
@@ -249,13 +251,13 @@ async function auditDatiSenzaFonte(
       max_tokens: 32000,
       thinking: { type: "adaptive" },
       system:
-        "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che il monte ore/organico OFFERTO (proposto dall'impresa) è legittimo se marcato con un asterisco come proposta da confermare. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
+        "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che: (1) QUALUNQUE valore marcato con un asterisco come proposta da confermare («valore *») è legittimo, di qualunque categoria (monte ore, organico, prodotti, attrezzature, prestazioni) e non va segnalato; (2) un valore ricavato da dati noti e dichiarato come tale (es. organico complessivo = dipendenti del profilo + personale uscente, anche con la somma indicata nel testo o nell'elenco «Valori ricavati» qui sotto) è derivato, non inventato, e non va segnalato. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
       tools: [AUDIT_TOOL],
       tool_choice: { type: "auto" },
       messages: [
         {
           role: "user",
-          content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nTesto da auditare:\n\n${markdown}`,
+          content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nValori ricavati da dati noti (derivati, legittimi):\n${derivati.length ? derivati.map((d) => `- ${d}`).join("\n") : "Nessuno."}\n\nTesto da auditare:\n\n${markdown}`,
         },
       ],
     });
@@ -382,6 +384,27 @@ function anonimizza(
   const formattazione = { font: garaRow.relazione_font ?? "Calibri", dimensioneCarattere: gara.relazione_dimensione_carattere ?? 12, interlinea: gara.relazione_interlinea ?? 1 };
   const datiGaraStrutturati = formattaDatiGaraStrutturati(gara);
 
+  // Evidenza per la guardia R9 (valori senza riscontro): gli stessi dati che
+  // in produzione legge caricaEvidenzaDati — profilo azienda, dati di gara
+  // estratti, TUTTI i chunk dei documenti — qui già a disposizione.
+  const { data: chunkTutti } = await admin.from("gara_documenti_chunks").select("contenuto").eq("gara_id", GARA).range(0, 5999);
+  const evidenza = costruisciEvidenza({
+    profilo: company,
+    gara: {
+      importo: garaRow.importo,
+      criteri_valutazione: estratti.criteri_valutazione,
+      requisiti: estratti.requisiti,
+      limiti_formattazione: estratti.limiti_formattazione,
+      sedi: estratti.sedi,
+      personale_uscente: estratti.personale_uscente,
+    },
+    testiDocumenti: (chunkTutti ?? []).map((c: { contenuto: string }) => c.contenuto),
+    testiAggiuntivi: [datiGaraStrutturati],
+  });
+  const indiceEvidenza = indicizzaEvidenza(evidenza);
+  const valoriMarcati: ValoreMarcato[] = [];
+  const valoriDerivati: ValoreDerivato[] = [];
+
   const sezioni: { titolo_sezione: string; contenuto: string }[] = [];
   // Garanzia R8 (stessa funzione di produzione, chiamata nello stesso punto:
   // dopo la verifica dati di ogni bozza e poi sul testo finale composto).
@@ -438,7 +461,12 @@ function anonimizza(
     }
     avvisiEconomiciResidui.push(...garanzia.avvisi);
 
-    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: garanzia.testo });
+    // Garanzia R9 (valori numerici senza riscontro → asterisco; derivati da dati noti → dichiarati).
+    const guardiaValori = applicaGuardiaValori(garanzia.testo, evidenza, indiceEvidenza);
+    valoriMarcati.push(...guardiaValori.marcati);
+    valoriDerivati.push(...guardiaValori.derivati);
+
+    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: guardiaValori.testo });
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
@@ -467,7 +495,10 @@ function anonimizza(
     if (formuleGrezze.length > 0) {
       interventiEconomici.push(`composizione "${sezioniCorrette[i].titolo_sezione}": ${formuleGrezze.length} formula/e → ${garanzia.righeRiformulate} riga/righe riformulate, ${garanzia.avvisi.length} residua/e`);
     }
-    sezioniCorrette[i] = { ...sezioniCorrette[i], contenuto: garanzia.testo };
+    const guardiaValoriFinale = applicaGuardiaValori(garanzia.testo, evidenza, indiceEvidenza);
+    valoriMarcati.push(...guardiaValoriFinale.marcati);
+    valoriDerivati.push(...guardiaValoriFinale.derivati);
+    sezioniCorrette[i] = { ...sezioniCorrette[i], contenuto: guardiaValoriFinale.testo };
     avvisiEconomiciResidui.push(...garanzia.avvisi);
   }
   console.log(
@@ -565,7 +596,11 @@ function anonimizza(
   fs.writeFileSync(path.join(cartellaDump, "confronto-tagli.txt"), reportConfronto);
   console.log(`\nDump diagnostico (contenuto reale, non nel repository) in: ${cartellaDump}`);
 
-  const erroriAudit = await auditDatiSenzaFonte(markdown, companyContesto, datiGaraStrutturati);
+  // Controllo deterministico R9: dopo la guardia non deve restare nessun
+  // valore numerico senza riscontro e senza asterisco.
+  const valoriResidui = trovaValoriSenzaRiscontro(markdown, evidenza, indiceEvidenza);
+  const derivatiUnici = [...new Map(valoriDerivati.map((d) => [d.valore + "|" + d.derivazione, d])).values()];
+  const erroriAudit = await auditDatiSenzaFonte(markdown, companyContesto, datiGaraStrutturati, derivatiUnici.map((d) => d.valore + " = " + d.derivazione));
   void estraiTestiVisibili; // riesportata dal modulo condiviso, non serve qui direttamente
 
   const tuttiGliErrori = [
@@ -577,6 +612,7 @@ function anonimizza(
     ...erroriTagli.map((e) => `[Tagli] ${e}`),
     // Un riferimento economico rimasto dopo i due tentativi significa che il
     // cliente vedrebbe l'avviso in rosso: non è un livello 2 pulito.
+    ...valoriResidui.map((v) => "[R9 valori senza riscontro] \"" + v.valore + "\" (" + v.categoria + ") senza riscontro e senza asterisco: " + v.riga.slice(0, 140)),
     ...avvisiEconomiciResidui.map((a) => `[R8 offerta economica] riferimento non eliminato dalla garanzia: ${descriviAvvisoEconomico(a)}`),
     ...erroriAudit.map((e) => `[Audit dati d'impresa] ${e}`),
   ];
@@ -592,6 +628,9 @@ function anonimizza(
   // comunque corretto perché il renderer applica le stesse regole (e i
   // controlli strutturali sopra lo verificano), ma qui si vede se il modello
   // le ha rispettate o se è il renderer a correggerlo — da giudicare a mano.
+  console.log(`\nGuardia R9 (valori senza riscontro): ${valoriMarcati.length} valore/i marcati con asterisco, ${derivatiUnici.length} derivato/i riconosciuto/i`);
+  for (const v of [...new Map(valoriMarcati.map((m) => [m.valore + m.categoria, m])).values()]) console.log(` - marcato [${v.categoria}] «${v.valore}»: ${v.riga.slice(0, 110)}`);
+  for (const d of derivatiUnici) console.log(` - derivato «${d.valore}» = ${d.derivazione} (indicato nel testo: ${d.dichiaratoNelTesto ? "sì" : "no, aggiunto dalla guardia"})`);
   console.log(`
 Garanzia R8 (riferimenti all'offerta economica): ${interventiEconomici.length === 0 ? "il modello non ha scritto nessuna formula vietata, nessun intervento" : ""}`);
   for (const i of interventiEconomici) console.log(` - ${i}`);

@@ -307,7 +307,7 @@ async function main() {
     const finale = rel.slice(inizioFinale);
     atteso(
       "collegamento: componiRelazioneFinale applica la garanzia prima di comporre il documento",
-      finale.includes("garantisciSenzaRiferimentiEconomici(") && finale.indexOf("garantisciSenzaRiferimentiEconomici(") < finale.indexOf("const contenutoFinale") && /avvisiEconomici\s*\}\s*;?\s*\n\}/.test(finale),
+      finale.includes("garantisciSenzaRiferimentiEconomici(") && finale.indexOf("garantisciSenzaRiferimentiEconomici(") < finale.indexOf("const contenutoFinale") && /avvisiEconomici(?:,\s*valoriImpresa)?\s*\}\s*;?\s*\n\}/.test(finale),
       "",
     );
 
