@@ -368,8 +368,24 @@ function eMarcato(testo: string, fineNumero: number): boolean {
   // Come la lettura inversa di valoreDelMarcatoreProsa (confronto-tagli.ts):
   // il marcatore sta dopo il numero e al più tre parole, con un'eventuale
   // chiusura di grassetto in mezzo ("**132,5 ore settimanali** *").
+  //
+  // Forme di marcatore riconosciute dopo il valore:
+  //   "65% *"            asterisco isolato (la convenzione)
+  //   "**150 ore** *"    chiusura di grassetto, poi asterisco
+  //   "**65%\***"        asterisco con escape DENTRO il grassetto (scritto
+  //                      così dal modello e dalla verifica AI)
+  //   "**65% ***"        asterisco + chiusura di grassetto
   const resto = testo.slice(fineNumero);
-  return /^(?:\s?[A-Za-zÀ-ÿ°²/]+){0,3}(?:\*\*|!!)?\s?\\?\*(?![*\w])/.test(resto);
+  return /^(?:\s?[A-Za-zÀ-ÿ°²/]+){0,3}(?:(?:\*\*|!!)\s?\\?\*(?![*\w])|\s?(?:\\\*|\*{3}(?!\*)|\*(?![*\w])))/.test(resto);
+}
+
+// L'asterisco che marca la cella sta in fondo, anche dopo una chiusura di
+// grassetto: "30 minuti *", "**1.500 mq/h** *", "**65%\***", "**3 macchine ***".
+function cellaMarcata(corpo: string): boolean {
+  let fine = corpo.replace(/\s+$/, "");
+  while (/(?:\*\*|!!)$/.test(fine) && !/\*{3}$/.test(fine) && !/\\\*\*\*$/.test(fine)) fine = fine.slice(0, -2).replace(/\s+$/, "");
+  if (/\*{3}$/.test(fine)) fine = fine.slice(0, -2);
+  return /(?:^|[\s\\])\*$/.test(fine);
 }
 
 function dentroSegnaposto(testo: string, posizione: number): boolean {
@@ -424,6 +440,9 @@ export type EsitoGuardiaValori = {
   testo: string;
   marcati: ValoreMarcato[];
   derivati: ValoreDerivato[];
+  // Valori senza riscontro che NON si è riusciti a marcare senza alterare la
+  // formattazione della riga (rete di sicurezza): la riga è rimasta intatta.
+  nonMarcabili: ValoreMarcato[];
   notaAggiunta: boolean;
 };
 
@@ -434,11 +453,29 @@ const RIGA_SEPARATORE_TABELLA = /^\|?[\s:|-]+\|?$/;
 
 // Un'inserzione dentro "**...**" o "!!...!!" romperebbe il grassetto: si
 // sposta alla fine di quel tratto.
+function intervalliDelimitati(testo: string, delimitatore: string): { inizio: number; fine: number }[] {
+  const intervalli: { inizio: number; fine: number }[] = [];
+  let aperto: number | null = null;
+  for (let i = 0; i < testo.length; i++) {
+    if (testo[i] === "\\") {
+      i++; // carattere con escape ("\*"): non è un delimitatore
+      continue;
+    }
+    if (testo.startsWith(delimitatore, i)) {
+      if (aperto === null) aperto = i;
+      else {
+        intervalli.push({ inizio: aperto, fine: i + delimitatore.length });
+        aperto = null;
+      }
+      i += delimitatore.length - 1;
+    }
+  }
+  return intervalli;
+}
+
 function postoDiInserzione(testo: string, posizione: number): number {
-  for (const re of [/\*\*[^*]+\*\*/g, /!![^!]+!!/g]) {
-    for (const m of testo.matchAll(re)) {
-      const inizio = m.index ?? 0;
-      const fine = inizio + m[0].length;
+  for (const delimitatore of ["**", "!!"]) {
+    for (const { inizio, fine } of intervalliDelimitati(testo, delimitatore)) {
       if (posizione > inizio && posizione < fine) return fine;
     }
   }
@@ -449,44 +486,98 @@ function numeriDelTesto(testo: string): number[] {
   return estraiNumeri(testo).map((n) => n.valore);
 }
 
+// I tratti in grassetto ("**...**") e in evidenziazione ("!!...!!") così come
+// li legge il renderer (docx-generator.ts: due passate, "\*" protetto).
+function trattiFormattati(testo: string): string[] {
+  const protetto = testo.replace(/\\\*/g, "\u0001");
+  const tratti: string[] = [];
+  for (const p of protetto.split(/(\*\*[^*]+\*\*)/)) {
+    if (p.length >= 5 && p.startsWith("**") && p.endsWith("**")) tratti.push(p);
+  }
+  for (const m of protetto.matchAll(/!!.+?!!/g)) tratti.push(m[0]);
+  return tratti;
+}
+
+// Rete di sicurezza: la guardia aggiunge testo, non deve MAI cambiare come il
+// resto della riga viene letto. Se i tratti in grassetto/evidenziati dopo la
+// modifica non sono esattamente quelli di prima (un asterisco finito dentro un
+// grassetto lo spezza e lascia un "**" letterale nel Word — osservato in un
+// livello 2), la modifica non è sicura.
+export function modificaSicura(originale: string, nuovo: string): boolean {
+  return JSON.stringify(trattiFormattati(originale)) === JSON.stringify(trattiFormattati(nuovo));
+}
+
 function elaboraTesto(
   testo: string,
   indice: IndiceEvidenza,
   inCella: boolean,
   marcati: ValoreMarcato[],
   derivati: ValoreDerivato[],
+  nonMarcabili: ValoreMarcato[],
   rigaOriginale: string,
 ): string {
   const valori = analizzaValori(testo, indice);
   if (valori.length === 0) return testo;
 
   const inserzioni: { posizione: number; testo: string }[] = [];
-  let daMarcare = false;
+  const derivatiLocali: ValoreDerivato[] = [];
+  const senzaRiscontro: ValoreMarcato[] = [];
   for (const v of valori) {
     if (v.stato === "derivato" && v.derivazione) {
       const numeri = numeriDelTesto(testo);
       const dichiarato = v.derivazione.componenti.every((c) => numeri.includes(c));
-      derivati.push({ valore: v.raw, derivazione: v.derivazione.testo, dichiaratoNelTesto: dichiarato, riga: rigaOriginale.trim() });
-      if (!dichiarato) inserzioni.push({ posizione: postoDiInserzione(testo, v.fineFrase), testo: ` (${v.derivazione.testo})` });
+      derivatiLocali.push({ valore: v.raw, derivazione: v.derivazione.testo, dichiaratoNelTesto: dichiarato, riga: rigaOriginale.trim() });
+      if (!dichiarato) inserzioni.push({ posizione: postoDiInserzione(testo, v.fineFrase), testo: " (" + v.derivazione.testo + ")" });
     } else if (v.stato === "senza-riscontro") {
-      marcati.push({ valore: v.raw, categoria: v.categoria, riga: rigaOriginale.trim() });
-      if (inCella) daMarcare = true;
-      else inserzioni.push({ posizione: postoDiInserzione(testo, v.fineFrase), testo: " *" });
+      senzaRiscontro.push({ valore: v.raw, categoria: v.categoria, riga: rigaOriginale.trim() });
+      if (!inCella) inserzioni.push({ posizione: postoDiInserzione(testo, v.fineFrase), testo: " *" });
     }
   }
+  derivati.push(...derivatiLocali);
 
-  let nuovo = testo;
-  for (const ins of inserzioni.sort((a, b) => b.posizione - a.posizione)) {
-    nuovo = nuovo.slice(0, ins.posizione) + ins.testo + nuovo.slice(ins.posizione);
+  const applica = (base: string, ins: { posizione: number; testo: string }[], codaCella: boolean): string => {
+    let nuovo = base;
+    for (const i of [...ins].sort((a, b) => b.posizione - a.posizione)) nuovo = nuovo.slice(0, i.posizione) + i.testo + nuovo.slice(i.posizione);
+    return codaCella ? nuovo.replace(/\s+$/, "") + " *" : nuovo;
+  };
+
+  const proposta = applica(testo, inserzioni, inCella && senzaRiscontro.length > 0);
+  if (modificaSicura(testo, proposta)) {
+    marcati.push(...senzaRiscontro);
+    return proposta;
   }
-  if (daMarcare) nuovo = `${nuovo.replace(/\s+$/, "")} *`;
-  return nuovo;
+
+  // Ripiego: la sola dichiarazione dei derivati (se sicura) e, per i valori
+  // senza riscontro, l'asterisco in fondo alla riga — fuori da ogni tratto.
+  const soloDerivati = inserzioni.filter((i) => i.testo !== " *");
+  let ripiego = applica(testo, soloDerivati, false);
+  if (!modificaSicura(testo, ripiego)) ripiego = testo;
+  if (senzaRiscontro.length > 0) {
+    const conCoda = ripiego.replace(/\s+$/, "") + " *";
+    if (modificaSicura(testo, conCoda)) {
+      marcati.push(...senzaRiscontro);
+      return conCoda;
+    }
+    nonMarcabili.push(...senzaRiscontro);
+  }
+  return ripiego;
+}
+
+function elaboraCella(cella: string, indice: IndiceEvidenza, marcati: ValoreMarcato[], derivati: ValoreDerivato[], nonMarcabili: ValoreMarcato[], rigaOriginale: string): string {
+  const spazioFinale = cella.match(/\s*$/)?.[0] ?? "";
+  const corpo = cella.slice(0, cella.length - spazioFinale.length);
+  if (corpo.trim() === "") return cella;
+  // Convenzione delle celle: l'asterisco isolato a fine cella marca il valore
+  // della cella ("30 minuti *", "**1.500 mq/h** *").
+  if (cellaMarcata(corpo)) return cella;
+  return elaboraTesto(corpo, indice, true, marcati, derivati, nonMarcabili, rigaOriginale) + spazioFinale;
 }
 
 export function applicaGuardiaValori(testo: string, evidenza: EvidenzaDati, indicePronto?: IndiceEvidenza): EsitoGuardiaValori {
   const indice = indicePronto ?? indicizzaEvidenza(evidenza);
   const marcati: ValoreMarcato[] = [];
   const derivati: ValoreDerivato[] = [];
+  const nonMarcabili: ValoreMarcato[] = [];
   let dentroOrganigramma = false;
 
   const righe = testo.split("\n").map((riga) => {
@@ -502,10 +593,10 @@ export function applicaGuardiaValori(testo: string, evidenza: EvidenzaDati, indi
 
     if (t.startsWith("|")) {
       const celle = riga.split("|");
-      const nuove = celle.map((cella, i) => (i === 0 || i === celle.length - 1 ? cella : elaboraCella(cella, indice, marcati, derivati, riga)));
+      const nuove = celle.map((cella, i) => (i === 0 || i === celle.length - 1 ? cella : elaboraCella(cella, indice, marcati, derivati, nonMarcabili, riga)));
       return nuove.join("|");
     }
-    return elaboraTesto(riga, indice, false, marcati, derivati, riga);
+    return elaboraTesto(riga, indice, false, marcati, derivati, nonMarcabili, riga);
   });
 
   let nuovoTesto = righe.join("\n");
@@ -514,18 +605,9 @@ export function applicaGuardiaValori(testo: string, evidenza: EvidenzaDati, indi
     nuovoTesto = `${nuovoTesto.replace(/\s+$/, "")}\n\n${NOTA_VALORI_PROPOSTI}\n`;
     notaAggiunta = true;
   }
-  return { testo: nuovoTesto, marcati, derivati, notaAggiunta };
+  return { testo: nuovoTesto, marcati, derivati, nonMarcabili, notaAggiunta };
 }
 
-function elaboraCella(cella: string, indice: IndiceEvidenza, marcati: ValoreMarcato[], derivati: ValoreDerivato[], rigaOriginale: string): string {
-  const spazioFinale = cella.match(/\s*$/)?.[0] ?? "";
-  const corpo = cella.slice(0, cella.length - spazioFinale.length);
-  if (corpo.trim() === "") return cella;
-  // Convenzione delle celle: l'asterisco isolato a fine cella marca il valore
-  // della cella ("30 minuti *", "**1.500 mq/h** *").
-  if (/\s\*\s*$|^\s*\*\s*$/.test(corpo.replace(/\*\*(?!\s*$)/g, "").replace(/\*\*$/, ""))) return cella;
-  return elaboraTesto(corpo, indice, true, marcati, derivati, rigaOriginale) + spazioFinale;
-}
 
 // Per i controlli: i valori che, nel testo dato, risultano ancora senza
 // riscontro e NON marcati — dopo la guardia devono essere zero.
@@ -543,9 +625,9 @@ export function trovaValoriSenzaRiscontro(testo: string, evidenza: EvidenzaDati,
     if (t === "" || /^#{1,3}\s/.test(t) || /^\[TABELLA:/i.test(t) || /^\[\/?BOX/i.test(t) || RIGA_SEPARATORE_TABELLA.test(t) || /^\s*\\?\*[^*\s]/.test(riga)) continue;
     const pezzi = t.startsWith("|") ? t.split("|").slice(1, -1) : [riga];
     for (const pezzo of pezzi) {
-      const cellaMarcata = t.startsWith("|") && /\s\*\s*$/.test(pezzo.replace(/\*\*/g, ""));
+      const marcataInCella = t.startsWith("|") && cellaMarcata(pezzo);
       for (const v of analizzaValori(pezzo, indice)) {
-        if (v.stato === "senza-riscontro" && !cellaMarcata) trovati.push({ valore: v.raw, categoria: v.categoria, riga: riga.trim() });
+        if (v.stato === "senza-riscontro" && !marcataInCella) trovati.push({ valore: v.raw, categoria: v.categoria, riga: riga.trim() });
       }
     }
   }
@@ -554,12 +636,17 @@ export function trovaValoriSenzaRiscontro(testo: string, evidenza: EvidenzaDati,
 
 // Testo per il modello che risponde in chat: cosa il sistema ha marcato o
 // dichiarato come derivato, da dire al cliente.
-export function testoValoriPerModello(marcati: ValoreMarcato[], derivati: ValoreDerivato[]): string {
+export function testoValoriPerModello(marcati: ValoreMarcato[], derivati: ValoreDerivato[], nonMarcabili: ValoreMarcato[] = []): string {
   const parti: string[] = [];
   if (marcati.length > 0) {
     const elenco = [...new Set(marcati.map((m) => m.valore))].join(", ");
     parti.push(
       `NOTA: ${marcati.length} valore/i numerico/i su prodotti, attrezzature, prestazioni o organico (${elenco}) non trovano riscontro nel profilo azienda né nei documenti di gara: il sistema li ha marcati con un asterisco come PROPOSTE DA CONFERMARE. Dillo al cliente in una frase e invitalo a confermarli o correggerli prima di consegnare.`,
+    );
+  }
+  if (nonMarcabili.length > 0) {
+    parti.push(
+      "ATTENZIONE: " + nonMarcabili.length + " valore/i senza riscontro (" + [...new Set(nonMarcabili.map((m) => m.valore))].join(", ") + ") non si è riusciti a marcare senza alterare la formattazione: sono rimasti SENZA asterisco nel documento. Dillo chiaramente al cliente e invitalo a verificarli prima di consegnare.",
     );
   }
   if (derivati.length > 0) {

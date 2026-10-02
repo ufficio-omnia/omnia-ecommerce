@@ -186,7 +186,7 @@ async function caricaDocumento(
 // Esito della guardia R9 (valori numerici senza riscontro) su un documento:
 // cosa è stato marcato con asterisco come proposta e cosa è stato riconosciuto
 // come derivato da dati noti — vedi valori-impresa.ts.
-export type EsitoValoriImpresa = { marcati: ValoreMarcato[]; derivati: ValoreDerivato[] };
+export type EsitoValoriImpresa = { marcati: ValoreMarcato[]; derivati: ValoreDerivato[]; nonMarcabili: ValoreMarcato[] };
 
 // Legge l'evidenza (profilo, gara, documenti, messaggi del cliente); se la
 // lettura fallisce la guardia non può girare: si segnala con forza nei log
@@ -272,7 +272,7 @@ export async function generaBozzaSezione(params: {
   const evidenza = await evidenzaPerGuardia({ garaId, userId, testiAggiuntivi: [contestoDocumenti, datiGaraStrutturati] });
   const guardiaValori = evidenza ? applicaGuardiaValori(garanziaEconomica.testo, evidenza) : null;
   const contenuto = guardiaValori ? guardiaValori.testo : garanziaEconomica.testo;
-  const valoriImpresa: EsitoValoriImpresa = { marcati: guardiaValori?.marcati ?? [], derivati: guardiaValori?.derivati ?? [] };
+  const valoriImpresa: EsitoValoriImpresa = { marcati: guardiaValori?.marcati ?? [], derivati: guardiaValori?.derivati ?? [], nonMarcabili: guardiaValori?.nonMarcabili ?? [] };
 
   const { data: ultima } = await supabase
     .from("gara_relazione_sezioni")
@@ -1307,7 +1307,7 @@ export async function componiRelazioneFinale(params: {
   // R9 sul testo finale, sezione per sezione (stessa guardia deterministica
   // di generaBozzaSezione): copre le bozze salvate prima che esistesse e ciò
   // che compressione/espansione hanno riscritto. L'evidenza si legge una volta.
-  const valoriImpresa: EsitoValoriImpresa = { marcati: [], derivati: [] };
+  const valoriImpresa: EsitoValoriImpresa = { marcati: [], derivati: [], nonMarcabili: [] };
   const evidenzaFinale = await evidenzaPerGuardia({ garaId, userId });
   if (evidenzaFinale) {
     const indiceEvidenza = indicizzaEvidenza(evidenzaFinale);
@@ -1315,6 +1315,7 @@ export async function componiRelazioneFinale(params: {
       const esito = applicaGuardiaValori(s.contenuto, evidenzaFinale, indiceEvidenza);
       valoriImpresa.marcati.push(...esito.marcati);
       valoriImpresa.derivati.push(...esito.derivati);
+      valoriImpresa.nonMarcabili.push(...esito.nonMarcabili);
       if (esito.testo !== s.contenuto) {
         sezioniFinali[i] = { ...s, contenuto: esito.testo };
         sezioniModificate.add(i);

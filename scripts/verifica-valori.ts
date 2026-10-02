@@ -16,6 +16,7 @@ import { REGOLE_OMNIA } from "../src/lib/prompts";
 import {
   NOTA_VALORI_PROPOSTI,
   applicaGuardiaValori,
+  modificaSicura,
   costruisciEvidenza,
   indicizzaEvidenza,
   testoValoriPerModello,
@@ -153,6 +154,50 @@ for (const [nome, testo] of NON_TOCCARE) {
   atteso("testo senza valori da marcare: nessuna nota", !guardia("Solo testo, senza numeri.").notaAggiunta, "");
   const bold = guardia("Il **quantitativo di 30 lavasciuga professionali** è dedicato.");
   atteso("asterisco mai dentro un tratto in grassetto", /\*\*quantitativo di 30 lavasciuga professionali\*\* \*/.test(bold.testo) || /30 lavasciuga \*/.test(bold.testo) && !/lavasciuga \* professionali\*\*/.test(bold.testo), bold.testo);
+}
+
+// --- 4-bis. Marcatori scritti dal modello e dalla verifica AI: riconosciuti, mai raddoppiati ---
+// Forme reali emerse da un livello 2: l'asterisco con escape DENTRO il
+// grassetto ("**65%\***"). Non riconoscerlo faceva aggiungere un secondo
+// asterisco che spezzava il grassetto (un "**" letterale nel Word) e lasciava
+// il valore "senza asterisco" agli occhi del controllo finale.
+{
+  const giaMarcati: [string, string][] = [
+    ["asterisco con escape dentro il grassetto", "Una gamma di prodotti con una quota pari al **65%\\*** del totale, in possesso dell'etichetta Ecolabel UE."],
+    ["due valori marcati nella stessa riga", "La quota di prodotti Ecolabel è del **65%\\*** del totale; per la carta tessuto la quota di prodotti Ecolabel si attesta al **70%\\*** del totale."],
+    ["asterisco e chiusura del grassetto", "La quota di prodotti Ecolabel è del **65% *** del totale."],
+    ["asterisco e chiusura seguiti da altro grassetto (forma che la versione precedente corrompeva)", "La quota di prodotti Ecolabel è del **65% *** **del totale**."],
+    ["escape dentro il grassetto seguito da altro grassetto", "La quota di prodotti Ecolabel è del **65%\*** **del totale**."],
+    ["chiusura del grassetto poi asterisco", "La quota di prodotti Ecolabel è del **65%** * del totale."],
+    ["cella con escape dentro il grassetto", "| [C]Detergenti | [C]**65% prodotti Ecolabel\\*** | [G]Criteri |"],
+    ["cella con asterisco dopo il grassetto", "| [C]Detergenti | [C]**65% prodotti Ecolabel** * | [G]Criteri |"],
+    ["cella con asterisco e chiusura", "| [C]Macchine | [C]**3 macchine ***| [G]Dotazione |"],
+  ];
+  for (const [nome, testo] of giaMarcati) {
+    const esito = guardia(testo);
+    atteso(`già marcato dal modello: ${nome} — non toccato`, esito.testo === testo && esito.marcati.length === 0, esito.testo);
+    atteso(`già marcato dal modello: ${nome} — il controllo finale non vede residui`, trovaValoriSenzaRiscontro(testo, EVIDENZA, INDICE).length === 0, "");
+  }
+
+  // Rete di sicurezza: la guardia non deve poter cambiare come il resto della riga viene letto.
+  atteso("rete di sicurezza: un asterisco dentro un grassetto spezza i tratti → modifica non sicura", !modificaSicura("Quota del **65%** del totale.", "Quota del **65% *** del totale."), "");
+  atteso("rete di sicurezza: l'asterisco dopo il grassetto lascia i tratti intatti → modifica sicura", modificaSicura("Quota del **65%** del totale.", "Quota del **65%** * del totale."), "");
+  atteso("rete di sicurezza: anche i tratti evidenziati (!!..!!) devono restare quelli di prima", !modificaSicura("Il !!Responsabile!! coordina.", "Il !!Responsabi *le!! coordina.") && modificaSicura("Il !!Responsabile!! coordina.", "Il !!Responsabile!! coordina 4 lavasciuga *."), "");
+  atteso("nessun valore marcato in modo non sicuro nei casi legittimi: nonMarcabili vuoto", guardia("Con 6 monospazzola e una quota del 72% di prodotti Ecolabel.").nonMarcabili.length === 0, "");
+
+  const dentroGrassetto = guardia("**Nota\\*: la quota proposta di prodotti Ecolabel è del 77% sul totale delle forniture**, come impegno.");
+  atteso(
+    "valore da marcare dentro un grassetto che contiene un asterisco con escape: l'asterisco va dopo il grassetto, mai dentro",
+    /forniture\*\* \*, come impegno/.test(dentroGrassetto.testo) && dentroGrassetto.marcati.length === 1,
+    dentroGrassetto.testo,
+  );
+  for (const [nome, testo] of [...giaMarcati, ["valore da marcare dentro un grassetto", dentroGrassetto.testo]] as [string, string][]) {
+    const corpo = testo.startsWith("|") ? `| Voce | Valore | Nota |\n|---|---|---|\n${testo}` : testo;
+    const buffer = await buildDocxBuffer("Prova", `# 1. Prova\n\n## 1.1 Voce\n\n${corpo}\n`, { font: "Calibri", dimensioneCarattere: 12 }, undefined, undefined, {});
+    const zip = await JSZip.loadAsync(buffer);
+    const residui = trovaMarcatoriResidui(estraiTestiPerNodo(await zip.file("word/document.xml").async("string")));
+    atteso(`documento reso senza marcatori letterali: ${nome}`, residui.length === 0, residui.join(" / "));
+  }
 }
 
 // --- 5. Il documento reso resta pulito ---
