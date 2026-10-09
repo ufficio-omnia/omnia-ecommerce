@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import CompanyProfileForm from "./company-profile-form";
 
 export type Company = {
@@ -61,6 +62,17 @@ export default async function ProfiloAziendaPage() {
     }
   }
 
+  // Anteprima dei loghi già caricati: il bucket è privato, quindi un URL firmato
+  // di breve durata. I percorsi vengono dalla riga dell'utente stesso, mai da
+  // input esterni; un file mancante dà semplicemente nessuna anteprima.
+  const admin = createAdminClient();
+  const urlFirmato = async (percorso: string | null | undefined) => {
+    if (!percorso) return null;
+    const { data } = await admin.storage.from("company-assets").createSignedUrl(percorso, 3600);
+    return data?.signedUrl ?? null;
+  };
+  const [logoUrl, softwareLogoUrl] = await Promise.all([urlFirmato(company?.logo_path), urlFirmato(company?.software_logo_path)]);
+
   return (
     <div className="omnia-app-shell">
       <Link href="/dashboard/omnia-ai" className="omnia-torna">
@@ -74,7 +86,7 @@ export default async function ProfiloAziendaPage() {
         momento.
       </p>
 
-      <CompanyProfileForm company={company ?? null} />
+      <CompanyProfileForm company={company ?? null} logoUrl={logoUrl} softwareLogoUrl={softwareLogoUrl} />
     </div>
   );
 }

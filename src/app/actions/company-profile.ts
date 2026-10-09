@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type CompanyProfileState = { error?: string; success?: boolean };
 
@@ -11,19 +12,24 @@ const ESTENSIONE_PER_TIPO: Record<string, string> = {
   "image/webp": "webp",
 };
 
+const LIMITE_BYTE_LOGO = 5 * 1024 * 1024;
+
 // Carica un logo (aziendale o del software gestionale) nel bucket
 // privato "company-assets", sotto la cartella dell'utente (richiesto
 // dalla policy RLS basata sul primo segmento del path) — usato per
 // inserire i loghi reali nell'organigramma generato da OMNIA AI, invece
-// di caselle di testo generiche.
+// di caselle di testo generiche. Un logo non valido o non caricato è un
+// ERRORE detto all'utente: prima restituiva null e il salvataggio
+// cancellava in silenzio il logo già presente.
 async function caricaLogo(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   file: File,
   nomeFile: "logo" | "software-logo",
-): Promise<string | null> {
+): Promise<{ path: string } | { error: string }> {
   const estensione = ESTENSIONE_PER_TIPO[file.type];
-  if (!estensione) return null;
+  if (!estensione) return { error: `Il file «${file.name}» non è un formato supportato: carica un logo PNG, JPG o WebP.` };
+  if (file.size > LIMITE_BYTE_LOGO) return { error: `Il file «${file.name}» supera i 5 MB: riducilo e riprova.` };
 
   const path = `${userId}/${nomeFile}.${estensione}`;
   const { error } = await supabase.storage
@@ -32,9 +38,21 @@ async function caricaLogo(
 
   if (error) {
     console.error(`Errore upload ${nomeFile}:`, error);
-    return null;
+    return { error: "Errore nel caricamento del logo. Riprova tra qualche istante." };
   }
-  return path;
+  return { path };
+}
+
+// Il nuovo logo può avere un'estensione diversa dal precedente (logo.png →
+// logo.jpg): il vecchio file non serve più e si toglie, senza mai fallire il
+// salvataggio per questo.
+async function eliminaLogoSostituito(percorsoVecchio: string | null | undefined, percorsoNuovo: string | undefined) {
+  if (!percorsoVecchio || !percorsoNuovo || percorsoVecchio === percorsoNuovo) return;
+  try {
+    await createAdminClient().storage.from("company-assets").remove([percorsoVecchio]);
+  } catch (err) {
+    console.error("Errore rimozione del logo sostituito:", err);
+  }
 }
 
 function optionalText(formData: FormData, key: string): string | null {
@@ -77,11 +95,27 @@ export async function saveCompanyProfile(
   const logoFile = formData.get("logo") as File | null;
   const softwareLogoFile = formData.get("softwareLogo") as File | null;
 
-  const logoPath = logoFile && logoFile.size > 0 ? await caricaLogo(supabase, user.id, logoFile, "logo") : undefined;
-  const softwareLogoPath =
-    softwareLogoFile && softwareLogoFile.size > 0
-      ? await caricaLogo(supabase, user.id, softwareLogoFile, "software-logo")
-      : undefined;
+  // Percorsi attuali: servono a togliere il file sostituito.
+  const { data: attuali } = await supabase
+    .from("companies")
+    .select("logo_path, software_logo_path")
+    .eq("user_id", user.id)
+    .maybeSingle<{ logo_path: string | null; software_logo_path: string | null }>();
+
+  // Se un logo selezionato non si può caricare si ferma tutto con un messaggio
+  // chiaro: il profilo non viene salvato a metà e il logo che c'è già resta.
+  let logoPath: string | undefined;
+  let softwareLogoPath: string | undefined;
+  if (logoFile && logoFile.size > 0) {
+    const esito = await caricaLogo(supabase, user.id, logoFile, "logo");
+    if ("error" in esito) return { error: esito.error };
+    logoPath = esito.path;
+  }
+  if (softwareLogoFile && softwareLogoFile.size > 0) {
+    const esito = await caricaLogo(supabase, user.id, softwareLogoFile, "software-logo");
+    if ("error" in esito) return { error: esito.error };
+    softwareLogoPath = esito.path;
+  }
 
   const riga = {
       user_id: user.id,
@@ -131,6 +165,10 @@ export async function saveCompanyProfile(
     return { error: "Errore nel salvataggio del profilo azienda." };
   }
 
+  await eliminaLogoSostituito(attuali?.logo_path, logoPath);
+  await eliminaLogoSostituito(attuali?.software_logo_path, softwareLogoPath);
+
   revalidatePath("/dashboard/profilo-azienda");
+  revalidatePath("/dashboard/omnia-ai/profilo-azienda");
   return { success: true };
 }
