@@ -114,6 +114,28 @@ export const flussoRitornoRighe: DatiFigura = {
   },
 };
 
+// Modellato su una figura reale generata dal modello (anonimizzata): ramo
+// laterale sul primo passo della seconda riga, responsabili su due righe e
+// ritorno che sale alla prima riga.
+export const flussoLaterale: DatiFigura = {
+  v: 1,
+  archetipo: "flusso",
+  didascalia: "Una non conformità resta aperta finché la verifica di chiusura non ne attesta l'efficacia; se non è efficace il ciclo riparte dalla classificazione.",
+  flusso: {
+    numerato: true,
+    stadi: [
+      { tipo: "passo", titolo: "Rilevazione anomalia", dettaglio: "Check-list, audit o segnalazione del referente di reparto", responsabile: "Coordinatore di plesso" },
+      { tipo: "passo", titolo: "Classificazione", dettaglio: "Lieve, media o grave, con riferimento alla clausola violata", responsabile: "Ispettore Qualità" },
+      { tipo: "passo", titolo: "Assegnazione responsabile e termine", dettaglio: "Tempo di ripristino assegnato in base alla gravità", responsabile: "Responsabile di Commessa" },
+      { tipo: "passo", titolo: "Azione correttiva", dettaglio: "Intervento di ripristino sull'area o sul processo" },
+      { tipo: "passo", titolo: "Verifica di chiusura", dettaglio: "Controllo dell'avvenuto ripristino e chiusura del verbale", ramoLaterale: { etichetta: "se non efficace", titolo: "Non efficace: riapertura verbale" } },
+      { tipo: "passo", titolo: "Piano di miglioramento", dettaglio: "Solo in presenza di scostamenti ricorrenti" },
+    ],
+    ritorno: { da: 4, a: 1, etichetta: "azione non efficace" },
+    nota: "Riferimento: documento di capitolato, sezione sui controlli.",
+  },
+};
+
 export const livelliElenco: DatiFigura = {
   v: 1,
   archetipo: "livelli",
@@ -336,6 +358,7 @@ export const tuttiGliEsempiFigure: Record<string, DatiFigura> = {
   flussoAssenze,
   flussoRitorno,
   flussoRitornoRighe,
+  flussoLaterale,
   livelliElenco,
   livelliFlusso,
   livelliSenzaPannello,

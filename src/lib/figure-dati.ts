@@ -385,6 +385,18 @@ export function leggiRete(raw: unknown, avvisi: string[]): DatiRete | null {
   return dati;
 }
 
+// Il contenuto di una figura sta nel campo omonimo all'archetipo ("flusso":
+// {stadi…}). Osservato con il modello vero: a volte i campi dell'archetipo
+// (stadi, righe, nodi…) vengono scritti direttamente al livello della figura, o
+// come elenco al posto dell'oggetto ("livelli": [...]). Una lettura tollerante
+// recupera entrambe le forme: i campi di ogni archetipo hanno nomi diversi, quindi
+// non c'è ambiguità.
+function corpoArchetipo(o: Record<string, unknown>, chiave: Archetipo): unknown {
+  const annidato = o[chiave];
+  if (Array.isArray(annidato) && chiave === "livelli") return { ...o, livelli: annidato };
+  return oggetto(annidato) ?? o;
+}
+
 // Una figura dichiarata dal modello → dati puliti, oppure null con un avviso.
 export function leggiFiguraModello(raw: unknown): { figura: DatiFigura | null; avvisi: string[] } {
   const avvisi: string[] = [];
@@ -397,19 +409,19 @@ export function leggiFiguraModello(raw: unknown): { figura: DatiFigura | null; a
   const base = { v: 1 as const, didascalia };
   let figura: DatiFigura | null = null;
   if (archetipo === "flusso") {
-    const f = leggiFlusso(o.flusso, avvisi);
+    const f = leggiFlusso(corpoArchetipo(o, "flusso"), avvisi);
     if (f) figura = { ...base, archetipo, flusso: f };
   } else if (archetipo === "livelli") {
-    const l = leggiLivelli(o.livelli, avvisi);
+    const l = leggiLivelli(corpoArchetipo(o, "livelli"), avvisi);
     if (l) figura = { ...base, archetipo, livelli: l };
   } else if (archetipo === "cronoprogramma") {
-    const c = leggiCronoprogramma(o.cronoprogramma, avvisi);
+    const c = leggiCronoprogramma(corpoArchetipo(o, "cronoprogramma"), avvisi);
     if (c) figura = { ...base, archetipo, cronoprogramma: c };
   } else if (archetipo === "cruscotto") {
-    const c = leggiCruscotto(o.cruscotto, avvisi);
+    const c = leggiCruscotto(corpoArchetipo(o, "cruscotto"), avvisi);
     if (c) figura = { ...base, archetipo, cruscotto: c };
   } else {
-    const r = leggiRete(o.rete, avvisi);
+    const r = leggiRete(corpoArchetipo(o, "rete"), avvisi);
     if (r) figura = { ...base, archetipo, rete: r };
   }
   if (!figura) avvisi.push(`Figura «${archetipo}» scartata: i dati non bastano a disegnarla.`);

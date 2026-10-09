@@ -9,6 +9,7 @@ import fs from "fs";
 import path from "path";
 import { disegnaFigura } from "../src/lib/figura-disegno";
 import { tuttiGliEsempiFigure } from "./lib/figure-esempio";
+import { figureEstreme } from "./lib/figure-estreme";
 
 (async () => {
   const argomenti = process.argv.slice(2);
@@ -17,7 +18,9 @@ import { tuttiGliEsempiFigure } from "./lib/figure-esempio";
   const prefisso = argomenti.find((a, i) => !a.startsWith("--") && !(indiceFont >= 0 && i === indiceFont + 1)) ?? "";
   const cartella = path.join(__dirname, "..", "test", "diagnostica", "figure");
   fs.mkdirSync(cartella, { recursive: true });
-  for (const [nome, dati] of Object.entries(tuttiGliEsempiFigure)) {
+  // con prefisso "estremo..." si disegnano i casi estremi (adattamento automatico)
+  const insieme = prefisso.startsWith("estremo") ? Object.fromEntries(Object.entries(figureEstreme).map(([n, d]) => [`estremo-${n}`, d])) : tuttiGliEsempiFigure;
+  for (const [nome, dati] of Object.entries(insieme)) {
     if (prefisso && !nome.startsWith(prefisso)) continue;
     const r = await disegnaFigura(dati, { font });
     const file = path.join(cartella, `${nome}${font ? `-${font.replace(/\W+/g, "")}` : ""}.png`);

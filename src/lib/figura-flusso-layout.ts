@@ -24,6 +24,8 @@ const GAP_GRUPPO = 30;
 const GAP_RIGHE = 40;
 const GAP_RAMI_ORIZZONTALI = 12;
 const H_LATERALE_MIN = 34;
+// Spazio fra il ramo laterale e il suo passo (la freccia e la sua etichetta).
+const GAP_LATERALE = 30;
 const H_CHIP = 17;
 const GAP_CHIP = 6;
 // Spazio in più per far passare il tratteggio di un ritorno fra una riga e l'altra.
@@ -94,15 +96,16 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
   };
   const righePasso = (it: Extract<Item, { k: "passo" }>): Riga[] => {
     const st = stilePasso(it);
-    return d.righeTitoloDettaglio(it.stadio.titolo,it.stadio.dettaglio, wPasso, { titolo: st.testo, dettaglio: st.dettaglio }, { maxTitolo: 3, maxDettaglio: 3 });
+    return d.righeTitoloDettaglio(it.stadio.titolo, it.stadio.dettaglio, wPasso, { titolo: st.testo, dettaglio: st.dettaglio }, { maxTitolo: 3, maxDettaglio: 3 });
   };
   // Il responsabile è un'etichetta bianca in fondo alla casella, distinta dal dettaglio.
+  // Se il ruolo non entra in una riga va a capo (al massimo due), mai troncato a metà.
   const chipPasso = (it: Extract<Item, { k: "passo" }>) => {
     if (!it.stadio.responsabile) return null;
-    const testo = avvolgi(it.stadio.responsabile, wPasso - 30, 12, false, misura, 1)[0];
-    return { testo, w: Math.min(wPasso - 16, misura(testo, 12, false) + 16) };
+    const testi = avvolgi(it.stadio.responsabile, wPasso - 30, 12, false, misura, 2);
+    return { testi, w: Math.min(wPasso - 16, Math.max(...testi.map((t) => misura(t, 12, false))) + 16), h: testi.length === 1 ? H_CHIP : 8 + testi.length * 14 };
   };
-  const altezzaTestoPasso = (it: Extract<Item, { k: "passo" }>) => altezzaRighe(righePasso(it)) + (chipPasso(it) ? GAP_CHIP + H_CHIP : 0);
+  const altezzaTestoPasso = (it: Extract<Item, { k: "passo" }>) => altezzaRighe(righePasso(it)) + (chipPasso(it) ? GAP_CHIP + (chipPasso(it)?.h ?? 0) : 0);
   const stileRamo = (r: RamoFlusso) => stile(r.semantico, { fill: C.bianco, stroke: C.linea, testo: C.testoScuro, dettaglio: C.grigioTesto });
   // larghezza di un ramo: in colonna quella del gruppo, in orizzontale divisa fra i rami
   const larghezzaRamo = (it: Extract<Item, { k: "gruppo" }>) =>
@@ -152,9 +155,12 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
   for (const riga of righe) if (riga.length === 1 && riga[0].k === "gruppo") riga[0].orizzontale = true;
 
   // ── Posizionamento ──
+  // Il ramo laterale sta sopra il passo, nella metà destra: la metà sinistra
+  // resta libera per la freccia che arriva dalla riga precedente.
+  const wLaterale = () => Math.round(wPasso * 0.68);
   const hLaterale = (it: Extract<Item, { k: "passo" }>) => {
     if (!it.stadio.ramoLaterale) return 0;
-    const r = avvolgi(it.stadio.ramoLaterale.titolo, wPasso - 16, 12, true, misura, 2);
+    const r = avvolgi(it.stadio.ramoLaterale.titolo, wLaterale() - 14, 12, true, misura, 3);
     return Math.max(H_LATERALE_MIN, 16 + r.length * 12 * INTERLINEA);
   };
   const collocati: Collocato[][] = [];
@@ -171,7 +177,7 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
   let y = area.y + (ritornoTraRighe && rigaA === 0 ? EXTRA_RITORNO : 0);
 
   righe.forEach((riga, ri) => {
-    const topExtra = riga.reduce((m, it) => (it.k === "passo" ? Math.max(m, hLaterale(it) ? hLaterale(it) + 24 : 0) : m), 0);
+    const topExtra = riga.reduce((m, it) => (it.k === "passo" ? Math.max(m, hLaterale(it) ? hLaterale(it) + GAP_LATERALE : 0) : m), 0);
     const hRiga = Math.max(...riga.map(hItem));
     const larghezzaRiga = riga.reduce((t, it, i) => t + larghezzaItem(it) + (i ? gapTra(riga[i - 1], it) : 0), 0);
     let x = area.x + (area.w - larghezzaRiga) / 2;
@@ -208,8 +214,8 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
           cur += hr;
         }
         if (chip) {
-          d.rect({ x: c.x + (c.w - chip.w) / 2, y: cur + GAP_CHIP, w: chip.w, h: H_CHIP, r: H_CHIP / 2, fill: C.bianco, stroke: C.bandaBordo, sw: 1 });
-          d.testo(c.x + c.w / 2, cur + GAP_CHIP + H_CHIP / 2, chip.testo, 12, false, C.testoBlu);
+          d.rect({ x: c.x + (c.w - chip.w) / 2, y: cur + GAP_CHIP, w: chip.w, h: chip.h, r: Math.min(chip.h / 2, 10), fill: C.bianco, stroke: C.bandaBordo, sw: 1 });
+          chip.testi.forEach((t, q) => d.testo(c.x + c.w / 2, cur + GAP_CHIP + chip.h / 2 + (q - (chip.testi.length - 1) / 2) * 14, t, 12, false, C.testoBlu));
         }
         // il numero del passo sta in un cerchio sull'angolo, così non toglie spazio al titolo
         if (c.numero) {
@@ -219,13 +225,17 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
         const lat = c.stadio.ramoLaterale;
         if (lat) {
           const hL = hLaterale(c);
-          const yL = c.y - 24 - hL;
+          const yL = c.y - GAP_LATERALE - hL;
           const stL = stile(lat.semantico, { fill: C.bianco, stroke: C.linea, testo: C.testoScuro, dettaglio: C.grigioTesto });
-          d.rect({ x: c.x, y: yL, w: c.w, h: hL, r: 8, fill: stL.fill, stroke: stL.stroke, sw: 1.2 });
-          const rl = avvolgi(lat.titolo, c.w - 16, 12, true, misura, 2);
-          rl.forEach((t, q) => d.testo(c.x + c.w / 2, yL + hL / 2 + (q - (rl.length - 1) / 2) * 12 * INTERLINEA, t, 12, true, stL.testo));
-          d.linea([[c.x + c.w / 2, yL + hL], [c.x + c.w / 2, c.y - 2]], C.lineaScura, 1.4, undefined, "fine");
-          if (lat.etichetta) d.testo(c.x + c.w / 2 + 8, yL + hL + 12, lat.etichetta, 12, true, C.grigioTesto, "inizio");
+          const wL = wLaterale();
+          const xL = c.x + c.w - wL;
+          d.rect({ x: xL, y: yL, w: wL, h: hL, r: 8, fill: stL.fill, stroke: stL.stroke, sw: 1.2 });
+          const rl = avvolgi(lat.titolo, wL - 14, 12, true, misura, 3);
+          rl.forEach((t, q) => d.testo(xL + wL / 2, yL + hL / 2 + (q - (rl.length - 1) / 2) * 12 * INTERLINEA, t, 12, true, stL.testo));
+          // dal passo verso il ramo (se la condizione è vera si va lì)
+          d.linea([[xL + wL / 2, c.y - 2], [xL + wL / 2, yL + hL + 2]], C.lineaScura, 1.4, undefined, "fine");
+          // l'etichetta sta in alto, sopra la zona del numero del passo vicino
+          if (lat.etichetta) d.testo(xL + wL / 2 + 8, c.y - 21, lat.etichetta, 12, true, C.grigioTesto, "inizio");
         }
       } else if (c.k === "banda") {
         d.rect({ x: c.x, y: c.y, w: c.w, h: c.h, r: 8, fill: C.bannerFill });
@@ -326,8 +336,12 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
         for (const cx of centri) d.linea([[cx, busY], [cx, topDi(prossimo) - 2]], col, 1.4, undefined, "fine");
       } else {
         const topProssimo = topDi(prossimo);
-        const xB = prossimo.x + prossimo.w / 2;
+        // con un ramo laterale sopra il primo passo la freccia arriva nella metà sinistra
+        const laterale = prossimo.k === "passo" && !!prossimo.stadio.ramoLaterale;
+        const xB = laterale ? prossimo.x + prossimo.w * 0.2 : prossimo.x + prossimo.w / 2;
         let lane = bottomUltimo + (topProssimo - bottomUltimo) / 2;
+        // i rami laterali della riga che segue occupano la parte bassa dello spazio: la corsia sta in alto
+        if (collocati[ri + 1].some((q) => q.k === "passo" && !!q.stadio.ramoLaterale)) lane = bottomUltimo + 14;
         // dove passa un ritorno la serpentina si sposta, per non toccare il tratteggio
         if (extraDopo(ri)) lane = ritornoInRiga === ri ? topProssimo - 14 : ritornoTraRighe && ri === rigaDa ? bottomUltimo + 44 : topProssimo - 34;
         const laneY = Math.min(Math.max(lane, bottomUltimo + 10), topProssimo - 12);

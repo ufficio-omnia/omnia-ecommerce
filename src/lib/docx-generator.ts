@@ -489,6 +489,9 @@ export const PREFISSO_NOME_IMMAGINE_ICONA = "icona:";
 // progressivo assegnato dal codice (mai dal modello) su tutto il documento, che
 // per la relazione composta è unico.
 export const PREFISSO_NOME_IMMAGINE_FIGURA = "figura:";
+// Altezza massima di una figura nel documento (px a 96 dpi): la pagina utile è
+// circa 880 px; il resto è per la didascalia e gli spazi.
+export const ALTEZZA_MASSIMA_FIGURA_PX = 800;
 
 function descrizioneImmagineIcona(nome: string, colore: string): { name: string; description: string } {
   return { name: `${PREFISSO_NOME_IMMAGINE_ICONA}${nome}`, description: `Icona ${nome} (colore ${colore})` };
@@ -1125,7 +1128,13 @@ export async function buildDocxBuffer(
         continue;
       }
       try {
-        const { buffer, width, height } = await disegnaFigura(datiFigura, { font });
+        const disegno = await disegnaFigura(datiFigura, { font });
+        const { buffer } = disegno;
+        // Un'immagine inline più alta della pagina verrebbe tagliata da Word: si
+        // riduce in proporzione perché stia su una pagina (con la didascalia).
+        const scala = Math.min(1, ALTEZZA_MASSIMA_FIGURA_PX / disegno.height);
+        const width = Math.round(disegno.width * scala);
+        const height = Math.round(disegno.height * scala);
         numeroFigura += 1;
         children.push(
           new Paragraph({

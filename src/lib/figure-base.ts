@@ -102,9 +102,12 @@ export function avvolgi(testo: string, maxW: number, size: number, bold: boolean
       corrente = candidata;
       i++;
     } else if (!corrente) {
-      // parola più larga della riga: si spezza
+      // parola più larga della riga: si spezza, se possibile dopo un "/" o un
+      // trattino («Operatore/» «Supervisore»), altrimenti dove capita
       let pezzo = parole[i];
-      while (pezzo.length > 1 && misura(pezzo, size, bold) > maxW) pezzo = pezzo.slice(0, -1);
+      const tagli = [...pezzo.matchAll(/[/\-–]/g)].map((m) => (m.index ?? 0) + 1).filter((k) => k < pezzo.length && misura(pezzo.slice(0, k), size, bold) <= maxW);
+      if (tagli.length > 0) pezzo = pezzo.slice(0, tagli[tagli.length - 1]);
+      else while (pezzo.length > 1 && misura(pezzo, size, bold) > maxW) pezzo = pezzo.slice(0, -1);
       righe.push(pezzo);
       parole[i] = parole[i].slice(pezzo.length);
       if (!parole[i]) i++;

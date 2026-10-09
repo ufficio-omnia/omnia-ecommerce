@@ -31,7 +31,7 @@ import {
 import { SCHEMA_FIGURE_STRUMENTO } from "../src/lib/figure-schema-strumento";
 import { costruisciFigure, leggiFunzioniPiattaforma, motivoCruscottoNonDisegnabile, pulisciDidascalia, testoFigureNelPrompt, type FattiFigure } from "../src/lib/figure-contesto";
 import { calcolaLayoutFigura, altezzaStimataFigura } from "../src/lib/figure-layout";
-import { C, contrasto, misuraApprossimata, type LayoutFigura, type Prim } from "../src/lib/figure-base";
+import { avvolgi, C, contrasto, misuraApprossimata, type LayoutFigura, type Prim } from "../src/lib/figure-base";
 import { COLORE_PIENO } from "../src/lib/colori-semantici";
 import { disegnaFigura } from "../src/lib/figura-disegno";
 import { stimaPagineContenuto, stimaPagineFigura } from "../src/lib/stima-pagine";
@@ -44,6 +44,7 @@ import { assegnaIconeMancanti } from "../src/lib/densita-visiva";
 import { applicaGuardiaValori } from "../src/lib/valori-impresa";
 import { estraiFigureDocumento, estraiSorgenteFigure, abbinaSorgente, verificaFigure } from "./lib/immagini-relazione";
 import { tuttiGliEsempiFigure, cruscottoCompleto } from "./lib/figure-esempio";
+import { figureEstreme } from "./lib/figure-estreme";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const JSZip = require("jszip");
 
@@ -112,6 +113,34 @@ function caselleSovrapposte(layout: LayoutFigura): string[] {
   return sovrapposte;
 }
 
+// Un collegamento non deve passare DENTRO una casella: un tratto che attraversa
+// l'interno di un rettangolo arrotondato (ristretto di 3 unità, perché le frecce
+// finiscono sul bordo) è un errore di instradamento.
+function lineeCheAttraversanoCaselle(layout: LayoutFigura): string[] {
+  const caselle = layout.prims.filter(RECT).filter((r) => (r.r ?? 0) >= 6 && r.w > 40 && r.h > 20);
+  const errori: string[] = [];
+  for (const p of layout.prims) {
+    if (p.t !== "linea") continue;
+    for (let i = 0; i + 1 < p.punti.length; i++) {
+      const [x1, y1] = p.punti[i];
+      const [x2, y2] = p.punti[i + 1];
+      for (const r of caselle) {
+        const xa = r.x + 3, xb = r.x + r.w - 3, ya = r.y + 3, yb = r.y + r.h - 3;
+        // tratti solo orizzontali o verticali: l'intervallo del tratto interseca l'interno?
+        const orizzontale = Math.abs(y1 - y2) < 0.5;
+        const verticale = Math.abs(x1 - x2) < 0.5;
+        const taglia = orizzontale
+          ? y1 > ya && y1 < yb && Math.max(x1, x2) > xa && Math.min(x1, x2) < xb
+          : verticale
+            ? x1 > xa && x1 < xb && Math.max(y1, y2) > ya && Math.min(y1, y2) < yb
+            : false;
+        if (taglia) errori.push(`linea (${Math.round(x1)},${Math.round(y1)})→(${Math.round(x2)},${Math.round(y2)}) dentro la casella ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.w)}x${Math.round(r.h)}`);
+      }
+    }
+  }
+  return errori;
+}
+
 // Per ogni testo, lo sfondo è l'ultimo riempimento disegnato che ne contiene il
 // centro (bianco se nessuno): il contrasto con il colore del testo deve essere
 // almeno 3:1 — mai chiaro su chiaro né scuro su scuro.
@@ -150,6 +179,17 @@ async function main() {
     atteso("alternative con un solo ramo: lo stadio è scartato", alternativeUnRamo.figura?.archetipo === "flusso" && alternativeUnRamo.figura.flusso.stadi.length === 2);
     const colori = leggiFiguraModello({ ...FLUSSO_VALIDO, flusso: { stadi: [{ tipo: "passo", titolo: "A", semantico: "SICUREZZA", colore: "#FF0000" }, { tipo: "passo", titolo: "B", semantico: "ROSSO" }] } });
     atteso("un colore scritto dal modello è ignorato; un tipo semantico sconosciuto cade", colori.figura?.archetipo === "flusso" && colori.figura.flusso.stadi[0].tipo === "passo" && !JSON.stringify(colori.figura).includes("FF0000") && !JSON.stringify(colori.figura).includes("ROSSO"));
+
+    // Forme che il modello vero ha prodotto: i campi dell'archetipo al livello della figura, o l'elenco dei livelli al posto dell'oggetto.
+    const piatto = leggiFiguraModello({ archetipo: "flusso", didascalia: "d", stadi: [{ tipo: "passo", titolo: "A" }, { tipo: "passo", titolo: "B" }], ritorno: { da: 2, a: 1 }, numerato: true });
+    atteso("lettura tollerante: i campi del flusso scritti accanto all'archetipo si recuperano", piatto.figura?.archetipo === "flusso" && piatto.figura.flusso.stadi.length === 2 && piatto.figura.flusso.numerato === true && piatto.figura.flusso.ritorno?.a === 0, JSON.stringify(piatto));
+    const livelliElencoDiretto = leggiFiguraModello({ archetipo: "livelli", didascalia: "d", livelli: [{ titolo: "A" }, { titolo: "B" }], banda: { titolo: "Principio" } });
+    atteso("lettura tollerante: «livelli» come elenco al posto dell'oggetto", livelliElencoDiretto.figura?.archetipo === "livelli" && livelliElencoDiretto.figura.livelli.livelli.length === 2 && livelliElencoDiretto.figura.livelli.banda?.titolo === "Principio", JSON.stringify(livelliElencoDiretto));
+    const cronoPiatto = leggiFiguraModello({ archetipo: "cronoprogramma", didascalia: "d", unita: "giorni", righe: [{ titolo: "A", barre: [{ da: 0, a: 2 }] }] });
+    const retePiatta = leggiFiguraModello({ archetipo: "rete", didascalia: "d", centro: { titolo: "C" }, nodi: [{ titolo: "A" }, { titolo: "B" }] });
+    atteso("lettura tollerante: anche cronoprogramma e rete", cronoPiatto.figura?.archetipo === "cronoprogramma" && retePiatta.figura?.archetipo === "rete");
+    atteso("a capo: «Operatore/Supervisore» si spezza dopo la barra, non a metà parola", (() => { const r = avvolgi("Operatore/Supervisore", 80, 12, false, misuraApprossimata, 2); return r.length === 2 && r[0] === "Operatore/" && r[1] === "Supervisore"; })());
+    atteso("a capo: un numero resta unito all'unità e l'asterisco alla parola prima", (() => { const r = avvolgi("Servizi continui entro 4 h *", 130, 12, false, misuraApprossimata, 3); return r.every((riga) => !/^(h|\*|h \*)$/.test(riga)) && r.join(" ").includes("4 h *"); })());
 
     const liv = leggiFiguraModello({ archetipo: "livelli", didascalia: "d", livelli: { livelli: [{ titolo: "Operativo" }] } });
     atteso("livelli: servono almeno due livelli", liv.figura === null);
@@ -253,6 +293,10 @@ async function main() {
     atteso(`layout «${nome}»: nulla fuori dal disegno`, fuori.length === 0, fuori.slice(0, 4).join("; "));
     const sovrapposte = caselleSovrapposte(layout);
     atteso(`layout «${nome}»: nessuna casella sovrapposta a un'altra`, sovrapposte.length === 0, sovrapposte.slice(0, 3).join("; "));
+    if (dati.archetipo === "flusso") {
+      const attraversate = lineeCheAttraversanoCaselle(layout);
+      atteso(`layout «${nome}»: nessuna linea di collegamento attraversa una casella`, attraversate.length === 0, attraversate.slice(0, 3).join("; "));
+    }
     const usati = new Set<string>();
     for (const p of layout.prims) {
       if (p.t === "rect") [p.fill, p.stroke].forEach((c) => c && usati.add(c.toUpperCase()));
@@ -301,17 +345,7 @@ async function main() {
 
   // --- 6. Adattamento a testi lunghi e a molti elementi ---
   {
-    const lungo = (n: number) => "Parola lunga ".repeat(n).trim();
-    const estremi: Record<string, DatiFigura> = {
-      flusso: { v: 1, archetipo: "flusso", didascalia: lungo(20), flusso: { numerato: true, stadi: Array.from({ length: 12 }, (_, i) => ({ tipo: "passo" as const, titolo: lungo(10), dettaglio: lungo(30), responsabile: lungo(8), ...(i === 4 ? { ramoLaterale: { titolo: lungo(15), etichetta: "sì" } } : {}) })), ritorno: { da: 10, a: 2, etichetta: lungo(4) }, nota: lungo(40) } },
-      flussoGruppi: { v: 1, archetipo: "flusso", didascalia: "d", flusso: { stadi: [{ tipo: "passo", titolo: "Inizio" }, { tipo: "alternative", rami: Array.from({ length: 5 }, (_, i) => ({ titolo: lungo(8), dettaglio: lungo(20), etichetta: `e${i}` })) }, { tipo: "banda", titolo: lungo(12), dettaglio: lungo(50) }, { tipo: "paralleli", rami: Array.from({ length: 5 }, () => ({ titolo: lungo(6) })) }] } },
-      livelli: { v: 1, archetipo: "livelli", didascalia: "d", livelli: { livelli: Array.from({ length: 6 }, () => ({ titolo: lungo(10), responsabile: lungo(10), descrizione: lungo(40) })), pannello: { titolo: lungo(10), forma: "elenco", voci: Array.from({ length: 8 }, () => lungo(20)), collegaLivelli: true }, banda: { titolo: lungo(15), descrizione: lungo(40) } } },
-      livelliFlusso: { v: 1, archetipo: "livelli", didascalia: "d", livelli: { livelli: Array.from({ length: 4 }, () => ({ titolo: lungo(6), descrizione: lungo(12) })), pannello: { titolo: "P", forma: "flusso", collegaLivelli: true, flusso: { numerato: true, stadi: Array.from({ length: 10 }, () => ({ tipo: "passo" as const, titolo: lungo(5), dettaglio: lungo(10) })), ritorno: { da: 9, a: 3 } } } } },
-      cronoprogramma: { v: 1, archetipo: "cronoprogramma", didascalia: "d", cronoprogramma: { unita: "giorni", durata: 90, traguardi: Array.from({ length: 6 }, (_, i) => ({ posizione: 5 + i * 3, titolo: lungo(5), dettaglio: lungo(8) })), righe: Array.from({ length: 14 }, (_, i) => ({ titolo: lungo(8), responsabile: lungo(6), fase: i < 7 ? lungo(5) : "Fase due", barre: Array.from({ length: 4 }, (_, k) => ({ da: i * 3 + k * 6, a: i * 3 + k * 6 + 5, etichetta: lungo(4) })), pietre: [{ posizione: i * 3 + 2, etichetta: lungo(5) }] })), banda: { titolo: lungo(12), descrizione: lungo(40) }, nota: lungo(30) } },
-      cruscotto: { v: 1, archetipo: "cruscotto", didascalia: "d", cruscotto: { piattaforma: lungo(8), profilo: lungo(8), indicatori: Array.from({ length: 4 }, () => ({ etichetta: lungo(8), obiettivo: lungo(5) })), righe: Array.from({ length: 8 }, () => ({ indicatore: lungo(12), obiettivo: lungo(5), stato: "attenzione" as const })), laterale: { titolo: lungo(5), voci: Array.from({ length: 5 }, () => lungo(8)) } } },
-      rete: { v: 1, archetipo: "rete", didascalia: "d", rete: { centro: { titolo: lungo(8), sottotitolo: lungo(8), voci: Array.from({ length: 8 }, () => lungo(10)) }, nodi: Array.from({ length: 8 }, () => ({ titolo: lungo(6), dettaglio: lungo(20) })), origini: Array.from({ length: 3 }, () => ({ titolo: lungo(5), dettaglio: lungo(10), voci: Array.from({ length: 5 }, () => lungo(6)) })), chip: { titolo: lungo(4), voci: Array.from({ length: 6 }, () => lungo(8)) }, banda: { titolo: lungo(15), dettaglio: lungo(30) }, nota: lungo(30) } },
-      reteStella: { v: 1, archetipo: "rete", didascalia: "d", rete: { centro: { titolo: lungo(8), voci: Array.from({ length: 8 }, () => lungo(10)) }, nodi: Array.from({ length: 8 }, () => ({ titolo: lungo(6), dettaglio: lungo(20) })) } },
-    };
+    const estremi = figureEstreme;
     for (const [nome, dati] of Object.entries(estremi)) {
       let layout: LayoutFigura | null = null;
       let errore = "";

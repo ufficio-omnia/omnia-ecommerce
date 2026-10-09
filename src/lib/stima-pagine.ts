@@ -100,8 +100,13 @@ export function stimaPagineOrganigramma(dati: DatiOrganigramma): number {
 const PAGINE_DIDASCALIA_FIGURA = 0.05;
 const PAGINE_PER_SEGNAPOSTO_FIGURA = 0.5;
 
+// Altezza massima di una figura nel documento (la stessa di docx-generator.ts:
+// oltre, il Word la riduce in proporzione per farla stare in una pagina).
+const ALTEZZA_MASSIMA_FIGURA_PX = 800;
+
 export function stimaPagineFigura(dati: DatiFigura): number {
-  return (altezzaStimataFigura(dati) * (LARGHEZZA_ORGANIGRAMMA_NEL_DOCUMENTO / LARGHEZZA_DISEGNO)) / ALTEZZA_UTILE_PAGINA_PX + PAGINE_DIDASCALIA_FIGURA;
+  const altezzaNelDocumento = Math.min(ALTEZZA_MASSIMA_FIGURA_PX, altezzaStimataFigura(dati) * (LARGHEZZA_ORGANIGRAMMA_NEL_DOCUMENTO / LARGHEZZA_DISEGNO));
+  return altezzaNelDocumento / ALTEZZA_UTILE_PAGINA_PX + PAGINE_DIDASCALIA_FIGURA;
 }
 
 const BLOCCO_ORGANIGRAMMA_REGEX = /\[ORGANIGRAMMA\]([\s\S]*?)\[\/ORGANIGRAMMA\]/gi;
