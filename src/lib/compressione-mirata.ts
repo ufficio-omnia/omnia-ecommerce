@@ -4,6 +4,7 @@ import { confrontaSubCriteri, violazioniBlocco, type RequisitoDisciplinare } fro
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE_MIRATA } from "@/lib/prompts";
 import { ripristinaDaTestoVerificato, riepilogoRipristino } from "@/lib/ripristino-verificato";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { mascheraOrganigrammi, organigrammiInvariati, ripristinaOrganigrammi } from "@/lib/organigramma-dati";
 
 // Compressione di UN sotto-criterio alla volta, consapevole di quanti punti
 // vale e di cosa richiede il disciplinare, con garanzie a valle:
@@ -173,15 +174,18 @@ export async function comprimiBloccoConGaranzie(params: {
 
   for (let t = 1; t <= maxTentativi; t++) {
     tentativi = t;
-    const risposta = await comprimi({
-      chiave, titoloBlocco, testo: testoDaRidurre, paginePrima: stimaPagineContenuto(testoDaRidurre, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context,
+    // L'organigramma strutturato non va al modello (vedi mascheraOrganigrammi).
+    const mascherato = mascheraOrganigrammi(testoDaRidurre);
+    const rispostaGrezza = await comprimi({
+      chiave, titoloBlocco, testo: mascherato.testo, paginePrima: stimaPagineContenuto(testoDaRidurre, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context,
     });
-    if (!risposta) {
+    if (!rispostaGrezza) {
       ultimoMotivo = "nessuna risposta utilizzabile dal modello (errore o risposta troncata)";
       senzaRisposta = t === 1;
       break;
     }
 
+    const risposta = ripristinaOrganigrammi(rispostaGrezza, mascherato.blocchi);
     const normalizzato = normalizzaBlocco(bloccoOriginale, risposta, chiave);
     const ripristino = ripristinaDaTestoVerificato(bloccoOriginale, normalizzato);
     const candidato = ripristino.testo;
@@ -196,6 +200,7 @@ export async function comprimiBloccoConGaranzie(params: {
 
     const { violazioni, avvisi } = confronto ? violazioniBlocco(confronto, { paroleTetto }) : { violazioni: ["Impossibile confrontare il testo ridotto con l'originale."], avvisi: [] };
     for (const n of ripristino.nonRipristinabili) violazioni.push(`Non si riesce a ripristinare automaticamente: ${n}.`);
+    if (!organigrammiInvariati(bloccoOriginale, candidato)) violazioni.push("Il blocco [ORGANIGRAMMA] è stato modificato: i suoi dati vanno lasciati IDENTICI, carattere per carattere.");
     if (pagineCandidato >= paginePrima * 0.98) violazioni.push(`Il testo ridotto occupa ancora ${fmt(pagineCandidato, 2)} pagine (era ${fmt(paginePrima, 2)}): deve scendere a ${fmt(pagineTarget, 2)}.`);
 
     if (violazioni.length === 0) {

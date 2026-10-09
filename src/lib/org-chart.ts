@@ -36,9 +36,9 @@ import type { StileOrganigramma } from "@/lib/org-chart-style";
 // standard per il rendering PDF) — qui è una copia propria nel repository,
 // non un percorso dentro node_modules di un altro pacchetto, per non
 // dipendere da un dettaglio interno che potrebbe cambiare a ogni versione.
-const NOME_FONT_ORGANIGRAMMA = "OmniaOrgChart";
+export const NOME_FONT_ORGANIGRAMMA = "OmniaOrgChart";
 let fontRegistrato = false;
-function assicuraFontRegistrato(): void {
+export function assicuraFontRegistrato(): void {
   if (fontRegistrato) return;
   const cartellaFont = path.join(process.cwd(), "src", "assets", "fonts");
   GlobalFonts.registerFromPath(path.join(cartellaFont, "LiberationSans-Regular.ttf"), NOME_FONT_ORGANIGRAMMA);

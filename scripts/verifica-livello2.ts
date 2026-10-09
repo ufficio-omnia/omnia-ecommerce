@@ -38,6 +38,9 @@ import { buildSystemPrompt, buildGeneraBozzaTool, budgetSottoCriteriDiGara, form
 import { espandiSezioneSottoTetto, riepilogoEsitiEspansione, type EsitoEspansione } from "../src/lib/espansione-mirata";
 import { analizzaDensita, assegnaIconeMancanti, ICONE_MINIME_PER_1000_PAROLE } from "../src/lib/densita-visiva";
 import { descriviMisura, misuraVisiva } from "../src/lib/ricchezza-visiva";
+import { contaPersone, haSegnaposto, leggiBloccoOrganigramma, sostituisciSegnaposto, SEGNAPOSTO_ORGANIGRAMMA_REGEX } from "../src/lib/organigramma-dati";
+import { costruisciOrganigramma } from "../src/lib/organigramma-contesto";
+import { leggiFattiOrganigramma } from "../src/lib/organigramma-fatti";
 import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
 import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
@@ -201,6 +204,9 @@ function controllaSediCoperte(markdown: string, sedi: { denominazione: string }[
 function contaMaxFigureOrganigramma(markdown: string): number {
   const blocchi = [...markdown.matchAll(/\[ORGANIGRAMMA\]([\s\S]*?)\[\/ORGANIGRAMMA\]/gi)].map((m) => m[1]);
   return blocchi.reduce((max, blocco) => {
+    // Organigramma strutturato: una persona per figura dichiarata.
+    const strutturato = leggiBloccoOrganigramma(blocco);
+    if (strutturato) return Math.max(max, contaPersone(strutturato));
     const nodi = blocco
       .split("\n")
       .map((r) => r.trim())
@@ -414,6 +420,11 @@ function anonimizza(
   const avvisiEconomiciResidui: AvvisoRiferimentoEconomico[] = [];
   const interventiEconomici: string[] = [];
   const esitiEspansione: EsitoEspansione[] = [];
+  // Organigramma strutturato: i fatti certi (committente, RUP/DEC, sedi, organico,
+  // profilo) si leggono una volta; gli avvisi del codice sono problemi del livello 2.
+  const { data: proprietarioGara } = await admin.from("gare").select("user_id").eq("id", GARA).single();
+  const fattiOrganigramma = await leggiFattiOrganigramma({ supabase: admin, garaId: GARA, userId: proprietarioGara.user_id });
+  const avvisiOrganigramma: string[] = [];
 
   for (const criterio of gara.criteri_riepilogo) {
     const messaggioUtente = `Sviluppa il criterio ${criterio.numero}. ${criterio.titolo}.`;
@@ -450,7 +461,7 @@ function anonimizza(
 
     const toolUse = response.content.find((b) => b.type === "tool_use" && b.name === "genera_bozza_sezione");
     if (!toolUse || toolUse.type !== "tool_use") { console.error("Nessuna chiamata allo strumento per il criterio", criterio.numero); continue; }
-    const input = toolUse.input as { titolo_sezione: string; contenuto: string };
+    const input = toolUse.input as { titolo_sezione: string; contenuto: string; organigramma?: unknown };
 
     const senzaPlaceholder = applicaSostituzioniAnonimizzazione(input.contenuto, companyContesto?.ragione_sociale);
     const conMarcatori = applicaMarcatoriTabellari(senzaPlaceholder, gara.sub_criteri_tabellari ?? null);
@@ -490,7 +501,15 @@ function anonimizza(
     valoriDerivati.push(...guardiaValori.derivati);
 
     // Densità visiva minima assegnata dal codice, per ultima (come in generaBozzaSezione).
-    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: assegnaIconeMancanti(guardiaValori.testo).testo });
+    // Poi l'organigramma strutturato, costruito dal codice dopo ogni riscrittura
+    // (stesso punto di produzione, generaBozzaSezione).
+    let contenutoSezione = assegnaIconeMancanti(guardiaValori.testo).testo;
+    if (haSegnaposto(contenutoSezione)) {
+      const esitoOrg = costruisciOrganigramma(input.organigramma, fattiOrganigramma, { evidenza });
+      avvisiOrganigramma.push(...esitoOrg.avvisi);
+      contenutoSezione = esitoOrg.blocco ? sostituisciSegnaposto(contenutoSezione, esitoOrg.blocco) : contenutoSezione.replace(SEGNAPOSTO_ORGANIGRAMMA_REGEX, "");
+    }
+    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: contenutoSezione });
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
@@ -647,6 +666,7 @@ function anonimizza(
   const tuttiGliErrori = [
     ...erroriStrutturali.map((e) => `[Strutturale] ${e}`),
     ...erroriDensita.map((e) => `[Densità visiva] ${e}`),
+    ...avvisiOrganigramma.map((a) => `[Organigramma] ${a}`),
     ...erroriArithmetica.map((e) => `[Aritmetica tabelle] ${e}`),
     ...erroriSedi.map((e) => `[Copertura sedi] ${e}`),
     ...erroriSegnaposto.map((e) => `[Segnaposto su dati di gara] ${e}`),

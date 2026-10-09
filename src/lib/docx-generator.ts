@@ -20,6 +20,8 @@ import {
   PageNumber,
 } from "docx";
 import { generateOrgChartPng, type LoghiOrganigramma } from "@/lib/org-chart";
+import { disegnaOrganigramma } from "@/lib/organigramma-disegno";
+import { leggiBloccoOrganigramma } from "@/lib/organigramma-dati";
 import type { StileOrganigramma } from "@/lib/org-chart-style";
 import { renderIconePng, NOMI_ICONE } from "@/lib/icons";
 import {
@@ -1106,11 +1108,12 @@ export async function buildDocxBuffer(
   for (const segment of segments) {
     if (segment.type === "organigramma") {
       try {
-        const { buffer, width, height } = await generateOrgChartPng(
-          segment.contenuto,
-          stileOrganigramma,
-          loghiOrganigramma,
-        );
+        // Organigramma strutturato (dati JSON, colori e posizioni decisi dal
+        // codice) oppure, per le bozze salvate prima, il vecchio elenco a rientri.
+        const datiOrganigramma = leggiBloccoOrganigramma(segment.contenuto);
+        const { buffer, width, height } = datiOrganigramma
+          ? await disegnaOrganigramma(datiOrganigramma, loghiOrganigramma ?? {})
+          : await generateOrgChartPng(segment.contenuto, stileOrganigramma, loghiOrganigramma);
         children.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,

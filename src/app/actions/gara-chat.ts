@@ -42,6 +42,14 @@ export type { GaraContesto, CompanyContesto };
 
 export type ChatState = { error?: string };
 
+// Cosa dire al modello (e quindi al cliente) quando l'organigramma disegnato
+// differisce da quanto dichiarato: nominativi omessi, sedi non assegnate,
+// organico superato, organigramma non disegnato.
+function testoAvvisiOrganigramma(avvisi: string[]): string {
+  if (avvisi.length === 0) return "";
+  return `ATTENZIONE — ORGANIGRAMMA: ${avvisi.join(" ")} Riferiscilo al cliente in modo chiaro e breve. `;
+}
+
 const MODEL = "claude-sonnet-5";
 const MAX_HISTORY = 12;
 const MAX_CHUNKS = 8;
@@ -480,6 +488,7 @@ export async function sendGaraMessage(
           font?: string;
           dimensione_carattere?: number;
           interlinea?: number;
+          organigramma?: unknown;
         };
         try {
           // Sostituzione deterministica dei sub-criteri tabellari: la
@@ -563,7 +572,7 @@ export async function sendGaraMessage(
             company?.ragione_sociale,
           );
 
-          const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa } = await generaBozzaSezione({
+          const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa, avvisiOrganigramma } = await generaBozzaSezione({
             garaId,
             userId: user.id,
             titoloSezione: input.titolo_sezione,
@@ -575,6 +584,7 @@ export async function sendGaraMessage(
             font: input.font,
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,
+            organigramma: input.organigramma,
           });
           fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa };
           strumentiDisponibili = [];
@@ -617,7 +627,7 @@ export async function sendGaraMessage(
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
+            content: `${testoAvvisiOrganigramma(avvisiOrganigramma)}${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);

@@ -6,6 +6,7 @@ import { REGOLE_OMNIA, ISTRUZIONI_ESPANSIONE_MIRATA } from "@/lib/prompts";
 import { ripristinaDaTestoVerificato } from "@/lib/ripristino-verificato";
 import { trovaBudgetSottoCriterio, type BudgetGara } from "@/lib/sotto-criteri";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
+import { mascheraOrganigrammi, organigrammiInvariati, ripristinaOrganigrammi } from "@/lib/organigramma-dati";
 
 // Espansione di UN sotto-criterio alla volta quando occupa molto meno del
 // proprio tetto di pagine (ripartito in proporzione ai punti). Verificato con
@@ -247,12 +248,14 @@ export async function espandiBloccoConGaranzie(params: {
 
   for (let t = 1; t <= maxTentativi; t++) {
     tentativi = t;
-    const risposta = await espandi({ chiave, titoloBlocco, testo: testoDaAmpliare, paginePrima: stimaPagineContenuto(testoDaAmpliare, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context });
-    if (!risposta) {
+    // L'organigramma strutturato non va al modello (vedi mascheraOrganigrammi).
+    const mascherato = mascheraOrganigrammi(testoDaAmpliare);
+    const rispostaGrezza = await espandi({ chiave, titoloBlocco, testo: mascherato.testo, paginePrima: stimaPagineContenuto(testoDaAmpliare, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context });
+    if (!rispostaGrezza) {
       return { chiave, testo: blocco, esito: "non_eseguito", motivo: "nessuna risposta utilizzabile dal modello (errore o risposta troncata)", tentativi, paginePrima, pagineDopo: paginePrima };
     }
 
-    const normalizzato = normalizzaBlocco(blocco, risposta, chiave);
+    const normalizzato = normalizzaBlocco(blocco, ripristinaOrganigrammi(rispostaGrezza, mascherato.blocchi), chiave);
     // Asterischi di conferma e citazioni che il modello avesse tolto: si
     // rimettono dal testo di partenza (nessun contenuto nuovo).
     const candidato = ripristinaDaTestoVerificato(blocco, normalizzato).testo;
@@ -267,6 +270,7 @@ export async function espandiBloccoConGaranzie(params: {
     const violazioni = confronto
       ? violazioniEspansione(confronto, { paroleConservate: quotaParoleConservate(blocco, candidato), pagineMassime })
       : ["Impossibile confrontare il testo ampliato con l'originale."];
+    if (!organigrammiInvariati(blocco, candidato)) violazioni.push("Il blocco [ORGANIGRAMMA] è stato modificato: i suoi dati vanno lasciati IDENTICI, carattere per carattere.");
 
     if (violazioni.length === 0) {
       return { chiave, testo: candidato, esito: "espanso", scartati, tentativi, paginePrima, pagineDopo: stimaPagineContenuto(candidato, formattazione) };
