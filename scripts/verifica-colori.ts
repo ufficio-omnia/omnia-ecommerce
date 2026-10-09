@@ -240,7 +240,10 @@ async function main() {
     atteso("prompt: la costante del renderer è vera (il renderer supporta i colori semantici)", RENDERER_SUPPORTA_COLORI_SEMANTICI === true, "");
     atteso("prompt: con il renderer che li supporta R20 e R22-bis sono nelle regole inviate al modello", /\*\*R20 —/.test(REGOLE_OMNIA) && /\*\*R22-bis —/.test(REGOLE_OMNIA), "");
     atteso("prompt: nessun commento HTML residuo nelle regole inviate", !/<!--/.test(REGOLE_OMNIA), "");
-    atteso("prompt: le regole rimandate (R23, R24) restano fuori", !/\*\*R23 —/.test(REGOLE_OMNIA) && !/\*\*R24 —/.test(REGOLE_OMNIA), "");
+    // R23/R24 (flussi e cronoprogrammi) erano rimandate finché il renderer non sapeva
+    // disegnarle; ora che le figure esistono vanno al modello, altrimenti non le usa mai.
+    atteso("prompt: R23, R24 e R28 (figure di flusso, cronoprogramma, figure per criterio) sono nelle regole inviate al modello", /\*\*R23 —/.test(REGOLE_OMNIA) && /\*\*R24 —/.test(REGOLE_OMNIA) && /\*\*R28 —/.test(REGOLE_OMNIA), "");
+    atteso("prompt: R16 dice che il formato tabellare è il predefinito e la prosa l'eccezione", /\*\*R16 — Il formato tabellare è il predefinito, la prosa è l'eccezione/.test(REGOLE_OMNIA) && /una tabella ogni due o tre paragrafi/.test(REGOLE_OMNIA), "");
     const base = "prima\n<!-- INIZIO COLORE SEMANTICO -->\n- **R20 — x**\n<!-- FINE COLORE SEMANTICO -->\ndopo";
     const garaMinima = { sub_criteri_tabellari: null, criteri_valutazione: null, criteri_riepilogo: null, limite_pagine_totale: null, punteggio_tecnico_max: null } as unknown as GaraContesto;
     const proprieta = buildGeneraBozzaTool(garaMinima).input_schema.properties as Record<string, { description?: string }>;

@@ -96,13 +96,13 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
   };
   const righePasso = (it: Extract<Item, { k: "passo" }>): Riga[] => {
     const st = stilePasso(it);
-    return d.righeTitoloDettaglio(it.stadio.titolo, it.stadio.dettaglio, wPasso, { titolo: st.testo, dettaglio: st.dettaglio }, { maxTitolo: 3, maxDettaglio: 3 });
+    return d.righeTitoloDettaglio(it.stadio.titolo, it.stadio.dettaglio, wPasso, { titolo: st.testo, dettaglio: st.dettaglio }, { maxTitolo: 4, maxDettaglio: 3 });
   };
   // Il responsabile è un'etichetta bianca in fondo alla casella, distinta dal dettaglio.
   // Se il ruolo non entra in una riga va a capo (al massimo due), mai troncato a metà.
   const chipPasso = (it: Extract<Item, { k: "passo" }>) => {
     if (!it.stadio.responsabile) return null;
-    const testi = avvolgi(it.stadio.responsabile, wPasso - 30, 12, false, misura, 2);
+    const testi = avvolgi(it.stadio.responsabile, wPasso - 30, 12, false, misura, 3);
     return { testi, w: Math.min(wPasso - 16, Math.max(...testi.map((t) => misura(t, 12, false))) + 16), h: testi.length === 1 ? H_CHIP : 8 + testi.length * 14 };
   };
   const altezzaTestoPasso = (it: Extract<Item, { k: "passo" }>) => altezzaRighe(righePasso(it)) + (chipPasso(it) ? GAP_CHIP + (chipPasso(it)?.h ?? 0) : 0);

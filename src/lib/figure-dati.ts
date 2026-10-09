@@ -17,7 +17,7 @@ export const ARCHETIPI = ["flusso", "livelli", "cronoprogramma", "cruscotto", "r
 export type Archetipo = (typeof ARCHETIPI)[number];
 
 export const LIMITI_FIGURE = {
-  figurePerSezione: 4,
+  figurePerSezione: 6,
   stadiFlusso: 12,
   ramiPerStadio: 5,
   livelli: 6,

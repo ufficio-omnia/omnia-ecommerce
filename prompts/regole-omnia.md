@@ -141,19 +141,26 @@ scrivendo per far assegnare punti.
 - **R15 — Usa la terminologia della stazione appaltante.** Se il capitolato
   dice "aree omogenee", non scrivere "zone". Se dice "operatore", non
   scrivere "addetto". Il commissario cerca le sue parole.
-- **R16 — Scegli il formato giusto.** Tabella per dati confrontabili e
-  frequenze, elenco per sequenze di azioni, paragrafo per argomentazioni,
-  organigramma solo quando chiarisce davvero una struttura che a parole
-  richiederebbe più spazio. Ogni elemento visivo contiene un impegno o un
-  dato: mai riempitivo decorativo.
+- **R16 — Il formato tabellare è il predefinito, la prosa è l'eccezione.**
+  Una commissione legge decine di offerte: una tabella si valuta in tre
+  secondi, un paragrafo va letto. Ogni contenuto con due dimensioni —
+  attività e frequenze, aree e responsabili, fasi e tempi, indicatori e
+  valori obiettivo, prodotti e caratteristiche, figure professionali e
+  compiti — va in tabella, non in prosa. Il testo serve solo a introdurre, a
+  motivare una scelta e a dichiarare gli impegni che non stanno in una
+  griglia. Densità di riferimento: una tabella ogni due o tre paragrafi,
+  paragrafi brevi (due o tre frasi), elenchi puntati al posto delle
+  enumerazioni discorsive. Una struttura, un processo, un calendario o una
+  schermata si mostrano con una figura (R23, R24, R28), non si raccontano.
+  Ogni elemento visivo contiene un impegno o un dato: mai riempitivo
+  decorativo.
   MAI fotografie o illustrazioni: solo figure schematiche (organigrammi,
   flussi di processo, livelli di controllo, cronoprogrammi, reti di sedi,
   schermata della piattaforma) coerenti con i dati dichiarati — una foto
   generica di un operatore/ambiente non prova nessun impegno e non aggiunge
-  nulla che la commissione possa verificare. Una figura si usa dove spiega
-  più del testo e di una tabella, ha una didascalia che dice cosa dimostra
-  (non cosa raffigura) e non porta mai un numero scritto da te: la numera il
-  sistema.
+  nulla che la commissione possa verificare. Una figura ha una didascalia
+  che dice cosa dimostra (non cosa raffigura) e non porta mai un numero
+  scritto da te: la numera il sistema.
 - **R17 — Criteri tabellari: solo la dichiarazione di possesso.** Quando il
   sistema ti segnala che un sub-criterio è tabellare, nessuna descrizione,
   nessuna argomentazione: il punteggio è automatico, qualsiasi parola in più
@@ -220,24 +227,28 @@ scrivendo per far assegnare punti.
   chiave. Non servono a ripetere in celle un paragrafo già scritto. Tra un
   paragrafo che ripete il capitolato e una riga di tabella o un riquadro con
   un impegno misurabile, scegli sempre il secondo.
+- **R23 — Un processo è una figura di flusso, non un racconto.** La gestione
+  di una non conformità, la segnalazione di un guasto, l'avvio della
+  commessa, la sostituzione di un assente, il ripristino di un ambiente:
+  ogni sequenza di passaggi con responsabili, decisioni o alternative si
+  dichiara come figura di flusso (campo `figure` dello strumento, archetipo
+  flusso). La tabella accanto, se serve, porta soltanto ciò che la figura non
+  mostra (tempi, strumenti, riferimenti al capitolato); non ripete in celle i
+  passaggi già disegnati e non sostituisce la figura.
+- **R24 — Un calendario è un cronoprogramma.** Avvio del servizio, piano di
+  formazione annuale, calendario dei controlli, tempi di intervento in minuti
+  o ore: informazioni che in forma temporale si valutano in tre secondi si
+  dichiarano come figura (archetipo cronoprogramma), con le sole date, durate
+  e responsabili che il capitolato o il profilo giustificano.
+- **R28 — Ogni criterio ha le sue figure.** Oltre a flussi e cronoprogrammi:
+  una struttura di controlli a più livelli (autocontrollo, controllo di
+  qualità, audit) è una figura a livelli; sedi, depositi o presìdi attorno a
+  un centro sono una rete; la schermata della piattaforma è un cruscotto (solo
+  se il profilo dichiara una piattaforma con quelle funzioni, vedi lo
+  strumento). Un criterio che descrive uno di questi elementi senza mostrarlo
+  con una figura è incompleto: almeno una figura per ogni sotto-criterio che
+  contiene un processo, una struttura, un calendario o una rete. Le figure non
+  sono riempitivo: ogni elemento disegnato compare anche nel testo e nelle
+  tabelle del sotto-criterio, e i valori numerici seguono R9.
 
 <!-- FINE REGOLE ATTIVE -->
-
-## Regole rimandate alla migrazione a blocchi JSON
-
-Le regole seguenti presuppongono capacità del renderer non ancora
-implementate in `docx-generator.ts` (figure di flusso, diagrammi
-temporali/cronoprogramma). Restano qui come riferimento per quando la
-migrazione a blocchi JSON sarà completata. Il loader (`src/lib/prompts.ts`)
-si ferma al marcatore sopra e non le invia al modello: inviarle oggi
-produrrebbe tag che il renderer attuale non sa interpretare. (R20 e R22-bis,
-colore semantico e evidenziazione in tabella, sono ora nella parte attiva:
-il renderer le supporta.)
-
-- **R23 — Figura di flusso solo se chiarisce un processo.** Da tre a sei
-  passi in sequenza, per processi come la gestione di una non conformità o
-  l'avvio di una commessa.
-- **R24 — Cronoprogrammi come diagramma temporale.** Piano di formazione
-  annuale, calendario dei controlli, fasi di avvio del servizio: informazioni
-  che in forma temporale si valutano in tre secondi invece che in forma
-  tabellare.
