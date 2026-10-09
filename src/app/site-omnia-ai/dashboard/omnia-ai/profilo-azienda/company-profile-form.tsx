@@ -6,13 +6,19 @@ import {
   type CompanyProfileState,
 } from "@/app/actions/company-profile";
 import type { Company } from "./page";
+import LogoCampo from "./logo-campo";
 
 const initialState: CompanyProfileState = {};
 
 export default function CompanyProfileForm({
   company,
+  logoUrl,
+  softwareLogoUrl,
 }: {
   company: Company | null;
+  // URL temporanei (firmati) dei loghi già caricati, per mostrarli in anteprima.
+  logoUrl: string | null;
+  softwareLogoUrl: string | null;
 }) {
   const [state, formAction, pending] = useActionState(
     saveCompanyProfile,
@@ -27,23 +33,7 @@ export default function CompanyProfileForm({
           Usati da OMNIA AI per inserire i loghi reali negli organigrammi e nei documenti generati.
         </p>
         <div className="omnia-campo-griglia">
-          <div>
-            <label htmlFor="logo" className="omnia-etichetta">
-              Logo aziendale
-            </label>
-            <input
-              id="logo"
-              name="logo"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="omnia-input"
-            />
-            {company?.logo_path && (
-              <span className="omnia-badge verde" style={{ marginTop: 8 }}>
-                Logo già caricato
-              </span>
-            )}
-          </div>
+          <LogoCampo id="logo" name="logo" etichetta="Logo aziendale" urlAttuale={logoUrl} />
           <div>
             <label htmlFor="softwareNome" className="omnia-etichetta">
               Software gestionale in uso
@@ -56,21 +46,9 @@ export default function CompanyProfileForm({
               defaultValue={company?.software_nome ?? ""}
               className="omnia-input"
             />
-            <label htmlFor="softwareLogo" className="omnia-etichetta" style={{ marginTop: 12 }}>
-              Logo del software
-            </label>
-            <input
-              id="softwareLogo"
-              name="softwareLogo"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="omnia-input"
-            />
-            {company?.software_logo_path && (
-              <span className="omnia-badge verde" style={{ marginTop: 8 }}>
-                Logo già caricato
-              </span>
-            )}
+            <div style={{ marginTop: 16 }}>
+              <LogoCampo id="softwareLogo" name="softwareLogo" etichetta="Logo del software" urlAttuale={softwareLogoUrl} />
+            </div>
           </div>
         </div>
       </section>
