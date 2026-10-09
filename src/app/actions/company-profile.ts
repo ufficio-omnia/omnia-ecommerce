@@ -83,8 +83,7 @@ export async function saveCompanyProfile(
       ? await caricaLogo(supabase, user.id, softwareLogoFile, "software-logo")
       : undefined;
 
-  const { error } = await supabase.from("companies").upsert(
-    {
+  const riga = {
       user_id: user.id,
       ragione_sociale: ragioneSociale,
       partita_iva: partitaIva,
@@ -108,9 +107,18 @@ export async function saveCompanyProfile(
       // null perdendo un logo già caricato in precedenza.
       ...(logoPath !== undefined ? { logo_path: logoPath } : {}),
       ...(softwareLogoPath !== undefined ? { software_logo_path: softwareLogoPath } : {}),
-    },
-    { onConflict: "user_id" },
-  );
+  };
+
+  // Livello di direzione dell'organigramma (migrazione 0071): se la colonna
+  // non esiste ancora il salvataggio degli altri campi non deve fallire.
+  const campiOrganigramma = {
+    funzioni_direzione: optionalText(formData, "funzioniDirezione"),
+    uffici_gestione: optionalText(formData, "ufficiGestione"),
+  };
+  let { error } = await supabase.from("companies").upsert({ ...riga, ...campiOrganigramma }, { onConflict: "user_id" });
+  if (error && /funzioni_direzione|uffici_gestione/.test(error.message)) {
+    ({ error } = await supabase.from("companies").upsert(riga, { onConflict: "user_id" }));
+  }
 
   if (error) {
     console.error("Errore salvataggio profilo azienda:", error);

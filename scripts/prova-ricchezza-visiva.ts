@@ -157,6 +157,7 @@ async function main() {
       const contenuto = (tu as { input: { contenuto?: string } } | undefined)?.input?.contenuto ?? "";
       const file = path.join(cartella, `${etichetta}-${i + 1}.md`);
       fs.writeFileSync(file, contenuto);
+      fs.writeFileSync(file.replace(/\.md$/, ".input.json"), JSON.stringify((tu as { input?: unknown } | undefined)?.input ?? {}, null, 2));
       const secondi = Math.round((Date.now() - t0) / 1000);
       return { i: i + 1, contenuto, secondi, stop: resp.stop_reason, costoToken: `${resp.usage.input_tokens} in / ${resp.usage.output_tokens} out, ragionamento ${caratteriRagionamento} car., ricerche web ${ricerche}${tu ? "" : ", NESSUNA BOZZA GENERATA"}` };
     }),

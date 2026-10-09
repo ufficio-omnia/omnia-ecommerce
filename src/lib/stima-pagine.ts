@@ -1,3 +1,6 @@
+import { calcolaLayout, LARGHEZZA_DISEGNO, misuraApprossimata } from "@/lib/organigramma-layout";
+import { leggiBloccoOrganigramma, type DatiOrganigramma } from "@/lib/organigramma-dati";
+
 // Stima quante pagine A4 reali occuperà un contenuto (markdown OMNIA:
 // paragrafi, tabelle, organigrammi, immagini) una volta impaginato in
 // Word — NON un conteggio a parole (bug corretto: un conteggio a parole
@@ -77,10 +80,31 @@ export function limitePagineConMargine(limiteDichiarato: number): number {
   return Math.max(1, limiteDichiarato - MARGINE_SICUREZZA_PAGINE);
 }
 
+// Organigramma strutturato: l'immagine entra nel documento larga 600 px (circa
+// 16 cm) con l'altezza del suo disegno; una pagina utile è circa 880 px.
+const LARGHEZZA_ORGANIGRAMMA_NEL_DOCUMENTO = 600;
+const ALTEZZA_UTILE_PAGINA_PX = 880;
+
+export function stimaPagineOrganigramma(dati: DatiOrganigramma): number {
+  const { altezza } = calcolaLayout(dati, { misura: misuraApprossimata });
+  return (altezza * (LARGHEZZA_ORGANIGRAMMA_NEL_DOCUMENTO / LARGHEZZA_DISEGNO)) / ALTEZZA_UTILE_PAGINA_PX + 0.03;
+}
+
+const BLOCCO_ORGANIGRAMMA_REGEX = /\[ORGANIGRAMMA\]([\s\S]*?)\[\/ORGANIGRAMMA\]/gi;
+
 export function stimaPagineContenuto(
-  testo: string,
+  testoCompleto: string,
   formattazione: { dimensioneCarattere?: number; interlinea?: number } = {},
 ): number {
+  // I blocchi strutturati si stimano dal loro disegno e si tolgono dal testo
+  // (sarebbero una riga lunghissima di JSON contata come paragrafo).
+  let pagineOrganigrammiStrutturati = 0;
+  const testo = testoCompleto.replace(BLOCCO_ORGANIGRAMMA_REGEX, (intero, corpo: string) => {
+    const dati = leggiBloccoOrganigramma(corpo);
+    if (!dati) return intero;
+    pagineOrganigrammiStrutturati += stimaPagineOrganigramma(dati);
+    return "";
+  });
   const dimensioneCarattere = formattazione.dimensioneCarattere ?? 12;
   const interlinea = formattazione.interlinea ?? 1;
   const caratteriRigaPiena = caratteriPerRigaPiena(dimensioneCarattere);
@@ -131,5 +155,5 @@ export function stimaPagineContenuto(
   const numOrganigrammi = (testo.match(/\[ORGANIGRAMMA\]/gi) || []).length;
   const numImmagini = (testo.match(/\[IMMAGINE\]/gi) || []).length;
 
-  return righeTotali / righePagina + numOrganigrammi * PAGINE_PER_ORGANIGRAMMA + numImmagini * PAGINE_PER_IMMAGINE;
+  return righeTotali / righePagina + numOrganigrammi * PAGINE_PER_ORGANIGRAMMA + pagineOrganigrammiStrutturati + numImmagini * PAGINE_PER_IMMAGINE;
 }

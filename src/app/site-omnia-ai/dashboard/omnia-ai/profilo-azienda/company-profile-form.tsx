@@ -241,6 +241,43 @@ export default function CompanyProfileForm({
       </section>
 
       <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Organigramma: livello di direzione</span>
+        <p className="omnia-app-sottotitolo" style={{ marginTop: 12 }}>
+          Facoltativo. Se compili questi elenchi compaiono nei due riquadri in alto dell&apos;organigramma delle tue offerte
+          tecniche; se li lasci vuoti il livello di direzione non compare. Una voce per riga, con il nominativo facoltativo
+          tra parentesi: <em>Responsabile Acquisti (Mario Bianchi)</em>.
+        </p>
+        <div style={{ marginTop: 20, display: "grid", gap: 16 }}>
+          <div>
+            <label htmlFor="funzioniDirezione" className="omnia-etichetta">
+              Responsabili di funzione
+            </label>
+            <textarea
+              id="funzioniDirezione"
+              name="funzioniDirezione"
+              rows={4}
+              placeholder={"es. Direzione Generale\nResponsabile Acquisti\nResponsabile Risorse Umane"}
+              defaultValue={company?.funzioni_direzione ?? ""}
+              className="omnia-textarea"
+            />
+          </div>
+          <div>
+            <label htmlFor="ufficiGestione" className="omnia-etichetta">
+              Uffici di gestione
+            </label>
+            <textarea
+              id="ufficiGestione"
+              name="ufficiGestione"
+              rows={4}
+              placeholder={"es. Ufficio Gare e Contratti\nAmministrazione e Contabilità\nUfficio Qualità e Sicurezza"}
+              defaultValue={company?.uffici_gestione ?? ""}
+              className="omnia-textarea"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="omnia-riquadro">
         <span className="omnia-eyebrow">Certificazioni e ambiti di attività</span>
         <div style={{ marginTop: 20, display: "grid", gap: 16 }}>
           <div>

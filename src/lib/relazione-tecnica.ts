@@ -10,6 +10,9 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
 import { assegnaIconeMancanti } from "@/lib/densita-visiva";
+import { haSegnaposto, sostituisciSegnaposto, trovaBlocchiOrganigramma, SEGNAPOSTO_ORGANIGRAMMA_REGEX } from "@/lib/organigramma-dati";
+import { costruisciOrganigramma } from "@/lib/organigramma-contesto";
+import { leggiFattiOrganigramma } from "@/lib/organigramma-fatti";
 import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
 import { calcolaBudgetSottoCriteri, trovaBudgetSottoCriterio } from "@/lib/sotto-criteri";
 import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
@@ -20,7 +23,6 @@ import { applicaGuardiaValori, indicizzaEvidenza, type EvidenzaDati, type Valore
 import type { AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
 import type { FunzioneCompressione } from "@/lib/compressione-mirata";
 
-const CONTIENE_ORGANIGRAMMA = /\[ORGANIGRAMMA\]/i;
 
 const TITOLO_DEFAULT = "Relazione Tecnica";
 // Percorso usato anche nelle generazioni reali dei clienti (ripiego per
@@ -213,12 +215,16 @@ export async function generaBozzaSezione(params: {
   font?: string;
   dimensioneCarattere?: number;
   interlinea?: number;
-}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa }> {
+  // Dati strutturati dell'organigramma dichiarati dal modello (campo
+  // "organigramma" dello strumento): il blocco vero lo costruisce il codice.
+  organigramma?: unknown;
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa; avvisiOrganigramma: string[] }> {
   const {
     garaId,
     userId,
     titoloSezione,
     contenuto: contenutoGrezzo,
+    organigramma: organigrammaDichiarato,
     companyProfile = null,
     contestoDocumenti = "",
     datiGaraStrutturati = "",
@@ -276,7 +282,27 @@ export async function generaBozzaSezione(params: {
   // pura): per ultima, dopo ogni riscrittura fatta da un modello, così
   // ciò che il modello ha dimenticato o tolto viene completato — vedi
   // densita-visiva.ts.
-  const contenuto = assegnaIconeMancanti(guardiaValori ? guardiaValori.testo : garanziaEconomica.testo).testo;
+  const contenutoSenzaOrganigramma = assegnaIconeMancanti(guardiaValori ? guardiaValori.testo : garanziaEconomica.testo).testo;
+
+  // Organigramma: il modello scrive nel testo solo il segnaposto
+  // "[ORGANIGRAMMA][/ORGANIGRAMMA]" e dichiara i dati nel campo strutturato.
+  // Il blocco vero lo costruisce il codice QUI, dopo ogni riscrittura fatta da
+  // un modello (espansione, verifica dati, garanzie), con i fatti certi
+  // (committente, RUP/DEC, profilo, sedi): nessun passaggio può alterarlo.
+  const avvisiOrganigramma: string[] = [];
+  let contenuto = contenutoSenzaOrganigramma;
+  if (haSegnaposto(contenuto)) {
+    try {
+      const fatti = await leggiFattiOrganigramma({ supabase, garaId, userId });
+      const esito = costruisciOrganigramma(organigrammaDichiarato, fatti, { evidenza });
+      avvisiOrganigramma.push(...esito.avvisi);
+      contenuto = esito.blocco ? sostituisciSegnaposto(contenuto, esito.blocco) : contenuto.replace(SEGNAPOSTO_ORGANIGRAMMA_REGEX, "");
+    } catch (err) {
+      console.error("Errore costruzione organigramma:", err);
+      avvisiOrganigramma.push("Organigramma NON disegnato: errore nella lettura dei dati. Riprova a rigenerare la sezione.");
+      contenuto = contenuto.replace(SEGNAPOSTO_ORGANIGRAMMA_REGEX, "");
+    }
+  }
   const valoriImpresa: EsitoValoriImpresa = { marcati: guardiaValori?.marcati ?? [], derivati: guardiaValori?.derivati ?? [], nonMarcabili: guardiaValori?.nonMarcabili ?? [] };
 
   const { data: ultima } = await supabase
@@ -311,10 +337,15 @@ export async function generaBozzaSezione(params: {
     });
   }
 
-  const contieneOrganigramma = CONTIENE_ORGANIGRAMMA.test(contenuto);
+  // Lo stile (una chiamata al modello sulle immagini della knowledge base)
+  // serve solo agli organigrammi vecchi, a rientri: quelli strutturati hanno
+  // colori fissi decisi dal codice.
+  const blocchiOrganigramma = trovaBlocchiOrganigramma(contenuto);
+  const contieneOrganigramma = blocchiOrganigramma.length > 0;
+  const serveStileVecchio = blocchiOrganigramma.some((b) => !b.dati);
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma
     ? await Promise.all([
-        ricavaStileOrganigramma({ userId, garaId }),
+        serveStileVecchio ? ricavaStileOrganigramma({ userId, garaId }) : Promise.resolve(null),
         recuperaLoghiOrganigramma(garaId),
       ])
     : [null, undefined];
@@ -330,7 +361,7 @@ export async function generaBozzaSezione(params: {
 
   const pagineStimate = stimaPagineContenuto(contenuto, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
 
-  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi, valoriImpresa };
+  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi, valoriImpresa, avvisiOrganigramma };
 }
 
 // Rimuove un eventuale prefisso numerico/alfabetico iniziale del titolo
@@ -1361,10 +1392,12 @@ export async function componiRelazioneFinale(params: {
     return { error: "Non sono riuscito a comporre la relazione finale. Riprova tra qualche minuto." };
   }
 
-  const contieneOrganigramma = CONTIENE_ORGANIGRAMMA.test(contenutoFinale);
+  const blocchiOrganigrammaFinale = trovaBlocchiOrganigramma(contenutoFinale);
+  const contieneOrganigramma = blocchiOrganigrammaFinale.length > 0;
+  const serveStileVecchio = blocchiOrganigrammaFinale.some((b) => !b.dati);
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma
     ? await Promise.all([
-        ricavaStileOrganigramma({ userId, garaId }),
+        serveStileVecchio ? ricavaStileOrganigramma({ userId, garaId }) : Promise.resolve(null),
         recuperaLoghiOrganigramma(garaId),
       ])
     : [null, undefined];

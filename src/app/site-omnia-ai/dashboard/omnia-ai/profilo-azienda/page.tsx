@@ -23,6 +23,8 @@ export type Company = {
   logo_path: string | null;
   software_nome: string | null;
   software_logo_path: string | null;
+  funzioni_direzione?: string | null;
+  uffici_gestione?: string | null;
 };
 
 export default async function ProfiloAziendaPage() {
@@ -35,13 +37,19 @@ export default async function ProfiloAziendaPage() {
     redirect("/login");
   }
 
-  const { data: company } = await supabase
+  // I due campi del livello di Direzione dell'organigramma stanno nella
+  // migrazione 0071: se non è ancora stata eseguita la query senza di essi
+  // continua a funzionare (i campi restano vuoti).
+  const COLONNE_BASE = "ragione_sociale, partita_iva, codice_fiscale, indirizzo, codice_sdi, pec, forma_giuridica, anno_costituzione, numero_dipendenti, fatturato_medio_annuo, certificazioni, referenze, settori_attivita, presentazione, sito_web, telefono_aziendale, logo_path, software_nome, software_logo_path";
+  const { data: profiloCompleto, error: erroreProfilo } = await supabase
     .from("companies")
-    .select(
-      "ragione_sociale, partita_iva, codice_fiscale, indirizzo, codice_sdi, pec, forma_giuridica, anno_costituzione, numero_dipendenti, fatturato_medio_annuo, certificazioni, referenze, settori_attivita, presentazione, sito_web, telefono_aziendale, logo_path, software_nome, software_logo_path",
-    )
+    .select(`${COLONNE_BASE}, funzioni_direzione, uffici_gestione`)
     .eq("user_id", user.id)
     .maybeSingle<Company>();
+  let company = profiloCompleto;
+  if (erroreProfilo) {
+    ({ data: company } = await supabase.from("companies").select(COLONNE_BASE).eq("user_id", user.id).maybeSingle<Company>());
+  }
 
   return (
     <div className="omnia-app-shell">
