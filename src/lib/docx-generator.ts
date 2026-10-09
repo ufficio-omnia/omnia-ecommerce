@@ -1112,7 +1112,7 @@ export async function buildDocxBuffer(
         // codice) oppure, per le bozze salvate prima, il vecchio elenco a rientri.
         const datiOrganigramma = leggiBloccoOrganigramma(segment.contenuto);
         const { buffer, width, height } = datiOrganigramma
-          ? await disegnaOrganigramma(datiOrganigramma, loghiOrganigramma ?? {})
+          ? await disegnaOrganigramma(datiOrganigramma, loghiOrganigramma ?? {}, { font })
           : await generateOrgChartPng(segment.contenuto, stileOrganigramma, loghiOrganigramma);
         children.push(
           new Paragraph({
