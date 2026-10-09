@@ -96,6 +96,15 @@ async function main() {
     const citaNumero = /\bfigura\s+\d+\b/i.test(contenuto);
     console.log(`  il testo cita un numero di figura ("Figura N")? ${citaNumero ? "SÌ (da correggere)" : "no"}`);
 
+    // Densità per sotto-criterio: prosa, tabelle, elenchi, figure (R16: tabellare predefinito, prosa eccezione).
+    for (const b of contenuto.split(/\n(?=##\s)/)) {
+      if (!/^##\s/.test(b)) continue;
+      const prosa = b.split(/\n\s*\n/).map((p) => p.trim()).filter((p) => p && !/^[|#\-\[*]/.test(p) && !/^\[FIGURA:/.test(p));
+      const parole = prosa.reduce((t, p) => t + p.split(/\s+/).length, 0);
+      const tabelle = (b.match(/^\s*\|[-:\s|]+\|\s*$/gm) ?? []).length;
+      const figure = (b.match(/\[FIGURA:\d+\]/g) ?? []).length + (b.match(/\[ORGANIGRAMMA\]/g) ?? []).length;
+      console.log(`  ${b.split("\n")[0].slice(0, 56).padEnd(56)} | prosa ${String(prosa.length).padStart(2)} par. (${prosa.length ? Math.round(parole / prosa.length) : 0} parole/par.) | tabelle ${tabelle} | par./tabella ${tabelle ? (prosa.length / tabelle).toFixed(1) : "—"} | figure ${figure}`);
+    }
     const esito = costruisciFigure(input.figure, fatti, { evidenza });
     for (const a of esito.avvisi) console.log(`  AVVISO: ${a}`);
     const inserite = inserisciFigure(contenuto, esito.blocchi);

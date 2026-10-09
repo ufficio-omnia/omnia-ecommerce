@@ -247,8 +247,8 @@ async function main() {
     const dettaglio2 = conRiscontro.figure[0]?.archetipo === "flusso" && conRiscontro.figure[0].flusso.stadi[0].tipo === "passo" ? conRiscontro.figure[0].flusso.stadi[0].dettaglio : undefined;
     atteso("R9: con riscontro nei documenti nessun asterisco", !/\*/.test(dettaglio2 ?? ""), dettaglio2);
 
-    const cinque = costruisciFigure(Array.from({ length: 6 }, () => FLUSSO_VALIDO), FATTI_SENZA);
-    atteso("al massimo 4 figure per sezione, le altre scartate con avviso", cinque.blocchi.length === 4 && cinque.avvisi.some((a) => /Oltre 4/.test(a)));
+    const troppe = costruisciFigure(Array.from({ length: 8 }, () => FLUSSO_VALIDO), FATTI_SENZA);
+    atteso("al massimo 6 figure per sezione, le altre scartate con avviso", troppe.blocchi.length === 6 && troppe.avvisi.some((a) => /Oltre 6/.test(a)));
     atteso("input non array: nessuna figura, nessun errore", costruisciFigure(undefined, FATTI_SENZA).blocchi.length === 0 && costruisciFigure({ a: 1 }, FATTI_SENZA).blocchi.length === 0);
     const mista = costruisciFigure([{ archetipo: "torta" }, FLUSSO_VALIDO], FATTI_SENZA);
     atteso("una figura scartata non sposta le altre: l'indice resta quello dichiarato", mista.blocchi[0] === null && !!mista.blocchi[1] && mista.avvisi.some((a) => /^Figura 1:/.test(a)));
@@ -484,7 +484,9 @@ async function main() {
     const tutto = JSON.stringify(SCHEMA_FIGURE_STRUMENTO);
     atteso("schema: un campo per archetipo, nessun colore/coordinata/dimensione/numero di figura", campi.join() === "archetipo,didascalia,flusso,livelli,cronoprogramma,cruscotto,rete" && !/"(color|colore|x|y|width|height|numero_figura)"/i.test(tutto.replace(/"description":"[^"]*"/g, "")), campi.join());
     atteso("schema: gli archetipi enumerati sono quelli del codice", JSON.stringify(item.properties.archetipo.enum) === JSON.stringify([...ARCHETIPI]));
-    atteso("schema: vieta il numero di figura, chiede una didascalia che dimostra, limita a 4 figure", /MAI il numero di una figura/.test(tutto) && /COSA DIMOSTRA/.test(tutto) && /al massimo 4/.test(tutto));
+    atteso("schema: vieta il numero di figura, chiede una didascalia che dimostra, limita a 6 figure", /MAI il numero di una figura/.test(tutto) && /COSA DIMOSTRA/.test(tutto) && /al massimo 6/.test(tutto));
+    // Le istruzioni non devono scoraggiare le figure (era la causa di criteri senza nessuna figura).
+    atteso("schema: chiede una figura per OGNI processo, calendario, struttura o rete, senza frasi che le scoraggiano", /OGNI volta che il testo descrive/.test(tutto) && /Almeno una figura per ogni sotto-criterio/.test(tutto) && !/non inserirne una per fare scena/.test(tutto) && !/SOLO dove una figura fa capire più del testo/.test(tutto));
     atteso("schema: il cruscotto dichiara solo obiettivi, «Rilevato» e piattaforma sono del codice", /«Rilevato» è sempre un trattino/.test(tutto) && /Il nome della piattaforma lo mette il generatore/.test(tutto) && /Dati di esempio — schermata illustrativa/.test(tutto));
     const cruscottoSchema = JSON.stringify(item.properties.cruscotto);
     atteso("schema: nel cruscotto non esiste né il campo piattaforma né un campo rilevato", !/"piattaforma":\{/.test(cruscottoSchema) && !/"rilevat/i.test(cruscottoSchema.replace(/"description":"[^"]*"/g, "")));
