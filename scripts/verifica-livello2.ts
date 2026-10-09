@@ -34,13 +34,17 @@ for (const line of fs.readFileSync(path.join(__dirname, "..", ".env.local"), "ut
 import type Anthropic from "@anthropic-ai/sdk";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createClient } = require("@supabase/supabase-js");
-import { buildSystemPrompt, buildGeneraBozzaTool, formattaDatiGaraStrutturati, organicoDisponibile, type GaraContesto, type CompanyContesto } from "../src/lib/gara-chat-prompt";
+import { buildSystemPrompt, buildGeneraBozzaTool, budgetSottoCriteriDiGara, formattaDatiGaraStrutturati, organicoDisponibile, type GaraContesto, type CompanyContesto } from "../src/lib/gara-chat-prompt";
+import { espandiSezioneSottoTetto, riepilogoEsitiEspansione, type EsitoEspansione } from "../src/lib/espansione-mirata";
+import { analizzaDensita, assegnaIconeMancanti, ICONE_MINIME_PER_1000_PAROLE } from "../src/lib/densita-visiva";
+import { descriviMisura, misuraVisiva } from "../src/lib/ricchezza-visiva";
 import { verificaDatiAziendali } from "../src/lib/verifica-dati-aziendali";
 import { applicaMarcatoriTabellari, applicaSostituzioniAnonimizzazione, assicuraBudgetPagine } from "../src/lib/relazione-tecnica";
 import { calcolaBudgetSottoCriteri } from "../src/lib/sotto-criteri";
 import { analizzaColoriSorgente } from "../src/lib/colori-semantici";
 import { garantisciSenzaRiferimentiEconomici } from "../src/lib/garanzia-senza-economico";
 import { descriviAvvisoEconomico, trovaRiferimentiEconomici, type AvvisoRiferimentoEconomico } from "../src/lib/riferimenti-economici";
+import { applicaGuardiaValori, costruisciEvidenza, indicizzaEvidenza, trovaValoriSenzaRiscontro, type ValoreDerivato, type ValoreMarcato } from "../src/lib/valori-impresa";
 import { embedQuery } from "../src/lib/voyage";
 import { createAnthropicClient } from "../src/lib/anthropic";
 import { logAiUsage } from "../src/lib/ai-usage";
@@ -234,6 +238,7 @@ async function auditDatiSenzaFonte(
   markdown: string,
   companyContesto: CompanyContesto,
   datiGaraStrutturati: string,
+  derivati: string[] = [],
 ): Promise<string[]> {
   const anthropic = createAnthropicClient();
   let motivoUltimoTentativo = "";
@@ -249,13 +254,13 @@ async function auditDatiSenzaFonte(
       max_tokens: 32000,
       thinking: { type: "adaptive" },
       system:
-        "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che il monte ore/organico OFFERTO (proposto dall'impresa) è legittimo se marcato con un asterisco come proposta da confermare. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
+        "Sei un revisore che controlla un'offerta tecnica GIA' composta e corretta per una gara d'appalto di pulizie. Il tuo unico compito: trovare ogni numero o affermazione specifica sull'IMPRESA del cliente (monte ore, addetti offerti, certificazioni, referenze, nomi di clienti/prodotti/macchinari, esperienza pregressa) che NON trova riscontro nel profilo azienda o nei dati di gara forniti, ricordando che: (1) QUALUNQUE valore marcato con un asterisco come proposta da confermare («valore *») è legittimo, di qualunque categoria (monte ore, organico, prodotti, attrezzature, prestazioni) e non va segnalato; (2) un valore ricavato da dati noti e dichiarato come tale (es. organico complessivo = dipendenti del profilo + personale uscente, anche con la somma indicata nel testo o nell'elenco «Valori ricavati» qui sotto) è derivato, non inventato, e non va segnalato. Non segnalare requisiti del capitolato, riferimenti normativi, o dati di gara (sedi, superfici, personale uscente) già forniti. Chiama SEMPRE lo strumento fornito con l'esito.",
       tools: [AUDIT_TOOL],
       tool_choice: { type: "auto" },
       messages: [
         {
           role: "user",
-          content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nTesto da auditare:\n\n${markdown}`,
+          content: `Profilo azienda confermato:\n${companyContesto ? JSON.stringify(companyContesto, null, 2) : "Nessuno."}\n\nDati di gara strutturati (sedi/personale uscente, fonte primaria):\n${datiGaraStrutturati}\n\nValori ricavati da dati noti (derivati, legittimi):\n${derivati.length ? derivati.map((d) => `- ${d}`).join("\n") : "Nessuno."}\n\nTesto da auditare:\n\n${markdown}`,
         },
       ],
     });
@@ -382,11 +387,33 @@ function anonimizza(
   const formattazione = { font: garaRow.relazione_font ?? "Calibri", dimensioneCarattere: gara.relazione_dimensione_carattere ?? 12, interlinea: gara.relazione_interlinea ?? 1 };
   const datiGaraStrutturati = formattaDatiGaraStrutturati(gara);
 
+  // Evidenza per la guardia R9 (valori senza riscontro): gli stessi dati che
+  // in produzione legge caricaEvidenzaDati — profilo azienda, dati di gara
+  // estratti, TUTTI i chunk dei documenti — qui già a disposizione.
+  const { data: chunkTutti } = await admin.from("gara_documenti_chunks").select("contenuto").eq("gara_id", GARA).range(0, 5999);
+  const evidenza = costruisciEvidenza({
+    profilo: company,
+    gara: {
+      importo: garaRow.importo,
+      criteri_valutazione: estratti.criteri_valutazione,
+      requisiti: estratti.requisiti,
+      limiti_formattazione: estratti.limiti_formattazione,
+      sedi: estratti.sedi,
+      personale_uscente: estratti.personale_uscente,
+    },
+    testiDocumenti: (chunkTutti ?? []).map((c: { contenuto: string }) => c.contenuto),
+    testiAggiuntivi: [datiGaraStrutturati],
+  });
+  const indiceEvidenza = indicizzaEvidenza(evidenza);
+  const valoriMarcati: ValoreMarcato[] = [];
+  const valoriDerivati: ValoreDerivato[] = [];
+
   const sezioni: { titolo_sezione: string; contenuto: string }[] = [];
   // Garanzia R8 (stessa funzione di produzione, chiamata nello stesso punto:
   // dopo la verifica dati di ogni bozza e poi sul testo finale composto).
   const avvisiEconomiciResidui: AvvisoRiferimentoEconomico[] = [];
   const interventiEconomici: string[] = [];
+  const esitiEspansione: EsitoEspansione[] = [];
 
   for (const criterio of gara.criteri_riepilogo) {
     const messaggioUtente = `Sviluppa il criterio ${criterio.numero}. ${criterio.titolo}.`;
@@ -427,7 +454,26 @@ function anonimizza(
 
     const senzaPlaceholder = applicaSostituzioniAnonimizzazione(input.contenuto, companyContesto?.ragione_sociale);
     const conMarcatori = applicaMarcatoriTabellari(senzaPlaceholder, gara.sub_criteri_tabellari ?? null);
-    const verificato = await verificaDatiAziendali(conMarcatori, companyContesto, contestoDocumenti, datiGaraStrutturati, { userId: null, garaId: GARA });
+    // Espansione dei sotto-criteri sotto il proprio tetto (stesso punto di
+    // produzione, gara-chat.ts: dopo la correzione e prima della verifica
+    // dati; poi si riapplicano marcatori tabellari e anonimizzazione, come lì).
+    let daVerificare = conMarcatori;
+    const budgetEspansione = budgetSottoCriteriDiGara(gara);
+    if (budgetEspansione) {
+      const espansione = await espandiSezioneSottoTetto({
+        titoloSezione: input.titolo_sezione,
+        contenuto: conMarcatori,
+        budget: budgetEspansione,
+        criteriValutazione: gara.criteri_valutazione,
+        punteggioTecnico: gara.punteggio_tecnico_max ?? undefined,
+        formattazione,
+        context: { userId: null, garaId: GARA },
+      });
+      for (const riga of riepilogoEsitiEspansione(espansione.esiti)) console.log(`  ${riga}`);
+      esitiEspansione.push(...espansione.esiti);
+      daVerificare = applicaSostituzioniAnonimizzazione(applicaMarcatoriTabellari(espansione.contenuto, gara.sub_criteri_tabellari ?? null), companyContesto?.ragione_sociale);
+    }
+    const verificato = await verificaDatiAziendali(daVerificare, companyContesto, contestoDocumenti, datiGaraStrutturati, { userId: null, garaId: GARA });
 
     // Cosa il modello ha scritto PRIMA della garanzia R8, per riferire quanto
     // ha dovuto intervenire (non per giudicare: il risultato finale conta).
@@ -438,7 +484,13 @@ function anonimizza(
     }
     avvisiEconomiciResidui.push(...garanzia.avvisi);
 
-    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: garanzia.testo });
+    // Garanzia R9 (valori numerici senza riscontro → asterisco; derivati da dati noti → dichiarati).
+    const guardiaValori = applicaGuardiaValori(garanzia.testo, evidenza, indiceEvidenza);
+    valoriMarcati.push(...guardiaValori.marcati);
+    valoriDerivati.push(...guardiaValori.derivati);
+
+    // Densità visiva minima assegnata dal codice, per ultima (come in generaBozzaSezione).
+    sezioni.push({ titolo_sezione: input.titolo_sezione, contenuto: assegnaIconeMancanti(guardiaValori.testo).testo });
   }
 
   console.log(`\n=== COMPOSIZIONE (assicuraBudgetPagine) ===`);
@@ -467,7 +519,10 @@ function anonimizza(
     if (formuleGrezze.length > 0) {
       interventiEconomici.push(`composizione "${sezioniCorrette[i].titolo_sezione}": ${formuleGrezze.length} formula/e → ${garanzia.righeRiformulate} riga/righe riformulate, ${garanzia.avvisi.length} residua/e`);
     }
-    sezioniCorrette[i] = { ...sezioniCorrette[i], contenuto: garanzia.testo };
+    const guardiaValoriFinale = applicaGuardiaValori(garanzia.testo, evidenza, indiceEvidenza);
+    valoriMarcati.push(...guardiaValoriFinale.marcati);
+    valoriDerivati.push(...guardiaValoriFinale.derivati);
+    sezioniCorrette[i] = { ...sezioniCorrette[i], contenuto: assegnaIconeMancanti(guardiaValoriFinale.testo).testo };
     avvisiEconomiciResidui.push(...garanzia.avvisi);
   }
   console.log(
@@ -565,11 +620,33 @@ function anonimizza(
   fs.writeFileSync(path.join(cartellaDump, "confronto-tagli.txt"), reportConfronto);
   console.log(`\nDump diagnostico (contenuto reale, non nel repository) in: ${cartellaDump}`);
 
-  const erroriAudit = await auditDatiSenzaFonte(markdown, companyContesto, datiGaraStrutturati);
+  // Controllo deterministico R9: dopo la guardia non deve restare nessun
+  // valore numerico senza riscontro e senza asterisco.
+  const valoriResidui = trovaValoriSenzaRiscontro(markdown, evidenza, indiceEvidenza);
+  const derivatiUnici = [...new Map(valoriDerivati.map((d) => [d.valore + "|" + d.derivazione, d])).values()];
+  const erroriAudit = await auditDatiSenzaFonte(markdown, companyContesto, datiGaraStrutturati, derivatiUnici.map((d) => d.valore + " = " + d.derivazione));
   void estraiTestiVisibili; // riesportata dal modulo condiviso, non serve qui direttamente
+
+  // Densità visiva: le icone sono garantite dal codice (sotto soglia = guardia
+  // non collegata o rotta, quindi errore); riquadri, tabelle e riempimento
+  // delle pagine dipendono dal modello e si riportano come avvisi da giudicare.
+  const densita = analizzaDensita(markdown);
+  const erroriDensita: string[] = [];
+  if (densita.sottoSogliaIcone) {
+    erroriDensita.push(`icone ${densita.misura.icone} su ${densita.misura.parole} parole (${densita.icone1000.toFixed(1)} ogni 1000, minimo ${ICONE_MINIME_PER_1000_PAROLE}): la guardia sulle icone non ha agito`);
+  }
+  const avvisiDensita: string[] = [];
+  for (const b of densita.blocchi) {
+    const mancanti = [b.mancaRiquadro ? "riquadro" : "", b.mancaTabella ? "tabella" : ""].filter(Boolean);
+    if (mancanti.length > 0) avvisiDensita.push(`sotto-criterio ${b.chiave} (${b.misura.parole} parole) senza ${mancanti.join(" né ")}`);
+  }
+  const limiteConMargine = budgetTetti?.limiteConMargine ?? gara.limite_pagine_totale;
+  const riempimento = esitoStrutturale.pagineStimate / limiteConMargine;
+  if (riempimento < 0.85) avvisiDensita.push(`riempimento delle pagine ${(riempimento * 100).toFixed(0)}% dell'obiettivo (${esitoStrutturale.pagineStimate.toFixed(2)} su ${limiteConMargine.toFixed(1)}): sotto l'85%`);
 
   const tuttiGliErrori = [
     ...erroriStrutturali.map((e) => `[Strutturale] ${e}`),
+    ...erroriDensita.map((e) => `[Densità visiva] ${e}`),
     ...erroriArithmetica.map((e) => `[Aritmetica tabelle] ${e}`),
     ...erroriSedi.map((e) => `[Copertura sedi] ${e}`),
     ...erroriSegnaposto.map((e) => `[Segnaposto su dati di gara] ${e}`),
@@ -577,6 +654,7 @@ function anonimizza(
     ...erroriTagli.map((e) => `[Tagli] ${e}`),
     // Un riferimento economico rimasto dopo i due tentativi significa che il
     // cliente vedrebbe l'avviso in rosso: non è un livello 2 pulito.
+    ...valoriResidui.map((v) => "[R9 valori senza riscontro] \"" + v.valore + "\" (" + v.categoria + ") senza riscontro e senza asterisco: " + v.riga.slice(0, 140)),
     ...avvisiEconomiciResidui.map((a) => `[R8 offerta economica] riferimento non eliminato dalla garanzia: ${descriviAvvisoEconomico(a)}`),
     ...erroriAudit.map((e) => `[Audit dati d'impresa] ${e}`),
   ];
@@ -592,6 +670,9 @@ function anonimizza(
   // comunque corretto perché il renderer applica le stesse regole (e i
   // controlli strutturali sopra lo verificano), ma qui si vede se il modello
   // le ha rispettate o se è il renderer a correggerlo — da giudicare a mano.
+  console.log(`\nGuardia R9 (valori senza riscontro): ${valoriMarcati.length} valore/i marcati con asterisco, ${derivatiUnici.length} derivato/i riconosciuto/i`);
+  for (const v of [...new Map(valoriMarcati.map((m) => [m.valore + m.categoria, m])).values()]) console.log(` - marcato [${v.categoria}] «${v.valore}»: ${v.riga.slice(0, 110)}`);
+  for (const d of derivatiUnici) console.log(` - derivato «${d.valore}» = ${d.derivazione} (indicato nel testo: ${d.dichiaratoNelTesto ? "sì" : "no, aggiunto dalla guardia"})`);
   console.log(`
 Garanzia R8 (riferimenti all'offerta economica): ${interventiEconomici.length === 0 ? "il modello non ha scritto nessuna formula vietata, nessun intervento" : ""}`);
   for (const i of interventiEconomici) console.log(` - ${i}`);
@@ -611,6 +692,15 @@ Garanzia R8 (riferimenti all'offerta economica): ${interventiEconomici.length ==
   const costoTotale = (righe ?? []).reduce((tot: number, r: { costo_stimato: number | null }) => tot + (r.costo_stimato ?? 0), 0);
   const costoPerOperazione = new Map<string, number>();
   for (const r of righe ?? []) costoPerOperazione.set(r.operazione, (costoPerOperazione.get(r.operazione) ?? 0) + (r.costo_stimato ?? 0));
+
+  console.log(`\nDensità visiva del documento: ${descriviMisura(misuraVisiva(markdown))}`);
+  if (esitiEspansione.length > 0) {
+    console.log(`Espansione dei sotto-criteri: ${esitiEspansione.filter((e) => e.esito === "espanso").length} espansi, ${esitiEspansione.filter((e) => e.esito === "rifiutato").length} rifiutati, ${esitiEspansione.filter((e) => e.esito === "non_eseguito").length} non eseguiti`);
+  }
+  if (avvisiDensita.length > 0) {
+    console.log(`Avvisi sulla densità visiva (da giudicare a mano):`);
+    for (const a of avvisiDensita) console.log(` - ${a}`);
+  }
 
   console.log(`\n=== RIEPILOGO FINALE ===`);
   console.log(`Pagine finali: ${esitoStrutturale.pagineStimate.toFixed(2)} (limite dichiarato ${gara.limite_pagine_totale})${esitoStrutturale.pagineStimate > gara.limite_pagine_totale ? " — SOPRA IL LIMITE" : ""}`);

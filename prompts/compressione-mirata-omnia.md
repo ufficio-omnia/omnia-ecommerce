@@ -25,7 +25,7 @@ Cosa togliere, in quest'ordine — prima ciò che vale meno per i punti:
 2. ripetizioni di concetti già espressi altrove nel documento;
 3. descrizioni di ciò che il capitolato già impone senza aggiungere un impegno tuo;
 4. premesse e frasi di raccordo;
-5. tabelle che non aggiungono dati rispetto al testo (una tabella ridondante si toglie per intero, non a righe);
+5. righe di una tabella che ripetono il testo (si tolgono righe, mai l'ultima tabella del sotto-criterio);
 6. il dettaglio degli aspetti meno legati a ciò che il disciplinare richiede qui sopra: un paragrafo diventa una frase, una frase diventa una riga di tabella.
 
 Cosa non toccare MAI. Il testo ridotto viene controllato automaticamente su ognuno di questi punti e, se ne manca uno, la riduzione viene RIFIUTATA e il sotto-criterio resta lungo:
@@ -33,6 +33,7 @@ Cosa non toccare MAI. Il testo ridotto viene controllato automaticamente su ognu
 - ogni impegno con il suo valore numerico e ogni indicatore misurabile;
 - ogni citazione di un articolo del capitolato, di un paragrafo del disciplinare o di una norma ("art. 13.2", "D.Lgs. 36/2023", "UNI EN ISO 14001"), scritta come nel testo di partenza;
 - ogni asterisco "*" posto dopo un valore e la nota che lo spiega ("*Valori proposti da confermare..."): sono ciò che distingue una proposta dell'impresa da un dato confermato; toglierlo trasforma una proposta in un impegno;
+- i riquadri [BOX:tipo]...[/BOX]: contengono l'impegno chiave del sotto-criterio e si accorcia il testo intorno, mai il riquadro (una riduzione che ne toglie uno viene rifiutata); almeno una tabella del sotto-criterio resta;
 - le figure ([ORGANIGRAMMA]...[/ORGANIGRAMMA]) e i tag di formattazione ([C], [G], [TABELLA:...], [ICONA:...], [BOX] e [BOX:tipo], [RIGA:tipo], [CELLA:tipo], !!...!!, **...**), usati come nel testo di partenza — il TIPO di un riquadro o di una riga/cella evidenziata non si cambia e non si toglie;
 - il titolo "## {CHIAVE}" e i sotto-titoli "###" con la loro numerazione.
 

@@ -10,7 +10,8 @@ import { stimaPagineContenuto } from "../../src/lib/stima-pagine";
 type Formattazione = { dimensioneCarattere?: number; interlinea?: number };
 
 // Riduce bene: toglie i paragrafi di prosa dal fondo finché il blocco rientra
-// nel target, lasciando tabelle, note, sottotitoli e figure.
+// nel target, lasciando tabelle, riquadri [BOX] (contengono l'impegno chiave:
+// un modello fedele non li toglie), note, sottotitoli e figure.
 export function modelloFedele(formattazione: Formattazione): FunzioneCompressione {
   return async (r: RichiestaCompressione) => {
     const pezzi = r.testo.split(/\n\s*\n/);
@@ -19,7 +20,7 @@ export function modelloFedele(formattazione: Formattazione): FunzioneCompression
       let idx = -1;
       for (let i = pezzi.length - 1; i >= 1; i--) {
         const p = pezzi[i].trim();
-        if (p.startsWith("|") || p.startsWith("[TABELLA") || p.startsWith("[ORGANIGRAMMA") || p.startsWith("*") || p.startsWith("###")) continue;
+        if (p.startsWith("|") || p.startsWith("[TABELLA") || p.startsWith("[ORGANIGRAMMA") || p.startsWith("[BOX") || p.startsWith("*") || p.startsWith("###")) continue;
         idx = i;
         break;
       }

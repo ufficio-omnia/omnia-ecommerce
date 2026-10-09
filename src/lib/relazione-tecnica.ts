@@ -9,11 +9,14 @@ import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
+import { assegnaIconeMancanti } from "@/lib/densita-visiva";
 import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
 import { calcolaBudgetSottoCriteri, trovaBudgetSottoCriterio } from "@/lib/sotto-criteri";
 import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
 import { ripristinaDaTestoVerificato, riepilogoRipristino } from "@/lib/ripristino-verificato";
 import { garantisciSenzaRiferimentiEconomici } from "@/lib/garanzia-senza-economico";
+import { caricaEvidenzaDati } from "@/lib/evidenza-dati";
+import { applicaGuardiaValori, indicizzaEvidenza, type EvidenzaDati, type ValoreDerivato, type ValoreMarcato } from "@/lib/valori-impresa";
 import type { AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
 import type { FunzioneCompressione } from "@/lib/compressione-mirata";
 
@@ -181,6 +184,23 @@ async function caricaDocumento(
 // duplicare contenuto in un unico documento che cresce). La sezione
 // viene comunque salvata come riga a sé in gara_relazione_sezioni, così
 // "componi la relazione finale" può poi assemblarle tutte.
+// Esito della guardia R9 (valori numerici senza riscontro) su un documento:
+// cosa è stato marcato con asterisco come proposta e cosa è stato riconosciuto
+// come derivato da dati noti — vedi valori-impresa.ts.
+export type EsitoValoriImpresa = { marcati: ValoreMarcato[]; derivati: ValoreDerivato[]; nonMarcabili: ValoreMarcato[] };
+
+// Legge l'evidenza (profilo, gara, documenti, messaggi del cliente); se la
+// lettura fallisce la guardia non può girare: si segnala con forza nei log
+// invece di bloccare la generazione.
+async function evidenzaPerGuardia(params: { garaId: string; userId: string; testiAggiuntivi?: string[] }): Promise<EvidenzaDati | null> {
+  try {
+    return await caricaEvidenzaDati(params);
+  } catch (err) {
+    console.error("GUARDIA R9 NON ESEGUITA: lettura dell'evidenza fallita, il documento esce senza il controllo deterministico dei valori:", err);
+    return null;
+  }
+}
+
 export async function generaBozzaSezione(params: {
   garaId: string;
   userId: string;
@@ -193,7 +213,7 @@ export async function generaBozzaSezione(params: {
   font?: string;
   dimensioneCarattere?: number;
   interlinea?: number;
-}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa }> {
   const {
     garaId,
     userId,
@@ -242,7 +262,22 @@ export async function generaBozzaSezione(params: {
     titoloSezione,
     context: { userId, garaId },
   });
-  const contenuto = garanziaEconomica.testo;
+
+  // R9 (nessun dato d'impresa inventato) come controllo DETERMINISTICO sul
+  // testo finale della bozza: ogni valore numerico su prodotti, attrezzature,
+  // prestazioni o organico senza riscontro nel profilo, nei documenti di gara
+  // o in ciò che il cliente ha scritto viene marcato come proposta da
+  // confermare (asterisco); un valore ricavato da dati noti (organico = dipendenti +
+  // personale uscente) è riconosciuto come derivato e non marcato. Non
+  // dipende dal giudizio di un modello — vedi valori-impresa.ts.
+  const evidenza = await evidenzaPerGuardia({ garaId, userId, testiAggiuntivi: [contestoDocumenti, datiGaraStrutturati] });
+  const guardiaValori = evidenza ? applicaGuardiaValori(garanziaEconomica.testo, evidenza) : null;
+  // Densità visiva minima garantita dal codice (le icone sono decorazione
+  // pura): per ultima, dopo ogni riscrittura fatta da un modello, così
+  // ciò che il modello ha dimenticato o tolto viene completato — vedi
+  // densita-visiva.ts.
+  const contenuto = assegnaIconeMancanti(guardiaValori ? guardiaValori.testo : garanziaEconomica.testo).testo;
+  const valoriImpresa: EsitoValoriImpresa = { marcati: guardiaValori?.marcati ?? [], derivati: guardiaValori?.derivati ?? [], nonMarcabili: guardiaValori?.nonMarcabili ?? [] };
 
   const { data: ultima } = await supabase
     .from("gara_relazione_sezioni")
@@ -295,7 +330,7 @@ export async function generaBozzaSezione(params: {
 
   const pagineStimate = stimaPagineContenuto(contenuto, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
 
-  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi };
+  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi, valoriImpresa };
 }
 
 // Rimuove un eventuale prefisso numerico/alfabetico iniziale del titolo
@@ -1143,7 +1178,7 @@ async function assicuraBudgetPerSottoCriteri(params: {
 export async function componiRelazioneFinale(params: {
   garaId: string;
   userId: string;
-}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] } | { error: string }> {
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa } | { error: string }> {
   const { garaId, userId } = params;
 
   const supabase = await createClient();
@@ -1265,14 +1300,46 @@ export async function componiRelazioneFinale(params: {
       garantisciSenzaRiferimentiEconomici(s.contenuto, { titoloSezione: s.titolo_sezione, context: { userId, garaId } }),
     ),
   );
-  const righeRiformulate: { titolo_sezione: string; contenuto: string }[] = [];
+  const sezioniModificate = new Set<number>();
   garanzie.forEach((g, i) => {
     avvisiEconomici.push(...g.avvisi);
     if (g.testo !== sezioniFinali[i].contenuto) {
       sezioniFinali[i] = { ...sezioniFinali[i], contenuto: g.testo };
-      righeRiformulate.push({ titolo_sezione: sezioniFinali[i].titolo_sezione, contenuto: g.testo });
+      sezioniModificate.add(i);
     }
   });
+
+  // R9 sul testo finale, sezione per sezione (stessa guardia deterministica
+  // di generaBozzaSezione): copre le bozze salvate prima che esistesse e ciò
+  // che compressione/espansione hanno riscritto. L'evidenza si legge una volta.
+  const valoriImpresa: EsitoValoriImpresa = { marcati: [], derivati: [], nonMarcabili: [] };
+  const evidenzaFinale = await evidenzaPerGuardia({ garaId, userId });
+  if (evidenzaFinale) {
+    const indiceEvidenza = indicizzaEvidenza(evidenzaFinale);
+    sezioniFinali.forEach((s, i) => {
+      const esito = applicaGuardiaValori(s.contenuto, evidenzaFinale, indiceEvidenza);
+      valoriImpresa.marcati.push(...esito.marcati);
+      valoriImpresa.derivati.push(...esito.derivati);
+      valoriImpresa.nonMarcabili.push(...esito.nonMarcabili);
+      if (esito.testo !== s.contenuto) {
+        sezioniFinali[i] = { ...s, contenuto: esito.testo };
+        sezioniModificate.add(i);
+      }
+    });
+  }
+
+  // Icone sul testo finale, sezione per sezione: copre le bozze salvate prima
+  // che esistesse la garanzia e ciò che la compressione ha riscritto. Per
+  // ultima, come in generaBozzaSezione.
+  sezioniFinali.forEach((s, i) => {
+    const esito = assegnaIconeMancanti(s.contenuto);
+    if (esito.aggiunte > 0) {
+      sezioniFinali[i] = { ...s, contenuto: esito.testo };
+      sezioniModificate.add(i);
+    }
+  });
+
+  const righeRiformulate = [...sezioniModificate].map((i) => ({ titolo_sezione: sezioniFinali[i].titolo_sezione, contenuto: sezioniFinali[i].contenuto }));
   if (righeRiformulate.length > 0) {
     await supabase.from("gara_relazione_sezioni").insert(
       righeRiformulate.map((r, i) => ({
@@ -1313,5 +1380,5 @@ export async function componiRelazioneFinale(params: {
 
   const pagineStimate = stimaPagineContenuto(contenutoFinale, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
 
-  return { ...(await caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer)), pagineStimate, avvisiEconomici };
+  return { ...(await caricaDocumento(garaId, `${fmt.titolo}.docx`, buffer)), pagineStimate, avvisiEconomici, valoriImpresa };
 }

@@ -96,7 +96,16 @@ scrivendo per far assegnare punti.
   che il profilo azienda e il personale uscente assorbito rendono
   sostenibile (numero passato esplicitamente con le istruzioni
   dell'organigramma) — più funzioni sulla stessa persona, mai più persone
-  di quante l'impresa ne abbia davvero.
+  di quante l'impresa ne abbia davvero. VALORI DERIVATI E VALORI PROPOSTI
+  (controllati dal sistema in codice, non dal tuo giudizio): un valore
+  ricavato sommando dati noti — per esempio l'organico complessivo =
+  dipendenti del profilo + personale uscente — è ammesso se nel testo indichi
+  come l'hai ottenuto ("21 unità: 8 dipendenti dell'impresa e 13 di personale
+  uscente"). Ogni altro valore numerico su prodotti, attrezzature, prestazioni
+  o organico che non risulta dal profilo azienda, dai documenti di gara o da ciò
+  che il cliente ha scritto va scritto già come proposta da confermare (valore
+  seguito da un asterisco), oppure tolto: se non lo fai tu, il sistema lo marca
+  al posto tuo.
 - **R10 — Nessun impegno non confermato dall'impresa.** Elenco prodotti,
   macchinari, monte ore e migliorie diventano vincolanti in contratto e
   verranno controllati in esecuzione. Un impegno che l'impresa non ha
@@ -135,7 +144,8 @@ scrivendo per far assegnare punti.
 - **R16 — Scegli il formato giusto.** Tabella per dati confrontabili e
   frequenze, elenco per sequenze di azioni, paragrafo per argomentazioni,
   organigramma solo quando chiarisce davvero una struttura che a parole
-  richiederebbe più spazio. Non inserire un elemento visivo per decorare.
+  richiederebbe più spazio. Ogni elemento visivo contiene un impegno o un
+  dato: mai riempitivo decorativo.
   MAI fotografie o illustrazioni: solo figure schematiche (organigrammi,
   diagrammi di flusso, cronoprogrammi) coerenti con i dati dichiarati — una
   foto generica di un operatore/ambiente non prova nessun impegno e non
@@ -187,15 +197,25 @@ scrivendo per far assegnare punti.
   SI/NO) — lì non c'è nessun impegno da distinguere. L'evidenziazione
   sostituisce l'alternanza dei fondi su quella riga.
 <!-- FINE COLORE SEMANTICO -->
-- **R25 — Distribuisci gli elementi visivi.** Nessuna sequenza di più
-  pagine di solo testo. Ma non forzare: se una sezione non ha nulla da
-  rappresentare, resta testo.
+- **R25 — Ogni sotto-criterio ha la sua struttura visiva.** In ogni
+  sotto-criterio discorsivo: almeno una tabella quando ci sono dati da
+  incrociare (frequenze, responsabili, indicatori, prodotti), almeno un
+  riquadro `[BOX:TIPO]` per l'impegno che vale più punti, e un'icona
+  `[ICONA:nome]` all'inizio di ogni riga d'impegno delle tabelle e di ogni
+  voce degli elenchi puntati. Nessuna sequenza di più pagine di solo testo.
+  Fa eccezione soltanto un sotto-criterio brevissimo che non contiene né dati
+  né impegni da mettere in evidenza.
 - **R26 — Coerenza di rappresentazione.** La stessa informazione si presenta
   sempre nello stesso modo in tutto il documento. Se le frequenze stanno in
   tabella nel primo criterio, non diventano elenco puntato nel terzo.
-- **R27 — Il visivo costa pagine.** Prima di inserire un elemento visivo
-  chiediti se le stesse righe, usate per un impegno in più, varrebbero più
-  punti. Se la risposta è sì, scrivi.
+- **R27 — Il visivo vale il suo spazio.** Le icone non occupano spazio:
+  mettile sempre. Tabelle e riquadri occupano più delle stesse parole in
+  prosa, ma sono ciò che la commissione legge per primo: una tabella per
+  ogni insieme di dati che si confrontano (frequenze, responsabili,
+  indicatori, prodotti, fasi di una procedura), un riquadro per l'impegno
+  chiave. Non servono a ripetere in celle un paragrafo già scritto. Tra un
+  paragrafo che ripete il capitolato e una riga di tabella o un riquadro con
+  un impegno misurabile, scegli sempre il secondo.
 
 <!-- FINE REGOLE ATTIVE -->
 

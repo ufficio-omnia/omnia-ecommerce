@@ -17,6 +17,7 @@ import {
 } from "@/lib/attachment-text";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import { descriviAvvisoEconomico, testoAvvisoEconomico, type AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
+import { testoValoriPerModello } from "@/lib/valori-impresa";
 import {
   generaBozzaSezione,
   componiRelazioneFinale,
@@ -24,11 +25,14 @@ import {
   correggiSezioneConBudget,
   applicaMarcatoriTabellari,
   applicaSostituzioniAnonimizzazione,
+  type EsitoValoriImpresa,
 } from "@/lib/relazione-tecnica";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { espandiSezioneSottoTetto, riepilogoEsitiEspansione } from "@/lib/espansione-mirata";
 import {
   buildSystemPrompt,
   buildGeneraBozzaTool,
+  budgetSottoCriteriDiGara,
   formattaDatiGaraStrutturati,
   type GaraContesto,
   type CompanyContesto,
@@ -43,6 +47,10 @@ const MAX_HISTORY = 12;
 const MAX_CHUNKS = 8;
 const MAX_KB_CHUNKS = 6;
 const MAX_TOOL_ROUNDS = 4;
+// Oltre questo tempo dall'inizio della richiesta l'espansione dei
+// sotto-criteri non parte: restano da fare verifica dati e garanzie, e la
+// funzione ha un tetto (maxDuration della pagina).
+const LIMITE_MS_PRIMA_DELL_ESPANSIONE = 150_000;
 
 // I segnaposto di anonimizzazione e le forme generiche "l'operatore
 // economico"/"il concorrente" sono gestiti in modo deterministico da
@@ -72,6 +80,7 @@ export async function sendGaraMessage(
   _prevState: ChatState,
   formData: FormData,
 ): Promise<ChatState> {
+  const inizioRichiestaMs = Date.now();
   const supabase = await createClient();
   const {
     data: { user },
@@ -221,7 +230,7 @@ export async function sendGaraMessage(
   }
 
   let rispostaFinale = "";
-  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[] } | null = null;
+  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa } | null = null;
 
   try {
     const queryEmbedding = await embedQuery(messaggio, {
@@ -449,7 +458,7 @@ export async function sendGaraMessage(
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: toolUse.id,
-                content: `${testoAvvisoEconomico(risultato.avvisiEconomici)}Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
+                content: `${testoAvvisoEconomico(risultato.avvisiEconomici)}${testoValoriPerModello(risultato.valoriImpresa.marcati, risultato.valoriImpresa.derivati, risultato.valoriImpresa.nonMarcabili)}Relazione finale "${risultato.nomeFile}" composta con successo da tutte le bozze (~${risultato.pagineStimate.toFixed(1)} pagine stimate${gara.limite_pagine_totale != null ? `, limite disciplinare ${gara.limite_pagine_totale}` : ""}). Il cliente la vede già come allegato scaricabile in cima al messaggio, con un avviso visivo se supera il limite: NON ripetere il nome del file nella tua risposta.${superaLimite ? " ATTENZIONE: nonostante il tentativo automatico di ridurla, la relazione supera ancora il limite di pagine del disciplinare — dillo chiaramente al cliente in 1-2 frasi, invitandolo a rivedere/accorciare il contenuto prima di consegnarla." : " Scrivi solo 1-2 frasi di conferma."}`,
               });
             }
           } catch (err) {
@@ -516,7 +525,31 @@ export async function sendGaraMessage(
             formattazione: formattazioneCorrente,
             context: { userId: user.id, garaId },
           });
-          const contenutoCorretto = correzione.contenuto;
+          // Espansione dei sotto-criteri che occupano molto meno del proprio
+          // tetto (le bozze si fermano al 60-75%: verificato con il modello
+          // vero, e il vecchio passaggio "espandi" che le portava al tetto
+          // era stato tolto dal percorso dal vivo per i 504). Una sola
+          // chiamata per blocco, in parallelo, senza ragionamento, con le
+          // garanzie di espansione-mirata.ts (nessun numero o riferimento
+          // nuovo), PRIMA della verifica dati; solo se la richiesta è ancora
+          // entro il tempo che lascia spazio a verifica dati e garanzie.
+          let contenutoCorretto = correzione.contenuto;
+          if (correzione.modalita === "sotto-criteri" && Date.now() - inizioRichiestaMs < LIMITE_MS_PRIMA_DELL_ESPANSIONE) {
+            const budgetEspansione = budgetSottoCriteriDiGara(gara);
+            if (budgetEspansione) {
+              const espansione = await espandiSezioneSottoTetto({
+                titoloSezione: input.titolo_sezione,
+                contenuto: contenutoCorretto,
+                budget: budgetEspansione,
+                criteriValutazione: gara.criteri_valutazione,
+                punteggioTecnico: gara.punteggio_tecnico_max ?? undefined,
+                formattazione: formattazioneCorrente,
+                context: { userId: user.id, garaId },
+              });
+              contenutoCorretto = espansione.contenuto;
+              for (const riga of riepilogoEsitiEspansione(espansione.esiti)) console.log(`sendGaraMessage [${garaId}] ${riga}`);
+            }
+          }
           const pagineTarget = correzione.pagineTargetCriterio;
           for (const riga of correzione.esiti) console.log(`sendGaraMessage [${garaId}] ${riga}`);
           // Riapplicate dopo l'eventuale espansione/condensazione: quel
@@ -530,7 +563,7 @@ export async function sendGaraMessage(
             company?.ragione_sociale,
           );
 
-          const { nomeFile, filePath, pagineStimate, avvisiEconomici } = await generaBozzaSezione({
+          const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa } = await generaBozzaSezione({
             garaId,
             userId: user.id,
             titoloSezione: input.titolo_sezione,
@@ -543,7 +576,7 @@ export async function sendGaraMessage(
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,
           });
-          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici };
+          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa };
           strumentiDisponibili = [];
           console.log(
             `sendGaraMessage: bozza generata "${nomeFile}" (${filePath}) per gara ${garaId}, sezione "${input.titolo_sezione}"`,
@@ -584,7 +617,7 @@ export async function sendGaraMessage(
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `${testoAvvisoEconomico(avvisiEconomici)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
+            content: `${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);
