@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { createAnthropicClient, MODELLO_PRINCIPALE } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
 import { ISTRUZIONI_VERIFICA_DATI } from "@/lib/prompts";
+import { figureInvariate } from "@/lib/figure-dati";
 
 // SEMPRE il modello principale, senza eccezioni — mai modelloAttivo() qui:
 // questa è la verifica di livello 2 prima di ogni pubblicazione (istruzione
@@ -143,6 +144,14 @@ export async function verificaDatiAziendali(
     }
 
     const testo = (toolUse.input as { testo_completo?: string }).testo_completo?.trim();
+
+    // I segnaposto delle figure ([FIGURA:n]) sono costruiti dal sistema: se il
+    // modello ne ha tolto, spostato o aggiunto qualcuno la verifica non si usa
+    // (la guardia deterministica sui valori interviene comunque a valle).
+    if (testo && !figureInvariate(contenuto, testo)) {
+      console.warn("verificaDatiAziendali: i segnaposto delle figure sono cambiati, mantengo il contenuto originale.");
+      return contenuto;
+    }
 
     return testo || contenuto;
   } catch (err) {

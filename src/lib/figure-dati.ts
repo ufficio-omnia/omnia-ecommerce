@@ -432,7 +432,29 @@ export function sostituisciSegnapostoFigura(testo: string, n: number, blocco: st
 }
 
 export function togliSegnapostiFigura(testo: string): string {
-  return testo.replace(/\[FIGURA:\d+\]\s*/gi, "");
+  return testo.replace(/\[FIGURA:@?\d+\]\s*/gi, "");
+}
+
+// Sostituisce i segnaposti "[FIGURA:n]" (n parte da 1, come l'ordine delle
+// figure dichiarate) con i blocchi costruiti dal codice. Un segnaposto che non
+// ha una figura valida, o che ripete una figura già inserita, si toglie.
+// Ritorna anche i numeri dei segnaposti senza figura e quelli delle figure
+// dichiarate ma non richiamate nel testo.
+export function inserisciFigure(testo: string, blocchi: (string | null)[]): { testo: string; inserite: number; senzaFigura: number[]; nonRichiamate: number[] } {
+  const usati = new Set<number>();
+  const senzaFigura: number[] = [];
+  const out = testo.replace(/\[FIGURA:(\d+)\]\s*/gi, (_m, ns: string) => {
+    const n = Number(ns);
+    const blocco = blocchi[n - 1];
+    if (blocco && !usati.has(n)) {
+      usati.add(n);
+      return `${blocco}\n\n`;
+    }
+    if (!blocco) senzaFigura.push(n);
+    return "";
+  });
+  const nonRichiamate = blocchi.map((b, i) => (b && !usati.has(i + 1) ? i + 1 : 0)).filter((n) => n > 0);
+  return { testo: out, inserite: usati.size, senzaFigura, nonRichiamate };
 }
 
 export function leggiBloccoFigura(contenutoBlocco: string): DatiFigura | null {
@@ -457,8 +479,11 @@ export function estraiBlocchiFigura(testo: string): string[] {
   return trovaBlocchiFigura(testo).map((b) => b.contenuto.trim());
 }
 
+// Le figure sono invariate se i blocchi costruiti sono identici e i segnaposti
+// "[FIGURA:n]" (ancora da costruire) sono gli stessi, nello stesso numero.
 export function figureInvariate(prima: string, dopo: string): boolean {
-  return JSON.stringify(estraiBlocchiFigura(prima)) === JSON.stringify(estraiBlocchiFigura(dopo));
+  const segnaposti = (t: string) => JSON.stringify(trovaSegnapostiFigura(t).sort((a, b) => a - b));
+  return JSON.stringify(estraiBlocchiFigura(prima)) === JSON.stringify(estraiBlocchiFigura(dopo)) && segnaposti(prima) === segnaposti(dopo);
 }
 
 // Maschera per compressione/espansione: i blocchi costruiti si sostituiscono

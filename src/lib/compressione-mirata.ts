@@ -5,6 +5,7 @@ import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE_MIRATA } from "@/lib/prompts";
 import { ripristinaDaTestoVerificato, riepilogoRipristino } from "@/lib/ripristino-verificato";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import { mascheraOrganigrammi, organigrammiInvariati, ripristinaOrganigrammi } from "@/lib/organigramma-dati";
+import { figureInvariate, mascheraFigure, ripristinaFigure } from "@/lib/figure-dati";
 
 // Compressione di UN sotto-criterio alla volta, consapevole di quanti punti
 // vale e di cosa richiede il disciplinare, con garanzie a valle:
@@ -174,10 +175,12 @@ export async function comprimiBloccoConGaranzie(params: {
 
   for (let t = 1; t <= maxTentativi; t++) {
     tentativi = t;
-    // L'organigramma strutturato non va al modello (vedi mascheraOrganigrammi).
+    // L'organigramma strutturato e le figure non vanno al modello (vedi
+    // mascheraOrganigrammi e mascheraFigure).
     const mascherato = mascheraOrganigrammi(testoDaRidurre);
+    const mascheratoFigure = mascheraFigure(mascherato.testo);
     const rispostaGrezza = await comprimi({
-      chiave, titoloBlocco, testo: mascherato.testo, paginePrima: stimaPagineContenuto(testoDaRidurre, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context,
+      chiave, titoloBlocco, testo: mascheratoFigure.testo, paginePrima: stimaPagineContenuto(testoDaRidurre, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context,
     });
     if (!rispostaGrezza) {
       ultimoMotivo = "nessuna risposta utilizzabile dal modello (errore o risposta troncata)";
@@ -185,7 +188,7 @@ export async function comprimiBloccoConGaranzie(params: {
       break;
     }
 
-    const risposta = ripristinaOrganigrammi(rispostaGrezza, mascherato.blocchi);
+    const risposta = ripristinaOrganigrammi(ripristinaFigure(rispostaGrezza, mascheratoFigure.blocchi), mascherato.blocchi);
     const normalizzato = normalizzaBlocco(bloccoOriginale, risposta, chiave);
     const ripristino = ripristinaDaTestoVerificato(bloccoOriginale, normalizzato);
     const candidato = ripristino.testo;
@@ -201,6 +204,7 @@ export async function comprimiBloccoConGaranzie(params: {
     const { violazioni, avvisi } = confronto ? violazioniBlocco(confronto, { paroleTetto }) : { violazioni: ["Impossibile confrontare il testo ridotto con l'originale."], avvisi: [] };
     for (const n of ripristino.nonRipristinabili) violazioni.push(`Non si riesce a ripristinare automaticamente: ${n}.`);
     if (!organigrammiInvariati(bloccoOriginale, candidato)) violazioni.push("Il blocco [ORGANIGRAMMA] è stato modificato: i suoi dati vanno lasciati IDENTICI, carattere per carattere.");
+    if (!figureInvariate(bloccoOriginale, candidato)) violazioni.push("Una figura [FIGURA:@n] è stata tolta, spostata o modificata: le righe delle figure vanno lasciate IDENTICHE.");
     if (pagineCandidato >= paginePrima * 0.98) violazioni.push(`Il testo ridotto occupa ancora ${fmt(pagineCandidato, 2)} pagine (era ${fmt(paginePrima, 2)}): deve scendere a ${fmt(pagineTarget, 2)}.`);
 
     if (violazioni.length === 0) {

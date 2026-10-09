@@ -129,8 +129,8 @@ export function assegnaIconeMancanti(testo: string): EsitoIcone {
   }
 
   const nuove = righe.map((riga, i) => {
-    if (/\[ORGANIGRAMMA\]/i.test(riga)) dentroOrganigramma = true;
-    if (/\[\/ORGANIGRAMMA\]/i.test(riga)) { dentroOrganigramma = false; return riga; }
+    if (/\[(?:ORGANIGRAMMA|FIGURA)\]/i.test(riga)) dentroOrganigramma = true;
+    if (/\[\/(?:ORGANIGRAMMA|FIGURA)\]/i.test(riga)) { dentroOrganigramma = false; return riga; }
     if (dentroOrganigramma || /\[ICONA:/.test(riga)) return riga;
 
     if (dati.has(i)) {

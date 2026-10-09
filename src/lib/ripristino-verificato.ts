@@ -268,9 +268,9 @@ function unitaDelTesto(righe: string[]): Unita[] {
   righe.forEach((riga, i) => {
     const t = riga.trim();
     if (!t) return;
-    if (/^\[ORGANIGRAMMA\]/i.test(t)) dentroOrganigramma = true;
+    if (/^\[(?:ORGANIGRAMMA|FIGURA)\]/i.test(t)) dentroOrganigramma = true;
     if (dentroOrganigramma) {
-      if (/\[\/ORGANIGRAMMA\]/i.test(t)) dentroOrganigramma = false;
+      if (/\[\/(?:ORGANIGRAMMA|FIGURA)\]/i.test(t)) dentroOrganigramma = false;
       return;
     }
     if (/^#{1,3}\s/.test(t) || /^\[TABELLA:/i.test(t) || /^\[\/?BOX(?::[^\]]*)?\]$/i.test(t)) return;

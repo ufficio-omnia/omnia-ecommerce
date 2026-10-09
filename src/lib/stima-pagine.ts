@@ -1,5 +1,7 @@
 import { calcolaLayout, LARGHEZZA_DISEGNO, misuraApprossimata } from "@/lib/organigramma-layout";
 import { leggiBloccoOrganigramma, type DatiOrganigramma } from "@/lib/organigramma-dati";
+import { altezzaStimataFigura } from "@/lib/figure-layout";
+import { leggiBloccoFigura, type DatiFigura } from "@/lib/figure-dati";
 
 // Stima quante pagine A4 reali occuperà un contenuto (markdown OMNIA:
 // paragrafi, tabelle, organigrammi, immagini) una volta impaginato in
@@ -90,7 +92,20 @@ export function stimaPagineOrganigramma(dati: DatiOrganigramma): number {
   return (altezza * (LARGHEZZA_ORGANIGRAMMA_NEL_DOCUMENTO / LARGHEZZA_DISEGNO)) / ALTEZZA_UTILE_PAGINA_PX + 0.03;
 }
 
+// Figure schematiche (archetipi): costruita, la figura si stima dal suo disegno
+// (stessa larghezza di 600 px nel documento) più la didascalia di una o due
+// righe; il segnaposto "[FIGURA:n]" ancora da costruire (durante generazione,
+// compressione ed espansione) vale una figura media, perché lo spazio che
+// occuperà va già tolto dal budget delle pagine.
+const PAGINE_DIDASCALIA_FIGURA = 0.05;
+const PAGINE_PER_SEGNAPOSTO_FIGURA = 0.5;
+
+export function stimaPagineFigura(dati: DatiFigura): number {
+  return (altezzaStimataFigura(dati) * (LARGHEZZA_ORGANIGRAMMA_NEL_DOCUMENTO / LARGHEZZA_DISEGNO)) / ALTEZZA_UTILE_PAGINA_PX + PAGINE_DIDASCALIA_FIGURA;
+}
+
 const BLOCCO_ORGANIGRAMMA_REGEX = /\[ORGANIGRAMMA\]([\s\S]*?)\[\/ORGANIGRAMMA\]/gi;
+const BLOCCO_FIGURA_REGEX = /\[FIGURA\]([\s\S]*?)\[\/FIGURA\]/gi;
 
 export function stimaPagineContenuto(
   testoCompleto: string,
@@ -99,12 +114,25 @@ export function stimaPagineContenuto(
   // I blocchi strutturati si stimano dal loro disegno e si tolgono dal testo
   // (sarebbero una riga lunghissima di JSON contata come paragrafo).
   let pagineOrganigrammiStrutturati = 0;
-  const testo = testoCompleto.replace(BLOCCO_ORGANIGRAMMA_REGEX, (intero, corpo: string) => {
-    const dati = leggiBloccoOrganigramma(corpo);
-    if (!dati) return intero;
-    pagineOrganigrammiStrutturati += stimaPagineOrganigramma(dati);
-    return "";
-  });
+  let pagineFigure = 0;
+  const testo = testoCompleto
+    .replace(BLOCCO_ORGANIGRAMMA_REGEX, (intero, corpo: string) => {
+      const dati = leggiBloccoOrganigramma(corpo);
+      if (!dati) return intero;
+      pagineOrganigrammiStrutturati += stimaPagineOrganigramma(dati);
+      return "";
+    })
+    .replace(BLOCCO_FIGURA_REGEX, (intero, corpo: string) => {
+      const dati = leggiBloccoFigura(corpo);
+      if (!dati) return intero;
+      pagineFigure += stimaPagineFigura(dati);
+      return "";
+    })
+    // segnaposti ancora da costruire e maschere: ognuno vale una figura media
+    .replace(/\[FIGURA:@?\d+\]/gi, () => {
+      pagineFigure += PAGINE_PER_SEGNAPOSTO_FIGURA;
+      return "";
+    });
   const dimensioneCarattere = formattazione.dimensioneCarattere ?? 12;
   const interlinea = formattazione.interlinea ?? 1;
   const caratteriRigaPiena = caratteriPerRigaPiena(dimensioneCarattere);
@@ -155,5 +183,5 @@ export function stimaPagineContenuto(
   const numOrganigrammi = (testo.match(/\[ORGANIGRAMMA\]/gi) || []).length;
   const numImmagini = (testo.match(/\[IMMAGINE\]/gi) || []).length;
 
-  return righeTotali / righePagina + numOrganigrammi * PAGINE_PER_ORGANIGRAMMA + pagineOrganigrammiStrutturati + numImmagini * PAGINE_PER_IMMAGINE;
+  return righeTotali / righePagina + numOrganigrammi * PAGINE_PER_ORGANIGRAMMA + pagineOrganigrammiStrutturati + pagineFigure + numImmagini * PAGINE_PER_IMMAGINE;
 }

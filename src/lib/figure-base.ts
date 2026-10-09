@@ -158,7 +158,7 @@ export class Disegno {
   // Banda grigia a tutta larghezza con un titolo e, facoltativa, una descrizione
   // (il principio che tiene insieme lo schema). Ritorna l'altezza.
   banda(x: number, y: number, w: number, titolo: string, descrizione?: string): number {
-    const righe: Riga[] = [{ testo: titolo, size: 14, bold: true, colore: C.testoScuro }];
+    const righe: Riga[] = avvolgi(titolo, w - 28, 14, true, this.misura, 2).map((t) => ({ testo: t, size: 14, bold: true, colore: C.testoScuro }));
     if (descrizione) for (const t of avvolgi(descrizione, w - 28, 12, false, this.misura, 3)) righe.push({ testo: t, size: 12, bold: false, colore: C.testoScuro });
     const h = 18 + altezzaRighe(righe);
     this.rect({ x, y, w, h, r: 8, fill: C.bannerFill });

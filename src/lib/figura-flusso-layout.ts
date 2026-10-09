@@ -117,7 +117,7 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
   const hItem = (it: Item): number => {
     if (it.k === "passo") return 18 + altezzaTestoPasso(it);
     if (it.k === "banda") {
-      const righe: Riga[] = [{ testo: it.titolo, size: 14, bold: true, colore: C.testoScuro }];
+      const righe: Riga[] = avvolgi(it.titolo, area.w - 28, 14, true, misura, 2).map((t) => ({ testo: t, size: 14, bold: true, colore: C.testoScuro }));
       if (it.dettaglio) for (const t of avvolgi(it.dettaglio, area.w - 28, 12, false, misura, 3)) righe.push({ testo: t, size: 12, bold: false, colore: C.testoScuro });
       return hCasella(righe);
     }
@@ -229,7 +229,7 @@ export function disegnaFlusso(d: Disegno, dati: DatiFlusso, area: { x: number; y
         }
       } else if (c.k === "banda") {
         d.rect({ x: c.x, y: c.y, w: c.w, h: c.h, r: 8, fill: C.bannerFill });
-        const righeT: Riga[] = [{ testo: c.titolo, size: 14, bold: true, colore: C.testoScuro }];
+        const righeT: Riga[] = avvolgi(c.titolo, c.w - 28, 14, true, misura, 2).map((t) => ({ testo: t, size: 14, bold: true, colore: C.testoScuro }));
         if (c.dettaglio) for (const t of avvolgi(c.dettaglio, c.w - 28, 12, false, misura, 3)) righeT.push({ testo: t, size: 12, bold: false, colore: C.testoScuro });
         let cur = c.y + (c.h - altezzaRighe(righeT)) / 2;
         for (const r of righeT) {

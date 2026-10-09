@@ -15,6 +15,8 @@ export type MisuraVisiva = {
   righeTabella: number;
   righeEvidenziate: number;
   organigrammi: number;
+  // Figure schematiche (archetipi): blocchi costruiti, segnaposti e maschere.
+  figure: number;
   elenchiPuntati: number;
 };
 
@@ -25,6 +27,8 @@ const RIGA_SEPARATORE_TABELLA = /^\s*\|[-:\s|]+\|\s*$/;
 // il conteggio con i "|" e le icone contano come parole).
 function paroleLeggibili(testo: string): number {
   const pulito = testo
+    .replace(/\[FIGURA\][\s\S]*?\[\/FIGURA\]/gi, " ")
+    .replace(/\[FIGURA:@?\d+\]/gi, " ")
     .split("\n")
     .filter((r) => !RIGA_SEPARATORE_TABELLA.test(r))
     .join("\n")
@@ -47,6 +51,7 @@ export function misuraVisiva(testo: string): MisuraVisiva {
     righeTabella: righe.filter((r) => /^\s*\|.*\|\s*$/.test(r) && !RIGA_SEPARATORE_TABELLA.test(r)).length,
     righeEvidenziate: (testo.match(/\[RIGA:[^\]]*\]/g) || []).length,
     organigrammi: (testo.match(/\[ORGANIGRAMMA\]/gi) || []).length,
+    figure: (testo.match(/\[FIGURA(?::@?\d+)?\]/gi) || []).length,
     elenchiPuntati: righe.filter((r) => /^\s*-\s+\S/.test(r)).length,
   };
 }
@@ -64,5 +69,5 @@ export function misuraPerBlocco(testo: string): MisuraBlocco[] {
 }
 
 export function descriviMisura(m: MisuraVisiva): string {
-  return `parole ${m.parole}, icone ${m.icone}, riquadri ${m.riquadri}, tabelle ${m.tabelle}, righe evidenziate ${m.righeEvidenziate}, organigrammi ${m.organigrammi}`;
+  return `parole ${m.parole}, icone ${m.icone}, riquadri ${m.riquadri}, tabelle ${m.tabelle}, righe evidenziate ${m.righeEvidenziate}, organigrammi ${m.organigrammi}, figure ${m.figure}`;
 }

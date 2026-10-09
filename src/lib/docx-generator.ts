@@ -22,6 +22,8 @@ import {
 import { generateOrgChartPng, type LoghiOrganigramma } from "@/lib/org-chart";
 import { disegnaOrganigramma } from "@/lib/organigramma-disegno";
 import { leggiBloccoOrganigramma } from "@/lib/organigramma-dati";
+import { disegnaFigura } from "@/lib/figura-disegno";
+import { leggiBloccoFigura, togliSegnapostiFigura } from "@/lib/figure-dati";
 import type { StileOrganigramma } from "@/lib/org-chart-style";
 import { renderIconePng, NOMI_ICONE } from "@/lib/icons";
 import {
@@ -157,7 +159,7 @@ function estraiTagTemaTabella(righeIn: string[]): { tema: TipoSemantico | null; 
 // "[BOX]" (riquadro generico, nel primario) oppure "[BOX:TIPO]" con il tipo
 // di impegno; il parametro vale anche per gli altri blocchi speciali ma lì
 // non ha effetto.
-const BLOCCO_SPECIALE_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)(?::([A-Za-zÀ-ÿ_]+))?\]([\s\S]*?)\[\/\1\]/gi;
+const BLOCCO_SPECIALE_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX|FIGURA)(?::([A-Za-zÀ-ÿ_]+))?\]([\s\S]*?)\[\/\1\]/gi;
 // Grassetto isolato in una prima passata su TUTTO il testo (vedi
 // parseInlineRuns): "*corsivo*"/"!!testo!!" si cercano SOLO nei frammenti
 // che restano dopo aver tolto i "**grassetto**", non nello stesso passaggio.
@@ -216,15 +218,16 @@ function ricomponiTestoDopoTag(resto: string, eraAvvoltoNelGrassetto: boolean): 
 // tipoSemantico: solo per i riquadri "[BOX:TIPO]" con un tipo riconosciuto;
 // un "[BOX]" senza tipo (o con una parola che non è un tipo) resta un
 // riquadro nel colore primario.
-type Segment = { type: "testo" | "organigramma" | "immagine" | "box"; contenuto: string; tipoSemantico?: TipoSemantico | null };
+type Segment = { type: "testo" | "organigramma" | "immagine" | "box" | "figura"; contenuto: string; tipoSemantico?: TipoSemantico | null };
 
 const TIPO_SEGMENTO_PER_TAG: Record<string, Segment["type"]> = {
   ORGANIGRAMMA: "organigramma",
   IMMAGINE: "immagine",
   BOX: "box",
+  FIGURA: "figura",
 };
 
-const TAG_APERTURA_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX)(?::([A-Za-zÀ-ÿ_]+))?\]/i;
+const TAG_APERTURA_REGEX = /\[(ORGANIGRAMMA|IMMAGINE|BOX|FIGURA)(?::([A-Za-zÀ-ÿ_]+))?\]/i;
 
 function tipoSemanticoDelTag(tag: string, parametro: string | undefined): TipoSemantico | null {
   return tag.toUpperCase() === "BOX" ? riconosciTipoSemantico(parametro) : null;
@@ -481,6 +484,11 @@ function estraiTagIcona(testo: string): { nome: string; resto: string; grassetto
 // altro tipo di figura è ammesso (R16, niente fotografie).
 export const NOME_IMMAGINE_ORGANIGRAMMA = "organigramma";
 export const PREFISSO_NOME_IMMAGINE_ICONA = "icona:";
+// Figure schematiche (archetipi): "figura:<archetipo>", con la didascalia come
+// descrizione. La didascalia nel documento è «Figura N — testo»: N è un
+// progressivo assegnato dal codice (mai dal modello) su tutto il documento, che
+// per la relazione composta è unico.
+export const PREFISSO_NOME_IMMAGINE_FIGURA = "figura:";
 
 function descrizioneImmagineIcona(nome: string, colore: string): { name: string; description: string } {
   return { name: `${PREFISSO_NOME_IMMAGINE_ICONA}${nome}`, description: `Icona ${nome} (colore ${colore})` };
@@ -1103,9 +1111,57 @@ export async function buildDocxBuffer(
   // evidenziate, intestazioni a tema): decide se serve la legenda.
   const tipiUsati = new Set<TipoSemantico>();
 
-  const segments = splitSegments(rimuoviTitoloRidondante(contenuto, titolo));
+  // Un segnaposto di figura mai sostituito ("[FIGURA:n]", per esempio di una
+  // bozza interrotta) non deve comparire come testo nel documento.
+  const segments = splitSegments(togliSegnapostiFigura(rimuoviTitoloRidondante(contenuto, titolo)));
+  // Numero progressivo delle figure di questo documento (cache del campo SEQ).
+  let numeroFigura = 0;
 
   for (const segment of segments) {
+    if (segment.type === "figura") {
+      const datiFigura = leggiBloccoFigura(segment.contenuto);
+      if (!datiFigura) {
+        console.warn("Blocco [FIGURA] con dati non validi, scartato:", segment.contenuto.slice(0, 80));
+        continue;
+      }
+      try {
+        const { buffer, width, height } = await disegnaFigura(datiFigura, { font });
+        numeroFigura += 1;
+        children.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            keepNext: true,
+            spacing: { before: 120, after: 60 },
+            children: [
+              new ImageRun({
+                type: "png",
+                data: buffer,
+                transformation: { width, height },
+                altText: { name: `${PREFISSO_NOME_IMMAGINE_FIGURA}${datiFigura.archetipo}`, description: datiFigura.didascalia },
+              }),
+            ],
+          }),
+        );
+        // didascalia sotto la figura: dice cosa la figura DIMOSTRA; il numero
+        // lo assegna il codice (campo SEQ), non il modello
+        const sizeDidascalia = size ? Math.max(16, size - 2) : undefined;
+        children.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 0, after: 200 },
+            children: [
+              new TextRun({ text: `Figura ${numeroFigura}`, bold: true, color: "595959", ...runProps, size: sizeDidascalia }),
+              new TextRun({ text: ` — ${datiFigura.didascalia}`, italics: true, color: "595959", ...runProps, size: sizeDidascalia }),
+            ],
+          }),
+        );
+      } catch (err) {
+        console.error("Errore generazione figura:", err);
+        children.push(new Paragraph({ children: [new TextRun({ text: "[Figura non generata correttamente]", italics: true, ...runProps })] }));
+      }
+      continue;
+    }
+
     if (segment.type === "organigramma") {
       try {
         // Organigramma strutturato (dati JSON, colori e posizioni decisi dal

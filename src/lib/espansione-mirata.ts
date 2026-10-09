@@ -7,6 +7,7 @@ import { ripristinaDaTestoVerificato } from "@/lib/ripristino-verificato";
 import { trovaBudgetSottoCriterio, type BudgetGara } from "@/lib/sotto-criteri";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import { mascheraOrganigrammi, organigrammiInvariati, ripristinaOrganigrammi } from "@/lib/organigramma-dati";
+import { figureInvariate, mascheraFigure, ripristinaFigure } from "@/lib/figure-dati";
 
 // Espansione di UN sotto-criterio alla volta quando occupa molto meno del
 // proprio tetto di pagine (ripartito in proporzione ai punti). Verificato con
@@ -193,6 +194,7 @@ export function violazioniEspansione(
   if (s.dopo.tabelle < s.prima.tabelle || c.righeTabellaPerse.length > 0) v.push("Sono sparite tabelle o righe di tabella: tutto ciò che c'era resta.");
   if (s.dopo.box < s.prima.box) v.push("Sono spariti dei riquadri [BOX]: tutto ciò che c'era resta.");
   if (s.dopo.organigrammi < s.prima.organigrammi) v.push("La figura [ORGANIGRAMMA] è sparita.");
+  if (s.dopo.figure < s.prima.figure) v.push("Una figura [FIGURA] è sparita.");
   if (extra.paroleConservate < QUOTA_PAROLE_CONSERVATE) {
     v.push(`Hai riscritto il testo di partenza (ne resta il ${Math.round(extra.paroleConservate * 100)}% delle parole): non toccare ciò che c'è, aggiungi attorno e dentro.`);
   }
@@ -248,14 +250,16 @@ export async function espandiBloccoConGaranzie(params: {
 
   for (let t = 1; t <= maxTentativi; t++) {
     tentativi = t;
-    // L'organigramma strutturato non va al modello (vedi mascheraOrganigrammi).
+    // L'organigramma strutturato e le figure non vanno al modello (vedi
+    // mascheraOrganigrammi e mascheraFigure).
     const mascherato = mascheraOrganigrammi(testoDaAmpliare);
-    const rispostaGrezza = await espandi({ chiave, titoloBlocco, testo: mascherato.testo, paginePrima: stimaPagineContenuto(testoDaAmpliare, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context });
+    const mascheratoFigure = mascheraFigure(mascherato.testo);
+    const rispostaGrezza = await espandi({ chiave, titoloBlocco, testo: mascheratoFigure.testo, paginePrima: stimaPagineContenuto(testoDaAmpliare, formattazione), pagineTarget, paroleXPagina, sotto, punteggioTecnico, correzioni, context });
     if (!rispostaGrezza) {
       return { chiave, testo: blocco, esito: "non_eseguito", motivo: "nessuna risposta utilizzabile dal modello (errore o risposta troncata)", tentativi, paginePrima, pagineDopo: paginePrima };
     }
 
-    const normalizzato = normalizzaBlocco(blocco, ripristinaOrganigrammi(rispostaGrezza, mascherato.blocchi), chiave);
+    const normalizzato = normalizzaBlocco(blocco, ripristinaOrganigrammi(ripristinaFigure(rispostaGrezza, mascheratoFigure.blocchi), mascherato.blocchi), chiave);
     // Asterischi di conferma e citazioni che il modello avesse tolto: si
     // rimettono dal testo di partenza (nessun contenuto nuovo).
     const candidato = ripristinaDaTestoVerificato(blocco, normalizzato).testo;
@@ -271,6 +275,7 @@ export async function espandiBloccoConGaranzie(params: {
       ? violazioniEspansione(confronto, { paroleConservate: quotaParoleConservate(blocco, candidato), pagineMassime })
       : ["Impossibile confrontare il testo ampliato con l'originale."];
     if (!organigrammiInvariati(blocco, candidato)) violazioni.push("Il blocco [ORGANIGRAMMA] è stato modificato: i suoi dati vanno lasciati IDENTICI, carattere per carattere.");
+    if (!figureInvariate(blocco, candidato)) violazioni.push("Una figura [FIGURA:@n] è stata tolta, spostata o modificata: le righe delle figure vanno lasciate IDENTICHE.");
 
     if (violazioni.length === 0) {
       return { chiave, testo: candidato, esito: "espanso", scartati, tentativi, paginePrima, pagineDopo: stimaPagineContenuto(candidato, formattazione) };

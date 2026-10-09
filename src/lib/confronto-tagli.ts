@@ -47,12 +47,13 @@ export type ConfrontoSubCriterio = {
   segnapostoDopo: number;
 };
 
-export type Strutturale = { tabelle: number; righeTabella: number; elenchi: number; box: number; organigrammi: number };
+export type Strutturale = { tabelle: number; righeTabella: number; elenchi: number; box: number; organigrammi: number; figure: number };
 
 export type RequisitoDisciplinare = { chiave: string; titolo: string; termini: string[] };
 
 export function contaParole(testo: string): number {
-  return testo.split(/\s+/).filter(Boolean).length;
+  // i dati JSON di una figura non sono parole del testo
+  return testo.replace(/\[FIGURA\][\s\S]*?\[\/FIGURA\]/gi, " ").split(/\s+/).filter(Boolean).length;
 }
 
 // Divide le sezioni in blocchi per sotto-criterio ("## 1.2 Titolo").
@@ -123,6 +124,8 @@ function strutturale(testo: string): Strutturale {
     elenchi: (testo.match(/^\s*-\s+/gm) || []).length,
     box: (testo.match(/\[BOX(?::[^\]]*)?\]/g) || []).length,
     organigrammi: (testo.match(/\[ORGANIGRAMMA\]/g) || []).length,
+    // blocchi costruiti, segnaposti "[FIGURA:n]" e maschere "[FIGURA:@k]"
+    figure: (testo.match(/\[FIGURA(?::@?\d+)?\]/gi) || []).length,
   };
 }
 
@@ -492,6 +495,9 @@ export function problemiContratto(
     if (c.struttura.prima.organigrammi > c.struttura.dopo.organigrammi) {
       errori.push(`${nome}: figura (organigramma) presente prima del taglio e assente dopo.`);
     }
+    if (c.struttura.prima.figure > c.struttura.dopo.figure) {
+      errori.push(`${nome}: figure schematiche passate da ${c.struttura.prima.figure} a ${c.struttura.dopo.figure} dopo il taglio.`);
+    }
 
     const terminiPersi = c.requisitiDisciplinare.filter((t) => t.prima && !t.dopo).map((t) => t.termine);
     if (terminiPersi.length > 0) {
@@ -545,6 +551,9 @@ export function violazioniBlocco(
   if (c.struttura.prima.organigrammi > c.struttura.dopo.organigrammi) {
     violazioni.push("La figura [ORGANIGRAMMA] è sparita.");
   }
+  if (c.struttura.prima.figure > c.struttura.dopo.figure) {
+    violazioni.push(`Sono sparite delle figure [FIGURA] (${c.struttura.prima.figure} → ${c.struttura.dopo.figure}): sono figure costruite dal sistema e non si tolgono né si modificano.`);
+  }
   // Gli elementi visivi sono ciò che la commissione legge per primo e la
   // compressione non deve toglierli: un riquadro contiene l'impegno chiave
   // del sotto-criterio (si accorcia il testo intorno, non il riquadro) e
@@ -578,7 +587,7 @@ export function formattaConfronto(confronti: ConfrontoSubCriterio[]): string {
     );
     const s = c.struttura;
     righe.push(
-      `  struttura prima→dopo: tabelle ${s.prima.tabelle}→${s.dopo.tabelle}, righe di tabella ${s.prima.righeTabella}→${s.dopo.righeTabella}, elenchi ${s.prima.elenchi}→${s.dopo.elenchi}, box ${s.prima.box}→${s.dopo.box}, organigrammi ${s.prima.organigrammi}→${s.dopo.organigrammi}, segnaposto ${c.segnapostoPrima}→${c.segnapostoDopo}`,
+      `  struttura prima→dopo: tabelle ${s.prima.tabelle}→${s.dopo.tabelle}, righe di tabella ${s.prima.righeTabella}→${s.dopo.righeTabella}, elenchi ${s.prima.elenchi}→${s.dopo.elenchi}, box ${s.prima.box}→${s.dopo.box}, organigrammi ${s.prima.organigrammi}→${s.dopo.organigrammi}, figure ${s.prima.figure}→${s.dopo.figure}, segnaposto ${c.segnapostoPrima}→${c.segnapostoDopo}`,
     );
     if (c.sottotitoliPersi.length) righe.push(`  sottotitoli (###) spariti: ${c.sottotitoliPersi.join(" | ")}`);
     if (c.riferimentiPersi.length) righe.push(`  RIFERIMENTI spariti: ${c.riferimentiPersi.join("; ")}`);

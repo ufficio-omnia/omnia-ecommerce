@@ -147,9 +147,13 @@ scrivendo per far assegnare punti.
   richiederebbe più spazio. Ogni elemento visivo contiene un impegno o un
   dato: mai riempitivo decorativo.
   MAI fotografie o illustrazioni: solo figure schematiche (organigrammi,
-  diagrammi di flusso, cronoprogrammi) coerenti con i dati dichiarati — una
-  foto generica di un operatore/ambiente non prova nessun impegno e non
-  aggiunge nulla che la commissione possa verificare.
+  flussi di processo, livelli di controllo, cronoprogrammi, reti di sedi,
+  schermata della piattaforma) coerenti con i dati dichiarati — una foto
+  generica di un operatore/ambiente non prova nessun impegno e non aggiunge
+  nulla che la commissione possa verificare. Una figura si usa dove spiega
+  più del testo e di una tabella, ha una didascalia che dice cosa dimostra
+  (non cosa raffigura) e non porta mai un numero scritto da te: la numera il
+  sistema.
 - **R17 — Criteri tabellari: solo la dichiarazione di possesso.** Quando il
   sistema ti segnala che un sub-criterio è tabellare, nessuna descrizione,
   nessuna argomentazione: il punteggio è automatico, qualsiasi parola in più

@@ -29,6 +29,7 @@ import {
 } from "@/lib/relazione-tecnica";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 import { espandiSezioneSottoTetto, riepilogoEsitiEspansione } from "@/lib/espansione-mirata";
+import { leggiFattiFigure } from "@/lib/figure-fatti";
 import {
   buildSystemPrompt,
   buildGeneraBozzaTool,
@@ -48,6 +49,13 @@ export type ChatState = { error?: string };
 function testoAvvisiOrganigramma(avvisi: string[]): string {
   if (avvisi.length === 0) return "";
   return `ATTENZIONE — ORGANIGRAMMA: ${avvisi.join(" ")} Riferiscilo al cliente in modo chiaro e breve. `;
+}
+
+// Come sopra per le figure schematiche (archetipi): figure scartate, testi
+// marcati con asterisco, cruscotto non disegnabile per il profilo.
+function testoAvvisiFigure(avvisi: string[]): string {
+  if (avvisi.length === 0) return "";
+  return `ATTENZIONE — FIGURE: ${avvisi.join(" ")} Riferiscilo al cliente in modo chiaro e breve. `;
 }
 
 const MODEL = "claude-sonnet-5";
@@ -336,6 +344,10 @@ export async function sendGaraMessage(
       ? `${sezioniEsistenti}\n\nTotale stimato già scritto per questa gara: ~${paginaStimataEsistenti} pagine (su ${PAROLE_PER_PAGINA_STIMATE} parole/pagina, stima approssimativa — non un conteggio Word reale). Sottrai questo dal limite massimo di pagine del disciplinare per capire quante ne restano per i criteri non ancora trattati.`
       : "";
 
+    // Piattaforma gestionale e sue funzioni dal profilo (resiliente se la
+    // migrazione 0072 non è ancora stata eseguita): decide se il cruscotto è
+    // disegnabile e lo dice al modello.
+    const fattiFigure = await leggiFattiFigure({ supabase, userId: user.id }).catch(() => null);
     const systemPrompt = buildSystemPrompt(
       gara,
       company ?? null,
@@ -344,6 +356,7 @@ export async function sendGaraMessage(
       notaStileKnowledgeBase,
       struttureKnowledgeBase,
       sezioniEsistentiConTotale,
+      fattiFigure,
     );
     const anthropic = createAnthropicClient();
 
@@ -489,6 +502,7 @@ export async function sendGaraMessage(
           dimensione_carattere?: number;
           interlinea?: number;
           organigramma?: unknown;
+          figure?: unknown;
         };
         try {
           // Sostituzione deterministica dei sub-criteri tabellari: la
@@ -572,7 +586,7 @@ export async function sendGaraMessage(
             company?.ragione_sociale,
           );
 
-          const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa, avvisiOrganigramma } = await generaBozzaSezione({
+          const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa, avvisiOrganigramma, avvisiFigure } = await generaBozzaSezione({
             garaId,
             userId: user.id,
             titoloSezione: input.titolo_sezione,
@@ -585,6 +599,7 @@ export async function sendGaraMessage(
             dimensioneCarattere: input.dimensione_carattere,
             interlinea: input.interlinea,
             organigramma: input.organigramma,
+            figure: input.figure,
           });
           fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa };
           strumentiDisponibili = [];
@@ -627,7 +642,7 @@ export async function sendGaraMessage(
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `${testoAvvisiOrganigramma(avvisiOrganigramma)}${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
+            content: `${testoAvvisiOrganigramma(avvisiOrganigramma)}${testoAvvisiFigure(avvisiFigure)}${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);
