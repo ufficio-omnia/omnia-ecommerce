@@ -13,6 +13,9 @@ import { assegnaIconeMancanti } from "@/lib/densita-visiva";
 import { haSegnaposto, sostituisciSegnaposto, trovaBlocchiOrganigramma, SEGNAPOSTO_ORGANIGRAMMA_REGEX } from "@/lib/organigramma-dati";
 import { costruisciOrganigramma } from "@/lib/organigramma-contesto";
 import { leggiFattiOrganigramma } from "@/lib/organigramma-fatti";
+import { inserisciFigure, togliSegnapostiFigura, trovaSegnapostiFigura } from "@/lib/figure-dati";
+import { costruisciFigure } from "@/lib/figure-contesto";
+import { leggiFattiFigure } from "@/lib/figure-fatti";
 import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
 import { calcolaBudgetSottoCriteri, trovaBudgetSottoCriterio } from "@/lib/sotto-criteri";
 import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
@@ -218,13 +221,17 @@ export async function generaBozzaSezione(params: {
   // Dati strutturati dell'organigramma dichiarati dal modello (campo
   // "organigramma" dello strumento): il blocco vero lo costruisce il codice.
   organigramma?: unknown;
-}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa; avvisiOrganigramma: string[] }> {
+  // Figure schematiche (archetipi) dichiarate dal modello (campo "figure"
+  // dello strumento): i blocchi veri li costruisce il codice.
+  figure?: unknown;
+}): Promise<{ nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa; avvisiOrganigramma: string[]; avvisiFigure: string[] }> {
   const {
     garaId,
     userId,
     titoloSezione,
     contenuto: contenutoGrezzo,
     organigramma: organigrammaDichiarato,
+    figure: figureDichiarate,
     companyProfile = null,
     contestoDocumenti = "",
     datiGaraStrutturati = "",
@@ -303,6 +310,26 @@ export async function generaBozzaSezione(params: {
       contenuto = contenuto.replace(SEGNAPOSTO_ORGANIGRAMMA_REGEX, "");
     }
   }
+  // Figure schematiche: stesso meccanismo. Nel testo c'è il segnaposto
+  // "[FIGURA:n]" (n da 1, posizione nell'elenco dichiarato); il blocco vero lo
+  // costruisce il codice qui, dopo ogni riscrittura, con i fatti del profilo
+  // (piattaforma e funzioni per il cruscotto) e la guardia R9 sui testi.
+  const avvisiFigure: string[] = [];
+  if (trovaSegnapostiFigura(contenuto).length > 0 || (Array.isArray(figureDichiarate) && figureDichiarate.length > 0)) {
+    try {
+      const fattiFigure = await leggiFattiFigure({ supabase, userId });
+      const esito = costruisciFigure(figureDichiarate, fattiFigure, { evidenza });
+      avvisiFigure.push(...esito.avvisi);
+      const inserite = inserisciFigure(contenuto, esito.blocchi);
+      contenuto = inserite.testo;
+      for (const n of inserite.senzaFigura) avvisiFigure.push(`Il segnaposto [FIGURA:${n}] non corrispondeva a nessuna figura valida ed è stato tolto dal testo.`);
+      for (const n of inserite.nonRichiamate) avvisiFigure.push(`La figura ${n} dichiarata non era richiamata nel testo con [FIGURA:${n}]: non è stata inserita.`);
+    } catch (err) {
+      console.error("Errore costruzione figure:", err);
+      avvisiFigure.push("Figure NON disegnate: errore nella lettura dei dati. Riprova a rigenerare la sezione.");
+      contenuto = togliSegnapostiFigura(contenuto);
+    }
+  }
   const valoriImpresa: EsitoValoriImpresa = { marcati: guardiaValori?.marcati ?? [], derivati: guardiaValori?.derivati ?? [], nonMarcabili: guardiaValori?.nonMarcabili ?? [] };
 
   const { data: ultima } = await supabase
@@ -361,7 +388,7 @@ export async function generaBozzaSezione(params: {
 
   const pagineStimate = stimaPagineContenuto(contenuto, { dimensioneCarattere: fmt.dimensioneCarattere, interlinea: fmt.interlinea });
 
-  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi, valoriImpresa, avvisiOrganigramma };
+  return { ...(await caricaDocumento(garaId, `${titoloSezione}.docx`, buffer)), pagineStimate, avvisiEconomici: garanziaEconomica.avvisi, valoriImpresa, avvisiOrganigramma, avvisiFigure };
 }
 
 // Rimuove un eventuale prefisso numerico/alfabetico iniziale del titolo

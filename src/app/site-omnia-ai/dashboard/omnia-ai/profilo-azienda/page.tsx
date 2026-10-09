@@ -25,6 +25,7 @@ export type Company = {
   software_logo_path: string | null;
   funzioni_direzione?: string | null;
   uffici_gestione?: string | null;
+  funzioni_piattaforma?: string | null;
 };
 
 export default async function ProfiloAziendaPage() {
@@ -37,18 +38,27 @@ export default async function ProfiloAziendaPage() {
     redirect("/login");
   }
 
-  // I due campi del livello di Direzione dell'organigramma stanno nella
-  // migrazione 0071: se non è ancora stata eseguita la query senza di essi
-  // continua a funzionare (i campi restano vuoti).
+  // I campi del livello di Direzione dell'organigramma (migrazione 0071) e le
+  // funzioni della piattaforma (0072) sono facoltativi: se una migrazione non è
+  // ancora stata eseguita la query senza quei campi continua a funzionare (i
+  // campi restano vuoti).
   const COLONNE_BASE = "ragione_sociale, partita_iva, codice_fiscale, indirizzo, codice_sdi, pec, forma_giuridica, anno_costituzione, numero_dipendenti, fatturato_medio_annuo, certificazioni, referenze, settori_attivita, presentazione, sito_web, telefono_aziendale, logo_path, software_nome, software_logo_path";
   const { data: profiloCompleto, error: erroreProfilo } = await supabase
     .from("companies")
-    .select(`${COLONNE_BASE}, funzioni_direzione, uffici_gestione`)
+    .select(`${COLONNE_BASE}, funzioni_direzione, uffici_gestione, funzioni_piattaforma`)
     .eq("user_id", user.id)
     .maybeSingle<Company>();
   let company = profiloCompleto;
   if (erroreProfilo) {
-    ({ data: company } = await supabase.from("companies").select(COLONNE_BASE).eq("user_id", user.id).maybeSingle<Company>());
+    const { data: senzaPiattaforma, error: erroreSenzaPiattaforma } = await supabase
+      .from("companies")
+      .select(`${COLONNE_BASE}, funzioni_direzione, uffici_gestione`)
+      .eq("user_id", user.id)
+      .maybeSingle<Company>();
+    company = senzaPiattaforma;
+    if (erroreSenzaPiattaforma) {
+      ({ data: company } = await supabase.from("companies").select(COLONNE_BASE).eq("user_id", user.id).maybeSingle<Company>());
+    }
   }
 
   return (

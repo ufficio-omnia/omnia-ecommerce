@@ -109,13 +109,19 @@ export async function saveCompanyProfile(
       ...(softwareLogoPath !== undefined ? { software_logo_path: softwareLogoPath } : {}),
   };
 
-  // Livello di direzione dell'organigramma (migrazione 0071): se la colonna
-  // non esiste ancora il salvataggio degli altri campi non deve fallire.
+  // Campi facoltativi aggiunti da migrazioni successive: livello di direzione
+  // dell'organigramma (0071) e funzioni della piattaforma (0072). Se una
+  // colonna non esiste ancora il salvataggio degli altri campi non deve
+  // fallire: si riprova togliendo i campi nuovi.
   const campiOrganigramma = {
     funzioni_direzione: optionalText(formData, "funzioniDirezione"),
     uffici_gestione: optionalText(formData, "ufficiGestione"),
   };
-  let { error } = await supabase.from("companies").upsert({ ...riga, ...campiOrganigramma }, { onConflict: "user_id" });
+  const campiPiattaforma = { funzioni_piattaforma: optionalText(formData, "funzioniPiattaforma") };
+  let { error } = await supabase.from("companies").upsert({ ...riga, ...campiOrganigramma, ...campiPiattaforma }, { onConflict: "user_id" });
+  if (error && /funzioni_piattaforma/.test(error.message)) {
+    ({ error } = await supabase.from("companies").upsert({ ...riga, ...campiOrganigramma }, { onConflict: "user_id" }));
+  }
   if (error && /funzioni_direzione|uffici_gestione/.test(error.message)) {
     ({ error } = await supabase.from("companies").upsert(riga, { onConflict: "user_id" }));
   }

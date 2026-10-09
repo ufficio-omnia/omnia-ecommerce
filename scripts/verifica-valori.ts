@@ -243,7 +243,7 @@ L'organico complessivo dedicato è di 21 unità, dislocate sulle sedi.`;
       bozza.indexOf("garantisciSenzaRiferimentiEconomici(") < bozza.indexOf("applicaGuardiaValori(") &&
       bozza.indexOf("applicaGuardiaValori(") < bozza.indexOf(".insert(") &&
       bozza.indexOf("applicaGuardiaValori(") < bozza.indexOf("buildDocxBuffer(") &&
-      /valoriImpresa(?:,\s*avvisiOrganigramma)?\s*\}/.test(bozza),
+      /valoriImpresa(?:,\s*avvisiOrganigramma)?(?:,\s*avvisiFigure)?\s*\}/.test(bozza),
     "",
   );
   const finale = rel.slice(rel.indexOf("export async function componiRelazioneFinale"));

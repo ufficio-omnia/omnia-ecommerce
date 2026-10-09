@@ -278,6 +278,28 @@ export default function CompanyProfileForm({
       </section>
 
       <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Piattaforma gestionale: funzioni</span>
+        <p className="omnia-app-sottotitolo" style={{ marginTop: 12 }}>
+          Facoltativo. Elenca le funzioni che la piattaforma indicata sopra ha davvero. Le offerte tecniche possono
+          includere la schermata illustrativa di un cruscotto <strong>solo</strong> se qui dichiari una funzione di
+          cruscotto, indicatori o reportistica; senza, la schermata non viene disegnata. Una funzione per riga.
+        </p>
+        <div style={{ marginTop: 20 }}>
+          <label htmlFor="funzioniPiattaforma" className="omnia-etichetta">
+            Funzioni della piattaforma
+          </label>
+          <textarea
+            id="funzioniPiattaforma"
+            name="funzioniPiattaforma"
+            rows={4}
+            placeholder={"es. Cruscotto indicatori in tempo reale\nSegnalazione e tracciamento delle non conformità\nReportistica mensile al committente"}
+            defaultValue={company?.funzioni_piattaforma ?? ""}
+            className="omnia-textarea"
+          />
+        </div>
+      </section>
+
+      <section className="omnia-riquadro">
         <span className="omnia-eyebrow">Certificazioni e ambiti di attività</span>
         <div style={{ marginTop: 20, display: "grid", gap: 16 }}>
           <div>

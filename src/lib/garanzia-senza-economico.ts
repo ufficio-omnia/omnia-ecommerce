@@ -49,7 +49,7 @@ const MAX_TENTATIVI = 2;
 // successivo (e infine nell'avviso) invece di una risposta enorme.
 const MAX_RIGHE_PER_CHIAMATA = 30;
 
-const TAG_FORMATTAZIONE = /\[(?:C|G|ICONA:[^\]]*|RIGA:[^\]]*|CELLA:[^\]]*|TABELLA:[^\]]*|BOX(?::[^\]]*)?|\/BOX|ORGANIGRAMMA|\/ORGANIGRAMMA)\]/gi;
+const TAG_FORMATTAZIONE = /\[(?:C|G|ICONA:[^\]]*|RIGA:[^\]]*|CELLA:[^\]]*|TABELLA:[^\]]*|BOX(?::[^\]]*)?|\/BOX|ORGANIGRAMMA|\/ORGANIGRAMMA|FIGURA(?::@?\d+)?|\/FIGURA)\]/gi;
 
 function tagDiFormattazione(riga: string): string[] {
   return (riga.match(TAG_FORMATTAZIONE) || []).map((t) => t.toUpperCase()).sort();

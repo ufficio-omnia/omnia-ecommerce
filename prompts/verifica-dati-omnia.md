@@ -90,7 +90,10 @@ o "*" da solo) — mai una cella bianca, mai uno spazio, mai un trattino usato c
 riempitivo senza significato.
 
 Lascia invariato tutto il resto: struttura, tabelle, formattazione, ogni contenuto già
-riscontrabile nei dati confermati o già coerente.
+riscontrabile nei dati confermati o già coerente. Le righe che contengono solo un
+segnaposto di figura ("[ORGANIGRAMMA][/ORGANIGRAMMA]", "[FIGURA:1]", "[FIGURA:2]"...)
+restano IDENTICHE e nello stesso punto: sono figure costruite dal sistema con i dati che
+il sistema stesso controlla; non toglierle, non spostarle, non ripeterle.
 
 Non essere permissivo: nel dubbio, applica la correzione. Un segnaposto o un asterisco
 di troppo è un problema minore; un dato inventato, un dato di gara trattato come

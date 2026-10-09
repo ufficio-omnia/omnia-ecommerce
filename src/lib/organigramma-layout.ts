@@ -1,12 +1,29 @@
-import { COLORE_PIENO, COLORE_PRIMARIO, schiarisciColore } from "@/lib/colori-semantici";
+import { COLORE_PIENO, COLORE_PRIMARIO } from "@/lib/colori-semantici";
 import type { DatiOrganigramma, StaffGoverno, TipoStaff, VoceElenco, Zona } from "@/lib/organigramma-dati";
+import {
+  avvolgi,
+  altezzaRighe,
+  C,
+  centroX,
+  contrasto,
+  Disegno,
+  INTERLINEA,
+  LARGHEZZA_DISEGNO,
+  misuraApprossimata,
+  testoSu,
+  tinta,
+  type Misura,
+  type Posizione,
+  type Prim,
+  type Riga,
+} from "@/lib/figure-base";
+
+export { contrasto, testoSu, misuraApprossimata, LARGHEZZA_DISEGNO };
+export type { Misura, Prim };
 
 // Layout PURO dell'organigramma di commessa: da DatiOrganigramma a un elenco di
-// primitive di disegno (rettangoli, linee, testi) in "unità di disegno" su una
-// griglia larga 680. Nessun canvas qui: la misura del testo arriva da fuori
-// (organigramma-disegno.ts usa il font vero, i test e la stima delle pagine
-// una misura approssimata), così la stessa funzione serve al disegno e alla
-// stima di quante pagine occuperà.
+// primitive di disegno (vedi figure-base.ts: unità di disegno su una griglia
+// larga 680, misura del testo dall'esterno).
 //
 // Grammatica (specifica "organigramma di commessa", ricavata da organigrammi
 // reali): fasce orizzontali con etichetta a sinistra — Direzione, Governo,
@@ -19,14 +36,6 @@ import type { DatiOrganigramma, StaffGoverno, TipoStaff, VoceElenco, Zona } from
 // (verde ambiente, arancio sicurezza, blu primario, grigio neutro per ciò che
 // non è un ruolo); il modello non indica mai colori, coordinate o dimensioni.
 
-export type Misura = (testo: string, size: number, bold: boolean) => number;
-
-export type Prim =
-  | { t: "rect"; x: number; y: number; w: number; h: number; r?: number; fill?: string; stroke?: string; sw?: number; dash?: [number, number] }
-  | { t: "linea"; punti: [number, number][]; colore: string; sw: number; dash?: [number, number]; frecce?: "entrambe" }
-  | { t: "testo"; x: number; y: number; testo: string; size: number; bold: boolean; colore: string; ancora: "inizio" | "centro" }
-  | { t: "logo"; id: "impresa" | "committente"; x: number; y: number; w: number; h: number };
-
 export type LayoutOrganigramma = { larghezza: number; altezza: number; prims: Prim[]; valoriProposti: boolean };
 
 export type OpzioniLayout = {
@@ -36,7 +45,6 @@ export type OpzioniLayout = {
   loghi?: { impresa?: { w: number; h: number }; committente?: { w: number; h: number } };
 };
 
-export const LARGHEZZA_DISEGNO = 680;
 const AREA_X = 120;
 const AREA_W = 552;
 const PAD = 8;
@@ -44,127 +52,6 @@ const GAP_BANDE = 8;
 const INTERNO_W = AREA_W - 2 * PAD;
 const MARGINE_ALTO = 12;
 
-const C = {
-  primario: `#${COLORE_PRIMARIO}`,
-  navy: "#1B4F72",
-  testoScuro: "#1B2631",
-  testoBlu: "#154360",
-  dettaglioBlu: "#1F618D",
-  linea: "#8A97A3",
-  grigioTesto: "#5D6D7E",
-  bandaFill: "#F3F6F9",
-  bandaBordo: "#DDE4EA",
-  neutroFill: "#EEF1F4",
-  bannerFill: "#E5E8EB",
-  bianco: "#FFFFFF",
-  sicurezza: `#${COLORE_PIENO.SICUREZZA}`,
-  ambiente: `#${COLORE_PIENO.AMBIENTE}`,
-} as const;
-
-const tinta = (hex: string, frazione: number) => `#${schiarisciColore(hex.replace("#", ""), frazione)}`;
-
-// ─── Contrasto (il testo non è mai chiaro su fondo chiaro né scuro su scuro) ───
-function luminanza(hex: string): number {
-  const canali = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * canali[0] + 0.7152 * canali[1] + 0.0722 * canali[2];
-}
-export function contrasto(a: string, b: string): number {
-  const la = luminanza(a);
-  const lb = luminanza(b);
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-}
-// Fra bianco e testo scuro sceglie quello che contrasta di più con lo sfondo.
-export function testoSu(fill: string): string {
-  return contrasto(C.bianco, fill) >= contrasto(C.testoScuro, fill) ? C.bianco : C.testoScuro;
-}
-
-// ─── Testo ───
-type Riga = { testo: string; size: number; bold: boolean; colore: string };
-
-function avvolgi(testo: string, maxW: number, size: number, bold: boolean, misura: Misura, maxRighe: number): string[] {
-  const parole = testo.split(/\s+/).filter(Boolean);
-  const righe: string[] = [];
-  let corrente = "";
-  let i = 0;
-  while (i < parole.length && righe.length < maxRighe) {
-    const candidata = corrente ? `${corrente} ${parole[i]}` : parole[i];
-    if (misura(candidata, size, bold) <= maxW) {
-      corrente = candidata;
-      i++;
-    } else if (!corrente) {
-      // parola più larga della riga: si spezza
-      let pezzo = parole[i];
-      while (pezzo.length > 1 && misura(pezzo, size, bold) > maxW) pezzo = pezzo.slice(0, -1);
-      righe.push(pezzo);
-      parole[i] = parole[i].slice(pezzo.length);
-      if (!parole[i]) i++;
-    } else {
-      righe.push(corrente);
-      corrente = "";
-    }
-  }
-  if (corrente && righe.length < maxRighe) righe.push(corrente);
-  if (i < parole.length) {
-    let ultima = righe[righe.length - 1] ?? "";
-    while (ultima.length > 1 && misura(`${ultima}…`, size, bold) > maxW) ultima = ultima.slice(0, -1);
-    righe[righe.length - 1] = `${ultima.replace(/[\s,;:]+$/, "")}…`;
-  }
-  return righe.length ? righe : [""];
-}
-
-const INTERLINEA = 1.38;
-
-function altezzaRighe(righe: Riga[]): number {
-  return righe.reduce((t, r) => t + r.size * INTERLINEA, 0);
-}
-
-// ─── Costruzione ───
-class Disegno {
-  prims: Prim[] = [];
-  valoriProposti = false;
-  constructor(public misura: Misura) {}
-
-  rect(p: Omit<Extract<Prim, { t: "rect" }>, "t">) {
-    this.prims.push({ t: "rect", ...p });
-  }
-  linea(punti: [number, number][], colore = C.linea, sw = 1.2, dash?: [number, number], frecce?: "entrambe") {
-    this.prims.push({ t: "linea", punti, colore, sw, dash, frecce });
-  }
-  testo(x: number, y: number, testo: string, size: number, bold: boolean, colore: string, ancora: "inizio" | "centro" = "centro") {
-    if (/\s\*(?:\s|$)/.test(testo)) this.valoriProposti = true;
-    this.prims.push({ t: "testo", x, y, testo, size, bold, colore, ancora });
-  }
-
-  // Casella con righe di testo centrate. Ritorna l'altezza.
-  scatola(x: number, y: number, w: number, righe: Riga[], stile: { fill?: string; stroke?: string; sw?: number; r?: number; dash?: [number, number]; padV?: number }): number {
-    const padV = stile.padV ?? 9;
-    const h = padV * 2 + altezzaRighe(righe);
-    this.rect({ x, y, w, h, r: stile.r ?? 7, fill: stile.fill, stroke: stile.stroke, sw: stile.sw ?? 1.2, dash: stile.dash });
-    let cursore = y + padV;
-    for (const r of righe) {
-      const hr = r.size * INTERLINEA;
-      this.testo(x + w / 2, cursore + hr / 2, r.testo, r.size, r.bold, r.colore);
-      cursore += hr;
-    }
-    return h;
-  }
-
-  // Righe di una figura: denominazione (grassetto, a capo) e nominativo fra
-  // parentesi in grassetto.
-  righeFigura(denominazione: string, nominativo: string | undefined, w: number, size: number, colore: string, coloreDettaglio: string, maxRighe = 3): Riga[] {
-    const righe: Riga[] = avvolgi(denominazione, w - 18, size, true, this.misura, maxRighe).map((t) => ({ testo: t, size, bold: true, colore }));
-    if (nominativo) {
-      for (const t of avvolgi(`(${nominativo})`, w - 18, size - 1, true, this.misura, 2)) righe.push({ testo: t, size: size - 1, bold: true, colore: coloreDettaglio });
-    }
-    return righe;
-  }
-}
-
-type Posizione = { x: number; y: number; w: number; h: number };
-const centroX = (p: Posizione) => p.x + p.w / 2;
 
 function etichettaFascia(d: Disegno, yFascia: number, hFascia: number, righe: string[]) {
   const altezzaTesto = righe.length * 17;
@@ -712,7 +599,3 @@ export function calcolaLayout(dati: DatiOrganigramma, opzioni: OpzioniLayout): L
   const altezza = yFine - GAP_BANDE + 12;
   return { larghezza: LARGHEZZA_DISEGNO, altezza: Math.max(altezza, 60), prims: d.prims, valoriProposti: d.valoriProposti };
 }
-
-// Misura approssimata (senza canvas): serve alla stima delle pagine, che non
-// deve caricare il motore di disegno. Il disegno vero usa la misura del font.
-export const misuraApprossimata: Misura = (testo, size, bold) => testo.length * size * (bold ? 0.58 : 0.53);

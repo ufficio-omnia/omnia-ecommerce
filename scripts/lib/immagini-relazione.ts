@@ -4,11 +4,14 @@
 // [ORGANIGRAMMA] nel testo): senza sapere QUALE figura era stata prodotta
 // e DA QUALE parte del testo, l'unica strada era rigenerare a pagamento.
 //
-// Il renderer produce solo due tipi di immagine — organigramma e icona
-// [ICONA:nome] — e ciascuna dichiara il proprio tipo nel testo alternativo
-// (vedi docx-generator.ts). Il controllo verifica che:
-//  - ogni figura sia riconducibile a uno dei due tipi (altrimenti è una
-//    figura indebita, potenzialmente una fotografia: R16);
+// Il renderer produce solo tre tipi di immagine — organigramma, icona
+// [ICONA:nome] e figura schematica [FIGURA] (archetipo) — e ciascuna dichiara
+// il proprio tipo nel testo alternativo (vedi docx-generator.ts). Il controllo
+// verifica che:
+//  - ogni figura sia riconducibile a uno dei tipi (altrimenti è una figura
+//    indebita, potenzialmente una fotografia: R16);
+//  - il numero di figure schematiche coincida con i blocchi [FIGURA] del testo
+//    sorgente, nello stesso ordine e con lo stesso archetipo;
 //  - il numero di organigrammi nel documento coincida con i blocchi
 //    [ORGANIGRAMMA] del testo sorgente;
 //  - il numero di icone coincida con i tag [ICONA:nome] validi del testo
@@ -17,12 +20,12 @@
 // Ogni errore riporta il manifest completo, così l'anomalia si diagnostica
 // dal solo output/dump, senza rigenerare.
 import { NOMI_ICONE } from "../../src/lib/icons";
-import { NOME_IMMAGINE_ORGANIGRAMMA, PREFISSO_NOME_IMMAGINE_ICONA } from "../../src/lib/docx-generator";
+import { NOME_IMMAGINE_ORGANIGRAMMA, PREFISSO_NOME_IMMAGINE_FIGURA, PREFISSO_NOME_IMMAGINE_ICONA } from "../../src/lib/docx-generator";
 import { attributoXml, estraiTestiVisibili } from "./xml-word";
 
 export type FiguraDocumento = {
   indice: number;
-  tipo: "organigramma" | "icona" | "sconosciuta";
+  tipo: "organigramma" | "icona" | "figura" | "sconosciuta";
   nomeAlt: string;
   descrizioneAlt: string;
   fileMedia: string;
@@ -38,6 +41,8 @@ export type FiguraDocumento = {
 export type SorgenteFigure = {
   organigrammi: { indice: number; parte: string; primaRiga: string; righe: number }[];
   icone: { indice: number; nome: string; parte: string; riga: string }[];
+  // Figure schematiche (archetipi): blocchi [FIGURA]{json}[/FIGURA].
+  figure: { indice: number; archetipo: string; parte: string }[];
 };
 
 const EMU_PER_PIXEL = 9525;
@@ -60,12 +65,36 @@ function percorso(titoli: Map<number, string>): string {
 export function estraiSorgenteFigure(markdown: string): SorgenteFigure {
   const organigrammi: SorgenteFigure["organigrammi"] = [];
   const icone: SorgenteFigure["icone"] = [];
+  const figureSchematiche: SorgenteFigure["figure"] = [];
   const titoli = new Map<number, string>();
   let inOrganigramma = false;
+  let inFigura = false;
+  let jsonFigura = "";
   let inizioOrganigramma: { parte: string; primaRiga: string; righe: number } | null = null;
 
   for (const riga of markdown.split("\n")) {
     const t = riga.trim();
+    // blocchi [FIGURA]{json}[/FIGURA]: l'archetipo sta nel JSON
+    if (/^\[FIGURA\]$/i.test(t)) {
+      inFigura = true;
+      jsonFigura = "";
+      continue;
+    }
+    if (/^\[\/FIGURA\]$/i.test(t)) {
+      let archetipo = "?";
+      try {
+        archetipo = String((JSON.parse(jsonFigura) as { archetipo?: unknown }).archetipo ?? "?");
+      } catch {
+        archetipo = "illeggibile";
+      }
+      figureSchematiche.push({ indice: figureSchematiche.length + 1, archetipo, parte: percorso(titoli) });
+      inFigura = false;
+      continue;
+    }
+    if (inFigura) {
+      jsonFigura += t;
+      continue;
+    }
     const titolo = t.match(/^(#{1,4})\s+(.+)$/);
     if (titolo && !inOrganigramma) {
       const livello = titolo[1].length;
@@ -100,7 +129,7 @@ export function estraiSorgenteFigure(markdown: string): SorgenteFigure {
       }
     }
   }
-  return { organigrammi, icone };
+  return { organigrammi, icone, figure: figureSchematiche };
 }
 
 // Legge le figure dal pacchetto Word (JSZip già caricato).
@@ -169,7 +198,9 @@ export async function estraiFigureDocumento(
           ? "organigramma"
           : nomeAlt.startsWith(PREFISSO_NOME_IMMAGINE_ICONA)
             ? "icona"
-            : "sconosciuta";
+            : nomeAlt.startsWith(PREFISSO_NOME_IMMAGINE_FIGURA)
+              ? "figura"
+              : "sconosciuta";
 
       figure.push({
         indice: figure.length + 1,
@@ -197,6 +228,7 @@ export async function estraiFigureDocumento(
 export function abbinaSorgente(figure: FiguraDocumento[], sorgente: SorgenteFigure): void {
   let iOrg = 0;
   let iIcona = 0;
+  let iFigura = 0;
   for (const f of figure) {
     if (f.tipo === "organigramma") {
       const s = sorgente.organigrammi[iOrg++];
@@ -208,6 +240,11 @@ export function abbinaSorgente(figure: FiguraDocumento[], sorgente: SorgenteFigu
       f.sorgente = s
         ? `tag [ICONA:${s.nome}] n.${s.indice} sotto «${s.parte || "(nessun titolo)"}», riga «${s.riga}»`
         : "nessun tag [ICONA:…] valido corrispondente nel testo sorgente";
+    } else if (f.tipo === "figura") {
+      const s = sorgente.figure[iFigura++];
+      f.sorgente = s
+        ? `blocco [FIGURA] n.${s.indice} (${s.archetipo}) sotto «${s.parte || "(nessun titolo)"}»`
+        : "nessun blocco [FIGURA] corrispondente nel testo sorgente";
     } else {
       f.sorgente = "nessuna parte del testo sorgente può produrre questa figura";
     }
@@ -233,20 +270,22 @@ export function formattaManifest(figure: FiguraDocumento[]): string[] {
 export function riepilogoFigure(figure: FiguraDocumento[]): string {
   const organigrammi = figure.filter((f) => f.tipo === "organigramma").length;
   const icone = figure.filter((f) => f.tipo === "icona").length;
+  const schematiche = figure.filter((f) => f.tipo === "figura").length;
   const sconosciute = figure.filter((f) => f.tipo === "sconosciuta").length;
   const file = new Set(figure.map((f) => f.fileMedia)).size;
-  return `${organigrammi} organigrammi + ${icone} icone${sconosciute ? ` + ${sconosciute} SCONOSCIUTE` : ""} (${file} file media distinti)`;
+  return `${organigrammi} organigrammi + ${schematiche} figure schematiche + ${icone} icone${sconosciute ? ` + ${sconosciute} SCONOSCIUTE` : ""} (${file} file media distinti)`;
 }
 
 export function verificaFigure(figure: FiguraDocumento[], sorgente: SorgenteFigure): string[] {
   const errori: string[] = [];
   const org = figure.filter((f) => f.tipo === "organigramma");
   const icone = figure.filter((f) => f.tipo === "icona");
+  const schematiche = figure.filter((f) => f.tipo === "figura");
   const sconosciute = figure.filter((f) => f.tipo === "sconosciuta");
 
   if (sconosciute.length > 0) {
     errori.push(
-      `Immagini: ${sconosciute.length} figura/e non riconducibile/i né a un organigramma né a un'icona (possibile fotografia o altra figura indebita, R16): ${sconosciute
+      `Immagini: ${sconosciute.length} figura/e non riconducibile/i né a un organigramma, né a una figura schematica, né a un'icona (possibile fotografia o altra figura indebita, R16): ${sconosciute
         .map((f) => `#${f.indice} in «${f.parte || "?"}»`)
         .join("; ")}.`,
     );
@@ -255,6 +294,18 @@ export function verificaFigure(figure: FiguraDocumento[], sorgente: SorgenteFigu
     errori.push(
       `Immagini: ${org.length} organigramma/i nel documento contro ${sorgente.organigrammi.length} blocco/hi [ORGANIGRAMMA] nel testo sorgente (un blocco non renderizzato o un organigramma in più).`,
     );
+  }
+  if (schematiche.length !== sorgente.figure.length) {
+    errori.push(
+      `Immagini: ${schematiche.length} figura/e schematica/he nel documento contro ${sorgente.figure.length} blocco/hi [FIGURA] nel testo sorgente (un blocco non renderizzato o una figura in più).`,
+    );
+  } else {
+    schematiche.forEach((f, i) => {
+      const atteso = `${PREFISSO_NOME_IMMAGINE_FIGURA}${sorgente.figure[i].archetipo}`;
+      if (f.nomeAlt !== atteso) {
+        errori.push(`Immagini: la figura schematica #${f.indice} nel documento è "${f.nomeAlt}" ma il blocco sorgente corrispondente (n.${sorgente.figure[i].indice}) è di tipo ${sorgente.figure[i].archetipo}.`);
+      }
+    });
   }
   if (icone.length !== sorgente.icone.length) {
     errori.push(

@@ -135,7 +135,17 @@ export type RigaConRiferimenti = { indiceRiga: number; riga: string; riferimenti
 // contengono almeno un riferimento economico.
 export function trovaRigheConRiferimentiEconomici(testo: string): RigaConRiferimenti[] {
   const risultato: RigaConRiferimenti[] = [];
+  // I blocchi di dati delle figure ([ORGANIGRAMMA]/[FIGURA] con il JSON dentro)
+  // non si riformulano: una riga di JSON riscritta non sarebbe più leggibile.
+  // I testi delle figure si controllano alla costruzione (figure-contesto.ts).
+  let dentroBloccoDati = false;
   testo.split("\n").forEach((riga, indiceRiga) => {
+    const t = riga.trim();
+    if (/^\[(?:ORGANIGRAMMA|FIGURA)\]/i.test(t)) dentroBloccoDati = true;
+    if (dentroBloccoDati) {
+      if (/\[\/(?:ORGANIGRAMMA|FIGURA)\]/i.test(t)) dentroBloccoDati = false;
+      return;
+    }
     if (riga.trim() === "" || RIGA_SEPARATORE_TABELLA.test(riga.trim())) return;
     const riferimenti = trovaRiferimentiEconomici(riga);
     if (riferimenti.length > 0) risultato.push({ indiceRiga, riga, riferimenti });

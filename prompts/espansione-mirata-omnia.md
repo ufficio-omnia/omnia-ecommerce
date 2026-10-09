@@ -34,7 +34,7 @@ Cosa NON fare MAI. Il testo ampliato viene controllato automaticamente su ognuno
 - nessun numero, percentuale, quantità, frequenza numerica, data o durata che non sia già nel testo di partenza: descrivi a parole ciò che il testo già dice, senza introdurre dati nuovi;
 - nessuna citazione di articolo, paragrafo, norma o certificazione che non sia già nel testo di partenza; nessun impegno, strumento, sede, certificazione o dato dell'impresa che il testo non contenga già o che non sia deducibile dal testo stesso;
 - tutto il testo di partenza resta: non togliere, non riassumere, non riscrivere, non spostare; aggiungi attorno e dentro;
-- le figure e i tag di formattazione restano com'erano ([ORGANIGRAMMA], [C], [G], [TABELLA:...], [ICONA:...], [BOX:tipo], [RIGA:tipo], [CELLA:tipo], !!...!!, **...**, gli asterischi dopo i valori e la loro nota); le righe nuove di tabelle ed elenchi portano l'icona pertinente come le altre; non aggiungere riquadri se il sotto-criterio ne ha già uno;
+- le figure e i tag di formattazione restano com'erano ([ORGANIGRAMMA], le righe [FIGURA:n] o [FIGURA:@n] costruite dal sistema — identiche, nello stesso punto, mai tolte né ripetute —, [C], [G], [TABELLA:...], [ICONA:...], [BOX:tipo], [RIGA:tipo], [CELLA:tipo], !!...!!, **...**, gli asterischi dopo i valori e la loro nota); le righe nuove di tabelle ed elenchi portano l'icona pertinente come le altre; non aggiungere riquadri se il sotto-criterio ne ha già uno;
 - il titolo "## {CHIAVE}" e i sotto-titoli "###" restano.
 
 Niente premesse, niente aggettivi valutativi, niente frasi di raccordo vuote, niente ripetizione di ciò che è già scritto: se non hai altro da aggiungere che abbia un contenuto verificabile, aggiungi meno e fermati.
