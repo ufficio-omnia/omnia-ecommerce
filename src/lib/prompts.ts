@@ -54,6 +54,9 @@ export const ISTRUZIONI_COMPRESSIONE = corpoPrompt("compressione-omnia.md");
 // disciplinare (segnaposto elencati nel file).
 export const ISTRUZIONI_COMPRESSIONE_MIRATA = corpoPrompt("compressione-mirata-omnia.md");
 export const ISTRUZIONI_ESPANSIONE = corpoPrompt("espansione-omnia.md");
+// Espansione di UN sotto-criterio sotto il proprio tetto, con le garanzie di
+// espansione-mirata.ts (segnaposto elencati nel file).
+export const ISTRUZIONI_ESPANSIONE_MIRATA = corpoPrompt("espansione-mirata-omnia.md");
 export const ISTRUZIONI_VERIFICA_DATI = corpoPrompt("verifica-dati-omnia.md");
 // Riformulazione di righe che rimandano all'offerta economica (R8) —
 // vedi src/lib/garanzia-senza-economico.ts. Segnaposto: {TITOLO_SEZIONE},

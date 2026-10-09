@@ -9,6 +9,7 @@ import { stimaPagineContenuto, limitePagineConMargine } from "@/lib/stima-pagine
 import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
+import { assegnaIconeMancanti } from "@/lib/densita-visiva";
 import { verificaDatiAziendali, type CompanyProfiloConfermato } from "@/lib/verifica-dati-aziendali";
 import { calcolaBudgetSottoCriteri, trovaBudgetSottoCriterio } from "@/lib/sotto-criteri";
 import { contestoDaCriteri, comprimiSezionePerSottoCriteri, dividiInBlocchi, riepilogoEsiti, tagliaPerValore, type EsitoBlocco } from "@/lib/budget-blocchi";
@@ -271,7 +272,11 @@ export async function generaBozzaSezione(params: {
   // dipende dal giudizio di un modello — vedi valori-impresa.ts.
   const evidenza = await evidenzaPerGuardia({ garaId, userId, testiAggiuntivi: [contestoDocumenti, datiGaraStrutturati] });
   const guardiaValori = evidenza ? applicaGuardiaValori(garanziaEconomica.testo, evidenza) : null;
-  const contenuto = guardiaValori ? guardiaValori.testo : garanziaEconomica.testo;
+  // Densità visiva minima garantita dal codice (le icone sono decorazione
+  // pura): per ultima, dopo ogni riscrittura fatta da un modello, così
+  // ciò che il modello ha dimenticato o tolto viene completato — vedi
+  // densita-visiva.ts.
+  const contenuto = assegnaIconeMancanti(guardiaValori ? guardiaValori.testo : garanziaEconomica.testo).testo;
   const valoriImpresa: EsitoValoriImpresa = { marcati: guardiaValori?.marcati ?? [], derivati: guardiaValori?.derivati ?? [], nonMarcabili: guardiaValori?.nonMarcabili ?? [] };
 
   const { data: ultima } = await supabase
@@ -1322,6 +1327,17 @@ export async function componiRelazioneFinale(params: {
       }
     });
   }
+
+  // Icone sul testo finale, sezione per sezione: copre le bozze salvate prima
+  // che esistesse la garanzia e ciò che la compressione ha riscritto. Per
+  // ultima, come in generaBozzaSezione.
+  sezioniFinali.forEach((s, i) => {
+    const esito = assegnaIconeMancanti(s.contenuto);
+    if (esito.aggiunte > 0) {
+      sezioniFinali[i] = { ...s, contenuto: esito.testo };
+      sezioniModificate.add(i);
+    }
+  });
 
   const righeRiformulate = [...sezioniModificate].map((i) => ({ titolo_sezione: sezioniFinali[i].titolo_sezione, contenuto: sezioniFinali[i].contenuto }));
   if (righeRiformulate.length > 0) {

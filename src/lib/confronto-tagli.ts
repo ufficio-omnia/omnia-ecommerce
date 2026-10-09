@@ -545,13 +545,23 @@ export function violazioniBlocco(
   if (c.struttura.prima.organigrammi > c.struttura.dopo.organigrammi) {
     violazioni.push("La figura [ORGANIGRAMMA] è sparita.");
   }
+  // Gli elementi visivi sono ciò che la commissione legge per primo e la
+  // compressione non deve toglierli: un riquadro contiene l'impegno chiave
+  // del sotto-criterio (si accorcia il testo intorno, non il riquadro) e
+  // almeno una tabella resta. Era solo un avviso: verificato che la
+  // compressione li toglieva in silenzio.
+  if (c.struttura.prima.box > c.struttura.dopo.box) {
+    violazioni.push(`Sono spariti dei riquadri [BOX] (${c.struttura.prima.box} → ${c.struttura.dopo.box}): contengono gli impegni chiave e non si tolgono, si accorcia il testo intorno.`);
+  }
+  if (c.struttura.prima.tabelle > 0 && c.struttura.dopo.tabelle === 0) {
+    violazioni.push("Sono sparite tutte le tabelle del sotto-criterio: almeno una deve restare (si tolgono righe, non l'intera struttura).");
+  }
   const termini = c.requisitiDisciplinare.filter((t) => t.prima && !t.dopo).map((t) => t.termine);
   if (termini.length > 0) {
     violazioni.push(`Non compaiono più questi elementi richiesti dal disciplinare per il sotto-criterio (radici dei termini): ${termini.join(", ")}.`);
   }
   if (c.numeriPersi.length > 0) avvisi.push(`${c.numeriPersi.length} numero/i sparito/i: ${c.numeriPersi.map((n) => n.numero).join(", ")}`);
   if (c.righeTabellaPerse.length > 0) avvisi.push(`${c.righeTabellaPerse.length} riga/righe di tabella sparita/e`);
-  if (c.struttura.prima.box > c.struttura.dopo.box) avvisi.push(`riquadri [BOX] ${c.struttura.prima.box} → ${c.struttura.dopo.box}`);
   return { violazioni, avvisi };
 }
 

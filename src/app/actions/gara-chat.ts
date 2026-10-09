@@ -28,9 +28,11 @@ import {
   type EsitoValoriImpresa,
 } from "@/lib/relazione-tecnica";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { espandiSezioneSottoTetto, riepilogoEsitiEspansione } from "@/lib/espansione-mirata";
 import {
   buildSystemPrompt,
   buildGeneraBozzaTool,
+  budgetSottoCriteriDiGara,
   formattaDatiGaraStrutturati,
   type GaraContesto,
   type CompanyContesto,
@@ -45,6 +47,10 @@ const MAX_HISTORY = 12;
 const MAX_CHUNKS = 8;
 const MAX_KB_CHUNKS = 6;
 const MAX_TOOL_ROUNDS = 4;
+// Oltre questo tempo dall'inizio della richiesta l'espansione dei
+// sotto-criteri non parte: restano da fare verifica dati e garanzie, e la
+// funzione ha un tetto (maxDuration della pagina).
+const LIMITE_MS_PRIMA_DELL_ESPANSIONE = 150_000;
 
 // I segnaposto di anonimizzazione e le forme generiche "l'operatore
 // economico"/"il concorrente" sono gestiti in modo deterministico da
@@ -74,6 +80,7 @@ export async function sendGaraMessage(
   _prevState: ChatState,
   formData: FormData,
 ): Promise<ChatState> {
+  const inizioRichiestaMs = Date.now();
   const supabase = await createClient();
   const {
     data: { user },
@@ -518,7 +525,31 @@ export async function sendGaraMessage(
             formattazione: formattazioneCorrente,
             context: { userId: user.id, garaId },
           });
-          const contenutoCorretto = correzione.contenuto;
+          // Espansione dei sotto-criteri che occupano molto meno del proprio
+          // tetto (le bozze si fermano al 60-75%: verificato con il modello
+          // vero, e il vecchio passaggio "espandi" che le portava al tetto
+          // era stato tolto dal percorso dal vivo per i 504). Una sola
+          // chiamata per blocco, in parallelo, senza ragionamento, con le
+          // garanzie di espansione-mirata.ts (nessun numero o riferimento
+          // nuovo), PRIMA della verifica dati; solo se la richiesta è ancora
+          // entro il tempo che lascia spazio a verifica dati e garanzie.
+          let contenutoCorretto = correzione.contenuto;
+          if (correzione.modalita === "sotto-criteri" && Date.now() - inizioRichiestaMs < LIMITE_MS_PRIMA_DELL_ESPANSIONE) {
+            const budgetEspansione = budgetSottoCriteriDiGara(gara);
+            if (budgetEspansione) {
+              const espansione = await espandiSezioneSottoTetto({
+                titoloSezione: input.titolo_sezione,
+                contenuto: contenutoCorretto,
+                budget: budgetEspansione,
+                criteriValutazione: gara.criteri_valutazione,
+                punteggioTecnico: gara.punteggio_tecnico_max ?? undefined,
+                formattazione: formattazioneCorrente,
+                context: { userId: user.id, garaId },
+              });
+              contenutoCorretto = espansione.contenuto;
+              for (const riga of riepilogoEsitiEspansione(espansione.esiti)) console.log(`sendGaraMessage [${garaId}] ${riga}`);
+            }
+          }
           const pagineTarget = correzione.pagineTargetCriterio;
           for (const riga of correzione.esiti) console.log(`sendGaraMessage [${garaId}] ${riga}`);
           // Riapplicate dopo l'eventuale espansione/condensazione: quel
