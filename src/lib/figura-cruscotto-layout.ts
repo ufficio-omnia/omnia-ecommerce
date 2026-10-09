@@ -54,7 +54,7 @@ export function disegnaCruscotto(d: Disegno, dati: DatiCruscotto, area: { x: num
   const wStato = conStato ? 50 : 0;
   const wIndicatore = wTabella - wObiettivo - wRilevato - wStato;
   const righeTesto = dati.righe.map((r) => avvolgi(r.indicatore, wIndicatore - 18, 12, false, misura, 2));
-  const righeObiettivo = dati.righe.map((r) => avvolgi(r.obiettivo, wObiettivo - 8, 12, true, misura, 2));
+  const righeObiettivo = dati.righe.map((r) => avvolgi(r.obiettivo, wObiettivo - 8, 12, true, misura, 3));
   const hRiga = righeTesto.map((t, q) => Math.max(H_RIGA_MIN, 12 + Math.max(t.length, righeObiettivo[q].length) * 12 * INTERLINEA));
   const hLegenda = conStato ? 24 : 0;
   const hTabella = H_TESTATA_TABELLA + hRiga.reduce((t, h) => t + h, 0) + hLegenda;
@@ -75,19 +75,22 @@ export function disegnaCruscotto(d: Disegno, dati: DatiCruscotto, area: { x: num
   const hTessera = nInd ? Math.max(...tessere.map((t) => 10 + t.etichetta.length * 11 * INTERLINEA + 4 + t.obiettivo.length * t.size * 1.2 + 4 + 11 * INTERLINEA + 8)) : 0;
 
   const hCorpo = Math.max(hTabella, hLateraleTotale);
-  const hTot = H_INTESTAZIONE + H_STRISCIA + GAP + (nInd ? hTessera + GAP : 0) + hCorpo + PAD;
+  // l'intestazione va a capo (al massimo due righe) invece di troncare il profilo
+  const titolo = [dati.piattaforma, `Profilo: ${dati.profilo}`].filter(Boolean).join("  ·  ");
+  const righeTitolo = avvolgi(titolo, wi - 20, 13, true, misura, 2);
+  const hIntestazione = Math.max(H_INTESTAZIONE, 14 + righeTitolo.length * 13 * INTERLINEA);
+  const hTot = hIntestazione + H_STRISCIA + GAP + (nInd ? hTessera + GAP : 0) + hCorpo + PAD;
 
   // ── Cornice e intestazione ──
   d.rect({ x: area.x, y: area.y, w: area.w, h: hTot, r: 10, fill: C.bianco, stroke: C.lineaScura, sw: 1.6 });
-  d.rect({ x: area.x, y: area.y, w: area.w, h: H_INTESTAZIONE, r: 10, fill: C.navy });
-  d.rect({ x: area.x, y: area.y + H_INTESTAZIONE - 10, w: area.w, h: 10, fill: C.navy });
-  const titolo = [dati.piattaforma, `Profilo: ${dati.profilo}`].filter(Boolean).join("  ·  ");
-  d.testo(xi, area.y + H_INTESTAZIONE / 2, avvolgi(titolo, wi - 20, 13, true, misura, 1)[0], 13, true, testoSu(C.navy), "inizio");
+  d.rect({ x: area.x, y: area.y, w: area.w, h: hIntestazione, r: 10, fill: C.navy });
+  d.rect({ x: area.x, y: area.y + hIntestazione - 10, w: area.w, h: 10, fill: C.navy });
+  righeTitolo.forEach((t, q) => d.testo(xi, area.y + hIntestazione / 2 + (q - (righeTitolo.length - 1) / 2) * 13 * INTERLINEA, t, 13, true, testoSu(C.navy), "inizio"));
   // striscia fissa: non dipende dal modello
-  d.rect({ x: area.x, y: area.y + H_INTESTAZIONE, w: area.w, h: H_STRISCIA, fill: C.bannerFill });
-  d.testo(area.x + area.w / 2, area.y + H_INTESTAZIONE + H_STRISCIA / 2, STRISCIA_ILLUSTRATIVA, 11, true, C.testoScuro);
+  d.rect({ x: area.x, y: area.y + hIntestazione, w: area.w, h: H_STRISCIA, fill: C.bannerFill });
+  d.testo(area.x + area.w / 2, area.y + hIntestazione + H_STRISCIA / 2, STRISCIA_ILLUSTRATIVA, 11, true, C.testoScuro);
 
-  let y = area.y + H_INTESTAZIONE + H_STRISCIA + GAP;
+  let y = area.y + hIntestazione + H_STRISCIA + GAP;
 
   // ── Tessere degli indicatori ──
   if (nInd) {

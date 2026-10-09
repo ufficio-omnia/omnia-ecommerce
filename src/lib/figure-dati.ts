@@ -305,7 +305,7 @@ export function leggiCronoprogramma(raw: unknown, avvisi: string[]): DatiCronopr
 export function leggiCruscotto(raw: unknown, avvisi: string[]): DatiCruscotto | null {
   const o = oggetto(raw);
   if (!o) return null;
-  const profilo = pulisciTesto(o.profilo, 40);
+  const profilo = pulisciTesto(o.profilo, 70);
   const indicatori = elenco(o.indicatori)
     .map((i) => {
       const io = oggetto(i);
@@ -319,7 +319,7 @@ export function leggiCruscotto(raw: unknown, avvisi: string[]): DatiCruscotto | 
     .map((r) => {
       const ro = oggetto(r);
       const ind = ro ? titolo(ro.indicatore) : undefined;
-      const ob = ro ? pulisciTesto(ro.obiettivo, 30) : undefined;
+      const ob = ro ? pulisciTesto(ro.obiettivo, 44) : undefined;
       if (!ro || !ind || !ob) return null;
       const stato = (STATI_RIGA as readonly string[]).includes(String(ro.stato)) ? (ro.stato as StatoRiga) : undefined;
       return con({ indicatore: ind, obiettivo: ob } as { indicatore: string; obiettivo: string; stato?: StatoRiga }, { stato });
