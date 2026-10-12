@@ -306,7 +306,8 @@ async function main() {
     const prosa = Array.from({ length: 6 }, (_, i) => FRASI[i % FRASI.length]).join(" ");
     const testo = `## 1.1 Struttura\n\n${prosa}\n\n${blocco}\n\n| Ruolo | Compito |\n|---|---|\n| [G]**Responsabile** | [G]Coordina il servizio |\n| [G]**Ispettore** | [G]Verifica gli interventi |`;
     const richieste: RichiestaEspansione[] = [];
-    const ampia = (r: RichiestaEspansione) => `${r.testo}\n\n${Array.from({ length: 10 }, (_, i) => `${FRASI[i % FRASI.length].replace(/\.$/, "")} nel contesto ${"abcdefghij"[i]}.`).join(" ")}`;
+    // l'ampliamento "buono" aggiunge struttura (righe di tabella), non prosa: il controllo di densità rifiuta i paragrafi
+    const ampia = (r: RichiestaEspansione) => `${r.testo}\n\n| Attività | Controllo |\n|---|---|\n${Array.from({ length: 5 }, (_, i) => `| [G]${FRASI[i % FRASI.length].replace(/\.$/, "")} nel contesto ${"abcde"[i]} | [G]${FRASI[(i + 1) % FRASI.length].replace(/\.$/, "")} nel contesto ${"fghij"[i]} |`).join("\n")}`;
     const espansione = await espandiBloccoConGaranzie({
       chiave: "1.1", titoloBlocco: "1. Struttura", blocco: testo, pagineTarget: 1.6, paroleXPagina: 450, formattazione: {}, context: { userId: null, garaId: null },
       espandi: async (r) => { richieste.push(r); return ampia(r); },
@@ -336,7 +337,8 @@ async function main() {
     atteso("Word: l'organigramma strutturato usa il nuovo disegnatore, il vecchio resta per le bozze salvate", /leggiBloccoOrganigramma\(segment\.contenuto\)/.test(docx) && /disegnaOrganigramma\(datiOrganigramma/.test(docx) && /generateOrgChartPng\(segment\.contenuto/.test(docx));
 
     const relazione = leggiFile("src/lib/relazione-tecnica.ts");
-    const iIcone = relazione.indexOf("const contenutoSenzaOrganigramma = assegnaIconeMancanti");
+    // l'ultima riscrittura prima del blocco: le icone, poi le evidenziazioni della prosa
+    const iIcone = relazione.indexOf("const contenutoSenzaOrganigramma = evidenziaProsaMancante(conIcone");
     const iBlocco = relazione.indexOf("costruisciOrganigramma(organigrammaDichiarato");
     const iDocx = relazione.indexOf("const buffer = await buildDocxBuffer(\n    titoloSezione");
     atteso("bozza: il blocco si costruisce DOPO ogni riscrittura (icone incluse) e prima del Word", iIcone > 0 && iBlocco > iIcone && iDocx > iBlocco);

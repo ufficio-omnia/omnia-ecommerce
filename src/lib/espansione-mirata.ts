@@ -8,6 +8,7 @@ import { trovaBudgetSottoCriterio, type BudgetGara } from "@/lib/sotto-criteri";
 import { stimaPagineContenuto } from "@/lib/stima-pagine";
 import { mascheraOrganigrammi, organigrammiInvariati, ripristinaOrganigrammi } from "@/lib/organigramma-dati";
 import { figureInvariate, mascheraFigure, ripristinaFigure } from "@/lib/figure-dati";
+import { misuraProsa, PAROLE_MASSIME_PARAGRAFO, type MisuraProsa } from "@/lib/ricchezza-visiva";
 
 // Espansione di UN sotto-criterio alla volta quando occupa molto meno del
 // proprio tetto di pagine (ripartito in proporzione ai punti). Verificato con
@@ -175,7 +176,7 @@ function normalizzaBlocco(originale: string, candidato: string, chiave: string):
 
 export function violazioniEspansione(
   c: ConfrontoSubCriterio,
-  extra: { paroleConservate: number; pagineMassime: number },
+  extra: { paroleConservate: number; pagineMassime: number; prosa?: { prima: MisuraProsa; dopo: MisuraProsa } },
 ): string[] {
   const v: string[] = [];
   if (!c.presenteDopo) {
@@ -203,6 +204,17 @@ export function violazioniEspansione(
   }
   if (c.pagineDopo > extra.pagineMassime) {
     v.push(`Il testo occupa ${fmt(c.pagineDopo, 2)} pagine e supera il tetto: deve restare entro ${fmt(extra.pagineMassime, 2)}. Aggiungi MENO (circa la metà di quanto hai aggiunto).`);
+  }
+  // Densità (R16): l'ampliamento si fa con tabelle, elenchi e paragrafi
+  // brevissimi, non con prosa. Verificato che, chiesto di "aggiungere N parole",
+  // il modello le scrive come paragrafi: la prosa del criterio triplicava.
+  if (extra.prosa) {
+    const { prima, dopo } = extra.prosa;
+    const crescita = dopo.parole - prima.parole;
+    const limite = Math.max(40, Math.round(prima.parole * 0.1));
+    if (crescita > limite) v.push(`Hai aggiunto ${crescita} parole di prosa (da ${prima.parole} a ${dopo.parole}): le aggiunte vanno in tabelle, in elenchi con grassetto o in paragrafi brevissimi, non in paragrafi. Al massimo ${limite} parole di prosa in più.`);
+    if (dopo.lunghi > prima.lunghi) v.push(`Hai scritto paragrafi lunghi (oltre ${PAROLE_MASSIME_PARAGRAFO} parole): spezzali, e i dati che contengono mettili in una tabella o in un elenco.`);
+    if (dopo.maxConsecutivi > Math.max(prima.maxConsecutivi, 2)) v.push("Hai messo più di due paragrafi di prosa di fila: tra uno e l'altro ci vuole una tabella, un elenco o una figura.");
   }
   return v;
 }
@@ -272,7 +284,7 @@ export async function espandiBloccoConGaranzie(params: {
     ).find((c) => c.chiave.toLowerCase() === chiave.toLowerCase());
 
     const violazioni = confronto
-      ? violazioniEspansione(confronto, { paroleConservate: quotaParoleConservate(blocco, candidato), pagineMassime })
+      ? violazioniEspansione(confronto, { paroleConservate: quotaParoleConservate(blocco, candidato), pagineMassime, prosa: { prima: misuraProsa(blocco), dopo: misuraProsa(candidato) } })
       : ["Impossibile confrontare il testo ampliato con l'originale."];
     if (!organigrammiInvariati(blocco, candidato)) violazioni.push("Il blocco [ORGANIGRAMMA] è stato modificato: i suoi dati vanno lasciati IDENTICI, carattere per carattere.");
     if (!figureInvariate(blocco, candidato)) violazioni.push("Una figura [FIGURA:@n] è stata tolta, spostata o modificata: le righe delle figure vanno lasciate IDENTICHE.");

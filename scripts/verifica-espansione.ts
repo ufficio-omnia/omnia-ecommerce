@@ -41,8 +41,18 @@ const FRASI = [
   "Le segnalazioni degli utenti vengono prese in carico e chiuse con un riscontro scritto.",
 ];
 // Frasi tutte diverse e senza cifre: l'espansione "buona" non deve introdurre numeri.
-const distinte = (n: number, seme = "x") =>
-  Array.from({ length: n }, (_, i) => `${FRASI[i % FRASI.length].replace(/\.$/, "")} nel contesto ${seme}${"abcdefghijklmnopqrstuvwxyz"[i % 26]}${"abcdefghijklmnopqrstuvwxyz"[Math.floor(i / 26) % 26]}.`).join(" ");
+const frasiDistinte = (n: number, seme = "x") =>
+  Array.from({ length: n }, (_, i) => `${FRASI[i % FRASI.length].replace(/\.$/, "")} nel contesto ${seme}${"abcdefghijklmnopqrstuvwxyz"[i % 26]}${"abcdefghijklmnopqrstuvwxyz"[Math.floor(i / 26) % 26]}.`);
+// L'espansione "buona" aggiunge STRUTTURA (una tabella, due frasi per riga), non
+// prosa: il controllo di densità rifiuta un ampliamento fatto di paragrafi.
+const distinte = (n: number, seme = "x") => {
+  const f = frasiDistinte(n, seme);
+  const righe = ["| Attività | Controllo |", "|---|---|"];
+  for (let i = 0; i < f.length; i += 2) righe.push(`| [G]${f[i]} | [G]${f[i + 1] ?? "Verifica registrata a ogni intervento."} |`);
+  return righe.join("\n");
+};
+// Lo stesso testo, ma come paragrafi di prosa (da rifiutare).
+const distinteInProsa = (n: number, seme = "x") => frasiDistinte(n, seme).join(" ");
 const prosa = (n: number) => Array.from({ length: n }, (_, i) => FRASI[i % FRASI.length]).join(" ");
 
 const FORMAT = { dimensioneCarattere: 12, interlinea: 1 };
@@ -109,13 +119,16 @@ async function main() {
 
   // --- 2. Ogni difetto fa rifiutare, e il secondo tentativo riceve i problemi ---
   const rifiutati: [string, (r: RichiestaEspansione) => string][] = [
-    ["numero nuovo ('ogni 15 giorni')", (r) => aggiungi(r.testo, `${distinte(14)} Il controllo avviene ogni 15 giorni.`)],
-    ["riferimento al capitolato nuovo", (r) => aggiungi(r.testo, `${distinte(14)} Come previsto dall'art. 99 del capitolato speciale.`)],
+    ["numero nuovo ('ogni 15 giorni')", (r) => aggiungi(r.testo, `${distinte(14)}\n\nIl controllo avviene ogni 15 giorni.`)],
+    ["riferimento al capitolato nuovo", (r) => aggiungi(r.testo, `${distinte(14)}\n\nCome previsto dall'art. 99 del capitolato speciale.`)],
     ["tabella tolta", (r) => aggiungi(r.testo.replace(/\| Ruolo \| Compito \|\n\|---\|---\|\n(\|.*\|\n){2}/, ""), distinte(14))],
     ["riquadro tolto", (r) => aggiungi(r.testo.replace(/\[BOX:CAPITOLATO\].*\[\/BOX\]\n/, ""), distinte(14))],
     ["testo riscritto (poche parole di partenza conservate)", () => `## ${CHIAVE} Organigramma e qualifiche\n\n${distinte(60, "q").replace(/\b(coordina|squadra|operatori)\b/g, "altro")}`],
     ["tetto superato", (r) => aggiungi(r.testo, distinte(110))],
     ["crescita insufficiente", (r) => aggiungi(r.testo, "Una sola frase in più.")],
+    // R16: l'ampliamento in prosa continua è la causa dei criteri "tutto testo" (la prosa triplicava, senza una tabella in più)
+    ["ampliamento in paragrafi di prosa invece che in tabelle o elenchi", (r) => aggiungi(r.testo, distinteInProsa(14))],
+    ["tre paragrafi di prosa di fila", (r) => aggiungi(r.testo, [distinteInProsa(3, "a"), distinteInProsa(3, "b"), distinteInProsa(3, "c")].join("\n\n"))],
   ];
   for (const [nome, variante] of rifiutati) {
     const m = modello((r) => variante(r));
@@ -124,9 +137,22 @@ async function main() {
     atteso(`rifiutato (${nome}): il secondo tentativo riceve l'elenco dei problemi e riparte dal testo originale`, (m.richieste[1]?.correzioni?.length ?? 0) > 0 && m.richieste[1].testo === BLOCCO);
   }
 
+  // --- 2-bis. La densità: il messaggio dice cosa fare, e tabelle ed elenchi passano ---
+  {
+    const prosaEsito = modello((r) => aggiungi(r.testo, distinteInProsa(14)));
+    await esegui(prosaEsito.espandi);
+    atteso("ampliamento in prosa: la correzione chiede tabelle, elenchi o paragrafi brevissimi", (prosaEsito.richieste[1]?.correzioni ?? []).some((c) => /tabelle|elenchi/.test(c) && /prosa/.test(c)), JSON.stringify(prosaEsito.richieste[1]?.correzioni));
+    const elenco = modello((r) => aggiungi(r.testo, frasiDistinte(8, "e").map((f) => `- **Controllo:** ${f}`).join("\n")));
+    const eElenco = await esegui(elenco.espandi);
+    atteso("ampliamento in un elenco puntato con grassetti: accettato", eElenco.esito === "espanso", `${eElenco.esito} ${eElenco.motivo ?? ""}`);
+    const breve = modello((r) => aggiungi(r.testo, `${distinte(10, "t")}\n\nIl **referente** riceve ogni **registrazione** firmata.`));
+    const eBreve = await esegui(breve.espandi);
+    atteso("ampliamento in tabella più un paragrafo brevissimo: accettato", eBreve.esito === "espanso", `${eBreve.esito} ${eBreve.motivo ?? ""}`);
+  }
+
   // --- 3. Il secondo tentativo può correggere ---
   {
-    const m = modello((r, n) => (n === 1 ? aggiungi(r.testo, `${distinte(14)} Il controllo avviene ogni 15 giorni.`) : aggiungi(r.testo, distinte(14))));
+    const m = modello((r, n) => (n === 1 ? aggiungi(r.testo, `${distinte(14)}\n\nIl controllo avviene ogni 15 giorni.`) : aggiungi(r.testo, distinte(14))));
     const e = await esegui(m.espandi);
     atteso("primo tentativo con numero nuovo, secondo corretto: accettato", e.esito === "espanso" && e.tentativi === 2, `${e.esito} ${e.motivo ?? ""}`);
     atteso("il secondo tentativo cita il numero introdotto", (m.richieste[1].correzioni ?? []).some((c) => c.includes("15")));
@@ -184,7 +210,8 @@ async function main() {
         blocco("1.2", "Controlli di qualità", tetto12.paginePreviste * 0.9),
         "## 1.3 Compilazione tabellare\n\nCRITERIO TABELLARE - COMPILARE",
       ].join("\n");
-      const m = modello((r) => aggiungi(r.testo, distinte(Math.ceil((r.pagineTarget - r.paginePrima) * 450 / 12), "o")));
+      // una riga di tabella costa circa il doppio delle stesse parole in prosa, e porta due frasi
+      const m = modello((r) => aggiungi(r.testo, distinte(Math.ceil((r.pagineTarget - r.paginePrima) * 450 / 12 / 3), "o")));
       const esito = await espandiSezioneSottoTetto({
         titoloSezione: "1. Modello organizzativo",
         contenuto,

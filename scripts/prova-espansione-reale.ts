@@ -19,7 +19,7 @@ const { createClient } = require("@supabase/supabase-js");
 import { budgetSottoCriteriDiGara, type GaraContesto } from "../src/lib/gara-chat-prompt";
 import { espandiSezioneSottoTetto, riepilogoEsitiEspansione } from "../src/lib/espansione-mirata";
 import { assegnaIconeMancanti } from "../src/lib/densita-visiva";
-import { descriviMisura, misuraVisiva } from "../src/lib/ricchezza-visiva";
+import { descriviMisura, descriviProsa, misuraProsa, misuraVisiva } from "../src/lib/ricchezza-visiva";
 import { stimaPagineContenuto } from "../src/lib/stima-pagine";
 
 function argomenti(nome: string): string[] {
@@ -66,6 +66,8 @@ async function main() {
       console.log(`\n${path.basename(file)} (${secondi}s)`);
       console.log(`  prima:  ${descriviMisura(misuraVisiva(contenuto))}, pagine ${stimaPagineContenuto(contenuto, formattazione).toFixed(2)}`);
       console.log(`  dopo:   ${descriviMisura(misuraVisiva(conIcone.testo))}, pagine ${stimaPagineContenuto(conIcone.testo, formattazione).toFixed(2)} (icone aggiunte dal codice: ${conIcone.aggiunte})`);
+      console.log(`  prosa prima: ${descriviProsa(misuraProsa(contenuto), misuraVisiva(contenuto).parole)}`);
+      console.log(`  prosa dopo:  ${descriviProsa(misuraProsa(conIcone.testo), misuraVisiva(conIcone.testo).parole)}`);
       for (const riga of riepilogoEsitiEspansione(esito.esiti)) console.log(`  ${riga}`);
     }),
   );

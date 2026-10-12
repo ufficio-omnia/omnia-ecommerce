@@ -56,6 +56,66 @@ export function misuraVisiva(testo: string): MisuraVisiva {
   };
 }
 
+// ─── Prosa "liscia" ───
+// Una commissione che legge decine di offerte valuta una tabella in tre secondi
+// e un paragrafo no: la prosa va tenuta al minimo e, dove c'è, deve avere
+// impatto (grassetti sui valori e sui termini chiave, ruoli evidenziati). Si
+// misura qui, con una definizione sola, per la prova dei prompt, i controlli e
+// la guardia di densità. Un "paragrafo di prosa" è un blocco di testo separato
+// da righe vuote che NON è un titolo, una riga di tabella, un elenco puntato,
+// una nota, un tag di formattazione né il contenuto di un riquadro o di una
+// figura (il riquadro è già un impegno in evidenza, la figura un disegno).
+export type MisuraProsa = {
+  paragrafi: number;
+  parole: number;
+  // paragrafi con almeno un grassetto, un ruolo evidenziato o un'icona
+  conEvidenza: number;
+  // più paragrafi di prosa di fila, senza una tabella, un elenco o una figura in mezzo
+  maxConsecutivi: number;
+  // paragrafi lunghi (oltre PAROLE_MASSIME_PARAGRAFO)
+  lunghi: number;
+};
+
+export const PAROLE_MASSIME_PARAGRAFO = 70;
+
+const NON_PROSA = /^(\||#{1,6}\s|[-*•]\s|\*[^*]|\\\*|\[(?:BOX|\/BOX|TABELLA|FIGURA|ORGANIGRAMMA|\/ORGANIGRAMMA|RIGA|CELLA)\b)/i;
+
+export function paragrafiDiProsa(testo: string): string[] {
+  const pulito = testo
+    .replace(/\[FIGURA\][\s\S]*?\[\/FIGURA\]/gi, "\n\n[FIGURA]\n\n")
+    .replace(/\[ORGANIGRAMMA\][\s\S]*?\[\/ORGANIGRAMMA\]/gi, "\n\n[ORGANIGRAMMA]\n\n")
+    .replace(/\[BOX(?::[^\]]*)?\][\s\S]*?\[\/BOX\]/gi, "\n\n[BOX]\n\n");
+  return pulito.split(/\n\s*\n/).map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
+export function misuraProsa(testo: string): MisuraProsa {
+  let paragrafi = 0;
+  let parole = 0;
+  let conEvidenza = 0;
+  let lunghi = 0;
+  let consecutivi = 0;
+  let maxConsecutivi = 0;
+  for (const p of paragrafiDiProsa(testo)) {
+    if (NON_PROSA.test(p) || /^\[FIGURA:/i.test(p)) {
+      consecutivi = 0;
+      continue;
+    }
+    const n = p.split(/\s+/).filter(Boolean).length;
+    paragrafi++;
+    parole += n;
+    if (/\*\*[^*]+\*\*|!![^!]+!!|\[ICONA:/.test(p)) conEvidenza++;
+    if (n > PAROLE_MASSIME_PARAGRAFO) lunghi++;
+    consecutivi++;
+    maxConsecutivi = Math.max(maxConsecutivi, consecutivi);
+  }
+  return { paragrafi, parole, conEvidenza, maxConsecutivi, lunghi };
+}
+
+export function descriviProsa(m: MisuraProsa, paroleTotali: number): string {
+  const quota = paroleTotali > 0 ? Math.round((m.parole / paroleTotali) * 100) : 0;
+  return `prosa ${m.paragrafi} par. (${m.parole} parole, ${quota}% del testo), con evidenza ${m.conEvidenza}/${m.paragrafi}, lunghi ${m.lunghi}, max di fila ${m.maxConsecutivi}`;
+}
+
 export type MisuraBlocco = { chiave: string | null; titolo: string; misura: MisuraVisiva };
 
 // Una misura per ogni sotto-criterio ("## x.y ...") del testo; il blocco

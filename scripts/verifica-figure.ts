@@ -431,7 +431,8 @@ async function main() {
     const prosa = Array.from({ length: 6 }, (_, i) => FRASI[i % FRASI.length]).join(" ");
     const testo = `## 1.1 Controlli\n\n${prosa}\n\n${blocco}\n\n| Ruolo | Compito |\n|---|---|\n| [G]**Responsabile** | [G]Coordina il servizio |\n| [G]**Ispettore** | [G]Verifica gli interventi |`;
     const richieste: RichiestaEspansione[] = [];
-    const ampia = (r: RichiestaEspansione) => `${r.testo}\n\n${Array.from({ length: 10 }, (_, i) => `${FRASI[i % FRASI.length].replace(/\.$/, "")} nel contesto ${"abcdefghij"[i]}.`).join(" ")}`;
+    // l'ampliamento "buono" aggiunge struttura (righe di tabella), non prosa: il controllo di densità rifiuta i paragrafi
+    const ampia = (r: RichiestaEspansione) => `${r.testo}\n\n| Attività | Controllo |\n|---|---|\n${Array.from({ length: 5 }, (_, i) => `| [G]${FRASI[i % FRASI.length].replace(/\.$/, "")} nel contesto ${"abcde"[i]} | [G]${FRASI[(i + 1) % FRASI.length].replace(/\.$/, "")} nel contesto ${"fghij"[i]} |`).join("\n")}`;
     const espansione = await espandiBloccoConGaranzie({
       chiave: "1.1", titoloBlocco: "1. Controlli", blocco: testo, pagineTarget: 2.2, paroleXPagina: 450, formattazione: {}, context: { userId: null, garaId: null },
       espandi: async (r) => { richieste.push(r); return ampia(r); },
