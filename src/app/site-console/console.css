@@ -252,7 +252,7 @@ a.cn-nav-voce:hover {
 
 .cn-tessere {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -885,6 +885,45 @@ a.cn-nav-voce:hover {
 
 .cn-elenco strong {
   color: var(--cn-testo);
+}
+
+/* ───── Ricavi e abbonamenti: barre per mese, legenda, etichetta dei filtri ───── */
+
+.cn-etichetta-inline {
+  align-self: center;
+  margin-right: 4px;
+  font-family: var(--cn-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cn-fioco);
+}
+
+.cn-barra-ricavi {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--cn-rilievo);
+}
+
+.cn-barra-ricavi .e,
+.cn-legenda.e {
+  background: var(--cn-accento);
+}
+
+.cn-barra-ricavi .a,
+.cn-legenda.a {
+  background: var(--cn-ok);
+}
+
+.cn-legenda {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: baseline;
 }
 
 /* ───── Pagine di accesso (senza barra laterale) ───── */

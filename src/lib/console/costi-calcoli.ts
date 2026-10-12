@@ -41,7 +41,7 @@ export type RicavoAbbonamento = {
 // ancora in corso: un abbonamento attivo e senza disdetta continua; altrimenti
 // dura fino a current_period_end (il giorno stesso non conta: il rinnovo
 // sarebbe cominciato quel giorno).
-function fineAbbonamento(abb: AbbonamentoRiga): string | null {
+export function fineAbbonamento(abb: AbbonamentoRiga): string | null {
   const aperto = abb.status === "attivo" && !abb.cancel_at_period_end;
   if (aperto) return null;
   return abb.current_period_end ? dataRoma(new Date(abb.current_period_end)) : dataRoma(new Date(abb.created_at));
@@ -184,6 +184,10 @@ export type DatiGrezziCosti = {
   abbonamenti: (AbbonamentoRiga & { user_id: string })[];
   acquisti: AcquistoCredito[];
   identita: Map<string, Identita>;
+  // Incassi REALI degli abbonamenti nel periodo (euro lordi per cliente, già senza i
+  // pagamenti di prova se non richiesti). Se presente è la fonte del ricavo da
+  // abbonamento; se assente (tabella degli incassi non ancora creata) si ricade sul listino.
+  incassiAbbonamento?: { user_id: string; importo: number }[];
 };
 
 export type ParametriDiCalcolo = { cambioUsdEur: number | null; aliquotaIva: number };
@@ -248,15 +252,22 @@ export function assemblaClienti(dati: DatiGrezziCosti, parametri: ParametriDiCal
     const attuale = piuRecente.get(a.user_id);
     if (!attuale || a.created_at > attuale.created_at) piuRecente.set(a.user_id, a);
   }
-  const abbonamentiPerUtente = new Map<string, (AbbonamentoRiga & { user_id: string })[]>();
-  for (const a of dati.abbonamenti) abbonamentiPerUtente.set(a.user_id, [...(abbonamentiPerUtente.get(a.user_id) ?? []), a]);
-  for (const [userId, righeUtente] of abbonamentiPerUtente) {
-    const ricavo = ricavoAbbonamentiUtente(righeUtente, periodo, oggi);
-    // un utente senza costi né gare nel periodo compare solo se ha un ricavo
-    if (ricavo.importo > 0 || clienti.has(userId)) {
-      const r = riga(userId);
-      r.ricavoAbbonamentoLordo += ricavo.importo;
-      r.giorniAbbonamento += ricavo.giorni;
+  if (dati.incassiAbbonamento) {
+    // Ricavo REALE: gli incassi registrati nel periodo. Il costo del periodo si
+    // confronta con ciò che è entrato nel periodo.
+    for (const incasso of dati.incassiAbbonamento) riga(incasso.user_id).ricavoAbbonamentoLordo += incasso.importo;
+  } else {
+    // Ricavo DA LISTINO: finché gli incassi non sono registrati, si stima dai prezzi dei piani.
+    const abbonamentiPerUtente = new Map<string, (AbbonamentoRiga & { user_id: string })[]>();
+    for (const a of dati.abbonamenti) abbonamentiPerUtente.set(a.user_id, [...(abbonamentiPerUtente.get(a.user_id) ?? []), a]);
+    for (const [userId, righeUtente] of abbonamentiPerUtente) {
+      const ricavo = ricavoAbbonamentiUtente(righeUtente, periodo, oggi);
+      // un utente senza costi né gare nel periodo compare solo se ha un ricavo
+      if (ricavo.importo > 0 || clienti.has(userId)) {
+        const r = riga(userId);
+        r.ricavoAbbonamentoLordo += ricavo.importo;
+        r.giorniAbbonamento += ricavo.giorni;
+      }
     }
   }
   for (const [userId, a] of piuRecente) {

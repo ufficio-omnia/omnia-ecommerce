@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verifica:livello1": "tsx scripts/verifica-controlli.ts && tsx scripts/verifica-colori.ts && tsx scripts/verifica-economico.ts && tsx scripts/verifica-valori.ts && tsx scripts/verifica-densita.ts && tsx scripts/verifica-prosa.ts && tsx scripts/verifica-espansione.ts && tsx scripts/verifica-organigramma.ts && tsx scripts/verifica-figure.ts && tsx scripts/verifica-profilo-loghi.ts && tsx scripts/verifica-budget.ts && tsx scripts/verifica-livello1.ts && tsx scripts/verifica-compressione.ts && tsx scripts/verifica-console-ordini.ts && tsx scripts/verifica-console-costi.ts",
+    "verifica:livello1": "tsx scripts/verifica-controlli.ts && tsx scripts/verifica-colori.ts && tsx scripts/verifica-economico.ts && tsx scripts/verifica-valori.ts && tsx scripts/verifica-densita.ts && tsx scripts/verifica-prosa.ts && tsx scripts/verifica-espansione.ts && tsx scripts/verifica-organigramma.ts && tsx scripts/verifica-figure.ts && tsx scripts/verifica-profilo-loghi.ts && tsx scripts/verifica-budget.ts && tsx scripts/verifica-livello1.ts && tsx scripts/verifica-compressione.ts && tsx scripts/verifica-console-ordini.ts && tsx scripts/verifica-console-costi.ts && tsx scripts/verifica-console-incassi.ts",
     "verifica:livello2": "tsx scripts/verifica-livello2.ts"
   },
   "dependencies": {

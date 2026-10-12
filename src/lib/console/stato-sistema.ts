@@ -19,6 +19,20 @@ function modalitaStripe(chiave: string | undefined): "live" | "prova" | null {
   return null;
 }
 
+// Provider di modelli con una chiave configurata in QUESTO ambiente. Serve alla
+// pagina Costi per accorgersi di un provider collegato le cui chiamate non
+// vengono registrate in ai_operazioni (e quindi non entrano nei costi). Solo i
+// nomi: delle chiavi si legge unicamente se esistono.
+const PROVIDER_CONOSCIUTI: { provider: string; variabile: string }[] = [
+  { provider: "anthropic", variabile: "ANTHROPIC_API_KEY" },
+  { provider: "voyage", variabile: "VOYAGE_API_KEY" },
+  { provider: "openai", variabile: "OPENAI_API_KEY" },
+];
+
+export function providerConfigurati(): { provider: string; variabile: string }[] {
+  return PROVIDER_CONOSCIUTI.filter((p) => Boolean(process.env[p.variabile]));
+}
+
 // true se la chiave Stripe di OMNIA AI è di prova: abbonamenti e crediti AI sono
 // allora acquisti di prova e un ricavo calcolato su di essi non è denaro reale.
 export function stripeOmniaAiInProva(): boolean {

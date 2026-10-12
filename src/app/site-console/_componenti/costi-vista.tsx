@@ -6,6 +6,7 @@ import type { StatoSalvataggio } from "../azioni/costi";
 import { Badge, Pannello, Tessera } from "./elementi";
 import FormParametri from "./form-parametri";
 import { formattaEuro, formattaIntero, formattaPercentuale, formattaUsd } from "./formati";
+import InterruttoreProva from "./interruttore-prova";
 import SelettorePeriodo, { parametriPeriodo, urlConParametri } from "./selettore-periodo";
 
 // Vista pura della pagina Costi: costo dei modelli per cliente contro quanto il
@@ -48,6 +49,8 @@ export default function CostiVista({
   costi,
   righeOrdinate,
   stripeInProva,
+  includiProva,
+  providerConfigurati,
   azioneParametri,
 }: {
   periodo: Periodo;
@@ -56,6 +59,10 @@ export default function CostiVista({
   righeOrdinate: RigaCliente[];
   // la chiave Stripe di OMNIA AI è di prova: i ricavi AI non sono denaro reale
   stripeInProva: boolean;
+  // i dati di prova (incassi e crediti con Stripe in test) sono inclusi nei ricavi
+  includiProva: boolean;
+  // provider con una chiave configurata in questo ambiente (anthropic, voyage, openai...)
+  providerConfigurati: { provider: string; variabile: string }[];
   azioneParametri: (stato: StatoSalvataggio, dati: FormData) => Promise<StatoSalvataggio>;
 }) {
   const testata = (
@@ -67,8 +74,13 @@ export default function CostiVista({
     </div>
   );
   const selettore = (
-    <div style={{ marginBottom: 14 }}>
-      <SelettorePeriodo percorso="/costi" periodo={periodo} extra={{ ord: ordine === "costo" ? undefined : ordine }} />
+    <div className="cn-periodo" style={{ marginBottom: 14 }}>
+      <SelettorePeriodo percorso="/costi" periodo={periodo} extra={{ ord: ordine === "costo" ? undefined : ordine, prova: includiProva ? "1" : undefined }} />
+      <InterruttoreProva
+        percorso="/costi"
+        parametri={{ ...parametriPeriodo(periodo), ord: ordine === "costo" ? undefined : ordine }}
+        includiProva={includiProva}
+      />
     </div>
   );
 
@@ -106,7 +118,9 @@ export default function CostiVista({
     }),
     { costoUsd: 0, costoEur: 0, gare: 0, ricavoNetto: 0, margine: 0 },
   );
-  const parametriLink = parametriPeriodo(periodo);
+  const parametriLink = { ...parametriPeriodo(periodo), prova: includiProva ? "1" : undefined };
+  const daIncassi = costi.fonteRicavo === "incassi";
+  const providerSenzaChiamate = providerConfigurati.filter((p) => !modelli.some((m) => m.provider === p.provider));
 
   return (
     <>
@@ -118,9 +132,20 @@ export default function CostiVista({
           Mancano i parametri di calcolo nel database: eseguire la migrazione 0077.
         </p>
       )}
-      {stripeInProva && (
+      {!daIncassi && (
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
-          Stripe di OMNIA AI è in modalità di prova: abbonamenti e crediti sono acquisti di prova, quindi ricavo e margine qui sotto non sono denaro reale. I costi dei modelli, invece, sono spesa vera.
+          Ricavo STIMATO dal listino dei piani: gli incassi reali non sono ancora registrati (migrazione 0078, poi backfill ed evento Stripe).
+          {stripeInProva ? " Stripe di OMNIA AI è inoltre in modalità di prova: abbonamenti e crediti non sono denaro reale." : ""} I costi dei modelli, invece, sono spesa vera.
+        </p>
+      )}
+      {daIncassi && includiProva && (
+        <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
+          Dati di prova INCLUSI: il ricavo comprende {formattaIntero(costi.ricaviProva.voci)} pagamenti di prova ({formattaEuro(costi.ricaviProva.lordo)} lordi) di Stripe in modalità test. Non è denaro reale; i costi dei modelli, invece, sono spesa vera.
+        </p>
+      )}
+      {daIncassi && !includiProva && costi.ricaviProva.voci > 0 && (
+        <p className="cn-esito" role="status" style={{ marginBottom: 14 }}>
+          Il ricavo conta solo incassi veri. {formattaIntero(costi.ricaviProva.voci)} pagamenti di prova ({formattaEuro(costi.ricaviProva.lordo)} lordi, Stripe di OMNIA AI è in modalità test) sono esclusi: finché non c&apos;è un pagamento reale il ricavo è zero e i margini sono negativi. Includi i dati di prova per vedere come sarà.
         </p>
       )}
       {senzaCambio && (
@@ -140,9 +165,9 @@ export default function CostiVista({
           }
         />
         <Tessera
-          etichetta="Ricavo da listino, senza IVA"
+          etichetta={daIncassi ? "Ricavo incassato, senza IVA" : "Ricavo da listino, senza IVA"}
           valore={formattaEuro(totali.ricavoNetto)}
-          dettaglio={`IVA ${parametri.aliquotaIva.toLocaleString("it-IT")} % scorporata · abbonamenti da listino, non incassi`}
+          dettaglio={`IVA ${parametri.aliquotaIva.toLocaleString("it-IT")} % scorporata · ${daIncassi ? "incassi di abbonamento e crediti del periodo" : "abbonamenti da listino, non incassi"}`}
         />
         <Tessera
           etichetta="Margine complessivo"
@@ -309,6 +334,43 @@ export default function CostiVista({
               </table>
             </div>
           )}
+          {providerConfigurati.length > 0 && (
+            <div className="cn-scorri" style={{ borderTop: "1px solid var(--cn-bordo)" }}>
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Provider collegato</th>
+                    <th>Chiave</th>
+                    <th>Nel periodo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {providerConfigurati.map((p) => {
+                    const chiamate = modelli.filter((m) => m.provider === p.provider).reduce((s, m) => s + m.operazioni, 0);
+                    return (
+                      <tr key={p.provider}>
+                        <td>{p.provider}</td>
+                        <td className="mono">{p.variabile} presente</td>
+                        <td>
+                          {chiamate > 0 ? (
+                            <Badge tono="ok">{formattaIntero(chiamate)} chiamate registrate</Badge>
+                          ) : (
+                            <Badge tono="avviso">nessuna chiamata registrata</Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {providerSenzaChiamate.length > 0 && (
+            <p className="cn-nota">
+              Attenzione: {providerSenzaChiamate.map((p) => p.provider).join(", ")} {providerSenzaChiamate.length === 1 ? "ha" : "hanno"} la chiave configurata ma nessuna chiamata registrata nel periodo. Se{" "}
+              {providerSenzaChiamate.length === 1 ? "è usato" : "sono usati"} da qualche parte, i suoi costi non entrano in questa pagina: ogni punto del codice che chiama un modello deve registrare i token con <code>logAiUsage</code> (<code>src/lib/ai-usage.ts</code>) e il modello deve avere una tariffa in <code>src/lib/ai-pricing.ts</code>.
+            </p>
+          )}
           <p className="cn-nota">
             Le tariffe stanno in <code>src/lib/ai-pricing.ts</code> (riferite al 2026-09-11) e sono segnate «da verificare» contro il listino: il margine
             vale quanto le tariffe. I token grezzi restano salvati e il costo si può ricalcolare.
@@ -331,7 +393,12 @@ export default function CostiVista({
               <strong>Gare:</strong> gare analizzate nel periodo, incluse nel piano o pagate con crediti (anche se poi cancellate). Costo per gara = costo del cliente ÷ gare del cliente nel periodo.
             </li>
             <li>
-              <strong>Ricavo:</strong> abbonamento <em>da listino</em> (prezzo del piano ÷ 30,4375 × giorni di abbonamento attivo nel periodo; i giorni futuri non contano) più i crediti acquistati nel periodo (importo pagato). Gli abbonamenti creati a mano non generano ricavo. Quando gli incassi reali saranno registrati, l&apos;abbonamento passerà a quelli.
+              <strong>Ricavo:</strong>{" "}
+              {daIncassi ? (
+                <>gli <em>incassi</em> degli abbonamenti registrati nel periodo (fatture Stripe pagate) più i crediti acquistati nel periodo. Il costo di un mese si confronta con ciò che è entrato in quel mese. I pagamenti di prova restano fuori salvo che tu li includa.</>
+              ) : (
+                <>abbonamento <em>da listino</em> (prezzo del piano ÷ 30,4375 × giorni di abbonamento attivo nel periodo; i giorni futuri non contano) più i crediti acquistati nel periodo (importo pagato). Gli abbonamenti creati a mano non generano ricavo. Appena gli incassi reali saranno registrati, l&apos;abbonamento passerà a quelli.</>
+              )}
             </li>
             <li>
               <strong>Margine:</strong> ricavo senza IVA − costo in euro. I costi di piattaforma (knowledge base) non pesano sui singoli clienti ma sul margine complessivo. Le chiamate senza cliente (script di sviluppo, clienti eliminati) si vedono in «Costi non attribuibili» ma restano fuori dal margine e dal costo per gara: sono spesa di sviluppo, non costo di servire i clienti.

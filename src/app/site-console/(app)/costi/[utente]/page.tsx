@@ -15,15 +15,17 @@ export default async function PaginaCostiCliente({
   searchParams,
 }: {
   params: Promise<{ utente: string }>;
-  searchParams: Promise<{ p?: string; dal?: string; al?: string }>;
+  searchParams: Promise<{ p?: string; dal?: string; al?: string; prova?: string }>;
 }) {
   await richiediAdminPagina();
   const { utente } = await params;
   const piattaforma = utente === "piattaforma";
   if (!piattaforma && !UUID.test(utente)) notFound();
 
-  const periodo = calcolaPeriodo(await searchParams, new Date());
-  const dettaglio = await leggiDettaglioCliente(piattaforma ? null : utente, periodo);
+  const parametri = await searchParams;
+  const periodo = calcolaPeriodo(parametri, new Date());
+  const includiProva = parametri.prova === "1";
+  const dettaglio = await leggiDettaglioCliente(piattaforma ? null : utente, periodo, { includiProva });
 
-  return <CostiDettaglioVista periodo={periodo} dettaglio={dettaglio} piattaforma={piattaforma} idUtente={utente} />;
+  return <CostiDettaglioVista periodo={periodo} dettaglio={dettaglio} piattaforma={piattaforma} idUtente={utente} includiProva={includiProva} />;
 }

@@ -21,7 +21,10 @@ export async function logAiUsage(params: {
   userId: string | null;
   garaId: string | null;
   operazione: string;
-  provider: "anthropic" | "voyage";
+  // "openai" è previsto per quando una chiamata a OpenAI verrà aggiunta al codice
+  // (oggi la chiave è configurata ma nessuna funzione la usa): serve anche una
+  // tariffa per il modello in src/lib/ai-pricing.ts, altrimenti il costo resta null.
+  provider: "anthropic" | "voyage" | "openai";
   model: string;
   inputTokens: number | null;
   outputTokens: number | null;

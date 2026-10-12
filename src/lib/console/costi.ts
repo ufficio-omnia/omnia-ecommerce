@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { TARIFFE } from "@/lib/ai-pricing";
+import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import {
   assemblaClienti,
   type AbbonamentoRiga,
@@ -68,6 +69,11 @@ export type CostiLetti =
       // righe di abbonamento create a mano (senza Stripe) e con piano fuori catalogo: non generano ricavo
       abbonamentiManuali: number;
       abbonamentiPianoSconosciuto: number;
+      // da dove viene il ricavo da abbonamento: incassi registrati, oppure listino (tabella incassi non ancora creata)
+      fonteRicavo: "incassi" | "listino";
+      includiProva: boolean;
+      // ricavi di PROVA (Stripe in test) del periodo: esclusi dal ricavo se non richiesti, inclusi se richiesti
+      ricaviProva: { voci: number; lordo: number };
     };
 
 const PEZZO = 100;
@@ -103,11 +109,12 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export async function leggiCosti(periodo: Periodo): Promise<CostiLetti> {
+export async function leggiCosti(periodo: Periodo, opzioni: { includiProva?: boolean } = {}): Promise<CostiLetti> {
+  const includiProva = opzioni.includiProva ?? false;
   const admin = createAdminClient();
   const intervallo = { p_da: periodo.daIso, p_a: periodo.aIso };
 
-  const [costiRpc, gareRpc, modelliRpc, abbonamentiQ, acquistiQ, parametri] = await Promise.all([
+  const [costiRpc, gareRpc, modelliRpc, abbonamentiQ, acquistiQ, incassiQ, parametri] = await Promise.all([
     admin.rpc("console_costi_per_cliente", intervallo),
     admin.rpc("console_gare_consumate", intervallo),
     admin.rpc("console_modelli_in_uso", intervallo),
@@ -115,7 +122,18 @@ export async function leggiCosti(periodo: Periodo): Promise<CostiLetti> {
       .from("subscriptions")
       .select("user_id, plan, status, stripe_subscription_id, created_at, current_period_end, cancel_at_period_end")
       .limit(5000),
-    admin.from("omnia_ai_credit_purchases").select("user_id, importo_centesimi").gte("created_at", periodo.daIso).lt("created_at", periodo.aIso).limit(5000),
+    admin
+      .from("omnia_ai_credit_purchases")
+      .select("user_id, importo_centesimi, stripe_session_id")
+      .gte("created_at", periodo.daIso)
+      .lt("created_at", periodo.aIso)
+      .limit(5000),
+    admin
+      .from("omnia_ai_incassi")
+      .select("user_id, stripe_subscription_id, importo_lordo_centesimi, livemode")
+      .gte("pagato_il", periodo.daIso)
+      .lt("pagato_il", periodo.aIso)
+      .limit(5000),
     leggiParametriCalcolo(),
   ]);
 
@@ -144,7 +162,41 @@ export async function leggiCosti(periodo: Periodo): Promise<CostiLetti> {
     gare_credito: num(r.gare_credito),
   }));
   const abbonamenti = (abbonamentiQ.data ?? []) as (AbbonamentoRiga & { user_id: string })[];
-  const acquisti = ((acquistiQ.data ?? []) as { user_id: string; importo_centesimi: number }[]).map((a) => ({ user_id: a.user_id, importo_centesimi: num(a.importo_centesimi) }));
+
+  // Acquisti di crediti: quelli con sessione Stripe "cs_test_" sono di prova.
+  const acquistiTutti = ((acquistiQ.data ?? []) as { user_id: string; importo_centesimi: number; stripe_session_id: string | null }[]).map((a) => ({
+    user_id: a.user_id,
+    importo_centesimi: num(a.importo_centesimi),
+    prova: (a.stripe_session_id ?? "").startsWith("cs_test_"),
+  }));
+  const acquisti = acquistiTutti.filter((a) => includiProva || !a.prova);
+  const ricaviProva = {
+    voci: acquistiTutti.filter((a) => a.prova).length,
+    lordo: acquistiTutti.filter((a) => a.prova).reduce((s, a) => s + a.importo_centesimi / 100, 0),
+  };
+
+  // Incassi degli abbonamenti: la fonte del ricavo, se la tabella esiste (migrazione 0078).
+  // Un incasso senza utente (evento arrivato prima della subscription) si attribuisce
+  // tramite l'abbonamento Stripe a cui appartiene.
+  let incassiAbbonamento: { user_id: string; importo: number }[] | undefined;
+  if (!incassiQ.error) {
+    const utenteDaAbbonamento = new Map(abbonamenti.filter((a) => a.stripe_subscription_id).map((a) => [a.stripe_subscription_id as string, a.user_id]));
+    const incassi = (incassiQ.data ?? []) as { user_id: string | null; stripe_subscription_id: string | null; importo_lordo_centesimi: number; livemode: boolean }[];
+    incassiAbbonamento = [];
+    for (const i of incassi) {
+      const importo = num(i.importo_lordo_centesimi) / 100;
+      if (!i.livemode) {
+        ricaviProva.voci++;
+        ricaviProva.lordo += importo;
+        if (!includiProva) continue;
+      }
+      const utente = i.user_id ?? (i.stripe_subscription_id ? utenteDaAbbonamento.get(i.stripe_subscription_id) : undefined);
+      if (utente) incassiAbbonamento.push({ user_id: utente, importo });
+    }
+  } else if (!schemaAssente(incassiQ.error)) {
+    console.error("Console: lettura incassi fallita", incassiQ.error.message);
+    return { stato: "errore", messaggio: "Lettura dei dati non riuscita (incassi)." };
+  }
 
   const idCoinvolti = [
     ...costi.filter((c) => c.user_id).map((c) => c.user_id as string),
@@ -162,7 +214,7 @@ export async function leggiCosti(periodo: Periodo): Promise<CostiLetti> {
   }
 
   const { righe, nonAttribuiti, totali } = assemblaClienti(
-    { costi, gare, abbonamenti, acquisti, identita },
+    { costi, gare, abbonamenti, acquisti, identita, incassiAbbonamento },
     parametri,
     periodo,
     new Date(),
@@ -186,6 +238,9 @@ export async function leggiCosti(periodo: Periodo): Promise<CostiLetti> {
     modelli,
     abbonamentiManuali: abbonamenti.filter((a) => !a.stripe_subscription_id).length,
     abbonamentiPianoSconosciuto: abbonamenti.filter((a) => a.stripe_subscription_id && !["starter", "professional", "enterprise"].includes(a.plan.trim().toLowerCase())).length,
+    fonteRicavo: incassiAbbonamento ? "incassi" : "listino",
+    includiProva,
+    ricaviProva,
   };
 }
 
@@ -214,11 +269,13 @@ export type DettaglioCliente =
       riga: RigaCliente | null;
       operazioni: OperazioneCosto[];
       gare: GaraConsumata[];
+      fonteRicavo: "incassi" | "listino";
+      includiProva: boolean;
     };
 
 // userId nullo = costi senza cliente (piattaforma e non attribuiti).
-export async function leggiDettaglioCliente(userId: string | null, periodo: Periodo): Promise<DettaglioCliente> {
-  const costi = await leggiCosti(periodo);
+export async function leggiDettaglioCliente(userId: string | null, periodo: Periodo, opzioni: { includiProva?: boolean } = {}): Promise<DettaglioCliente> {
+  const costi = await leggiCosti(periodo, opzioni);
   if (costi.stato !== "ok") return costi;
 
   const admin = createAdminClient();
@@ -247,6 +304,8 @@ export async function leggiDettaglioCliente(userId: string | null, periodo: Peri
     parametri: costi.parametri,
     identita: (userId ? identita.get(userId) : undefined) ?? { email: null, ragioneSociale: null },
     riga: userId ? (costi.righe.find((r) => r.userId === userId) ?? null) : null,
+    fonteRicavo: costi.fonteRicavo,
+    includiProva: costi.includiProva,
     operazioni: ((operazioniRpc.data ?? []) as Record<string, unknown>[]).map((r) => ({
       operazione: String(r.operazione),
       provider: String(r.provider),

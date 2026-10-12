@@ -38,13 +38,15 @@ export default function CostiDettaglioVista({
   dettaglio,
   piattaforma,
   idUtente,
+  includiProva,
 }: {
   periodo: Periodo;
   dettaglio: DettaglioCliente;
   piattaforma: boolean;
   idUtente: string;
+  includiProva: boolean;
 }) {
-  const parametriLink = parametriPeriodo(periodo);
+  const parametriLink = { ...parametriPeriodo(periodo), prova: includiProva ? "1" : undefined };
   const indietro = urlConParametri("/costi", parametriLink);
   const titolo = piattaforma ? "Costi senza cliente" : dettaglio.stato === "ok" ? (dettaglio.identita.email ?? "Cliente eliminato") : "Cliente";
 
@@ -63,7 +65,7 @@ export default function CostiDettaglioVista({
         </div>
       </div>
       <div style={{ marginBottom: 14 }}>
-        <SelettorePeriodo percorso={`/costi/${idUtente}`} periodo={periodo} />
+        <SelettorePeriodo percorso={`/costi/${idUtente}`} periodo={periodo} extra={{ prova: includiProva ? "1" : undefined }} />
       </div>
     </>
   );
@@ -106,7 +108,7 @@ export default function CostiDettaglioVista({
           <>
             <Tessera etichetta="Gare consumate" valore={formattaIntero(riga.gare)} dettaglio={`${riga.gareDaPiano} dal piano · ${riga.gareDaCredito} con crediti`} />
             <Tessera etichetta="Costo per gara" valore={riga.costoPerGaraEur === null ? "—" : formattaEuro(riga.costoPerGaraEur)} dettaglio={riga.gare === 0 && riga.costoUsd > 0 ? "Costo senza gare consumate nel periodo" : "Costo del periodo ÷ gare del periodo"} />
-            <Tessera etichetta="Ricavo netto da listino" valore={formattaEuro(riga.ricavoNetto)} dettaglio={`Lordo ${formattaEuro(riga.ricavoLordo)}, IVA ${parametri.aliquotaIva.toLocaleString("it-IT")} % scorporata`} />
+            <Tessera etichetta={dettaglio.fonteRicavo === "incassi" ? "Ricavo netto incassato" : "Ricavo netto da listino"} valore={formattaEuro(riga.ricavoNetto)} dettaglio={`Lordo ${formattaEuro(riga.ricavoLordo)}, IVA ${parametri.aliquotaIva.toLocaleString("it-IT")} % scorporata`} />
             <Tessera
               etichetta="Margine"
               valore={riga.margine === null ? "—" : formattaEuro(riga.margine)}
@@ -125,10 +127,12 @@ export default function CostiDettaglioVista({
                 <tbody>
                   <tr>
                     <td>
-                      Abbonamento da listino
+                      {dettaglio.fonteRicavo === "incassi" ? "Abbonamento: incassi del periodo" : "Abbonamento da listino"}
                       {riga?.piano && (
                         <small style={{ display: "block", color: "var(--cn-fioco)" }}>
-                          piano {riga.abbonamentoManuale ? `${riga.piano} (creato a mano: nessun ricavo)` : riga.piano} · {riga.giorniAbbonamento} giorni attivi nel periodo
+                          piano {riga.abbonamentoManuale ? `${riga.piano} (creato a mano: nessun incasso)` : riga.piano}
+                          {dettaglio.fonteRicavo === "listino" ? ` · ${riga.giorniAbbonamento} giorni attivi nel periodo` : ""}
+                          {dettaglio.includiProva ? " · dati di prova inclusi" : ""}
                         </small>
                       )}
                     </td>
