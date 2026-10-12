@@ -1,4 +1,5 @@
 import type { Periodo } from "@/lib/console/periodo";
+import type { SuggerimentoProva } from "@/lib/console/prova";
 import type { RicaviLetti } from "@/lib/console/ricavi";
 import { Badge, Pannello, Tessera } from "./elementi";
 import { formattaData, formattaEuro, formattaIntero } from "./formati";
@@ -17,10 +18,13 @@ export default function RicaviVista({
   periodo,
   ricavi,
   includiProva,
+  provaAltrove,
 }: {
   periodo: Periodo;
   ricavi: RicaviLetti;
   includiProva: boolean;
+  // dati di prova inclusi ma assenti in questo periodo, presenti in altri
+  provaAltrove: SuggerimentoProva | null;
 }) {
   const parametriControlli = { ...parametriPeriodo(periodo), prova: includiProva ? "1" : undefined };
 
@@ -68,6 +72,11 @@ export default function RicaviVista({
       {!dataPagamentoDisponibile && (
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
           La data di pagamento degli ordini non è disponibile: eseguire la migrazione 0075. Si usa la data dell&apos;ordine.
+        </p>
+      )}
+      {provaAltrove && (
+        <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
+          Dati di prova inclusi, ma in questo periodo non ce ne sono. I {formattaIntero(provaAltrove.voci)} pagamenti di prova esistenti vanno dal {formattaData(provaAltrove.da)} al {formattaData(provaAltrove.a)}: scegli un periodo che li comprenda, per esempio «Anno».
         </p>
       )}
       {riepilogo.prova.voci > 0 && (

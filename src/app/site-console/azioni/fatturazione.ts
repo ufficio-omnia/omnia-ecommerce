@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediAdminAzione } from "@/lib/console/accesso";
-import { STATI_FATTURA, leggiFiltroFattura, type StatoFattura } from "@/lib/console/fatturazione-calcoli";
+import { STATI_FATTURA, filtroPredefinito, leggiFiltroFattura, type StatoFattura } from "@/lib/console/fatturazione-calcoli";
 import { dataRoma } from "@/lib/console/giorni-lavorativi";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 
@@ -86,9 +86,11 @@ async function applica(chiavi: string[], v: Valori, userId: string): Promise<num
 function tornaAllElenco(aggiornate: number, stato: StatoFattura, formData: FormData): never {
   revalidatePath("/site-console", "layout");
   const parametri = new URLSearchParams({ esito: "aggiornate", n: String(aggiornate), nuovo: stato });
-  const filtro = leggiFiltroFattura(String(formData.get("filtro") ?? ""));
-  if (filtro !== "da_fatturare") parametri.set("stato", filtro);
-  if (formData.get("prova") === "1") parametri.set("prova", "1");
+  const includiProva = formData.get("prova") === "1";
+  // si torna alla scheda in cui si stava lavorando: l'indicazione si omette solo se è quella predefinita
+  const filtro = leggiFiltroFattura(String(formData.get("filtro") ?? ""), includiProva);
+  if (filtro !== filtroPredefinito(includiProva)) parametri.set("stato", filtro);
+  if (includiProva) parametri.set("prova", "1");
   redirect(`/fatturazione?${parametri.toString()}`);
 }
 

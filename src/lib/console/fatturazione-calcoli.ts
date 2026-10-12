@@ -203,8 +203,15 @@ export function contaPerStato(righe: RigaFatturazione[]): Record<StatoFattura | 
 
 export type FiltroFattura = StatoFattura | "tutte";
 
-export function leggiFiltroFattura(valore: string | undefined): FiltroFattura {
-  return valore === "fatturata" || valore === "non_dovuta" || valore === "tutte" ? valore : "da_fatturare";
+// La scheda che si apre se l'URL non ne indica una. Con i dati di prova INCLUSI è
+// «Tutte»: i pagamenti di prova nascono «non dovuti», quindi nella scheda «Da
+// fatturare» non comparirebbero mai e premere «Inclusi» sembrerebbe non fare nulla.
+export function filtroPredefinito(includiProva: boolean): FiltroFattura {
+  return includiProva ? "tutte" : "da_fatturare";
+}
+
+export function leggiFiltroFattura(valore: string | undefined, includiProva = false): FiltroFattura {
+  return valore === "da_fatturare" || valore === "fatturata" || valore === "non_dovuta" || valore === "tutte" ? valore : filtroPredefinito(includiProva);
 }
 
 // ───── Testo da copiare nel programma di fatturazione ─────

@@ -5,7 +5,8 @@ import type { Periodo } from "@/lib/console/periodo";
 import type { StatoSalvataggio } from "../azioni/costi";
 import { Badge, Pannello, Tessera } from "./elementi";
 import FormParametri from "./form-parametri";
-import { formattaEuro, formattaIntero, formattaPercentuale, formattaUsd } from "./formati";
+import type { SuggerimentoProva } from "@/lib/console/prova";
+import { formattaData, formattaEuro, formattaIntero, formattaPercentuale, formattaUsd } from "./formati";
 import InterruttoreProva from "./interruttore-prova";
 import SelettorePeriodo, { parametriPeriodo, urlConParametri } from "./selettore-periodo";
 
@@ -51,6 +52,7 @@ export default function CostiVista({
   stripeInProva,
   includiProva,
   providerConfigurati,
+  provaAltrove,
   azioneParametri,
 }: {
   periodo: Periodo;
@@ -63,6 +65,8 @@ export default function CostiVista({
   includiProva: boolean;
   // provider con una chiave configurata in questo ambiente (anthropic, voyage, openai...)
   providerConfigurati: { provider: string; variabile: string }[];
+  // dati di prova inclusi ma assenti in questo periodo, presenti in altri
+  provaAltrove: SuggerimentoProva | null;
   azioneParametri: (stato: StatoSalvataggio, dati: FormData) => Promise<StatoSalvataggio>;
 }) {
   const testata = (
@@ -138,7 +142,12 @@ export default function CostiVista({
           {stripeInProva ? " Stripe di OMNIA AI è inoltre in modalità di prova: abbonamenti e crediti non sono denaro reale." : ""} I costi dei modelli, invece, sono spesa vera.
         </p>
       )}
-      {daIncassi && includiProva && (
+      {provaAltrove && (
+        <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
+          Dati di prova inclusi, ma in questo periodo non ci sono pagamenti di prova, quindi il ricavo è zero. I {formattaIntero(provaAltrove.voci)} pagamenti di prova esistenti vanno dal {formattaData(provaAltrove.da)} al {formattaData(provaAltrove.a)}: scegli un periodo che li comprenda, per esempio «Anno».
+        </p>
+      )}
+      {daIncassi && includiProva && !provaAltrove && (
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
           Dati di prova INCLUSI: il ricavo comprende {formattaIntero(costi.ricaviProva.voci)} pagamenti di prova ({formattaEuro(costi.ricaviProva.lordo)} lordi) di Stripe in modalità test. Non è denaro reale; i costi dei modelli, invece, sono spesa vera.
         </p>

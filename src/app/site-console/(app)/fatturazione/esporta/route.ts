@@ -10,8 +10,9 @@ export async function GET(richiesta: Request) {
   await richiediAdminPagina();
 
   const url = new URL(richiesta.url);
-  const filtro = leggiFiltroFattura(url.searchParams.get("stato") ?? undefined);
-  const dati = await leggiFatturazione({ includiProva: url.searchParams.get("prova") === "1" });
+  const includiProva = url.searchParams.get("prova") === "1";
+  const filtro = leggiFiltroFattura(url.searchParams.get("stato") ?? undefined, includiProva);
+  const dati = await leggiFatturazione({ includiProva });
   if (dati.stato === "errore") return new Response(dati.messaggio, { status: 500 });
 
   const righe = filtro === "tutte" ? dati.righe : dati.righe.filter((r) => r.stato === filtro);

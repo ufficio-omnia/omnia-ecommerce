@@ -3,6 +3,7 @@ import { richiediAdminPagina } from "@/lib/console/accesso";
 import { leggiCosti } from "@/lib/console/costi";
 import { leggiOrdineCosti, ordinaClienti } from "@/lib/console/costi-calcoli";
 import { calcolaPeriodo } from "@/lib/console/periodo";
+import { leggiRiepilogoProva, suggerimentoProva } from "@/lib/console/prova";
 import { providerConfigurati, stripeOmniaAiInProva } from "@/lib/console/stato-sistema";
 import { salvaParametri } from "../../azioni/costi";
 import CostiVista from "../../_componenti/costi-vista";
@@ -20,6 +21,11 @@ export default async function PaginaCosti({
   const ordine = leggiOrdineCosti(parametri.ord);
   const includiProva = parametri.prova === "1";
   const costi = await leggiCosti(periodo, { includiProva });
+  const provaAltrove = suggerimentoProva({
+    includiProva,
+    vociNelPeriodo: costi.stato === "ok" ? costi.ricaviProva.voci : 0,
+    riepilogo: await leggiRiepilogoProva(),
+  });
 
   return (
     <CostiVista
@@ -30,6 +36,7 @@ export default async function PaginaCosti({
       stripeInProva={stripeOmniaAiInProva()}
       includiProva={includiProva}
       providerConfigurati={providerConfigurati()}
+      provaAltrove={provaAltrove}
       azioneParametri={salvaParametri}
     />
   );

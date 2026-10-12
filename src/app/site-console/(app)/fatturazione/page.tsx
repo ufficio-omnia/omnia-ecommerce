@@ -21,7 +21,7 @@ export default async function PaginaFatturazione({
   return (
     <FatturazioneVista
       dati={dati}
-      filtro={leggiFiltroFattura(parametri.stato)}
+      filtro={leggiFiltroFattura(parametri.stato, includiProva)}
       includiProva={includiProva}
       esito={{ esito: parametri.esito, n: parametri.n, nuovo: parametri.nuovo }}
       oggi={dataRoma(new Date())}

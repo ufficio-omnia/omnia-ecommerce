@@ -13,6 +13,7 @@ import {
   csvCella,
   descrizioneCrediti,
   descrizioneIncasso,
+  filtroPredefinito,
   giorniDallIncasso,
   leggiFiltroFattura,
   risolviDatiFatturazione,
@@ -20,6 +21,7 @@ import {
   type RigaFatturazione,
 } from "../src/lib/console/fatturazione-calcoli";
 import { calcolaPeriodo } from "../src/lib/console/periodo";
+import { suggerimentoProva } from "../src/lib/console/prova";
 
 const fallimenti: string[] = [];
 function atteso(nome: string, ok: boolean, dettaglio = "") {
@@ -72,6 +74,17 @@ uguale("descrizione di un conguaglio senza piano noto", descrizioneIncasso("cong
 uguale("descrizione dei crediti", [descrizioneCrediti("singola", 1), descrizioneCrediti("pacchetto5", 5)], ["Credito OMNIA AI (1 gara)", "Pacchetto 5 gare OMNIA AI"]);
 uguale("conteggio per stato", contaPerStato([riga(), riga({ stato: "fatturata" }), riga({ stato: "non_dovuta" }), riga({ stato: "da_fatturare" })]), { da_fatturare: 2, fatturata: 1, non_dovuta: 1, tutte: 4 });
 uguale("filtro: predefinito 'da fatturare', valori sconosciuti ignorati", [leggiFiltroFattura(undefined), leggiFiltroFattura("fatturata"), leggiFiltroFattura("tutte"), leggiFiltroFattura("; drop table")], ["da_fatturare", "fatturata", "tutte", "da_fatturare"]);
+// Difetto segnalato dall'utente: «anche se premo Inclusi non vedo niente». I pagamenti di prova
+// nascono 'non dovuti', quindi la scheda predefinita «Da fatturare» restava vuota.
+uguale("dati di prova inclusi: la scheda predefinita diventa «Tutte», così i pagamenti di prova (non dovuti) si vedono", [leggiFiltroFattura(undefined, true), leggiFiltroFattura("", true), filtroPredefinito(true), filtroPredefinito(false)], ["tutte", "tutte", "tutte", "da_fatturare"]);
+uguale("una scheda scelta a mano si rispetta anche con la prova inclusa", [leggiFiltroFattura("da_fatturare", true), leggiFiltroFattura("non_dovuta", true), leggiFiltroFattura("fatturata", false)], ["da_fatturare", "non_dovuta", "fatturata"]);
+{
+  const soloProva = [riga({ stato: "non_dovuta", prova: true }), riga({ stato: "non_dovuta", prova: true }), riga({ stato: "non_dovuta", prova: true })];
+  const scheda = leggiFiltroFattura(undefined, true);
+  const mostrate = scheda === "tutte" ? soloProva : soloProva.filter((r) => r.stato === scheda);
+  uguale("con tre pagamenti di prova non dovuti e la prova inclusa, la pagina ne mostra tre (non zero)", mostrate.length, 3);
+  uguale("con la prova nascosta la stessa situazione mostra «niente da fatturare»", soloProva.filter((r) => !r.prova && r.stato === leggiFiltroFattura(undefined, false)).length, 0);
+}
 uguale("giorni dall'incasso: giorni di calendario di Roma", [giorniDallIncasso("2026-10-01T10:00:00Z", new Date("2026-10-12T10:00:00Z")), giorniDallIncasso("2026-10-01T22:30:00Z", new Date("2026-10-02T10:00:00Z"))], [11, 0]);
 uguale("l'incasso di oggi ha 0 giorni e un incasso futuro non va sotto zero", [giorniDallIncasso("2026-10-12T08:00:00Z", new Date("2026-10-12T10:00:00Z")), giorniDallIncasso("2026-10-20T08:00:00Z", new Date("2026-10-12T10:00:00Z"))], [0, 0]);
 atteso(`il termine indicativo è ${GIORNI_TERMINE_INDICATIVO} giorni`, GIORNI_TERMINE_INDICATIVO === 12);
@@ -121,6 +134,20 @@ const crConProva = calcolaCrediti({ acquisti: [{ user_id: "U2", crediti: 1, impo
 uguale("con i dati di prova inclusi U2 compare, marcato come prova", [crConProva.righe.length, crConProva.righe[0].prova], [1, true]);
 uguale("ordinamento per saldo: dal più alto", ordinaCrediti(cr.righe, "saldo").map((r) => r.userId), ["U1", "U3"]);
 uguale("ordinamento per cliente: alfabetico per email", ordinaCrediti(cr.righe, "cliente").map((r) => r.email), ["tre@example.com", "uno@example.com"]);
+
+console.log("--- Dati di prova: dove guardare ---");
+const riepilogoProva = { voci: 3, da: "2026-09-12", a: "2026-09-20" };
+uguale("prova inclusa ma nessun pagamento di prova nel periodo, e ce ne sono altrove: suggerimento con le date", suggerimentoProva({ includiProva: true, vociNelPeriodo: 0, riepilogo: riepilogoProva }), { voci: 3, da: "2026-09-12", a: "2026-09-20" });
+uguale("prova inclusa e il periodo ne contiene: nessun suggerimento", suggerimentoProva({ includiProva: true, vociNelPeriodo: 2, riepilogo: riepilogoProva }), null);
+uguale("prova nascosta: nessun suggerimento", suggerimentoProva({ includiProva: false, vociNelPeriodo: 0, riepilogo: riepilogoProva }), null);
+uguale("nessun pagamento di prova in tutto: nessun suggerimento", suggerimentoProva({ includiProva: true, vociNelPeriodo: 0, riepilogo: { voci: 0, da: null, a: null } }), null);
+const paginaRicavi = leggi("src/app/site-console/(app)/ricavi/page.tsx");
+const paginaCosti = leggi("src/app/site-console/(app)/costi/page.tsx");
+atteso("Ricavi e Costi suggeriscono dove sono i dati di prova quando il periodo non ne ha", /suggerimentoProva\(/.test(paginaRicavi) && /suggerimentoProva\(/.test(paginaCosti) && /provaAltrove/.test(leggi("src/app/site-console/_componenti/ricavi-vista.tsx")) && /provaAltrove/.test(leggi("src/app/site-console/_componenti/costi-vista.tsx")));
+const paginaFatt = leggi("src/app/site-console/(app)/fatturazione/page.tsx");
+atteso("la pagina «Da fatturare» passa lo stato della prova alla scelta della scheda", /leggiFiltroFattura\(parametri\.stato, includiProva\)/.test(paginaFatt));
+atteso("dopo un aggiornamento si torna alla scheda in cui si lavorava (predefinita legata alla prova)", /filtro !== filtroPredefinito\(includiProva\)/.test(leggi("src/app/site-console/azioni/fatturazione.ts")));
+atteso("il collegamento «Esporta CSV» porta sempre la scheda esplicita", /urlConParametri\("\/fatturazione\/esporta", \{ stato: filtro, prova:/.test(leggi("src/app/site-console/_componenti/fatturazione-vista.tsx")));
 
 console.log("--- Migrazione 0079 ---");
 const sql = leggi("supabase/migrations/0079_omnia_ai_stato_fattura.sql");

@@ -3,6 +3,7 @@ import type { FatturazioneLetta } from "@/lib/console/fatturazione";
 import {
   GIORNI_TERMINE_INDICATIVO,
   contaPerStato,
+  filtroPredefinito,
   testoDaCopiare,
   type FiltroFattura,
   type RigaFatturazione,
@@ -112,7 +113,9 @@ export default function FatturazioneVista({
   const oltreTermine = daFatturare.filter((r) => r.giorni > GIORNI_TERMINE_INDICATIVO).length;
   const incompleti = daFatturare.filter((r) => r.dati.mancanti.length > 0).length;
   const messaggioEsito = testoEsito(esito);
-  const parametriControlli = { stato: filtro === "da_fatturare" ? undefined : filtro };
+  // la scheda si porta nell'URL solo se non è quella che si aprirebbe comunque
+  const predefinito = filtroPredefinito(includiProva);
+  const parametriControlli = { stato: filtro === predefinito ? undefined : filtro };
 
   return (
     <>
@@ -143,7 +146,7 @@ export default function FatturazioneVista({
       )}
       {includiProva && (
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
-          Dati di prova INCLUSI: i pagamenti di prova compaiono come «non dovuta»; non vanno fatturati.
+          Dati di prova INCLUSI: i pagamenti di prova compaiono come «non dovuta», nelle schede «Non dovute» e «Tutte» (non in «Da fatturare»). Non vanno fatturati.
         </p>
       )}
 
@@ -175,7 +178,7 @@ export default function FatturazioneVista({
             {TAB.map((t) => (
               <Link
                 key={t.valore}
-                href={urlConParametri("/fatturazione", { stato: t.valore === "da_fatturare" ? undefined : t.valore, prova: includiProva ? "1" : undefined })}
+                href={urlConParametri("/fatturazione", { stato: t.valore === predefinito ? undefined : t.valore, prova: includiProva ? "1" : undefined })}
                 className={filtro === t.valore ? "attivo" : undefined}
               >
                 {t.etichetta} <span>{conteggi[t.valore]}</span>
@@ -184,7 +187,7 @@ export default function FatturazioneVista({
           </nav>
           <div className="cn-azione">
             <InterruttoreProva percorso="/fatturazione" parametri={parametriControlli} includiProva={includiProva} />
-            <a className="cn-btn piccolo" href={urlConParametri("/fatturazione/esporta", { ...parametriControlli, prova: includiProva ? "1" : undefined })}>
+            <a className="cn-btn piccolo" href={urlConParametri("/fatturazione/esporta", { stato: filtro, prova: includiProva ? "1" : undefined })}>
               Esporta CSV
             </a>
           </div>
