@@ -127,16 +127,47 @@ function EvidenzaBonifici({ bonifici }: { bonifici: RiepilogoBonifici }) {
   );
 }
 
+// Secondo promemoria con una scadenza (indicativa): gli incassi veri ancora da fatturare.
+function EvidenzaDaFatturare({ daFatturare }: { daFatturare: { n: number; lordo: number } | null }) {
+  // null: lo stato di fatturazione non è disponibile (migrazione 0079 da eseguire)
+  if (daFatturare === null) return null;
+  const tono = daFatturare.n === 0 ? "ok" : "avviso";
+  return (
+    <section className={`cn-evidenza ${tono}`} aria-label="Da fatturare" style={{ marginTop: 14 }}>
+      <div className="cn-evidenza-testa" style={{ padding: "12px 20px" }}>
+        <div className="cn-evidenza-numero">
+          <span style={{ fontSize: 36 }}>{daFatturare.n}</span>
+          <small>{daFatturare.n === 1 ? "incasso da fatturare" : "incassi da fatturare"}</small>
+        </div>
+        <div className="cn-evidenza-dati">
+          {daFatturare.n === 0 ? (
+            <span>Tutto fatturato (o solo pagamenti di prova).</span>
+          ) : (
+            <span>
+              <strong>{formattaEuro(daFatturare.lordo)}</strong> lordi · le ricevute di Stripe non sono fatture elettroniche
+            </span>
+          )}
+        </div>
+        <Link href="/fatturazione" className="cn-btn primario">
+          Apri l&apos;elenco
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export default function PanoramicaVista({
   scadeIl,
   scadeTraMs,
   bonifici,
+  daFatturare,
   registro,
   sistema,
 }: {
   scadeIl: Date;
   scadeTraMs: number;
   bonifici: RiepilogoBonifici;
+  daFatturare: { n: number; lordo: number } | null;
   registro: SintesiRegistro;
   sistema: StatoSistema;
 }) {
@@ -152,6 +183,7 @@ export default function PanoramicaVista({
       </div>
 
       <EvidenzaBonifici bonifici={bonifici} />
+      <EvidenzaDaFatturare daFatturare={daFatturare} />
 
       <div className="cn-tessere" style={{ marginTop: 14 }}>
         <Tessera etichetta="Sessione" valore={formattaDurata(scadeTraMs)} dettaglio={`Scade il ${formattaDataOra(scadeIl)}`} />

@@ -926,6 +926,79 @@ a.cn-nav-voce:hover {
   vertical-align: baseline;
 }
 
+/* ───── Fatturazione: dati del cliente, moduli di stato, azioni multiple ───── */
+
+.cn-dati-fatt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 230px;
+  max-width: 300px;
+  font-size: 12px;
+  color: var(--cn-secondario);
+}
+
+.cn-dati-fatt strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--cn-testo);
+}
+
+.cn-dati-badge {
+  margin-top: 3px;
+}
+
+.cn-modulo-riga > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.cn-modulo-riga > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Il modulo si apre DENTRO la cella (non come riquadro sovrapposto): il contenitore a
+   scorrimento della tabella taglierebbe un elemento posizionato in modo assoluto. */
+.cn-modulo-riga-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 230px;
+  margin-top: 6px;
+  padding: 12px;
+  background: var(--cn-rilievo);
+  border: 1px solid var(--cn-bordo-forte);
+  border-radius: 8px;
+}
+
+.cn-modulo-riga-corpo .cn-input {
+  height: 30px;
+  font-size: 12.5px;
+}
+
+.cn-multiplo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--cn-pannello);
+  border: 1px solid var(--cn-bordo);
+  border-radius: 8px;
+}
+
+.cn-multiplo .cn-input {
+  width: auto;
+  height: 28px;
+  font-size: 12.5px;
+}
+
+.cn-nota-inline {
+  color: var(--cn-fioco);
+  font-size: 11.5px;
+}
+
 /* ───── Pagine di accesso (senza barra laterale) ───── */
 
 .cn-accesso {

@@ -5,7 +5,9 @@ import { NAVIGAZIONE } from "./navigazione";
 // Il pathname lo passa il wrapper client (barra-laterale.tsx); l'azione di
 // uscita arriva come prop, così la vista si può anche renderizzare fuori da
 // Next (anteprima statica dei componenti, senza sessione).
-export type ConteggiBarra = { bonifici: number; bonificiScaduti: number };
+// Cose che aspettano un'azione dell'admin, mostrate accanto alla voce da qualunque pagina.
+// daFatturare: incassi veri non ancora fatturati (assente se la migrazione 0079 non c'è).
+export type ConteggiBarra = { bonifici: number; bonificiScaduti: number; daFatturare?: number };
 
 export default function BarraLateraleVista({
   email,
@@ -48,6 +50,11 @@ export default function BarraLateraleVista({
                   aria-current={attiva ? "page" : undefined}
                 >
                   {voce.etichetta}
+                  {voce.href === "/fatturazione" && conteggi && (conteggi.daFatturare ?? 0) > 0 && (
+                    <span className="cn-conta avviso" title={`${conteggi.daFatturare} da fatturare`}>
+                      {conteggi.daFatturare}
+                    </span>
+                  )}
                   {voce.href === "/bonifici" && conteggi && conteggi.bonifici > 0 && (
                     <span
                       className={`cn-conta ${conteggi.bonificiScaduti > 0 ? "errore" : "avviso"}`}

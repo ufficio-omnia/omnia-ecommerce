@@ -1,4 +1,5 @@
 import { richiediAdminPagina } from "@/lib/console/accesso";
+import { contaDaFatturare } from "@/lib/console/fatturazione";
 import { leggiBonificiInAttesa } from "@/lib/console/ordini";
 import BarraLaterale from "../_componenti/barra-laterale";
 
@@ -8,16 +9,21 @@ import BarraLaterale from "../_componenti/barra-laterale";
 // richiediAdminPagina() per conto proprio.
 export default async function GuscioConsole({ children }: { children: React.ReactNode }) {
   const sessione = await richiediAdminPagina();
-  // La barra mostra quanti bonifici aspettano: l'unica cosa che richiede
-  // un'azione con una scadenza deve vedersi da qualunque pagina. Il conteggio
-  // si aggiorna quando il layout si ricarica (dopo ogni azione) o a ogni accesso.
-  const bonifici = await leggiBonificiInAttesa();
+  // La barra mostra le cose che aspettano un'azione dell'admin: i bonifici da
+  // confermare (con una scadenza) e gli incassi da fatturare. Si vedono da
+  // qualunque pagina; il conteggio si aggiorna quando il layout si ricarica
+  // (dopo ogni azione) o a ogni accesso.
+  const [bonifici, daFatturare] = await Promise.all([leggiBonificiInAttesa(), contaDaFatturare()]);
 
   return (
     <div className="cn-shell">
       <BarraLaterale
         email={sessione.email}
-        conteggi={bonifici.errore ? undefined : { bonifici: bonifici.totale, bonificiScaduti: bonifici.scaduti }}
+        conteggi={
+          bonifici.errore
+            ? undefined
+            : { bonifici: bonifici.totale, bonificiScaduti: bonifici.scaduti, daFatturare: daFatturare?.n }
+        }
       />
       <main className="cn-principale">{children}</main>
     </div>

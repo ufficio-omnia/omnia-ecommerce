@@ -78,7 +78,7 @@ export type CostiLetti =
 
 const PEZZO = 100;
 
-async function inBlocchi<T>(ids: string[], leggi: (blocco: string[]) => PromiseLike<{ data: T[] | null; error: Errore }>): Promise<T[]> {
+export async function inBlocchi<T>(ids: string[], leggi: (blocco: string[]) => PromiseLike<{ data: T[] | null; error: Errore }>): Promise<T[]> {
   const risultato: T[] = [];
   for (let i = 0; i < ids.length; i += PEZZO) {
     const { data, error } = await leggi(ids.slice(i, i + PEZZO));
