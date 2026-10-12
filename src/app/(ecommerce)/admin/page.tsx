@@ -50,7 +50,7 @@ export default async function AdminPage() {
     supabase
       .from("orders")
       .select(
-        "id, user_id, status, payment_method, total_amount, created_at, users(email), products(title), invoices(id)",
+        "id, user_id, status, payment_method, total_amount, created_at, users!user_id(email), products(title), invoices(id)",
       )
       .order("created_at", { ascending: false }),
   ]);

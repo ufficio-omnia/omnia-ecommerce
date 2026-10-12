@@ -251,7 +251,7 @@ export async function uploadInvoice(formData: FormData) {
 
   const { data: order } = await admin
     .from("orders")
-    .select("users(email)")
+    .select("users!user_id(email)")
     .eq("id", orderId)
     .single<{ users: { email: string } | null }>();
 

@@ -1,6 +1,8 @@
 // Autotest della console: giorni lavorativi e scadenza dei bonifici, e conferma
 // di un bonifico. Gratuito, nessun database né rete (un client Supabase finto
 // registra le chiamate): gira nel livello 1, quindi in prebuild.
+import fs from "fs";
+import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   aggiungiGiorniLavorativi,
@@ -19,6 +21,25 @@ function atteso(nome: string, ok: boolean, dettaglio = "") {
 function uguale<T>(nome: string, ottenuto: T, previsto: T) {
   atteso(nome, JSON.stringify(ottenuto) === JSON.stringify(previsto), `ottenuto ${JSON.stringify(ottenuto)}, previsto ${JSON.stringify(previsto)}`);
 }
+
+console.log("--- Embed tra ordini e utenti ---");
+// orders ha due chiavi verso users (user_id e, se presente, paid_by): un select
+// con users(email) senza suggerimento fallisce con PGRST201 ("more than one
+// relationship"). Ogni embed deve scrivere users!user_id(...). Difetto reale, già
+// capitato: dopo la migrazione 0075 il vecchio pannello admin mostrava zero ordini.
+function fileSorgente(cartella: string): string[] {
+  return fs.readdirSync(cartella, { withFileTypes: true }).flatMap((voce) => {
+    const percorso = path.join(cartella, voce.name);
+    if (voce.isDirectory()) return fileSorgente(percorso);
+    return /\.(ts|tsx)$/.test(voce.name) ? [percorso] : [];
+  });
+}
+const senzaSuggerimento = fileSorgente(path.join(__dirname, "..", "src")).filter((f) => /[\s,"'`]users\(/.test(fs.readFileSync(f, "utf-8")));
+atteso(
+  "nessun select incrocia orders e users senza indicare la chiave (users!user_id)",
+  senzaSuggerimento.length === 0,
+  senzaSuggerimento.map((f) => path.relative(path.join(__dirname, ".."), f)).join(", "),
+);
 
 console.log("--- Giorni lavorativi ---");
 uguale("sabato e domenica non sono lavorativi", [eGiornoLavorativo("2026-10-10"), eGiornoLavorativo("2026-10-11")], [false, false]);

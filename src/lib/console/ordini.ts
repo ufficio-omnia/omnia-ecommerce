@@ -71,7 +71,7 @@ export const leggiBonificiInAttesa = cache(async (): Promise<RiepilogoBonifici> 
 
   const { data, error } = await admin
     .from("orders")
-    .select("id, user_id, total_amount, created_at, users(email), products(title)")
+    .select("id, user_id, total_amount, created_at, users!user_id(email), products(title)")
     .eq("status", "in_attesa")
     .eq("payment_method", "bonifico")
     .order("created_at", { ascending: true });
@@ -133,7 +133,7 @@ export async function confermaPagamentoBonifico(
 ): Promise<EsitoConferma> {
   const { data: ordine, error: letturaErrore } = await admin
     .from("orders")
-    .select("id, status, payment_method, users(email), products(title)")
+    .select("id, status, payment_method, users!user_id(email), products(title)")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -251,7 +251,7 @@ type RigaOrdineDb = {
 
 export const leggiOrdini = cache(async (): Promise<ElencoOrdini> => {
   const admin = createAdminClient();
-  const colonne = "id, user_id, status, payment_method, total_amount, created_at, users(email), products(title), invoices(id)";
+  const colonne = "id, user_id, status, payment_method, total_amount, created_at, users!user_id(email), products(title), invoices(id)";
 
   let dataPagamentoDisponibile = true;
   // Tipo largo di proposito: la seconda lettura (senza paid_at) ha una forma diversa dalla prima.

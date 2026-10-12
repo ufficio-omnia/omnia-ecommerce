@@ -19,8 +19,29 @@ function modalitaStripe(chiave: string | undefined): "live" | "prova" | null {
   return null;
 }
 
+// Dove sta girando la console: le chiavi e le variabili che legge sono quelle
+// di QUEL processo. In locale sono le chiavi di .env.local (di prova), in
+// produzione quelle di Vercel: la stessa voce può quindi dire cose diverse.
+function ambienteEsecuzione(): "produzione" | "anteprima" | "locale" {
+  if (process.env.VERCEL_ENV === "production") return "produzione";
+  if (process.env.VERCEL_ENV === "preview") return "anteprima";
+  return "locale";
+}
+
 export async function leggiStatoSistema(opzioni: { registroAccessiDisponibile: boolean }): Promise<StatoSistema> {
   const voci: VoceStato[] = [];
+  const ambiente = ambienteEsecuzione();
+
+  voci.push({
+    voce: "Ambiente",
+    esito: "ok",
+    dettaglio:
+      ambiente === "produzione"
+        ? "Produzione (Vercel): le chiavi lette sono quelle di produzione"
+        : ambiente === "anteprima"
+          ? "Anteprima Vercel: variabili dell'anteprima, non quelle di produzione"
+          : "Locale: le chiavi lette sono quelle di .env.local, non quelle di produzione",
+  });
 
   let pingMs: number | null = null;
   try {
@@ -57,7 +78,9 @@ export async function leggiStatoSistema(opzioni: { registroAccessiDisponibile: b
     ecommerce === "live"
       ? { voce: "Stripe e-commerce", esito: "ok", dettaglio: "Chiave in modalità live" }
       : ecommerce === "prova"
-        ? { voce: "Stripe e-commerce", esito: "avviso", dettaglio: "Chiave in modalità di prova: gli incassi non sono reali" }
+        ? ambiente === "produzione"
+          ? { voce: "Stripe e-commerce", esito: "avviso", dettaglio: "Chiave in modalità di prova in produzione: gli incassi non sono reali" }
+          : { voce: "Stripe e-commerce", esito: "ok", dettaglio: `Chiave di prova in questo ambiente (${ambiente}): normale; in produzione si legge quella live di Vercel` }
         : { voce: "Stripe e-commerce", esito: "errore", dettaglio: "Chiave mancante o non riconosciuta" },
   );
 

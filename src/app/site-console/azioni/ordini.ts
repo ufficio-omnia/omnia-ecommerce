@@ -60,7 +60,7 @@ export async function caricaFattura(_stato: StatoAzione, formData: FormData): Pr
 
   const { data: ordine } = await admin
     .from("orders")
-    .select("status, users(email)")
+    .select("status, users!user_id(email)")
     .eq("id", orderId)
     .maybeSingle<{ status: string; users: { email: string } | null }>();
   if (!ordine) return { errore: "Ordine non trovato." };
