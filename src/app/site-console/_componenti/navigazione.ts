@@ -20,7 +20,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
   {
     titolo: "Numeri",
     voci: [
-      { href: "/costi", etichetta: "Costi e margini", pronto: false },
+      { href: "/costi", etichetta: "Costi e margini", pronto: true },
       { href: "/ricavi", etichetta: "Ricavi", pronto: false },
       { href: "/abbonamenti", etichetta: "Abbonamenti", pronto: false },
       { href: "/crediti", etichetta: "Crediti", pronto: false },

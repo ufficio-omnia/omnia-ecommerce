@@ -19,6 +19,12 @@ function modalitaStripe(chiave: string | undefined): "live" | "prova" | null {
   return null;
 }
 
+// true se la chiave Stripe di OMNIA AI è di prova: abbonamenti e crediti AI sono
+// allora acquisti di prova e un ricavo calcolato su di essi non è denaro reale.
+export function stripeOmniaAiInProva(): boolean {
+  return modalitaStripe(process.env.STRIPE_SECRET_KEY_OMNIA_AI) === "prova";
+}
+
 // Dove sta girando la console: le chiavi e le variabili che legge sono quelle
 // di QUEL processo. In locale sono le chiavi di .env.local (di prova), in
 // produzione quelle di Vercel: la stessa voce può quindi dire cose diverse.

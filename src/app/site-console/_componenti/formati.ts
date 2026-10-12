@@ -29,6 +29,19 @@ export function formattaEuro(importo: number): string {
   return importo.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
 }
 
+export function formattaUsd(importo: number, decimali = 2): string {
+  return `$${importo.toLocaleString("it-IT", { minimumFractionDigits: decimali, maximumFractionDigits: decimali })}`;
+}
+
+// 0,42 → "42 %"
+export function formattaPercentuale(frazione: number): string {
+  return `${(frazione * 100).toLocaleString("it-IT", { maximumFractionDigits: 0 })} %`;
+}
+
+export function formattaIntero(n: number): string {
+  return n.toLocaleString("it-IT", { maximumFractionDigits: 0 });
+}
+
 // Millisecondi da adesso a una data (negativi se è già passata). In una
 // funzione a parte perché un componente non può chiamare Date.now() nel render.
 export function msDa(adesso: Date): number {

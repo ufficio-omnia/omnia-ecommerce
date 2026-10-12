@@ -799,6 +799,94 @@ a.cn-nav-voce:hover {
   height: 30px;
 }
 
+/* ───── Costi: periodo, ordinamento, totali, note ───── */
+
+.cn-periodo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.cn-periodo .cn-ricerca .cn-input {
+  width: 150px;
+}
+
+.cn-ordinamento {
+  color: inherit;
+}
+
+.cn-ordinamento:hover {
+  color: var(--cn-testo);
+  text-decoration: none;
+}
+
+.cn-ordinamento.attivo {
+  color: var(--cn-accento);
+}
+
+.cn-tab tfoot td {
+  padding: 8px 12px;
+  border-top: 1px solid var(--cn-bordo-forte);
+  background: var(--cn-rilievo);
+  font-weight: 600;
+}
+
+.cn-colonne.cn-colonne-pari {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+}
+
+@media (max-width: 1280px) {
+  .cn-colonne.cn-colonne-pari {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cn-nota {
+  padding: 10px 14px 12px;
+  font-size: 12px;
+  color: var(--cn-fioco);
+}
+
+.cn-nota code {
+  font-family: var(--cn-mono);
+  font-size: 11.5px;
+  color: var(--cn-secondario);
+}
+
+.cn-dettagli {
+  background: var(--cn-pannello);
+  border: 1px solid var(--cn-bordo);
+  border-radius: 10px;
+}
+
+.cn-dettagli summary {
+  padding: 10px 14px;
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cn-secondario);
+  cursor: pointer;
+}
+
+.cn-dettagli[open] summary {
+  border-bottom: 1px solid var(--cn-bordo);
+}
+
+.cn-elenco {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  color: var(--cn-secondario);
+}
+
+.cn-elenco strong {
+  color: var(--cn-testo);
+}
+
 /* ───── Pagine di accesso (senza barra laterale) ───── */
 
 .cn-accesso {
