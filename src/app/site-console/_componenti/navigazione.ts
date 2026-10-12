@@ -1,0 +1,44 @@
+// Voci della barra laterale, nell'ordine di priorità del lavoro. `pronto: false`
+// = sezione prevista ma non ancora costruita: appare spenta, con "presto", e
+// non è un link. Ogni blocco che la realizza porta la voce a `pronto: true`.
+
+export type VoceNavigazione = { href: string; etichetta: string; pronto: boolean };
+export type GruppoNavigazione = { titolo: string | null; voci: VoceNavigazione[] };
+
+export const NAVIGAZIONE: GruppoNavigazione[] = [
+  {
+    titolo: null,
+    voci: [{ href: "/", etichetta: "Panoramica", pronto: true }],
+  },
+  {
+    titolo: "Da fare",
+    voci: [
+      { href: "/bonifici", etichetta: "Bonifici", pronto: false },
+      { href: "/fatturazione", etichetta: "Da fatturare", pronto: false },
+    ],
+  },
+  {
+    titolo: "Numeri",
+    voci: [
+      { href: "/costi", etichetta: "Costi e margini", pronto: false },
+      { href: "/ricavi", etichetta: "Ricavi", pronto: false },
+      { href: "/abbonamenti", etichetta: "Abbonamenti", pronto: false },
+      { href: "/crediti", etichetta: "Crediti", pronto: false },
+    ],
+  },
+  {
+    titolo: "Anagrafiche",
+    voci: [
+      { href: "/ordini", etichetta: "Ordini", pronto: false },
+      { href: "/utenti", etichetta: "Utenti", pronto: false },
+      { href: "/prodotti", etichetta: "Prodotti e sconti", pronto: false },
+    ],
+  },
+  {
+    titolo: "Sistema",
+    voci: [
+      { href: "/knowledge-base", etichetta: "Knowledge base AI", pronto: false },
+      { href: "/impostazioni", etichetta: "Impostazioni", pronto: false },
+    ],
+  },
+];

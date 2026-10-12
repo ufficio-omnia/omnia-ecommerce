@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import {
+  CONSOLE_PERCORSI_CONDIVISI,
   DEV_ZONE_COOKIE,
   RESERVED_PREFIXES,
   ZONE_COOKIE,
@@ -52,7 +53,7 @@ export async function proxy(request: NextRequest) {
   forwardedHeaders.set(ZONE_RECOGNIZED_HEADER, recognized ? "1" : "0");
   const requestInit = { headers: forwardedHeaders };
 
-  const sessionResponse = await updateSession(request);
+  const sessionResponse = await updateSession(request, zone);
 
   // Un redirect (es. verso /login) vince sempre: mai sovrapporre un
   // rewrite di zona sopra un redirect.
@@ -68,7 +69,12 @@ export async function proxy(request: NextRequest) {
 
   let response: NextResponse;
 
-  if (
+  if (zone === "console" && isZoneRewriteExempt && !CONSOLE_PERCORSI_CONDIVISI.includes(request.nextUrl.pathname)) {
+    // /auth/callback e il webhook Stripe sono route reali condivise, non
+    // riscritte: senza questa guardia esisterebbero anche sul dominio della
+    // console, che deve esporre solo le proprie pagine.
+    response = NextResponse.rewrite(new URL(ZONE_GUARD_NOT_FOUND_PATH, request.url), { request: requestInit });
+  } else if (
     !isZoneRewriteExempt &&
     zone === "ecommerce" &&
     RESERVED_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix))

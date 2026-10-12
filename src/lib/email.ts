@@ -14,12 +14,12 @@ export async function sendEmail({
   // visualizzato cambia — serve per le email a marchio OMNIA AI (es.
   // richieste demo), che non devono apparire come "OMNIA" e-commerce.
   from?: string;
-}) {
+}): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
     console.error("RESEND_API_KEY non configurata: email non inviata.", subject);
-    return;
+    return false;
   }
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -33,5 +33,8 @@ export async function sendEmail({
 
   if (!res.ok) {
     console.error("Errore invio email:", await res.text());
+    return false;
   }
+
+  return true;
 }
