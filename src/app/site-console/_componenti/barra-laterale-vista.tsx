@@ -5,13 +5,18 @@ import { NAVIGAZIONE } from "./navigazione";
 // Il pathname lo passa il wrapper client (barra-laterale.tsx); l'azione di
 // uscita arriva come prop, così la vista si può anche renderizzare fuori da
 // Next (anteprima statica dei componenti, senza sessione).
+export type ConteggiBarra = { bonifici: number; bonificiScaduti: number };
+
 export default function BarraLateraleVista({
   email,
   percorso,
+  conteggi,
   azioneEsci,
 }: {
   email: string;
   percorso: string;
+  // numero di bonifici da confermare, mostrato accanto alla voce da qualunque pagina
+  conteggi?: ConteggiBarra;
   azioneEsci?: () => Promise<void>;
 }) {
   return (
@@ -43,6 +48,18 @@ export default function BarraLateraleVista({
                   aria-current={attiva ? "page" : undefined}
                 >
                   {voce.etichetta}
+                  {voce.href === "/bonifici" && conteggi && conteggi.bonifici > 0 && (
+                    <span
+                      className={`cn-conta ${conteggi.bonificiScaduti > 0 ? "errore" : "avviso"}`}
+                      title={
+                        conteggi.bonificiScaduti > 0
+                          ? `${conteggi.bonifici} da confermare, ${conteggi.bonificiScaduti} oltre il termine`
+                          : `${conteggi.bonifici} da confermare`
+                      }
+                    >
+                      {conteggi.bonifici}
+                    </span>
+                  )}
                 </Link>
               );
             })}

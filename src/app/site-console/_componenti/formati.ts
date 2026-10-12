@@ -15,6 +15,20 @@ export function formattaDataOra(iso: string | Date): string {
   });
 }
 
+// Solo la data. Accetta un istante (ISO con ora, convertito al giorno di Roma)
+// oppure un giorno già di calendario "AAAA-MM-GG", che non va spostato di fuso.
+export function formattaData(valore: string | Date): string {
+  if (typeof valore === "string" && /^\d{4}-\d{2}-\d{2}$/.test(valore)) {
+    const [anno, mese, giorno] = valore.split("-");
+    return `${giorno}/${mese}/${anno}`;
+  }
+  return new Date(valore).toLocaleDateString("it-IT", { timeZone: FUSO, day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+export function formattaEuro(importo: number): string {
+  return importo.toLocaleString("it-IT", { style: "currency", currency: "EUR" });
+}
+
 // Millisecondi da adesso a una data (negativi se è già passata). In una
 // funzione a parte perché un componente non può chiamare Date.now() nel render.
 export function msDa(adesso: Date): number {

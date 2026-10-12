@@ -479,6 +479,7 @@ a.cn-nav-voce:hover {
   background: var(--cn-rilievo);
   font-size: 12.5px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   color: var(--cn-testo);
 }
@@ -552,6 +553,250 @@ a.cn-nav-voce:hover {
   background: var(--cn-errore-sfondo);
   border-color: rgba(242, 109, 109, 0.4);
   color: var(--cn-errore);
+}
+
+.cn-esito.avviso {
+  background: var(--cn-avviso-sfondo);
+  border-color: rgba(240, 177, 59, 0.45);
+  color: var(--cn-avviso);
+}
+
+/* ───── Bonifici: conteggio nella barra, evidenza in Home, righe urgenti ───── */
+
+.cn-conta {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.cn-conta.avviso {
+  background: var(--cn-avviso);
+  color: #1a1203;
+}
+
+.cn-conta.errore {
+  background: var(--cn-errore);
+  color: #1c0606;
+}
+
+.cn-evidenza {
+  overflow: hidden;
+  background: var(--cn-pannello);
+  border: 1px solid var(--cn-bordo);
+  border-radius: 10px;
+}
+
+.cn-evidenza.avviso {
+  background: var(--cn-avviso-sfondo);
+  border-color: rgba(240, 177, 59, 0.55);
+}
+
+.cn-evidenza.errore {
+  background: var(--cn-errore-sfondo);
+  border-color: rgba(242, 109, 109, 0.55);
+}
+
+.cn-evidenza.ok {
+  background: var(--cn-ok-sfondo);
+  border-color: rgba(62, 207, 142, 0.4);
+}
+
+.cn-evidenza-testa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 28px;
+  padding: 16px 20px;
+}
+
+.cn-evidenza-numero {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cn-evidenza-numero span {
+  font-family: var(--cn-mono);
+  font-size: 52px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.cn-evidenza.avviso .cn-evidenza-numero span {
+  color: var(--cn-avviso);
+}
+
+.cn-evidenza.errore .cn-evidenza-numero span {
+  color: var(--cn-errore);
+}
+
+.cn-evidenza.ok .cn-evidenza-numero span {
+  color: var(--cn-ok);
+}
+
+.cn-evidenza-numero small {
+  font-size: 13px;
+  color: var(--cn-secondario);
+}
+
+.cn-evidenza-dati {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  color: var(--cn-secondario);
+}
+
+.cn-evidenza-dati strong {
+  font-weight: 600;
+  color: var(--cn-testo);
+}
+
+.cn-evidenza .cn-scorri {
+  border-top: 1px solid var(--cn-bordo);
+  background: var(--cn-pannello);
+}
+
+.cn-evidenza-altri {
+  padding: 8px 12px;
+  border-top: 1px solid var(--cn-bordo);
+  font-size: 12px;
+  color: var(--cn-fioco);
+}
+
+.cn-tab tr.cn-riga-avviso td:first-child {
+  box-shadow: inset 3px 0 0 var(--cn-avviso);
+}
+
+.cn-tab tr.cn-riga-errore td {
+  background: rgba(242, 109, 109, 0.05);
+}
+
+.cn-tab tr.cn-riga-errore td:first-child {
+  box-shadow: inset 3px 0 0 var(--cn-errore);
+}
+
+.cn-cella-doppia small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--cn-fioco);
+}
+
+/* ───── Azioni nelle righe, filtri e ricerca ───── */
+
+.cn-btn.piccolo {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.cn-btn.pericolo {
+  background: transparent;
+  border-color: rgba(242, 109, 109, 0.5);
+  color: var(--cn-errore);
+}
+
+.cn-btn.pericolo:hover {
+  background: var(--cn-errore-sfondo);
+  border-color: var(--cn-errore);
+}
+
+.cn-azione {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.cn-azione.riga {
+  flex-wrap: nowrap;
+}
+
+.cn-azione.riga .cn-file {
+  min-width: 0;
+  max-width: 150px;
+}
+
+.cn-azione-errore {
+  max-width: 260px;
+  font-size: 12px;
+  color: var(--cn-errore);
+}
+
+.cn-file {
+  max-width: 200px;
+  font-size: 12px;
+  color: var(--cn-secondario);
+}
+
+.cn-file::file-selector-button {
+  margin-right: 8px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--cn-bordo-forte);
+  border-radius: 6px;
+  background: var(--cn-rilievo);
+  font-size: 12px;
+  color: var(--cn-testo);
+  cursor: pointer;
+}
+
+.cn-barra-strumenti {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cn-filtri {
+  display: flex;
+  gap: 6px;
+}
+
+.cn-filtri a {
+  padding: 4px 12px;
+  border: 1px solid var(--cn-bordo);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--cn-secondario);
+}
+
+.cn-filtri a:hover {
+  border-color: var(--cn-bordo-forte);
+  color: var(--cn-testo);
+  text-decoration: none;
+}
+
+.cn-filtri a.attivo {
+  background: var(--cn-accento-sfondo);
+  border-color: rgba(108, 184, 255, 0.45);
+  color: var(--cn-testo);
+}
+
+.cn-filtri a span {
+  margin-left: 4px;
+  font-family: var(--cn-mono);
+  color: var(--cn-fioco);
+}
+
+.cn-ricerca {
+  display: flex;
+  gap: 8px;
+}
+
+.cn-ricerca .cn-input {
+  width: 260px;
+  height: 30px;
 }
 
 /* ───── Pagine di accesso (senza barra laterale) ───── */

@@ -13,7 +13,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
   {
     titolo: "Da fare",
     voci: [
-      { href: "/bonifici", etichetta: "Bonifici", pronto: false },
+      { href: "/bonifici", etichetta: "Bonifici", pronto: true },
       { href: "/fatturazione", etichetta: "Da fatturare", pronto: false },
     ],
   },
@@ -29,7 +29,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
   {
     titolo: "Anagrafiche",
     voci: [
-      { href: "/ordini", etichetta: "Ordini", pronto: false },
+      { href: "/ordini", etichetta: "Ordini", pronto: true },
       { href: "/utenti", etichetta: "Utenti", pronto: false },
       { href: "/prodotti", etichetta: "Prodotti e sconti", pronto: false },
     ],

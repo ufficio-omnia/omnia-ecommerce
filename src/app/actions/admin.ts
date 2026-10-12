@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
 import { requireAdmin } from "@/lib/require-admin";
+import { confermaPagamentoBonifico } from "@/lib/console/ordini";
 
 type DeleteState = { error?: string };
 
@@ -17,37 +18,19 @@ export async function markOrderAsPaid(formData: FormData) {
   if (!orderId) return;
   if (!(await requireAdmin())) return;
 
-  const admin = createAdminClient();
+  // Stessa funzione della console: registra anche data e autore della
+  // conferma (orders.paid_at / paid_by) e non rimanda l'email se l'ordine è
+  // già stato confermato. Questo pannello sparisce quando l'admin passa tutto
+  // alla console.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const { error: updateError } = await admin
-    .from("orders")
-    .update({ status: "pagato" })
-    .eq("id", orderId);
-
-  if (updateError) {
-    console.error("Errore aggiornamento ordine:", updateError);
+  const esito = await confermaPagamentoBonifico(createAdminClient(), { orderId, adminId: user?.id ?? null });
+  if (!esito.ok) {
+    console.error("Errore conferma pagamento:", esito.errore);
     return;
-  }
-
-  const { data: order, error: fetchError } = await admin
-    .from("orders")
-    .select("users(email), products(title)")
-    .eq("id", orderId)
-    .single<{
-      users: { email: string } | null;
-      products: { title: string } | null;
-    }>();
-
-  if (fetchError) {
-    console.error("Errore recupero dati ordine per email:", fetchError);
-  }
-
-  if (order?.users?.email) {
-    await sendEmail({
-      to: order.users.email,
-      subject: "Il tuo documento è pronto per il download",
-      html: `<p>Il pagamento del tuo ordine è stato confermato.</p><p>Il documento <strong>${order.products?.title ?? ""}</strong> è ora disponibile nella tua area riservata.</p><p><a href="${siteUrl}/dashboard">Vai alla dashboard</a></p>`,
-    });
   }
 
   revalidatePath("/admin");

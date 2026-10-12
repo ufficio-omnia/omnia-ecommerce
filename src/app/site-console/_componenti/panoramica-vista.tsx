@@ -1,7 +1,9 @@
+import Link from "next/link";
+import type { RiepilogoBonifici } from "@/lib/console/ordini";
 import type { EventoAccesso, SintesiRegistro } from "@/lib/console/registro-accessi";
 import type { StatoSistema } from "@/lib/console/stato-sistema";
-import { Badge, Pannello, Tessera, type Tono } from "./elementi";
-import { formattaDataOra, formattaDurata } from "./formati";
+import { Badge, BadgeScadenza, Pannello, Tessera, type Tono } from "./elementi";
+import { formattaData, formattaDataOra, formattaDurata, formattaEuro } from "./formati";
 
 // Vista pura della Panoramica: riceve dati già letti, non accede a nulla. La
 // pagina (che richiede l'admin) legge i dati e la passa qui.
@@ -42,14 +44,99 @@ function sintesiUserAgent(ua: string | null): string {
   return sistema ? `${browser} · ${sistema}` : browser;
 }
 
+// L'unica cosa che richiede un'azione con una scadenza: sta in cima, grande,
+// con i primi ordini da confermare e il collegamento alla pagina.
+function EvidenzaBonifici({ bonifici }: { bonifici: RiepilogoBonifici }) {
+  if (bonifici.errore) {
+    return (
+      <p className="cn-esito errore" role="alert" style={{ marginBottom: 14 }}>
+        Bonifici da confermare: {bonifici.errore}
+      </p>
+    );
+  }
+
+  const tono = bonifici.totale === 0 ? "ok" : bonifici.scaduti > 0 ? "errore" : "avviso";
+  const primi = bonifici.righe.slice(0, 4);
+
+  return (
+    <section className={`cn-evidenza ${tono}`} aria-label="Bonifici da confermare">
+      <div className="cn-evidenza-testa">
+        <div className="cn-evidenza-numero">
+          <span>{bonifici.totale}</span>
+          <small>{bonifici.totale === 1 ? "bonifico da confermare" : "bonifici da confermare"}</small>
+        </div>
+        <div className="cn-evidenza-dati">
+          {bonifici.totale === 0 ? (
+            <span>Nessun ordine in attesa di accredito.</span>
+          ) : (
+            <>
+              <span>
+                <strong>{formattaEuro(bonifici.importoTotale)}</strong> in attesa (IVA inclusa)
+              </span>
+              <span>
+                {bonifici.scaduti > 0 ? <strong>{bonifici.scaduti} oltre il termine</strong> : "Nessuno oltre il termine"} ·{" "}
+                {bonifici.inScadenza} in scadenza
+              </span>
+            </>
+          )}
+        </div>
+        <Link href="/bonifici" className="cn-btn primario">
+          {bonifici.totale === 0 ? "Apri i bonifici" : "Controlla e conferma"}
+        </Link>
+      </div>
+
+      {primi.length > 0 && (
+        <div className="cn-scorri">
+          <table className="cn-tab">
+            <thead>
+              <tr>
+                <th>Causale</th>
+                <th>Cliente</th>
+                <th className="num">Importo</th>
+                <th>Ordinato il</th>
+                <th>Termine</th>
+              </tr>
+            </thead>
+            <tbody>
+              {primi.map((r) => (
+                <tr key={r.id}>
+                  <td className="mono">{r.causale}</td>
+                  <td className="tronca" title={r.email ?? undefined}>
+                    {r.ragioneSociale ?? r.email ?? "—"}
+                  </td>
+                  <td className="num">{formattaEuro(r.importo)}</td>
+                  <td className="mono">{formattaData(r.creatoIl)}</td>
+                  <td className="nowrap">
+                    <span className="mono" style={{ marginRight: 8 }}>
+                      {formattaData(r.scadenza)}
+                    </span>
+                    <BadgeScadenza stato={r.stato} giorniRimasti={r.giorniRimasti} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {bonifici.totale > primi.length && (
+            <p className="cn-evidenza-altri">
+              e altri {bonifici.totale - primi.length} nella pagina Bonifici
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function PanoramicaVista({
   scadeIl,
   scadeTraMs,
+  bonifici,
   registro,
   sistema,
 }: {
   scadeIl: Date;
   scadeTraMs: number;
+  bonifici: RiepilogoBonifici;
   registro: SintesiRegistro;
   sistema: StatoSistema;
 }) {
@@ -60,11 +147,13 @@ export default function PanoramicaVista({
       <div className="cn-testata">
         <div>
           <h1>Panoramica</h1>
-          <p>Console amministrativa OMNIA · accesso e stato del sistema</p>
+          <p>Console amministrativa OMNIA</p>
         </div>
       </div>
 
-      <div className="cn-tessere">
+      <EvidenzaBonifici bonifici={bonifici} />
+
+      <div className="cn-tessere" style={{ marginTop: 14 }}>
         <Tessera etichetta="Sessione" valore={formattaDurata(scadeTraMs)} dettaglio={`Scade il ${formattaDataOra(scadeIl)}`} />
         <Tessera
           etichetta="Accessi (24 h)"

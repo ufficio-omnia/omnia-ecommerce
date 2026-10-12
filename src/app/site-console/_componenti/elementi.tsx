@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { StatoScadenzaBonifico } from "@/lib/console/giorni-lavorativi";
 
 // Mattoni della console: tessera (numero grande + dettaglio), badge di stato,
 // pannello con titolo. Solo markup e classi .cn-*: nessuno stato, usabili da
@@ -33,6 +34,15 @@ export function Tessera({
 
 export function Badge({ tono = "neutro", children }: { tono?: Tono; children: ReactNode }) {
   return <span className={`cn-badge${tono === "neutro" ? "" : ` ${tono}`}`}>{children}</span>;
+}
+
+// Stato del termine di un bonifico: quanto manca ai sette giorni lavorativi.
+export function BadgeScadenza({ stato, giorniRimasti }: { stato: StatoScadenzaBonifico; giorniRimasti: number }) {
+  if (stato === "scaduto") {
+    return <Badge tono="errore">{giorniRimasti < 0 ? `scaduto da ${-giorniRimasti} gg lav.` : "scaduto"}</Badge>;
+  }
+  if (giorniRimasti === 0) return <Badge tono="avviso">scade oggi</Badge>;
+  return <Badge tono={stato === "in_scadenza" ? "avviso" : "neutro"}>tra {giorniRimasti} gg lav.</Badge>;
 }
 
 export function Pannello({
