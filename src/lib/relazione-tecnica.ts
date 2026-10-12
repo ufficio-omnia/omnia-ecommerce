@@ -10,6 +10,7 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { REGOLE_OMNIA, ISTRUZIONI_COMPRESSIONE, ISTRUZIONI_ESPANSIONE } from "@/lib/prompts";
 import { assegnaIconeMancanti } from "@/lib/densita-visiva";
+import { evidenziaProsaMancante, ruoliDaOrganigramma } from "@/lib/evidenziazione-prosa";
 import { haSegnaposto, sostituisciSegnaposto, trovaBlocchiOrganigramma, SEGNAPOSTO_ORGANIGRAMMA_REGEX } from "@/lib/organigramma-dati";
 import { costruisciOrganigramma } from "@/lib/organigramma-contesto";
 import { leggiFattiOrganigramma } from "@/lib/organigramma-fatti";
@@ -289,7 +290,11 @@ export async function generaBozzaSezione(params: {
   // pura): per ultima, dopo ogni riscrittura fatta da un modello, così
   // ciò che il modello ha dimenticato o tolto viene completato — vedi
   // densita-visiva.ts.
-  const contenutoSenzaOrganigramma = assegnaIconeMancanti(guardiaValori ? guardiaValori.testo : garanziaEconomica.testo).testo;
+  const conIcone = assegnaIconeMancanti(guardiaValori ? guardiaValori.testo : garanziaEconomica.testo).testo;
+  // Impatto grafico minimo della prosa (grassetti sui valori, ruoli e norme dove
+  // il modello non ne ha scritti), sempre per ultimo e solo su testo già
+  // verificato: non cambia una parola — vedi evidenziazione-prosa.ts.
+  const contenutoSenzaOrganigramma = evidenziaProsaMancante(conIcone, { ruoli: ruoliDaOrganigramma(organigrammaDichiarato) }).testo;
 
   // Organigramma: il modello scrive nel testo solo il segnaposto
   // "[ORGANIGRAMMA][/ORGANIGRAMMA]" e dichiara i dati nel campo strutturato.
@@ -1391,8 +1396,10 @@ export async function componiRelazioneFinale(params: {
   // ultima, come in generaBozzaSezione.
   sezioniFinali.forEach((s, i) => {
     const esito = assegnaIconeMancanti(s.contenuto);
-    if (esito.aggiunte > 0) {
-      sezioniFinali[i] = { ...s, contenuto: esito.testo };
+    // poi le evidenziazioni della prosa (stesso ordine di generaBozzaSezione)
+    const evidenziato = evidenziaProsaMancante(esito.testo);
+    if (esito.aggiunte > 0 || evidenziato.evidenziazioni > 0) {
+      sezioniFinali[i] = { ...s, contenuto: evidenziato.testo };
       sezioniModificate.add(i);
     }
   });

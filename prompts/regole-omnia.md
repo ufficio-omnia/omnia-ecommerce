@@ -149,8 +149,9 @@ scrivendo per far assegnare punti.
   compiti — va in tabella, non in prosa. Il testo serve solo a introdurre, a
   motivare una scelta e a dichiarare gli impegni che non stanno in una
   griglia. Densità di riferimento: una tabella ogni due o tre paragrafi,
-  paragrafi brevi (due o tre frasi), elenchi puntati al posto delle
-  enumerazioni discorsive. Una struttura, un processo, un calendario o una
+  paragrafi brevi (due o tre frasi, al massimo 60 parole), mai più di due
+  paragrafi di prosa di fila — tra uno e l'altro una tabella, un elenco o
+  una figura —, elenchi puntati al posto delle enumerazioni discorsive. Una struttura, un processo, un calendario o una
   schermata si mostrano con una figura (R23, R24, R28), non si raccontano.
   Ogni elemento visivo contiene un impegno o un dato: mai riempitivo
   decorativo.
@@ -193,9 +194,14 @@ scrivendo per far assegnare punti.
   primario, salvo che l'INTERA tabella tratti un tema ambientale o di
   sicurezza: solo allora dichiari quel tema per tutta la tabella.
 <!-- FINE COLORE SEMANTICO -->
-- **R21 — Grassetto solo sui valori vincolanti.** Frequenze, quantità, tempi
-  di intervento, target degli indicatori, denominazioni di norme e
-  certificazioni. Mai su intere frasi, mai su aggettivi.
+- **R21 — Ogni paragrafo ha impatto: grassetti e ruoli evidenziati.**
+  Grassetto sui valori vincolanti (frequenze, quantità, tempi di intervento,
+  target degli indicatori), sui termini tecnici chiave, sugli strumenti, sulle
+  denominazioni di norme e certificazioni; `!!ruolo!!` su ogni figura
+  professionale, ufficio o ente. Almeno due evidenziazioni per paragrafo e
+  per voce di elenco; mai su intere frasi, mai su aggettivi. Un paragrafo
+  senza nessuna evidenziazione è un paragrafo "liscio": o lo si struttura
+  (tabella, elenco) o lo si evidenzia.
 - **R22 — Tabella quando i dati si confrontano.** Serve quando ci sono almeno
   due dimensioni da incrociare — aree e frequenze, attività e responsabili,
   indicatori e valori obiettivo. Una tabella di due righe è un elenco
@@ -213,9 +219,10 @@ scrivendo per far assegnare punti.
   incrociare (frequenze, responsabili, indicatori, prodotti), almeno un
   riquadro `[BOX:TIPO]` per l'impegno che vale più punti, e un'icona
   `[ICONA:nome]` all'inizio di ogni riga d'impegno delle tabelle e di ogni
-  voce degli elenchi puntati. Nessuna sequenza di più pagine di solo testo.
-  Fa eccezione soltanto un sotto-criterio brevissimo che non contiene né dati
-  né impegni da mettere in evidenza.
+  voce degli elenchi puntati. Mai più di due paragrafi di prosa di fila e
+  nessuna sequenza di più pagine di solo testo. Fa eccezione soltanto un
+  sotto-criterio brevissimo che non contiene né dati né impegni da mettere
+  in evidenza.
 - **R26 — Coerenza di rappresentazione.** La stessa informazione si presenta
   sempre nello stesso modo in tutto il documento. Se le frequenze stanno in
   tabella nel primo criterio, non diventano elenco puntato nel terzo.
@@ -240,6 +247,17 @@ scrivendo per far assegnare punti.
   o ore: informazioni che in forma temporale si valutano in tre secondi si
   dichiarano come figura (archetipo cronoprogramma), con le sole date, durate
   e responsabili che il capitolato o il profilo giustificano.
+- **R29 — Scrivi da analista, non da narratore: il particolare, non il generico.**
+  Ogni impegno risponde, in colonne di tabella o in voci di elenco, a CHI lo
+  esegue (ruolo), COSA fa (attività), QUANDO e quanto spesso (frequenza,
+  tempo), CON COSA (strumenti, prodotti, attrezzature), DOVE (aree e sedi di
+  QUESTA gara, con le denominazioni del capitolato), COME SI VERIFICA
+  (indicatore, registrazione, destinatario dell'esito) e su quale articolo del
+  capitolato si fonda. Una frase che potrebbe stare in qualunque offerta di
+  pulizie ("garantiamo la massima qualità", "personale qualificato") non ha
+  valore: o diventa specifica — aree, ruoli, strumenti, tempi di questa gara — o
+  si toglie. Più dettaglio non significa più prosa: significa più colonne, più
+  righe, più figure.
 - **R28 — Ogni criterio ha le sue figure.** Oltre a flussi e cronoprogrammi:
   una struttura di controlli a più livelli (autocontrollo, controllo di
   qualità, audit) è una figura a livelli; sedi, depositi o presìdi attorno a
