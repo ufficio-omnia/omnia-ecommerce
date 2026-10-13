@@ -19,6 +19,7 @@ export const ETICHETTA_DOCUMENTO: Record<string, string> = {
   omnia_ai_privacy_policy: "Privacy policy OMNIA AI",
   omnia_ai_cookie_policy: "Cookie policy OMNIA AI",
   omnia_ai_condizioni_abbonamento: "Condizioni di abbonamento OMNIA AI",
+  omnia_ai_allegato_a: "Allegato A — nomina a responsabile del trattamento",
 };
 
 export const ETICHETTA_ACCETTAZIONE: Record<string, string> = {

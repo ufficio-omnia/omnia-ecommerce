@@ -509,6 +509,8 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     condizioniAbbonamentoVersion,
     privacyPolicyDocId,
     privacyPolicyVersion,
+    allegatoADocId,
+    allegatoAVersion,
     acceptedAt,
     acceptIp,
     acceptUserAgent,
@@ -530,6 +532,8 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
           version: Number(condizioniAbbonamentoVersion),
         },
         privacyPolicy: { id: privacyPolicyDocId, version: Number(privacyPolicyVersion) },
+        // assente nelle sessioni di checkout create prima della v2 delle condizioni
+        allegatoA: allegatoADocId && allegatoAVersion ? { id: allegatoADocId, version: Number(allegatoAVersion) } : null,
       },
       ip: acceptIp || null,
       userAgent: acceptUserAgent || null,

@@ -1,33 +1,17 @@
 import type { Metadata } from "next";
-import type { ReactElement } from "react";
 import { notFound } from "next/navigation";
 import PageShell from "@/components/omnia-ai/page-shell";
-import PrivacyPolicyV1 from "@/components/omnia-ai/legal/privacy-policy-v1";
-import CookiePolicyV1 from "@/components/omnia-ai/legal/cookie-policy-v1";
-import CondizioniAbbonamentoV1 from "@/components/omnia-ai/legal/condizioni-abbonamento-v1";
+import DocumentoLegaleVersionato, { TITOLI_DOCUMENTI, versioneEsiste } from "@/components/omnia-ai/legal/documento-legale-versionato";
 
-// Registro delle versioni pubblicate dei documenti legali di omnia-ai.it,
-// stesso pattern di src/app/(ecommerce)/documenti-legali/[type]/[version]/
-// page.tsx: una voce per versione, mai toccata dopo la pubblicazione — una
-// revisione aggiunge una voce nuova (es. "2": PrivacyPolicyV2), non
-// sostituisce quella esistente, così un link raccolto al momento
-// dell'accettazione continua a mostrare esattamente quel testo che era in
-// vigore allora.
-const REGISTRY: Record<string, Record<string, () => ReactElement>> = {
-  "privacy-policy": { "1": PrivacyPolicyV1 },
-  "cookie-policy": { "1": CookiePolicyV1 },
-  "condizioni-abbonamento": { "1": CondizioniAbbonamentoV1 },
-};
-
-const TITLES: Record<string, string> = {
-  "privacy-policy": "Privacy policy",
-  "cookie-policy": "Cookie policy",
-  "condizioni-abbonamento": "Condizioni di abbonamento",
-};
+// Pagina di ogni versione pubblicata di un documento legale di omnia-ai.it, stesso
+// pattern di src/app/(ecommerce)/documenti-legali/[type]/[version]/page.tsx. Le
+// versioni sono registrate in documento-legale-versionato.tsx: una revisione aggiunge
+// una voce, non ne sostituisce una esistente.
 
 // Pagina pubblica "corrente" di ciascun documento: le versioni archiviate
 // (/documenti-legali/<tipo>/<n>) ne dichiarano il canonical, così Google
-// le tratta come duplicati e indicizza solo quella.
+// le tratta come duplicati e indicizza solo quella. L'Allegato A non ha una pagina
+// «corrente» a parte: ogni sua versione è l'unico indirizzo di quel testo.
 const CANONICAL_PATHS: Record<string, string> = {
   "privacy-policy": "/privacy",
   "cookie-policy": "/cookie-policy",
@@ -40,11 +24,13 @@ export async function generateMetadata({
   params: Promise<{ type: string; version: string }>;
 }): Promise<Metadata> {
   const { type, version } = await params;
-  const title = TITLES[type];
+  const title = TITOLI_DOCUMENTI[type];
   const canonical = CANONICAL_PATHS[type];
   return {
     title: title ? `${title} — versione ${version} — OMNIA AI` : "Documento non trovato",
     ...(canonical ? { alternates: { canonical } } : {}),
+    // l'Allegato A pubblico è il modello con i campi da compilare: non ha ragione di comparire nei risultati di ricerca
+    ...(type === "allegato-a" ? { robots: { index: false, follow: true } } : {}),
   };
 }
 
@@ -54,15 +40,14 @@ export default async function DocumentoLegaleVersionatoPage({
   params: Promise<{ type: string; version: string }>;
 }) {
   const { type, version } = await params;
-  const Componente = REGISTRY[type]?.[version];
 
-  if (!Componente) {
+  if (!versioneEsiste(type, version)) {
     notFound();
   }
 
   return (
     <PageShell>
-      <Componente />
+      <DocumentoLegaleVersionato slug={type} version={version} />
     </PageShell>
   );
 }

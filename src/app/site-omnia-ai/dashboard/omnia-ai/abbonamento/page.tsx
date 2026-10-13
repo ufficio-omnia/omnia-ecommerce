@@ -60,6 +60,7 @@ export default async function AbbonamentoPage() {
           <ActivateSubscriptionForm
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
+            allegatoVersion={legalDocuments.allegatoA?.version ?? null}
           />
         ) : (
           <p className="omnia-messaggio-stato errore" style={{ marginTop: 24 }}>

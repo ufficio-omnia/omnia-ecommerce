@@ -14,8 +14,9 @@ const nextConfig: NextConfig = {
   // senza, i font mancano in produzione (bug osservato in pratica: nessun
   // errore, ma il font non risolvibile fa disegnare a librsvg riquadri
   // vuoti al posto del testo, vedi org-chart.ts).
+  // legal/*.md (Allegato A, condizioni v2) si leggono con fs a runtime: stessa ragione.
   outputFileTracingIncludes: {
-    "/**": ["./prompts/**", "./src/assets/fonts/**"],
+    "/**": ["./prompts/**", "./src/assets/fonts/**", "./legal/**"],
   },
   // Next ammette un solo favicon.ico, al livello più alto di app/ (quindi
   // src/app/favicon.ico, quello dell'e-commerce), condiviso da tutti i

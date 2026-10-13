@@ -33,6 +33,54 @@ export async function getCurrentOmniaAiCondizioniAbbonamentoUrl(): Promise<strin
   return `/documenti-legali/condizioni-abbonamento/${data.version}`;
 }
 
+// Versione vigente di un documento di OMNIA AI (con la stessa regola di sopra: la
+// effective_date più recente non successiva a oggi) e data da cui è in vigore.
+// null se il documento non ha ancora nessuna riga (es. la migrazione 0080 non è
+// stata eseguita): chi chiama ricade su un comportamento sicuro, mai su un errore.
+export async function getCurrentOmniaAiDocumento(
+  tipoDb: string,
+): Promise<{ version: number; effectiveDate: string } | null> {
+  const supabase = await createClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("legal_documents")
+    .select("version, effective_date")
+    .eq("document_type", tipoDb)
+    .lte("effective_date", today)
+    .order("effective_date", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ version: number; effective_date: string }>();
+
+  if (error || !data) return null;
+  return { version: data.version, effectiveDate: data.effective_date };
+}
+
+// Data di entrata in vigore di UNA versione precisa (anche non più vigente): serve a
+// mostrare «in vigore dal …» nelle versioni archiviate e nel PDF.
+export async function getOmniaAiDocumentoEffectiveDate(
+  tipoDb: string,
+  version: number,
+): Promise<string | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("legal_documents")
+    .select("effective_date")
+    .eq("document_type", tipoDb)
+    .eq("version", version)
+    .maybeSingle<{ effective_date: string }>();
+
+  if (error || !data) return null;
+  return data.effective_date;
+}
+
+// Indirizzo della versione vigente dell'Allegato A, o null se non esiste ancora (prima
+// della migrazione 0080): chi lo mostra semplicemente non lo mostra.
+export async function getCurrentOmniaAiAllegatoAUrl(): Promise<string | null> {
+  const corrente = await getCurrentOmniaAiDocumento("omnia_ai_allegato_a");
+  return corrente ? `/documenti-legali/allegato-a/${corrente.version}` : null;
+}
+
 export type OmniaAiAcceptanceInput = {
   condizioniEPrivacy: boolean;
   clausoleSpecifiche: boolean;
@@ -43,6 +91,10 @@ export type OmniaAiLegalDocumentRef = { id: string; version: number };
 export type CurrentOmniaAiLegalDocuments = {
   condizioniAbbonamento: OmniaAiLegalDocumentRef;
   privacyPolicy: OmniaAiLegalDocumentRef;
+  // atto di nomina a responsabile del trattamento (allegato alle condizioni dalla v2):
+  // null finché la migrazione 0080 non l'ha inserito — in quel caso non c'è nulla da
+  // mostrare né da registrare, e il checkout resta quello di sempre
+  allegatoA: OmniaAiLegalDocumentRef | null;
 };
 
 // Mirror di getCurrentLegalDocuments (src/lib/legal-acceptance.ts), ma
@@ -58,7 +110,7 @@ export async function getCurrentOmniaAiLegalDocuments(
   const { data, error } = await admin
     .from("legal_documents")
     .select("id, document_type, version, effective_date")
-    .in("document_type", ["omnia_ai_condizioni_abbonamento", "omnia_ai_privacy_policy"])
+    .in("document_type", ["omnia_ai_condizioni_abbonamento", "omnia_ai_privacy_policy", "omnia_ai_allegato_a"])
     .lte("effective_date", today)
     .order("effective_date", { ascending: false })
     .returns<
@@ -71,12 +123,14 @@ export async function getCurrentOmniaAiLegalDocuments(
     (d) => d.document_type === "omnia_ai_condizioni_abbonamento",
   );
   const privacyPolicy = data.find((d) => d.document_type === "omnia_ai_privacy_policy");
+  const allegatoA = data.find((d) => d.document_type === "omnia_ai_allegato_a");
 
   if (!condizioniAbbonamento || !privacyPolicy) return null;
 
   return {
     condizioniAbbonamento: { id: condizioniAbbonamento.id, version: condizioniAbbonamento.version },
     privacyPolicy: { id: privacyPolicy.id, version: privacyPolicy.version },
+    allegatoA: allegatoA ? { id: allegatoA.id, version: allegatoA.version } : null,
   };
 }
 
@@ -87,15 +141,19 @@ export function validateOmniaAiAcceptance(input: OmniaAiAcceptanceInput): string
   if (!input.condizioniEPrivacy) {
     return "Devi accettare le Condizioni di abbonamento e prendere visione della Privacy policy.";
   }
+  // Senza numeri nel messaggio: le clausole da approvare cambiano con la versione delle
+  // condizioni (5, 8, 11, 14 nella v1; 5, 8, 10, 12, 15 e Allegato A dalla v2), e la
+  // validazione avviene prima di sapere quale versione è in vigore.
   if (!input.clausoleSpecifiche) {
-    return "Devi approvare specificamente le clausole 5, 8, 11 e 14 delle Condizioni di abbonamento.";
+    return "Devi approvare specificamente le clausole indicate delle Condizioni di abbonamento (e l'Allegato A, dove previsto).";
   }
   return null;
 }
 
 // Una riga per ogni casella di accettazione spuntata, mirror esatto di
 // recordLegalAcceptances: "condizioni_e_privacy" copre due documenti
-// (condizioni di abbonamento + privacy), quindi genera due righe.
+// (condizioni di abbonamento + privacy), quindi genera due righe; dalla v2 delle
+// condizioni se ne aggiungono altre due per l'Allegato A (vedi sotto).
 export async function recordOmniaAiLegalAcceptances({
   admin,
   subscriptionId,
@@ -148,6 +206,25 @@ export async function recordOmniaAiLegalAcceptances({
       legal_document_id: documents.condizioniAbbonamento.id,
     },
   ];
+
+  // L'Allegato A (atto di nomina a responsabile) è parte integrante delle condizioni:
+  // si registra sia come accettato insieme ad esse (prima casella) sia come
+  // approvato specificamente (seconda casella, che lo richiama). Due righe in più,
+  // ciascuna con l'impronta della versione che il cliente ha davvero visto.
+  if (documents.allegatoA) {
+    rows.push(
+      {
+        ...base,
+        acceptance_type: "condizioni_e_privacy",
+        legal_document_id: documents.allegatoA.id,
+      },
+      {
+        ...base,
+        acceptance_type: "clausole_specifiche",
+        legal_document_id: documents.allegatoA.id,
+      },
+    );
+  }
 
   const { error } = await admin.from("omnia_ai_legal_acceptances").insert(rows);
 

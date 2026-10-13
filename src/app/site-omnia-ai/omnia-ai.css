@@ -678,6 +678,16 @@ li {
 .omnia-prosa h2 {
   font-size: 20px;
 }
+.omnia-prosa h3 {
+  margin-top: 36px;
+  font-size: 16.5px;
+}
+.omnia-prosa h3 + p {
+  margin-top: 12px;
+}
+.omnia-prosa em {
+  font-style: italic;
+}
 .omnia-prosa strong {
   color: var(--testo);
   font-weight: 600;
