@@ -1,6 +1,7 @@
 import { richiediAdminPagina } from "@/lib/console/accesso";
 import { contaDaFatturare } from "@/lib/console/fatturazione";
 import { leggiBonificiInAttesa } from "@/lib/console/ordini";
+import { contaMessaggiDaRispondere } from "@/lib/console/utenti";
 import BarraLaterale from "../_componenti/barra-laterale";
 
 // Guscio delle pagine riservate. Il controllo qui serve a non disegnare la
@@ -13,7 +14,7 @@ export default async function GuscioConsole({ children }: { children: React.Reac
   // confermare (con una scadenza) e gli incassi da fatturare. Si vedono da
   // qualunque pagina; il conteggio si aggiorna quando il layout si ricarica
   // (dopo ogni azione) o a ogni accesso.
-  const [bonifici, daFatturare] = await Promise.all([leggiBonificiInAttesa(), contaDaFatturare()]);
+  const [bonifici, daFatturare, messaggi] = await Promise.all([leggiBonificiInAttesa(), contaDaFatturare(), contaMessaggiDaRispondere()]);
 
   return (
     <div className="cn-shell">
@@ -22,7 +23,7 @@ export default async function GuscioConsole({ children }: { children: React.Reac
         conteggi={
           bonifici.errore
             ? undefined
-            : { bonifici: bonifici.totale, bonificiScaduti: bonifici.scaduti, daFatturare: daFatturare?.n }
+            : { bonifici: bonifici.totale, bonificiScaduti: bonifici.scaduti, daFatturare: daFatturare?.n, messaggi: messaggi ?? undefined }
         }
       />
       <main className="cn-principale">{children}</main>

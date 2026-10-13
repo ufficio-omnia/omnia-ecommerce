@@ -14,7 +14,16 @@ import { confermaPagamentoBonifico } from "@/lib/console/ordini";
 // un messaggio dentro la riga andrebbe perso — e "email al cliente non partita"
 // è un'informazione che non deve perdersi.
 
-export type StatoAzione = { errore?: string };
+export type StatoAzione = { errore?: string; url?: string };
+
+// Pagina a cui tornare dopo un'azione fatta dalla scheda di un cliente: solo
+// «/utenti/<uuid>», mai un indirizzo qualunque (nessun redirect aperto).
+const RITORNO_SCHEDA = /^\/utenti\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function destinazione(formData: FormData, predefinita: string, parametri: URLSearchParams): string {
+  const ritorno = String(formData.get("ritorno") ?? "");
+  return `${RITORNO_SCHEDA.test(ritorno) ? ritorno : predefinita}?${parametri.toString()}`;
+}
 
 const LIMITE_BYTE_FATTURA = 15 * 1024 * 1024;
 
@@ -133,5 +142,24 @@ export async function eliminaOrdine(_stato: StatoAzione, formData: FormData): Pr
   if (fattura?.file_path) await admin.storage.from("invoices").remove([fattura.file_path]);
 
   ricaricaConsole();
-  redirect(`/ordini?${new URLSearchParams({ esito: "eliminato", ordine: orderId.slice(0, 8) })}`);
+  redirect(destinazione(formData, "/ordini", new URLSearchParams({ esito: "eliminato", ordine: orderId.slice(0, 8) })));
+}
+
+// Link firmato (60 secondi) per scaricare la fattura PDF di un ordine. Lo usa il
+// pulsante «Scarica» della scheda cliente: la nuova scheda del browser va aperta
+// prima, nel clic, e poi puntata all'indirizzo (vedi open-in-new-tab-button).
+export async function ottieniLinkFattura(_stato: StatoAzione, formData: FormData): Promise<StatoAzione> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+
+  const orderId = String(formData.get("orderId") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) return { errore: "Ordine non valido." };
+
+  const admin = createAdminClient();
+  const { data: fattura } = await admin.from("invoices").select("file_path").eq("order_id", orderId).maybeSingle<{ file_path: string }>();
+  if (!fattura) return { errore: "Fattura non trovata." };
+
+  const { data: firmato, error } = await admin.storage.from("invoices").createSignedUrl(fattura.file_path, 60);
+  if (error || !firmato) return { errore: "Errore nella generazione del link di download." };
+  return { url: firmato.signedUrl };
 }

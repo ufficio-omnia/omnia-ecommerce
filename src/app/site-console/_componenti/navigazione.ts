@@ -30,7 +30,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
     titolo: "Anagrafiche",
     voci: [
       { href: "/ordini", etichetta: "Ordini", pronto: true },
-      { href: "/utenti", etichetta: "Utenti", pronto: false },
+      { href: "/utenti", etichetta: "Utenti", pronto: true },
       { href: "/prodotti", etichetta: "Prodotti e sconti", pronto: false },
     ],
   },

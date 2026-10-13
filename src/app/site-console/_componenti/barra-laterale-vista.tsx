@@ -7,7 +7,8 @@ import { NAVIGAZIONE } from "./navigazione";
 // Next (anteprima statica dei componenti, senza sessione).
 // Cose che aspettano un'azione dell'admin, mostrate accanto alla voce da qualunque pagina.
 // daFatturare: incassi veri non ancora fatturati (assente se la migrazione 0079 non c'è).
-export type ConteggiBarra = { bonifici: number; bonificiScaduti: number; daFatturare?: number };
+// messaggi: conversazioni in cui l'ultimo messaggio è del cliente (assente se non si leggono).
+export type ConteggiBarra = { bonifici: number; bonificiScaduti: number; daFatturare?: number; messaggi?: number };
 
 export default function BarraLateraleVista({
   email,
@@ -53,6 +54,11 @@ export default function BarraLateraleVista({
                   {voce.href === "/fatturazione" && conteggi && (conteggi.daFatturare ?? 0) > 0 && (
                     <span className="cn-conta avviso" title={`${conteggi.daFatturare} da fatturare`}>
                       {conteggi.daFatturare}
+                    </span>
+                  )}
+                  {voce.href === "/utenti" && conteggi && (conteggi.messaggi ?? 0) > 0 && (
+                    <span className="cn-conta avviso" title={`${conteggi.messaggi} conversazioni aspettano una risposta`}>
+                      {conteggi.messaggi}
                     </span>
                   )}
                   {voce.href === "/bonifici" && conteggi && conteggi.bonifici > 0 && (
