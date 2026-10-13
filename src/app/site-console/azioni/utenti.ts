@@ -8,7 +8,7 @@ import { sendEmail } from "@/lib/email";
 import { BASE_URL } from "@/lib/zone";
 import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { richiediAdminAzione } from "@/lib/console/accesso";
-import { testoPerEmail } from "@/lib/console/html";
+import { testoPerEmail } from "@/lib/html";
 import { aggiungiGiorni, mezzanotteRoma } from "@/lib/console/periodo";
 import { eAnonimizzato } from "@/lib/console/utenti-calcoli";
 

@@ -2,21 +2,17 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
+import { escapeHtml } from "@/lib/html";
 import { BASE_URL } from "@/lib/zone";
 import { scadenzaBonifico, type ScadenzaBonifico } from "./giorni-lavorativi";
 
 // Ordini e bonifici della console. Le letture usano la service role e vanno
 // chiamate solo dopo richiediAdminPagina()/richiediAdminAzione(); la conferma
-// di un bonifico è condivisa con il vecchio pannello admin dell'e-commerce
-// (src/app/actions/admin.ts) finché quello esiste, così la data e l'autore
-// della conferma si registrano da qualunque parte arrivi.
+// di un bonifico (confermaPagamentoBonifico) registra la data e l'autore del
+// pagamento e avvisa il cliente con un link all'e-commerce.
 
 type RelazioneUtente = { email: string } | null;
 type RelazioneProdotto = { title: string } | null;
-
-function escapeHtml(valore: string): string {
-  return valore.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 // La colonna non esiste ancora perché la migrazione 0075 non è stata eseguita.
 function colonnaAssente(error: { code?: string; message?: string } | null, frammento: string): boolean {

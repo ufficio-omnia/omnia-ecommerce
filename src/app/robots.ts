@@ -28,9 +28,9 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     // Nessun riferimento all'e-commerce: sitemap propria, sul dominio
     // canonico di omnia-ai.it.
     //
-    // Bloccati: area riservata, admin, /api e /auth (callback Supabase),
-    // più le pagine transazionali che non hanno un meta noindex
-    // (registrazione, attivazione account, checkout diretto /abbonati/*).
+    // Bloccati: area riservata, /api e /auth (callback Supabase), più le
+    // pagine transazionali che non hanno un meta noindex (registrazione,
+    // attivazione account, checkout diretto /abbonati/*).
     //
     // NON bloccati di proposito: /login, /imposta-password e
     // /abbonamento-attivato. Hanno già un meta noindex, e Google deve
@@ -42,7 +42,6 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         allow: "/",
         disallow: [
           "/dashboard/",
-          "/admin/",
           "/api/",
           "/auth/",
           "/registrati",

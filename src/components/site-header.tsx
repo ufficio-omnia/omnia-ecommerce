@@ -8,16 +8,6 @@ export default async function SiteHeader() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  let isAdmin = false;
-  if (user) {
-    const { data: profile } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    isAdmin = profile?.role === "admin";
-  }
-
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-cream-soft/90 backdrop-blur">
       <div className="relative mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
@@ -29,7 +19,7 @@ export default async function SiteHeader() {
           </span>
         </Link>
 
-        <HeaderNav isLoggedIn={!!user} isAdmin={isAdmin} />
+        <HeaderNav isLoggedIn={!!user} />
       </div>
     </header>
   );

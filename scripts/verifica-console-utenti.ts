@@ -5,7 +5,7 @@
 // Gratuito, nessun database né rete: gira nel livello 1, quindi in prebuild.
 import fs from "fs";
 import path from "path";
-import { escapeHtml, testoPerEmail } from "../src/lib/console/html";
+import { escapeHtml, testoPerEmail } from "../src/lib/html";
 import { aggiungiGiorni, mezzanotteRoma } from "../src/lib/console/periodo";
 import {
   conteggiPerTipo,

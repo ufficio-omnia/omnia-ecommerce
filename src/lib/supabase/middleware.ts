@@ -35,11 +35,12 @@ export async function updateSession(request: NextRequest, zone: Zone = "ecommerc
   // Sulla console TUTTO richiede una sessione, tranne i pochi percorsi di
   // accesso (lista in zone.ts): è solo la prima barriera, il ruolo admin lo
   // verifica poi ogni pagina e ogni azione (src/lib/console/accesso.ts).
+  // Sugli altri due siti solo l'area riservata: l'amministrazione non esiste più
+  // lì (vive solo sulla console), un «/admin» è una pagina inesistente.
   const isProtectedRoute =
     zone === "console"
       ? !CONSOLE_PERCORSI_PUBBLICI.includes(request.nextUrl.pathname)
-      : request.nextUrl.pathname.startsWith("/dashboard") ||
-        request.nextUrl.pathname.startsWith("/admin");
+      : request.nextUrl.pathname.startsWith("/dashboard");
 
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();
