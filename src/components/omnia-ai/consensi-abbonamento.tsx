@@ -74,7 +74,8 @@ export default function ConsensiAbbonamento({
               , comprensive dell&apos;
               <Collegamento href={allegatoUrl}>
                 Allegato A — {TITOLO_ALLEGATO_A} (versione {allegatoVersion})
-              </Collegamento>
+              </Collegamento>{" "}
+              (<Collegamento href={`${allegatoUrl}/pdf`}>scarica il PDF</Collegamento>)
             </>
           )}{" "}
           e di aver preso visione della{" "}

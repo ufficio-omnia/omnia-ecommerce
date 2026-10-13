@@ -1017,6 +1017,50 @@ li {
 .omnia-app-shell.largo {
   max-width: 1040px;
 }
+/* Documenti contrattuali (area riservata): un riquadro per abbonamento, una riga per
+   documento con la versione accettata e, in evidenza, data e ora dell'accettazione. */
+.omnia-doc-elenco {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+.omnia-doc-riga {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--vetro);
+}
+.omnia-doc-titolo {
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-doc-versione {
+  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--fioco);
+}
+.omnia-doc-accettazione {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--fioco);
+}
+.omnia-doc-accettazione strong {
+  color: var(--verde);
+  font-weight: 600;
+}
+.omnia-doc-azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.omnia-doc-avviso {
+  flex-basis: 100%;
+}
 .omnia-torna {
   display: inline-block;
   font-size: 13px;

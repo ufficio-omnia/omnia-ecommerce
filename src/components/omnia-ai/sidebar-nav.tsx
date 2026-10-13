@@ -11,6 +11,7 @@ const VOCI = [
   { href: "/dashboard/omnia-ai/documenti-aziendali", label: "Documenti aziendali" },
   { href: "/dashboard/omnia-ai/profilo-azienda", label: "Profilo azienda" },
   { href: "/dashboard/omnia-ai/abbonamento", label: "Abbonamento" },
+  { href: "/dashboard/omnia-ai/documenti-contrattuali", label: "Documenti contrattuali" },
   { href: "/dashboard/omnia-ai/impostazioni", label: "Impostazioni" },
 ];
 

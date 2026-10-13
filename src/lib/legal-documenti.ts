@@ -44,6 +44,20 @@ export const TITOLO_PER_TIPO_DB: Record<string, string> = {
   omnia_ai_allegato_a: "Allegato A — Atto di nomina a responsabile del trattamento",
 };
 
+export const TIPO_DB_PER_SLUG: Record<string, string> = Object.fromEntries(Object.entries(SLUG_PER_TIPO_DB).map(([tipo, slug]) => [slug, tipo]));
+
+// Nome del file PDF scaricato: senza accenti né spazi (finisce in un'intestazione HTTP).
+const NOME_PDF_PER_TIPO_DB: Record<string, string> = {
+  omnia_ai_condizioni_abbonamento: "Condizioni-di-abbonamento-OMNIA-AI",
+  omnia_ai_privacy_policy: "Privacy-policy-OMNIA-AI",
+  omnia_ai_cookie_policy: "Cookie-policy-OMNIA-AI",
+  omnia_ai_allegato_a: "Allegato-A-Nomina-responsabile-del-trattamento",
+};
+
+export function nomeFilePdf(tipoDb: string, version: number): string {
+  return `${NOME_PDF_PER_TIPO_DB[tipoDb] ?? "Documento-OMNIA-AI"}-v${version}.pdf`;
+}
+
 export function leggiMarkdownLegale(file: string): string {
   // il nome arriva solo dal registro qui sopra, mai da un indirizzo: nessun percorso libero
   if (!/^[a-z0-9-]+\.md$/.test(file)) throw new Error(`Nome di documento legale non valido: ${file}`);
