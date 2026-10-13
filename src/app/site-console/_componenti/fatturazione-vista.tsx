@@ -37,7 +37,7 @@ const TAB: { valore: FiltroFattura; etichetta: string }[] = [
   { valore: "tutte", etichetta: "Tutte" },
 ];
 
-export type ParametriEsitoFattura = { esito?: string; n?: string; nuovo?: string };
+export type ParametriEsitoFattura = { esito?: string; n?: string; nuovo?: string; email?: string };
 
 function testoEsito({ esito, n, nuovo }: ParametriEsitoFattura): string | null {
   if (esito !== "aggiornate" || !n) return null;
@@ -125,13 +125,20 @@ export default function FatturazioneVista({
         Le ricevute di Stripe non sono fatture elettroniche italiane: ogni riga qui sotto va fatturata a parte, con il tuo programma di fatturazione. Qui segni quando l&apos;hai fatto.
       </p>
       {messaggioEsito && (
-        <p className="cn-esito ok" role="status" style={{ marginBottom: 14 }}>
+        <p className={`cn-esito ${esito.email === "0" ? "errore" : "ok"}`} role="status" style={{ marginBottom: 14 }}>
           {messaggioEsito}
+          {esito.email === "1" && " PDF caricato: il cliente è stato avvisato per email."}
+          {esito.email === "0" && " PDF caricato, ma l'email al cliente NON è partita (o il pagamento non è collegato a un cliente): avvisalo tu."}
         </p>
       )}
       {!dati.statoDisponibile && (
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
           Lo stato di fatturazione non è ancora disponibile: eseguire la migrazione 0079. Intanto tutte le righe risultano da fatturare e non si può segnare nulla.
+        </p>
+      )}
+      {dati.statoDisponibile && !dati.fileFatturaDisponibile && (
+        <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
+          Il caricamento del PDF della fattura non è ancora disponibile: eseguire la migrazione 0081. Intanto lo stato si segna come sempre.
         </p>
       )}
       {!dati.incassiDisponibili && (
@@ -255,6 +262,20 @@ export default function FatturazioneVista({
                             {r.dataFattura ? ` · ${formattaData(r.dataFattura)}` : ""}
                           </small>
                         )}
+                        {r.stato === "fatturata" && (
+                          <small>
+                            {r.fatturaFile ? (
+                              <>
+                                PDF caricato ·{" "}
+                                <a href={`/fatturazione/fattura/${r.chiave.replace(":", "/")}`} target="_blank" rel="noreferrer">
+                                  apri
+                                </a>
+                              </>
+                            ) : (
+                              "nessun PDF caricato"
+                            )}
+                          </small>
+                        )}
                         {r.note && <small>{r.note}</small>}
                         {r.ricevutaUrl && (
                           <small>
@@ -272,6 +293,8 @@ export default function FatturazioneVista({
                             numero={r.numeroFattura}
                             data={r.dataFattura}
                             note={r.note}
+                            haFile={r.fatturaFile}
+                            fileDisponibile={dati.fileFatturaDisponibile}
                             oggi={oggi}
                             filtro={filtro}
                             prova={includiProva}

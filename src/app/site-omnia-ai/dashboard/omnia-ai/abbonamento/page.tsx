@@ -261,6 +261,10 @@ export default async function AbbonamentoPage() {
         <div style={{ marginTop: 16 }}>
           <GestisciPagamentoButton />
         </div>
+        <p className="omnia-riquadro-nota" style={{ marginTop: 12 }}>
+          I pagamenti, le ricevute di Stripe e le fatture sono nella pagina{" "}
+          <Link href="/dashboard/omnia-ai/pagamenti">Pagamenti e fatture</Link>.
+        </p>
 
         {subscription.cancel_at_period_end ? (
           <p className="omnia-messaggio-stato avviso" style={{ marginTop: 16 }}>

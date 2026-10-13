@@ -1017,6 +1017,14 @@ li {
 .omnia-app-shell.largo {
   max-width: 1040px;
 }
+/* Pagamenti e fatture: nota sotto un dato (numero di ricevuta, numero e data della fattura). */
+.omnia-pagamento-nota {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fioco);
+}
+
 /* Documenti contrattuali (area riservata): un riquadro per abbonamento, una riga per
    documento con la versione accettata e, in evidenza, data e ora dell'accettazione. */
 .omnia-doc-elenco {

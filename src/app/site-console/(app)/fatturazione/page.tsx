@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Da fatturare" };
 export default async function PaginaFatturazione({
   searchParams,
 }: {
-  searchParams: Promise<{ stato?: string; prova?: string; esito?: string; n?: string; nuovo?: string }>;
+  searchParams: Promise<{ stato?: string; prova?: string; esito?: string; n?: string; nuovo?: string; email?: string }>;
 }) {
   await richiediAdminPagina();
   const parametri = await searchParams;
@@ -23,7 +23,7 @@ export default async function PaginaFatturazione({
       dati={dati}
       filtro={leggiFiltroFattura(parametri.stato, includiProva)}
       includiProva={includiProva}
-      esito={{ esito: parametri.esito, n: parametri.n, nuovo: parametri.nuovo }}
+      esito={{ esito: parametri.esito, n: parametri.n, nuovo: parametri.nuovo, email: parametri.email }}
       oggi={dataRoma(new Date())}
       azioneStato={aggiornaStatoFattura}
       azioneMultipla={aggiornaStatoFatturaMultiplo}
