@@ -26,13 +26,7 @@ const mobileNavLinkClass = (active: boolean) =>
     active ? "text-forest-dark underline decoration-2 underline-offset-4" : "text-forest"
   }`;
 
-export default function HeaderNav({
-  isLoggedIn,
-  isAdmin,
-}: {
-  isLoggedIn: boolean;
-  isAdmin: boolean;
-}) {
+export default function HeaderNav({ isLoggedIn }: { isLoggedIn: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -56,7 +50,6 @@ export default function HeaderNav({
 
   const internalLinks = [
     ...NAV_LINKS,
-    ...(isLoggedIn && isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
     ...(isLoggedIn ? [{ href: "/dashboard", label: "Area riservata" }] : []),
   ];
 

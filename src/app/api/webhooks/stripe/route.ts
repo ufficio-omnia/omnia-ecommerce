@@ -9,6 +9,7 @@ import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-pla
 import { pianoDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
 import { getOmniaAiBaseUrl } from "@/lib/omnia-ai-request";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
+import { collegaIncassiASubscription, registraIncassoDaFattura, schemaAssente } from "@/lib/omnia-ai-incassi";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -48,10 +49,10 @@ export async function POST(request: NextRequest) {
     // abbonamenti OMNIA AI: l'e-commerce è sempre mode:"payment", non
     // genera mai questi due eventi. Nessuna discriminazione necessaria.
     case "customer.subscription.updated":
-      await handleOmniaAiSubscriptionUpdated(event.data.object as Stripe.Subscription);
+      await handleOmniaAiSubscriptionUpdated(event.data.object as Stripe.Subscription, event.livemode);
       break;
     case "customer.subscription.deleted":
-      await handleOmniaAiSubscriptionDeleted(event.data.object as Stripe.Subscription);
+      await handleOmniaAiSubscriptionDeleted(event.data.object as Stripe.Subscription, event.livemode);
       break;
     // Cambio piano programmato (downgrade, mai immediato): questi tre
     // eventi coprono la creazione della schedule, ogni sua modifica (compresa
@@ -70,6 +71,25 @@ export async function POST(request: NextRequest) {
     case "invoice.payment_failed":
       await handleOmniaAiInvoicePaymentFailed(event.data.object as Stripe.Invoice);
       break;
+    // Un pagamento di abbonamento andato a buon fine (primo pagamento, rinnovo,
+    // conguaglio di cambio piano): diventa una riga di omnia_ai_incassi, base dei
+    // ricavi e della fatturazione nella console. Ogni evento è una richiesta
+    // a sé: un errore qui non tocca gli altri eventi. Un errore transitorio del
+    // database risponde 500 così Stripe riprova (la riga è idempotente per
+    // fattura); una tabella non ancora creata (migrazione 0078) NO, altrimenti
+    // Stripe riproverebbe per giorni — gli incassi mancanti si recuperano col
+    // backfill (scripts/backfill-incassi-stripe.ts).
+    case "invoice.paid": {
+      const esito = await registraIncassoDaFattura(createAdminClient(), event.data.object as Stripe.Invoice, event.livemode);
+      if (esito.stato === "errore") {
+        console.error("Webhook Stripe (incasso AI): registrazione non riuscita", esito.messaggio);
+        return NextResponse.json({ error: "Incasso non registrato" }, { status: 500 });
+      }
+      if (esito.stato === "tabella_assente") {
+        console.error("Webhook Stripe (incasso AI): tabella omnia_ai_incassi assente, eseguire la migrazione 0078. Incasso non registrato:", (event.data.object as Stripe.Invoice).id);
+      }
+      break;
+    }
   }
 
   return NextResponse.json({ received: true });
@@ -447,20 +467,28 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     const stripeCustomerId =
       typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
-    const { data: sub, error: subError } = await admin
+    const rigaSubscription = {
+      user_id: userId,
+      plan: planSlug,
+      status: mapStripeSubscriptionStatus(subscription.status),
+      stripe_subscription_id: stripeSubscriptionId,
+      stripe_customer_id: stripeCustomerId,
+      current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
+      current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+    };
+
+    // livemode: l'abbonamento è di prova? (colonna della migrazione 0078; se non
+    // è ancora stata eseguita si crea la riga come sempre, senza.)
+    let creazione = await admin
       .from("subscriptions")
-      .insert({
-        user_id: userId,
-        plan: planSlug,
-        status: mapStripeSubscriptionStatus(subscription.status),
-        stripe_subscription_id: stripeSubscriptionId,
-        stripe_customer_id: stripeCustomerId,
-        current_period_start: item ? new Date(item.current_period_start * 1000).toISOString() : null,
-        current_period_end: item ? new Date(item.current_period_end * 1000).toISOString() : null,
-        cancel_at_period_end: subscription.cancel_at_period_end,
-      })
+      .insert({ ...rigaSubscription, livemode: session.livemode })
       .select("id")
       .single();
+    if (creazione.error && schemaAssente(creazione.error)) {
+      creazione = await admin.from("subscriptions").insert(rigaSubscription).select("id").single();
+    }
+    const { data: sub, error: subError } = creazione;
 
     if (subError || !sub) {
       console.error("Webhook Stripe (abbonamento AI): errore creazione subscription", subError);
@@ -468,6 +496,10 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     }
 
     subscriptionRowId = sub.id;
+
+    // Il primo pagamento (invoice.paid) può essere arrivato prima di questa
+    // riga: i suoi incassi restano senza utente finché non si agganciano qui.
+    await collegaIncassiASubscription(admin, stripeSubscriptionId, userId);
   }
 
   if (!subscriptionRowId || !userId) return;
@@ -563,7 +595,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
   }
 }
 
-async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscription, livemode: boolean) {
   const admin = createAdminClient();
   const item = subscription.items.data[0];
 
@@ -584,22 +616,53 @@ async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscriptio
     update.plan = pianoAggiornato;
   }
 
-  const { error } = await admin.from("subscriptions").update(update).eq("stripe_subscription_id", subscription.id);
+  // Colonne della migrazione 0078. La data della disdetta è quella che Stripe
+  // dichiara (canceled_at: l'istante della richiesta, stabile a ogni evento
+  // successivo); si azzera solo se l'abbonamento è tornato attivo senza
+  // disdetta — mai su uno già concluso, altrimenti si perderebbe la data.
+  const nuoveColonne: Record<string, unknown> = { livemode };
+  if (subscription.cancel_at_period_end) {
+    if (subscription.canceled_at) nuoveColonne.disdetta_richiesta_il = new Date(subscription.canceled_at * 1000).toISOString();
+  } else if (subscription.status === "active" || subscription.status === "trialing") {
+    nuoveColonne.disdetta_richiesta_il = null;
+  }
+
+  let { error } = await admin
+    .from("subscriptions")
+    .update({ ...update, ...nuoveColonne })
+    .eq("stripe_subscription_id", subscription.id);
+
+  // Migrazione 0078 non ancora eseguita: si aggiorna come sempre.
+  if (error && schemaAssente(error)) {
+    ({ error } = await admin.from("subscriptions").update(update).eq("stripe_subscription_id", subscription.id));
+  }
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore aggiornamento subscription", error);
   }
 }
 
-async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscription) {
+async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscription, livemode: boolean) {
   const admin = createAdminClient();
 
-  const { data: sub, error } = await admin
+  // terminata_il e livemode sono colonne della migrazione 0078: se non è ancora
+  // stata eseguita si annulla come sempre, senza.
+  const base = { status: "annullato" as const, cancel_at_period_end: false };
+  let aggiornamento = await admin
     .from("subscriptions")
-    .update({ status: "annullato", cancel_at_period_end: false })
+    .update({ ...base, terminata_il: new Date((subscription.ended_at ?? Math.floor(Date.now() / 1000)) * 1000).toISOString(), livemode })
     .eq("stripe_subscription_id", subscription.id)
     .select("user_id")
     .maybeSingle<{ user_id: string }>();
+  if (aggiornamento.error && schemaAssente(aggiornamento.error)) {
+    aggiornamento = await admin
+      .from("subscriptions")
+      .update(base)
+      .eq("stripe_subscription_id", subscription.id)
+      .select("user_id")
+      .maybeSingle<{ user_id: string }>();
+  }
+  const { data: sub, error } = aggiornamento;
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore cancellazione subscription", error);

@@ -30,6 +30,11 @@ export const BASE_URL = isPublicSiteUrl(process.env.NEXT_PUBLIC_SITE_URL)
 // non deve comparire nessun'altra variante.
 export const OMNIA_AI_BASE_URL = "https://omnia-ai.it";
 
+// Dominio della console amministrativa, scritto fisso (come OMNIA_AI_BASE_URL):
+// i link che escono dalla console (email di accesso) non devono mai dipendere
+// dall'host della richiesta né da NEXT_PUBLIC_SITE_URL, che è quello dell'e-commerce.
+export const CONSOLE_BASE_URL = "https://console.omniaitalia.com";
+
 // Un host non in questa mappa (dominio tecnico *.vercel.app incluso)
 // ricade sulla zona "ecommerce" per il ROUTING (comportamento identico a
 // oggi, non deve rompersi nulla) — ma NON per l'indicizzazione: vedere
@@ -75,6 +80,16 @@ export const RESERVED_PREFIXES = Object.values(ZONE_PREFIX);
 // perché lì l'host "localhost" risolve alla zona "ecommerce" di default,
 // che non riscrive nulla.
 export const ZONE_REWRITE_EXEMPT_PATHS = ["/robots.txt", "/sitemap.xml", "/auth/callback", "/api/webhooks/stripe"];
+
+// Sulla console, dei percorsi esenti dal rewrite valgono solo questi due: sono
+// quelli che ogni dominio deve esporre al canonico. /auth/callback e il webhook
+// Stripe sono route reali condivise che la console non usa: lì rispondono 404
+// (src/proxy.ts), così sulla console esistono solo le sue pagine.
+export const CONSOLE_PERCORSI_CONDIVISI = ["/robots.txt", "/sitemap.xml"];
+
+// Percorsi della console raggiungibili senza sessione: tutto il resto richiede
+// un admin (src/lib/supabase/middleware.ts, e di nuovo in ogni pagina e azione).
+export const CONSOLE_PERCORSI_PUBBLICI = ["/login", "/auth/conferma", ...CONSOLE_PERCORSI_CONDIVISI];
 
 // Cookie di override SOLO sviluppo (mai letto/scritto in produzione):
 // permette di provare le tre zone da localhost, dove l'hostname reale

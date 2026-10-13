@@ -29,6 +29,26 @@ const nextConfig: NextConfig = {
   // favicon.ico), quindi l'host va riconosciuto in questa regola.
   // www.omnia-ai.it è incluso per coerenza con ZONE_HOSTS in
   // src/lib/zone.ts, anche se oggi fa già un 308 verso l'apex.
+  // Intestazioni solo per l'host della console. X-Robots-Tag copre ogni
+  // risposta, anche gli asset che il matcher del proxy non intercetta e le
+  // pagine di errore: la console non deve mai finire in un indice, nemmeno se
+  // qualcuno ne diffondesse un URL (robots.txt da solo non impedisce
+  // l'indicizzazione di un URL già noto). Le altre tre limitano l'incorniciamento
+  // in altre pagine, la fuga dell'URL nel Referer e lo sniffing dei tipi.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "console.omniaitalia.com" }],
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [
