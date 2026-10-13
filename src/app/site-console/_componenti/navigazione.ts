@@ -31,14 +31,14 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
     voci: [
       { href: "/ordini", etichetta: "Ordini", pronto: true },
       { href: "/utenti", etichetta: "Utenti", pronto: true },
-      { href: "/prodotti", etichetta: "Prodotti e sconti", pronto: false },
+      { href: "/prodotti", etichetta: "Prodotti e sconti", pronto: true },
     ],
   },
   {
     titolo: "Sistema",
     voci: [
-      { href: "/knowledge-base", etichetta: "Knowledge base AI", pronto: false },
-      { href: "/impostazioni", etichetta: "Impostazioni", pronto: false },
+      { href: "/knowledge-base", etichetta: "Knowledge base AI", pronto: true },
+      { href: "/impostazioni", etichetta: "Impostazioni", pronto: true },
     ],
   },
 ];

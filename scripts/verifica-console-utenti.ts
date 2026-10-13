@@ -215,7 +215,7 @@ for (const [file, lettura2] of [
 }
 atteso("nessun HTML grezzo nelle viste: i testi dei clienti (messaggi, user agent) si mostrano come testo", !/dangerouslySetInnerHTML/.test(leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx")) && !/dangerouslySetInnerHTML/.test(leggi("src/app/site-console/_componenti/utenti-vista.tsx")));
 atteso("le azioni distruttive chiedono conferma prima di partire", (leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx").match(/conferma=/g) ?? []).length >= 3 && /window\.confirm\(conferma\)/.test(leggi("src/app/site-console/_componenti/pulsante-azione.tsx")));
-atteso("il pulsante «Scarica» apre la scheda nel clic, prima di aspettare il server", /window\.open\("about:blank", "_blank"\)/.test(leggi("src/app/site-console/_componenti/pulsante-scarica-fattura.tsx")));
+atteso("il pulsante «Scarica» apre la scheda nel clic, prima di aspettare il server", /window\.open\("about:blank", "_blank"\)/.test(leggi("src/app/site-console/_componenti/pulsante-apri-link.tsx")) && /<PulsanteApriLink azione=\{ottieniLinkFattura\} campi=\{\{ orderId: o\.id \}\}/.test(leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx")));
 const layout = leggi("src/app/site-console/(app)/layout.tsx");
 atteso("la barra laterale riceve le conversazioni da rispondere", /contaMessaggiDaRispondere\(\)/.test(layout) && /messaggi: messaggi \?\? undefined/.test(layout));
 atteso("la voce «Utenti» della barra è attiva (non più «presto»)", /href: "\/utenti", etichetta: "Utenti", pronto: true/.test(leggi("src/app/site-console/_componenti/navigazione.ts")));

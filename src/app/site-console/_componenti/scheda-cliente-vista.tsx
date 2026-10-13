@@ -11,7 +11,7 @@ import { formattaData, formattaDataOra, formattaEuro, formattaIntero } from "./f
 import FormAbbonamentoManuale from "./form-abbonamento-manuale";
 import FormRisposta from "./form-risposta";
 import PulsanteAzione from "./pulsante-azione";
-import PulsanteScaricaFattura from "./pulsante-scarica-fattura";
+import PulsanteApriLink from "./pulsante-apri-link";
 
 // Vista pura della scheda di un cliente: anagrafica, ordini e abbonamenti con le
 // accettazioni legali registrate (data e ora al secondo, versione e impronta del
@@ -408,7 +408,7 @@ function SchedaOkVista({ s, idSessione, esito, indietro }: { s: SchedaOk; idSess
                           <td className="mono" title={o.pagatoIl ? `Pagato il ${formattaDataOra(o.pagatoIl)}` : undefined}>
                             {formattaData(o.creatoIl)}
                           </td>
-                          <td>{o.fatturaCaricata ? <PulsanteScaricaFattura orderId={o.id} azione={ottieniLinkFattura} /> : "—"}</td>
+                          <td>{o.fatturaCaricata ? <PulsanteApriLink azione={ottieniLinkFattura} campi={{ orderId: o.id }} /> : "—"}</td>
                           <td>
                             <BadgeProva stato={o.provaAccettazione} />
                           </td>

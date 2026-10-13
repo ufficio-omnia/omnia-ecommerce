@@ -1,17 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { StatoAzione } from "../azioni/ordini";
 
-// Scarica la fattura PDF di un ordine in una nuova scheda. La scheda va aperta
-// subito, nel clic: se si aspettasse la risposta del server il browser la
-// bloccherebbe come popup. Poi la si punta al link firmato (valido 60 secondi).
-export default function PulsanteScaricaFattura({
-  orderId,
+type Esito = { errore?: string; url?: string };
+
+// Apre in una nuova scheda un indirizzo che il server genera al momento (link
+// firmato di 60 secondi: fattura PDF di un ordine, file di un prodotto). La scheda
+// va aperta subito, nel clic: se si aspettasse la risposta del server il browser la
+// bloccherebbe come popup. Poi la si punta all'indirizzo ricevuto.
+export default function PulsanteApriLink({
   azione,
+  campi,
+  etichetta = "Scarica",
 }: {
-  orderId: string;
-  azione: (stato: StatoAzione, dati: FormData) => Promise<StatoAzione>;
+  azione: (stato: Esito, dati: FormData) => Promise<Esito>;
+  campi: Record<string, string>;
+  etichetta?: string;
 }) {
   const [errore, setErrore] = useState<string | null>(null);
   const [inCorso, avvia] = useTransition();
@@ -22,7 +26,7 @@ export default function PulsanteScaricaFattura({
 
     avvia(async () => {
       const dati = new FormData();
-      dati.append("orderId", orderId);
+      for (const [nome, valore] of Object.entries(campi)) dati.append(nome, valore);
       const esito = await azione({}, dati);
 
       if (esito.url) {
@@ -38,7 +42,7 @@ export default function PulsanteScaricaFattura({
   return (
     <span className="cn-azione">
       <button type="button" className="cn-btn piccolo" onClick={alClic} disabled={inCorso}>
-        {inCorso ? "Apro…" : "Scarica"}
+        {inCorso ? "Apro…" : etichetta}
       </button>
       {errore && (
         <span className="cn-azione-errore" role="alert">
