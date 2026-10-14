@@ -14,6 +14,8 @@ type CriterioRiepilogo = { numero: string; titolo: string; punti_max: number };
 
 export type Estrazione = {
   scadenza: string | null;
+  // ora di scadenza indicata dal bando («HH:MM»); null = non indicata (si intendono le 23:59)
+  scadenza_ora?: string | null;
   importo: number | null;
   criteri_valutazione: string | null;
   requisiti: string | null;
@@ -93,9 +95,14 @@ export default function ExtractionSection({
               <div className="omnia-dato-etichetta">Scadenza</div>
               <div className="omnia-dato-valore">
                 {estrazione.scadenza
-                  ? new Date(estrazione.scadenza).toLocaleDateString("it-IT")
+                  ? `${new Date(estrazione.scadenza).toLocaleDateString("it-IT")}${estrazione.scadenza_ora ? ` · ore ${estrazione.scadenza_ora}` : ""}`
                   : "Non specificata"}
               </div>
+              {estrazione.scadenza && !estrazione.scadenza_ora && (
+                <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                  ora non indicata: si intendono le 23:59
+                </div>
+              )}
             </div>
             <div className="omnia-dato">
               <div className="omnia-dato-etichetta">Importo</div>

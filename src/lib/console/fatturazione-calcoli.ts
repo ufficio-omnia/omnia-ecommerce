@@ -12,7 +12,7 @@ import { giorniTra } from "./periodo";
 export type StatoFattura = "da_fatturare" | "fatturata" | "non_dovuta";
 export const STATI_FATTURA: StatoFattura[] = ["da_fatturare", "fatturata", "non_dovuta"];
 
-export type FonteRiga = "incasso" | "crediti";
+export type FonteRiga = "incasso" | "crediti" | "revisione";
 
 // Giorni dall'incasso oltre i quali la riga è segnalata. È il termine ORDINARIO
 // indicativo per l'emissione della fattura immediata, non un consiglio fiscale:
@@ -154,7 +154,7 @@ export function risolviDatiFatturazione(profilo: ProfiloFatturazione | null, sna
 // ───── Riga dell'elenco ─────
 
 export type RigaFatturazione = {
-  // "incasso:<uuid>" o "crediti:<uuid>": identifica la riga nella tabella giusta
+  // "incasso:<uuid>", "crediti:<uuid>" o "revisione:<uuid>": identifica la riga nella tabella giusta
   chiave: string;
   fonte: FonteRiga;
   // istante dell'incasso
@@ -188,6 +188,31 @@ export function descrizioneIncasso(tipo: string, piano: string | null): string {
   const nomePiano = piano ? ` ${piano.charAt(0).toUpperCase()}${piano.slice(1)}` : "";
   const dettaglio: Record<string, string> = { primo: "primo pagamento", rinnovo: "rinnovo", conguaglio: "conguaglio per cambio piano" };
   return `Abbonamento OMNIA AI${nomePiano}${dettaglio[tipo] ? `: ${dettaglio[tipo]}` : ""}`;
+}
+
+// I dati di fatturazione raccolti da Stripe nel pagamento di una revisione umana (customer_details del checkout).
+export type DettagliClienteStripe = {
+  name?: string | null;
+  business_name?: string | null;
+  email?: string | null;
+  address?: { line1?: string | null; line2?: string | null; postal_code?: string | null; city?: string | null; state?: string | null; country?: string | null } | null;
+  tax_ids?: { type?: string | null; value?: string | null }[] | null;
+} | null;
+
+export function snapshotDaDettagliStripe(d: DettagliClienteStripe | undefined): SnapshotStripe {
+  if (!d) return null;
+  const a = d.address;
+  return {
+    nome: testo(d.name) ?? testo(d.business_name),
+    email: testo(d.email),
+    indirizzo: a ? { riga1: testo(a.line1), riga2: testo(a.line2), cap: testo(a.postal_code), citta: testo(a.city), provincia: testo(a.state), paese: testo(a.country) } : null,
+    identificativi_fiscali: (d.tax_ids ?? []).flatMap((t) => (t.value ? [{ tipo: t.type ?? "", valore: t.value }] : [])),
+  };
+}
+
+export function descrizioneRevisioneRiga(garaTitolo: string, pagine: number, maggiorazionePercentuale: number): string {
+  const urgenza = maggiorazionePercentuale > 0 ? `, urgenza +${maggiorazionePercentuale}%` : "";
+  return `Revisione umana relazione tecnica — ${garaTitolo} (${pagine} ${pagine === 1 ? "pagina" : "pagine"}${urgenza})`;
 }
 
 export function descrizioneCrediti(pacchetto: string, crediti: number): string {

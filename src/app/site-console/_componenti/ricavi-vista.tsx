@@ -94,9 +94,10 @@ export default function RicaviVista({
           valore={formattaEuro(t.ecommerceNetto)}
           dettaglio={`${formattaIntero(t.ecommerceOrdini)} ordini pagati · ${formattaEuro(t.ecommerceLordo)} lordi`}
         />
-        <Tessera etichetta="OMNIA AI" valore={formattaEuro(t.omniaAiNetto)} dettaglio={`Abbonamenti e crediti · ${formattaEuro(t.omniaAiLordo)} lordi`} />
+        <Tessera etichetta="OMNIA AI" valore={formattaEuro(t.omniaAiNetto)} dettaglio={`Abbonamenti, crediti e revisioni · ${formattaEuro(t.omniaAiLordo)} lordi`} />
         <Tessera etichetta="Abbonamenti AI" valore={formattaEuro(t.abbonamentiNetto)} dettaglio={`${formattaIntero(t.incassiAbbonamento)} incassi (primi pagamenti, rinnovi, conguagli)`} />
         <Tessera etichetta="Crediti AI" valore={formattaEuro(t.creditiNetto)} dettaglio={`${formattaIntero(t.acquistiCrediti)} acquisti`} />
+        <Tessera etichetta="Revisioni umane" valore={formattaEuro(t.revisioniNetto)} dettaglio={`${formattaIntero(t.acquistiRevisione)} richieste pagate`} />
       </div>
 
       <div className="cn-sezione">
@@ -109,6 +110,7 @@ export default function RicaviVista({
                   <th className="num">E-commerce</th>
                   <th className="num">Abbonamenti AI</th>
                   <th className="num">Crediti AI</th>
+                  <th className="num">Revisioni umane</th>
                   <th className="num">Totale</th>
                   <th style={{ width: "22%" }}></th>
                 </tr>
@@ -120,13 +122,14 @@ export default function RicaviVista({
                     <td className="num">{formattaEuro(m.ecommerce)}</td>
                     <td className="num">{formattaEuro(m.abbonamenti)}</td>
                     <td className="num">{formattaEuro(m.crediti)}</td>
+                    <td className="num">{formattaEuro(m.revisioni)}</td>
                     <td className="num">
                       <strong>{formattaEuro(m.totale)}</strong>
                     </td>
                     <td>
                       <div className="cn-barra-ricavi" aria-hidden="true">
                         <span className="e" style={{ width: `${(m.ecommerce / massimoMese) * 100}%` }} />
-                        <span className="a" style={{ width: `${((m.abbonamenti + m.crediti) / massimoMese) * 100}%` }} />
+                        <span className="a" style={{ width: `${((m.abbonamenti + m.crediti + m.revisioni) / massimoMese) * 100}%` }} />
                       </div>
                     </td>
                   </tr>
@@ -139,6 +142,7 @@ export default function RicaviVista({
                     <td className="num">{formattaEuro(t.ecommerceNetto)}</td>
                     <td className="num">{formattaEuro(t.abbonamentiNetto)}</td>
                     <td className="num">{formattaEuro(t.creditiNetto)}</td>
+                    <td className="num">{formattaEuro(t.revisioniNetto)}</td>
                     <td className="num">{formattaEuro(t.netto)}</td>
                     <td></td>
                   </tr>

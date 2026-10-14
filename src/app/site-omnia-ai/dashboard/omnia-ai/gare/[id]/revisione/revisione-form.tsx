@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { avviaRevisioneUmana, type RevisioneState } from "@/app/actions/omnia-ai-revisione";
 import { formatEuro } from "@/lib/omnia-ai-plans";
-import { REVISIONE, descriviFontePagine, type FontePagine } from "@/lib/omnia-ai-revisione-calcoli";
+import { REVISIONE, descriviFontePagine, testoRegoleUrgenza, type FontePagine } from "@/lib/omnia-ai-revisione-calcoli";
 import { CLAUSOLE_REVISIONE, CLAUSOLE_SPECIFICHE_REVISIONE, VERSIONE_CONDIZIONI_REVISIONE } from "@/lib/omnia-ai-revisione-condizioni";
 
 const statoIniziale: RevisioneState = {};
@@ -81,8 +81,7 @@ export default function RevisioneForm({
           </div>
         </div>
         <p className="omnia-riquadro-nota">
-          Il prezzo va da {formatEuro(REVISIONE.prezzoBaseCentesimi)} (fino a {REVISIONE.pagineBase} pagine) a {formatEuro(REVISIONE.prezzoMassimoCentesimi)} ({REVISIONE.pagineMassimo} pagine o più). Se la gara scade entro {REVISIONE.oreMaggiorazione25} ore sale del {REVISIONE.maggiorazione25}%, entro{" "}
-          {REVISIONE.oreMaggiorazione50} ore del {REVISIONE.maggiorazione50}%; le gare che scadono tra meno di {REVISIONE.oreMinimePerGestire} ore non possono essere gestite da consulenti umani.
+          Il prezzo va da {formatEuro(REVISIONE.prezzoBaseCentesimi)} (fino a {REVISIONE.pagineBase} pagine) a {formatEuro(REVISIONE.prezzoMassimoCentesimi)} ({REVISIONE.pagineMassimo} pagine o più). {testoRegoleUrgenza()}
         </p>
         {aggiornato && (
           <p className="omnia-messaggio-stato avviso">
@@ -98,7 +97,7 @@ export default function RevisioneForm({
             Entro <strong>{REVISIONE.oreContattoLavorative} ore lavorative</strong> un consulente umano ti contatta personalmente.
           </li>
           <li>
-            Entro <strong>{REVISIONE.oreConsegnaLavorative} ore lavorative</strong> dall&apos;invio ricevi la relazione tecnica revisionata, completa di <strong>intestazione, piè di pagina e copertina grafica personalizzata</strong>.
+            Entro <strong>{REVISIONE.oreConsegna} ore</strong> dall&apos;invio ricevi la relazione tecnica revisionata, completa di <strong>intestazione, piè di pagina e copertina grafica personalizzata</strong>.
           </li>
           <li>OMNIA AI si impegna al segreto professionale su tutto ciò che ci affidi.</li>
           <li>Tu ti impegni a fornire tutte le informazioni necessarie alla revisione e a rendere raggiungibile il referente.</li>

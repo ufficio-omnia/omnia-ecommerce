@@ -10,6 +10,8 @@ import { consumeGaraQuotaIfNeeded } from "@/lib/gara-consumo";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { nessunIntervento, ripulisciPersonaleUscente } from "@/lib/personale-anonimo";
+import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { normalizzaOraScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 
 export type ExtractionState = { error?: string; quotaEsaurita?: boolean };
 
@@ -41,6 +43,11 @@ const EXTRACTION_TOOL = {
         type: "string",
         description:
           "Data di scadenza per la presentazione dell'offerta, formato YYYY-MM-DD. Ometti il campo se non è indicata nei documenti.",
+      },
+      scadenza_ora: {
+        type: "string",
+        description:
+          "Ora di scadenza per la presentazione dell'offerta, formato HH:MM (24 ore, ora italiana), SOLO se i documenti la indicano insieme alla data (es. 'entro le ore 12:00' → '12:00'). Ometti il campo se non è indicata un'ora: non dedurla e non scrivere 23:59 al posto di un'ora mancante.",
       },
       importo: {
         type: "number",
@@ -353,6 +360,7 @@ export async function extractGaraData(
       amministrazione_committente?: string;
       cig?: string;
       scadenza?: string;
+      scadenza_ora?: string;
       importo?: number;
       criteri_valutazione: string;
       requisiti: string;
@@ -445,6 +453,12 @@ export async function extractGaraData(
       console.error("Errore salvataggio estrazione:", updateError);
       throw new Error("Errore nel salvataggio dei dati estratti.");
     }
+
+    // Ora di scadenza (colonna della migrazione 0091), in un aggiornamento a parte: se la colonna non c'è
+    // ancora i dati estratti qui sopra sono già al sicuro e non si perdono. Senza una data non c'è ora.
+    const oraScadenza = result.scadenza ? normalizzaOraScadenza(result.scadenza_ora) : null;
+    const { error: erroreOraScadenza } = await supabase.from("gare").update({ scadenza_ora: oraScadenza }).eq("id", garaId);
+    if (erroreOraScadenza && !schemaAssente(erroreOraScadenza)) console.error("Errore salvataggio ora di scadenza:", erroreOraScadenza.message);
 
     // Chiave di dedup sul timestamp appena scritto: una rianalisi
     // successiva (nuovo estrazione_aggiornata_il) genera di nuovo una

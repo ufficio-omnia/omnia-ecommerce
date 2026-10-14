@@ -1,4 +1,4 @@
-import { REVISIONE } from "@/lib/omnia-ai-revisione-calcoli";
+import { REVISIONE, testoRegoleUrgenza } from "@/lib/omnia-ai-revisione-calcoli";
 
 // Condizioni del servizio di «revisione umana» della relazione tecnica. Testo in vigore, versionato: la
 // versione e l'impronta (sha256 del testo canonico) si registrano insieme all'accettazione del cliente
@@ -24,7 +24,7 @@ export const CLAUSOLE_REVISIONE: ClausolaRevisione[] = [
     numero: 2,
     titolo: "Contatto e tempi di consegna",
     specifica: false,
-    testo: `Entro ${REVISIONE.oreContattoLavorative} ore lavorative dal pagamento un consulente umano contatta personalmente il referente indicato dal cliente. OMNIA AI consegna la Relazione tecnica revisionata, completa di intestazione, piè di pagina e copertina grafica, entro ${REVISIONE.oreConsegnaLavorative} ore lavorative dall'invio della richiesta, cioè dal pagamento. Per ore lavorative si intendono quelle dei giorni dal lunedì al venerdì, esclusi i festivi, in orario d'ufficio.`,
+    testo: `Entro ${REVISIONE.oreContattoLavorative} ore lavorative dal pagamento un consulente umano contatta personalmente il referente indicato dal cliente. OMNIA AI consegna la Relazione tecnica revisionata, completa di intestazione, piè di pagina e copertina grafica, entro ${REVISIONE.oreConsegna} ore dall'invio della richiesta, cioè dal pagamento. Per ore lavorative, riferite al solo contatto personale, si intendono quelle dei giorni dal lunedì al venerdì, esclusi i festivi, in orario d'ufficio.`,
   },
   {
     numero: 3,
@@ -44,7 +44,7 @@ export const CLAUSOLE_REVISIONE: ClausolaRevisione[] = [
     numero: 5,
     titolo: "Corrispettivo e pagamento",
     specifica: false,
-    testo: `Il corrispettivo è determinato automaticamente dal sistema in base al numero di pagine: da ${e(REVISIONE.prezzoBaseCentesimi)} per relazioni fino a ${REVISIONE.pagineBase} pagine a ${e(REVISIONE.prezzoMassimoCentesimi)} per ${REVISIONE.pagineMassimo} pagine o più, in proporzione tra i due estremi. Le pagine sono quelle prescritte dal disciplinare di gara oppure, se il disciplinare non indica un limite, quelle della Relazione tecnica finale generata da OMNIA AI. Se la gara scade entro ${REVISIONE.oreMaggiorazione25} ore il corrispettivo è maggiorato del ${REVISIONE.maggiorazione25}%; se scade entro ${REVISIONE.oreMaggiorazione50} ore è maggiorato del ${REVISIONE.maggiorazione50}%. Le gare che scadono entro ${REVISIONE.oreMinimePerGestire} ore non possono essere gestite da consulenti umani. Gli importi sono IVA inclusa. Il pagamento è anticipato, con carta tramite Stripe.`,
+    testo: `Il corrispettivo è determinato automaticamente dal sistema in base al numero di pagine: da ${e(REVISIONE.prezzoBaseCentesimi)} per relazioni fino a ${REVISIONE.pagineBase} pagine a ${e(REVISIONE.prezzoMassimoCentesimi)} per ${REVISIONE.pagineMassimo} pagine o più, in proporzione tra i due estremi. Le pagine sono quelle prescritte dal disciplinare di gara oppure, se il disciplinare non indica un limite, quelle della Relazione tecnica finale generata da OMNIA AI. Le ore alla scadenza si contano dal momento della richiesta fino alla data e all'ora di scadenza indicate nel bando (le 23:59 di quel giorno se l'ora non è indicata). ${testoRegoleUrgenza()} Gli importi sono IVA inclusa. Il pagamento è anticipato, con carta tramite Stripe.`,
   },
   {
     numero: 6,

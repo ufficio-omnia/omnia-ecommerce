@@ -47,6 +47,7 @@ export async function avviaRevisioneUmana(_prevState: RevisioneState, formData: 
 
   const esito = calcolaPrezzoRevisione({
     scadenza: contesto.gara.scadenza,
+    scadenzaOra: contesto.gara.scadenza_ora,
     limitePagineDisciplinare: contesto.gara.limite_pagine_totale,
     pagineStimateRelazione: contesto.relazione.pagineStimate,
     adesso: new Date(),
@@ -82,6 +83,7 @@ export async function avviaRevisioneUmana(_prevState: RevisioneState, formData: 
       maggiorazione_percentuale: prezzo.maggiorazionePercentuale,
       prezzo_totale_centesimi: prezzo.totaleCentesimi,
       scadenza_gara: prezzo.scadenza,
+      scadenza_ora: prezzo.scadenzaOra,
       ore_alla_scadenza: prezzo.oreAllaScadenza !== null ? Math.round(prezzo.oreAllaScadenza) : null,
       referente_nome: contatti.valori.nome,
       referente_email: contatti.valori.email,
@@ -123,7 +125,7 @@ export async function avviaRevisioneUmana(_prevState: RevisioneState, formData: 
             currency: "eur",
             product_data: {
               name: "OMNIA AI — Revisione umana della relazione tecnica",
-              description: `Gara: ${titoloBreve}. ${prezzo.pagine} pagine${prezzo.maggiorazionePercentuale > 0 ? `, maggiorazione per urgenza ${prezzo.maggiorazionePercentuale}%` : ""}. Contatto entro ${REVISIONE.oreContattoLavorative} ore lavorative, consegna entro ${REVISIONE.oreConsegnaLavorative} ore lavorative.`,
+              description: `Gara: ${titoloBreve}. ${prezzo.pagine} pagine${prezzo.maggiorazionePercentuale > 0 ? `, maggiorazione per urgenza ${prezzo.maggiorazionePercentuale}%` : ""}. Contatto entro ${REVISIONE.oreContattoLavorative} ore lavorative, consegna entro ${REVISIONE.oreConsegna} ore.`,
             },
             unit_amount: prezzo.totaleCentesimi,
           },

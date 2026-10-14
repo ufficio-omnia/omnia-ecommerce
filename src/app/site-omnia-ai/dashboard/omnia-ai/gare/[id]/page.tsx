@@ -156,6 +156,7 @@ export default async function GaraPage({
   const esitoRevisione = contestoRevisione?.relazione
     ? calcolaPrezzoRevisione({
         scadenza: gara.scadenza,
+        scadenzaOra: contestoRevisione.gara.scadenza_ora,
         limitePagineDisciplinare: gara.limite_pagine_totale,
         pagineStimateRelazione: contestoRevisione.relazione.pagineStimate,
         adesso: new Date(),
@@ -262,7 +263,7 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
+      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
 

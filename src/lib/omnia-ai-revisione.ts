@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { normalizzaOraScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 
 // Letture della revisione umana, condivise dalla pagina della gara, dalla pagina di acquisto e dall'azione
 // che avvia il pagamento: la STESSA risposta per tutte e tre, così quello che il cliente vede è quello che
 // il server poi controlla.
 
-export type GaraRevisione = { id: string; titolo: string; scadenza: string | null; limite_pagine_totale: number | null };
+// scadenza_ora: l'ora indicata dal bando («HH:MM»), se c'è (migrazione 0091); null = non indicata (23:59)
+export type GaraRevisione = { id: string; titolo: string; scadenza: string | null; scadenza_ora: string | null; limite_pagine_totale: number | null };
 
 export type RelazioneFinale = { messaggioId: string; fileNome: string; filePath: string; pagineStimate: number | null; creataIl: string };
 
@@ -46,12 +48,15 @@ export async function leggiContestoRevisione({
   userId: string;
   garaId: string;
 }): Promise<ContestoRevisione | null> {
-  const { data: gara } = await supabase
+  const { data: garaBase } = await supabase
     .from("gare")
     .select("id, titolo, scadenza, limite_pagine_totale")
     .eq("id", garaId)
-    .maybeSingle<GaraRevisione>();
-  if (!gara) return null;
+    .maybeSingle<Omit<GaraRevisione, "scadenza_ora">>();
+  if (!garaBase) return null;
+  // L'ora di scadenza si legge a parte: prima della migrazione 0091 la colonna non c'è e la gara si legge comunque.
+  const { data: oraRiga } = await supabase.from("gare").select("scadenza_ora").eq("id", garaId).maybeSingle<{ scadenza_ora: string | null }>();
+  const gara: GaraRevisione = { ...garaBase, scadenza_ora: normalizzaOraScadenza(oraRiga?.scadenza_ora) };
 
   // Colonna della migrazione 0088: se non c'è ancora, la relazione finale non si riconosce e il pulsante non compare.
   const { data: messaggio, error: erroreMessaggio } = await supabase

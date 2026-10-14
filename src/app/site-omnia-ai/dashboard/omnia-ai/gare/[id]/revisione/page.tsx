@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { formatEuro } from "@/lib/omnia-ai-plans";
-import { REVISIONE, calcolaPrezzoRevisione, fineGiornoRoma } from "@/lib/omnia-ai-revisione-calcoli";
+import { REVISIONE, calcolaPrezzoRevisione, testoScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 import { leggiContestoRevisione, leggiRichiestaRevisione } from "@/lib/omnia-ai-revisione";
 import RevisioneForm from "./revisione-form";
 
@@ -62,7 +62,7 @@ export default async function RevisionePage({
                 Entro <strong>{REVISIONE.oreContattoLavorative} ore lavorative</strong> un consulente umano contatterà {richiesta.referente_nome} ({richiesta.referente_email}, {richiesta.referente_cellulare}).
               </li>
               <li>
-                Entro <strong>{REVISIONE.oreConsegnaLavorative} ore lavorative</strong> dall&apos;invio riceverai la relazione tecnica revisionata, con intestazione, piè di pagina e copertina grafica personalizzata.
+                Entro <strong>{REVISIONE.oreConsegna} ore</strong> dall&apos;invio riceverai la relazione tecnica revisionata, con intestazione, piè di pagina e copertina grafica personalizzata.
               </li>
               <li>Ti abbiamo mandato una email di conferma. Tieni a portata di mano le informazioni utili alla revisione.</li>
             </ul>
@@ -120,13 +120,14 @@ export default async function RevisionePage({
           </p>
         </div>
         <p className="omnia-riquadro-nota">
-          Un consulente contatta {contesto.pagata.referente_nome} entro {REVISIONE.oreContattoLavorative} ore lavorative e la relazione revisionata arriva entro {REVISIONE.oreConsegnaLavorative} ore lavorative dall&apos;invio.
+          Un consulente contatta {contesto.pagata.referente_nome} entro {REVISIONE.oreContattoLavorative} ore lavorative e la relazione revisionata arriva entro {REVISIONE.oreConsegna} ore dall&apos;invio.
         </p>
       </section>
     );
   } else {
     const esito = calcolaPrezzoRevisione({
       scadenza: contesto.gara.scadenza,
+      scadenzaOra: contesto.gara.scadenza_ora,
       limitePagineDisciplinare: contesto.gara.limite_pagine_totale,
       pagineStimateRelazione: contesto.relazione.pagineStimate,
       adesso: new Date(),
@@ -141,7 +142,6 @@ export default async function RevisionePage({
       );
     } else {
       const documenti = await getCurrentOmniaAiLegalDocuments(admin);
-      const fine = fineGiornoRoma(esito.prezzo.scadenza);
       corpo = (
         <RevisioneForm
           garaId={id}
@@ -153,7 +153,7 @@ export default async function RevisionePage({
             baseCentesimi: esito.prezzo.baseCentesimi,
             maggiorazionePercentuale: esito.prezzo.maggiorazionePercentuale,
             totaleCentesimi: esito.prezzo.totaleCentesimi,
-            scadenzaTesto: fine ? fine.toLocaleDateString("it-IT", { timeZone: "Europe/Rome" }) : null,
+            scadenzaTesto: testoScadenza(esito.prezzo.scadenza, esito.prezzo.scadenzaOra),
           }}
         />
       );

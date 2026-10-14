@@ -78,9 +78,9 @@ for (const cattivo of ["../../x", "abc", `${ID1}/../${ID2}`, "", `${ID1}.pdf`, `
   }
   atteso(`identificativo non valido rifiutato: «${cattivo}»`, errore);
 }
-atteso("la chiave del pagamento accetta solo incasso e crediti", ["incasso", "crediti"].every((f) => CHIAVE_PAGAMENTO.test(f)) && !["ordine", "incassi", "", "incasso/x", "../x"].some((f) => CHIAVE_PAGAMENTO.test(f)));
+atteso("la chiave del pagamento accetta solo incasso, crediti e revisione", ["incasso", "crediti", "revisione"].every((f) => CHIAVE_PAGAMENTO.test(f)) && !["ordine", "incassi", "", "incasso/x", "../x"].some((f) => CHIAVE_PAGAMENTO.test(f)));
 atteso("l'UUID non accetta nulla di diverso da un UUID", UUID.test(ID1) && !UUID.test(`${ID1}x`) && !UUID.test(`x${ID1}`));
-uguale("tabelle per fonte", TABELLA_PER_FONTE, { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases" });
+uguale("tabelle per fonte", TABELLA_PER_FONTE, { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni" });
 uguale("nome del file dal numero di fattura", nomeFileFattura("2026/045", "2026-10-02T09:00:00Z"), "Fattura-OMNIA-AI-2026-045.pdf");
 uguale("nome del file senza numero: data del pagamento", nomeFileFattura(null, "2026-10-02T09:00:00Z"), "Fattura-OMNIA-AI-2026-10-02.pdf");
 atteso("il nome del file non contiene caratteri pericolosi per un'intestazione HTTP", !/["\r\n\\/;]/.test(nomeFileFattura('a"b\r\nc/d;e\\f', "2026-10-02")), nomeFileFattura('a"b\r\nc/d;e\\f', "2026-10-02"));

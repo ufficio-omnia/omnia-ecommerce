@@ -55,7 +55,7 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
     ordiniQ = await admin.from("orders").select("id, total_amount, created_at, payment_method").eq("status", "pagato").limit(5000);
   }
 
-  const [incassiQ, creditiQ, parametri] = await Promise.all([
+  const [incassiQ, creditiQ, revisioniQ, parametri] = await Promise.all([
     admin
       .from("omnia_ai_incassi")
       .select("id, user_id, tipo, importo_lordo_centesimi, imposta_centesimi, pagato_il, livemode, ricevuta_url, cliente_snapshot")
@@ -64,6 +64,8 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
       .order("pagato_il", { ascending: false })
       .limit(5000),
     admin.from("omnia_ai_credit_purchases").select("importo_centesimi, stripe_session_id, created_at").gte("created_at", periodo.daIso).lt("created_at", periodo.aIso).limit(5000),
+    // revisioni umane pagate (migrazione 0089): senza la tabella non ce ne sono
+    admin.from("omnia_ai_revisioni").select("prezzo_totale_centesimi, importo_pagato_centesimi, pagata_il, livemode").eq("stato", "pagata").gte("pagata_il", periodo.daIso).lt("pagata_il", periodo.aIso).limit(5000),
     leggiParametriCalcolo(),
   ]);
 
@@ -79,6 +81,11 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
   if (incassiQ.error && !schemaAssente(incassiQ.error)) {
     console.error("Console: lettura incassi per i ricavi fallita", incassiQ.error.message);
     return { stato: "errore", messaggio: "Lettura degli incassi non riuscita." };
+  }
+
+  if (revisioniQ.error && !schemaAssente(revisioniQ.error)) {
+    console.error("Console: lettura revisioni per i ricavi fallita", revisioniQ.error.message);
+    return { stato: "errore", messaggio: "Lettura delle revisioni umane non riuscita." };
   }
 
   const voci: VoceRicavo[] = [];
@@ -127,6 +134,18 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
       lordo: num(c.importo_centesimi) / 100,
       impostaStripe: null,
       prova: (c.stripe_session_id ?? "").startsWith("cs_test_"),
+      dataApprossimata: false,
+    });
+  }
+
+  for (const r of revisioniQ.error ? [] : ((revisioniQ.data ?? []) as { prezzo_totale_centesimi: number; importo_pagato_centesimi: number | null; pagata_il: string; livemode: boolean }[])) {
+    voci.push({
+      dominio: "omnia_ai",
+      fonte: "revisione",
+      data: r.pagata_il,
+      lordo: num(r.importo_pagato_centesimi ?? r.prezzo_totale_centesimi) / 100,
+      impostaStripe: null,
+      prova: !r.livemode,
       dataApprossimata: false,
     });
   }

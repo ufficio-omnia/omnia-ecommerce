@@ -15,7 +15,7 @@ import {
   type ClienteEmail,
   type EmailPronta,
 } from "@/lib/omnia-ai-email-eventi-calcoli";
-import { REVISIONE, descriviFontePagine, fineGiornoRoma, type FontePagine } from "@/lib/omnia-ai-revisione-calcoli";
+import { REVISIONE, descriviFontePagine, testoScadenza, type FontePagine } from "@/lib/omnia-ai-revisione-calcoli";
 
 // Le due email della revisione umana pagata: all'ufficio (con il Word della relazione in allegato, i dati
 // aziendali principali e il referente) e la conferma al cliente.
@@ -70,6 +70,8 @@ export function emailUfficioRevisioneUmana(d: {
   fatturazione: FatturazioneStripe | null;
   garaTitolo: string;
   scadenza: string | null;
+  // ora indicata dal bando («HH:MM»); null = non indicata (23:59)
+  scadenzaOra: string | null;
   oreAllaScadenza: number | null;
   pagine: number;
   fontePagine: FontePagine;
@@ -85,8 +87,7 @@ export function emailUfficioRevisioneUmana(d: {
 }): EmailPronta {
   const nome = nomeCliente(d.cliente);
   const urgente = d.maggiorazionePercentuale > 0;
-  const fineScadenza = fineGiornoRoma(d.scadenza);
-  const scadenza = d.scadenza && fineScadenza ? giorno(fineScadenza) : null;
+  const scadenza = testoScadenza(d.scadenza, d.scadenzaOra);
   const a = d.azienda;
   const f = d.fatturazione;
   const azienda: [string, string | { html: string } | null | undefined][] = a
@@ -121,7 +122,7 @@ export function emailUfficioRevisioneUmana(d: {
         `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:14px;">` +
         `<strong>Impegni presi con il cliente</strong><br>` +
         `• Contatto personale di un consulente entro <strong>${REVISIONE.oreContattoLavorative} ore lavorative</strong> dal pagamento (${esc(dataOra(d.pagataIl))}).<br>` +
-        `• Relazione revisionata consegnata entro <strong>${REVISIONE.oreConsegnaLavorative} ore lavorative</strong> dall'invio della richiesta.<br>` +
+        `• Relazione revisionata consegnata entro <strong>${REVISIONE.oreConsegna} ore</strong> dall'invio della richiesta.<br>` +
         `• La revisione comprende intestazione, piè di pagina e copertina grafica personalizzata.` +
         `</div>` +
         `<p style="margin:18px 0 0;color:#6b7280;">Referente da contattare</p>` +
@@ -191,7 +192,7 @@ export function emailClienteRevisioneRicevuta(d: {
         ]) +
         `<p style="margin:18px 0 6px;"><strong>Cosa succede adesso</strong></p>` +
         `<p style="margin:4px 0;">1. Entro <strong>${REVISIONE.oreContattoLavorative} ore lavorative</strong> un consulente umano contatta personalmente il referente indicato.</p>` +
-        `<p style="margin:4px 0;">2. Entro <strong>${REVISIONE.oreConsegnaLavorative} ore lavorative</strong> dall'invio della richiesta ricevi la relazione tecnica revisionata, completa di intestazione, piè di pagina e copertina grafica personalizzata.</p>` +
+        `<p style="margin:4px 0;">2. Entro <strong>${REVISIONE.oreConsegna} ore</strong> dall'invio della richiesta ricevi la relazione tecnica revisionata, completa di intestazione, piè di pagina e copertina grafica personalizzata.</p>` +
         `<p style="margin:4px 0;">3. Per non rallentare i tempi, tieni a portata di mano le informazioni utili alla revisione (logo, dati per intestazione e piè di pagina, indicazioni grafiche) e fai in modo che il referente sia raggiungibile.</p>` +
         pulsante("Torna alla gara", d.linkGara),
     }),

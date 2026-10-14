@@ -34,6 +34,18 @@ export type AcquistoCrediti = CampiFattura & {
   created_at: string;
 };
 
+// Una revisione umana pagata (tabella omnia_ai_revisioni, migrazione 0089).
+export type RevisioneCliente = CampiFattura & {
+  id: string;
+  gara_titolo: string;
+  pagine: number;
+  maggiorazione_percentuale: number;
+  prezzo_totale_centesimi: number;
+  importo_pagato_centesimi: number | null;
+  pagata_il: string | null;
+  livemode: boolean;
+};
+
 export type AbbonamentoCliente = { stripe_subscription_id: string | null; plan: string };
 
 // Cosa vede il cliente della fattura di un pagamento. La differenza tra «disponibile» e
@@ -57,9 +69,9 @@ export function statoFatturaCliente(r: CampiFattura): StatoFatturaCliente {
 }
 
 export type PagamentoCliente = {
-  // «incasso:<uuid>» o «crediti:<uuid>»
+  // «incasso:<uuid>», «crediti:<uuid>» o «revisione:<uuid>»
   chiave: string;
-  fonte: "incasso" | "crediti";
+  fonte: "incasso" | "crediti" | "revisione";
   id: string;
   data: string;
   descrizione: string;
@@ -84,8 +96,13 @@ export function descrizioneCrediti(pacchetto: string, crediti: number): string {
   return `Crediti aggiuntivi OMNIA AI (${crediti} ${crediti === 1 ? "gara" : "gare"})`;
 }
 
+export function descrizioneRevisione(garaTitolo: string, pagine: number, maggiorazionePercentuale: number): string {
+  const urgenza = maggiorazionePercentuale > 0 ? `, maggiorazione per urgenza ${maggiorazionePercentuale}%` : "";
+  return `Revisione umana della relazione tecnica — ${garaTitolo} (${pagine} ${pagine === 1 ? "pagina" : "pagine"}${urgenza})`;
+}
+
 // Un solo elenco, dal pagamento più recente.
-export function costruisciPagamenti(incassi: IncassoCliente[], acquisti: AcquistoCrediti[], abbonamenti: AbbonamentoCliente[]): PagamentoCliente[] {
+export function costruisciPagamenti(incassi: IncassoCliente[], acquisti: AcquistoCrediti[], abbonamenti: AbbonamentoCliente[], revisioni: RevisioneCliente[] = []): PagamentoCliente[] {
   const pianoPerAbbonamento = new Map(abbonamenti.filter((a) => a.stripe_subscription_id).map((a) => [a.stripe_subscription_id as string, a.plan]));
 
   const dagliIncassi = incassi.map<PagamentoCliente>((i) => ({
@@ -116,21 +133,42 @@ export function costruisciPagamenti(incassi: IncassoCliente[], acquisti: Acquist
     fattura: statoFatturaCliente(a),
   }));
 
-  return [...dagliIncassi, ...daiCrediti].sort((a, b) => b.data.localeCompare(a.data));
+  // solo le revisioni PAGATE hanno una data di pagamento: le altre non sono un pagamento
+  const dalleRevisioni = revisioni
+    .filter((r) => r.pagata_il)
+    .map<PagamentoCliente>((r) => ({
+      chiave: `revisione:${r.id}`,
+      fonte: "revisione",
+      id: r.id,
+      data: r.pagata_il as string,
+      descrizione: descrizioneRevisione(r.gara_titolo, Number(r.pagine), Number(r.maggiorazione_percentuale)),
+      importoCentesimi: Number(r.importo_pagato_centesimi ?? r.prezzo_totale_centesimi),
+      prova: !r.livemode,
+      numeroRicevuta: null,
+      ricevutaUrl: null,
+      fattura: statoFatturaCliente(r),
+    }));
+
+  return [...dagliIncassi, ...daiCrediti, ...dalleRevisioni].sort((a, b) => b.data.localeCompare(a.data));
 }
 
 // ───── Collegamento di download ─────
 
-export const CHIAVE_PAGAMENTO = /^(incasso|crediti)$/;
+export const CHIAVE_PAGAMENTO = /^(incasso|crediti|revisione)$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const TABELLA_PER_FONTE = { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases" } as const;
+export const TABELLA_PER_FONTE = { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni" } as const;
+
+// La colonna con la data del pagamento, per ogni fonte.
+export const COLONNA_DATA_PER_FONTE = { incasso: "pagato_il", crediti: "created_at", revisione: "pagata_il" } as const;
+
+const CARTELLA_FATTURE = { incasso: "incassi", crediti: "crediti", revisione: "revisioni" } as const;
 
 // Dove sta il file di una fattura nel bucket privato «invoices»: un file solo per pagamento,
 // quindi ricaricarlo lo sostituisce.
 export function percorsoFatturaPagamento(fonte: keyof typeof TABELLA_PER_FONTE, id: string): string {
   if (!UUID.test(id)) throw new Error("Identificativo di pagamento non valido");
-  return `omnia-ai/${fonte === "incasso" ? "incassi" : "crediti"}/${id}.pdf`;
+  return `omnia-ai/${CARTELLA_FATTURE[fonte]}/${id}.pdf`;
 }
 
 // Nome con cui il cliente salva il file: «Fattura-OMNIA-AI-2026-045.pdf» o, senza numero,

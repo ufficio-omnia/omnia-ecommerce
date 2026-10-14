@@ -1026,6 +1026,8 @@ async function handleOmniaAiRevisioneCompleted(session: Stripe.Checkout.Session,
         importo_pagato_centesimi: session.amount_total,
         livemode: session.livemode,
         dati_stripe: session.customer_details ?? null,
+        // un pagamento di prova (Stripe in modalità test) non va mai fatturato
+        ...(session.livemode ? {} : { stato_fattura: "non_dovuta", note_fattura: "Pagamento di prova (Stripe in modalità test): nessuna fattura da emettere" }),
       })
       .eq("id", riga.id)
       .eq("stato", "in_attesa_pagamento")

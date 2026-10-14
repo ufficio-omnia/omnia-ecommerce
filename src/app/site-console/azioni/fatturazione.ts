@@ -11,7 +11,7 @@ import { sendEmail } from "@/lib/email";
 import { escapeHtml } from "@/lib/html";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { TABELLA_PER_FONTE, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
+import { COLONNA_DATA_PER_FONTE, TABELLA_PER_FONTE, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 
 // Stato di fatturazione degli incassi OMNIA AI e degli acquisti di crediti, segnato
@@ -22,7 +22,7 @@ import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 
 export type StatoAzioneFattura = { errore?: string };
 
-const CHIAVE = /^(incasso|crediti):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHIAVE = /^(incasso|crediti|revisione):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GIORNO = /^\d{4}-\d{2}-\d{2}$/;
 const TABELLE = TABELLA_PER_FONTE;
 const MASSIMO_RIGHE = 200;
@@ -55,7 +55,7 @@ function leggiModulo(formData: FormData, conNumero: boolean): Valori | string {
 // Aggiorna le righe indicate (chiavi "incasso:<uuid>" / "crediti:<uuid>"). Ritorna
 // il numero di righe aggiornate o un messaggio di errore.
 async function applica(chiavi: string[], v: Valori, userId: string, extra: Record<string, unknown> = {}): Promise<number | string> {
-  const perTabella: Record<keyof typeof TABELLE, string[]> = { incasso: [], crediti: [] };
+  const perTabella: Record<keyof typeof TABELLE, string[]> = { incasso: [], crediti: [], revisione: [] };
   for (const chiave of new Set(chiavi)) {
     if (!CHIAVE.test(chiave)) return "Riga non valida.";
     const [tipo, id] = chiave.split(":") as [keyof typeof TABELLE, string];
@@ -69,7 +69,7 @@ async function applica(chiavi: string[], v: Valori, userId: string, extra: Recor
   for (const tipo of Object.keys(perTabella) as (keyof typeof TABELLE)[]) {
     const ids = perTabella[tipo];
     if (ids.length === 0) continue;
-    const { data, error } = await admin
+    const richiesta = admin
       .from(TABELLE[tipo])
       .update({
         stato_fattura: v.stato,
@@ -80,8 +80,9 @@ async function applica(chiavi: string[], v: Valori, userId: string, extra: Recor
         fatturazione_aggiornata_da: userId,
         ...extra,
       })
-      .in("id", ids)
-      .select("id");
+      .in("id", ids);
+    // una revisione umana si fattura solo dopo il pagamento
+    const { data, error } = await (tipo === "revisione" ? richiesta.eq("stato", "pagata") : richiesta).select("id");
 
     if (error) {
       console.error("Console: aggiornamento stato fattura fallito", error.message);
@@ -121,7 +122,7 @@ async function caricaPdfFattura(riga: string, file: File, stato: StatoFattura): 
   if (!(await file.slice(0, 5).text()).startsWith("%PDF")) return { errore: "Il file non è un PDF." };
 
   const [fonte, id] = riga.split(":") as [keyof typeof TABELLE, string];
-  const colonnaData = fonte === "incasso" ? "pagato_il" : "created_at";
+  const colonnaData = COLONNA_DATA_PER_FONTE[fonte];
   const admin = createAdminClient();
 
   const { data: attuale, error: erroreLettura } = await admin

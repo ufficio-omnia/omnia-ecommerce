@@ -22,6 +22,7 @@ export type RigaRevisione = {
   maggiorazione_percentuale: number;
   prezzo_totale_centesimi: number;
   scadenza_gara: string | null;
+  scadenza_ora: string | null;
   ore_alla_scadenza: number | null;
   referente_nome: string;
   referente_email: string;
@@ -116,6 +117,7 @@ export async function notificaRevisioneUmana({
         fatturazione: fatturazioneDaSessione(sessione),
         garaTitolo: revisione.gara_titolo,
         scadenza: revisione.scadenza_gara,
+        scadenzaOra: revisione.scadenza_ora,
         oreAllaScadenza: revisione.ore_alla_scadenza,
         pagine: revisione.pagine,
         fontePagine: revisione.pagine_fonte,

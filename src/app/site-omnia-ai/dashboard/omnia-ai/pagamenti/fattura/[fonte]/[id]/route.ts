@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CHIAVE_PAGAMENTO, TABELLA_PER_FONTE, UUID, nomeFileFattura, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
+import { CHIAVE_PAGAMENTO, COLONNA_DATA_PER_FONTE, TABELLA_PER_FONTE, UUID, nomeFileFattura, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
 
 // Scarica la fattura PDF di un pagamento dell'abbonamento (o di un acquisto di crediti).
 //
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(new URL("/login", request.url));
 
-  const colonnaData = origine === "incasso" ? "pagato_il" : "created_at";
+  const colonnaData = COLONNA_DATA_PER_FONTE[origine];
   const { data: grezza } = await supabase
     .from(TABELLA_PER_FONTE[origine])
     .select(`stato_fattura, numero_fattura, fattura_file_path, ${colonnaData}`)

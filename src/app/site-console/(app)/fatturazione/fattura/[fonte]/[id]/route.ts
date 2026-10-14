@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { richiediAdminPagina } from "@/lib/console/accesso";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CHIAVE_PAGAMENTO, TABELLA_PER_FONTE, UUID, nomeFileFattura, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
+import { CHIAVE_PAGAMENTO, COLONNA_DATA_PER_FONTE, TABELLA_PER_FONTE, UUID, nomeFileFattura, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
 
 // Apre il PDF della fattura caricato su un pagamento, per l'admin (controllo di quello
 // che vedrà il cliente). Senza sessione admin rimanda al login, come ogni pagina. Il
@@ -20,7 +20,7 @@ export async function GET(_richiesta: Request, { params }: { params: Promise<{ f
   if (!CHIAVE_PAGAMENTO.test(fonte) || !UUID.test(id)) return nonTrovata();
   const origine = fonte as keyof typeof TABELLA_PER_FONTE;
 
-  const colonnaData = origine === "incasso" ? "pagato_il" : "created_at";
+  const colonnaData = COLONNA_DATA_PER_FONTE[origine];
   const admin = createAdminClient();
   const { data: riga } = await admin
     .from(TABELLA_PER_FONTE[origine])
