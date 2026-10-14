@@ -17,6 +17,7 @@ export default async function SiteFooter() {
         <a href="https://omniaitalia.com">omniaitalia.com</a>
         <Link href="/contatti">Contatti</Link>
         <Link href="/privacy">Privacy</Link>
+        <Link href="/riservatezza">Riservatezza</Link>
         <Link href={condizioniUrl}>Condizioni</Link>
         <Link href="/cookie-policy">Cookie</Link>
         <CookiePreferencesButton />

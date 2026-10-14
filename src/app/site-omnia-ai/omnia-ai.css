@@ -1017,6 +1017,13 @@ li {
 .omnia-app-shell.largo {
   max-width: 1040px;
 }
+/* Elenco di link dentro un testo (pagina «Riservatezza»: documenti collegati): i link
+   ereditano il colore del testo, qui devono vedersi come link. */
+.omnia-prosa .omnia-elenco-documenti a {
+  color: var(--verde);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 /* Pagamenti e fatture: nota sotto un dato (numero di ricevuta, numero e data della fattura). */
 .omnia-pagamento-nota {
   margin-top: 4px;
