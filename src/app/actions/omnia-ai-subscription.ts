@@ -17,6 +17,7 @@ import { assicuraCoupon, idCouponSconto } from "@/lib/omnia-ai-stripe-sconti";
 import { leggiOffertaPilotAperta } from "@/lib/omnia-ai-pilot";
 import { risparmioPilot as calcolaRisparmioPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
+import { disdiciSuStripe } from "@/lib/omnia-ai-disdetta";
 
 export type OmniaAiCheckoutState = { error?: string };
 
@@ -248,9 +249,9 @@ export async function cancelOmniaAiSubscription(_prevState: { error?: string }, 
 
   const stripe = createStripeClient("omnia-ai");
   try {
-    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
-      cancel_at_period_end: true,
-    });
+    // Con un cambio di piano programmato Stripe rifiuta la disdetta diretta: lo gestisce
+    // disdiciSuStripe (annulla prima il cambio, poi registra la disdetta).
+    await disdiciSuStripe(stripe, subscription.stripe_subscription_id);
   } catch (err) {
     console.error("Errore disdetta abbonamento Stripe:", err);
     return { error: "Errore nella disdetta. Riprova." };

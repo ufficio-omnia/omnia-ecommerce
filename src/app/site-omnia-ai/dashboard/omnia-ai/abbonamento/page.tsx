@@ -297,7 +297,7 @@ export default async function AbbonamentoPage() {
           </p>
         ) : (
           <div style={{ marginTop: 16 }}>
-            <DisdiciAbbonamentoButton dataRinnovo={dataRinnovo} />
+            <DisdiciAbbonamentoButton dataRinnovo={dataRinnovo} cambioPianoProgrammato={!!subscription.piano_programmato} />
           </div>
         )}
       </section>
