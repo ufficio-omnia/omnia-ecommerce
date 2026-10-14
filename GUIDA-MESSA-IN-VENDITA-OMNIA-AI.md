@@ -16,6 +16,17 @@ Finché non fai il passo 7 nessun cliente può abbonarsi dal sito: puoi proceder
 
 > Le chiavi segrete di Stripe (`sk_live_…`, `whsec_…`) si incollano **solo su Vercel**, mai in chat, mai in email.
 
+### L'e-commerce (app.omniaitalia.com) resta com'è
+
+Se OMNIA AI usa lo stesso account Stripe reale dell'e-commerce, questa guida non lo tocca: i suoi pagamenti non usano
+prezzi né prodotti del catalogo Stripe, e il webhook riconosce da solo gli eventi di OMNIA AI. **Non toccare mai:**
+
+- le variabili `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` su Vercel;
+- l'evento `checkout.session.completed` sulla destinazione esistente (non toglierlo);
+- l'indirizzo e lo stato (attiva) della destinazione esistente;
+- **una seconda destinazione che riceva gli stessi eventi**: gli ordini dell'e-commerce verrebbero elaborati due volte;
+- i link «Termini» e «Privacy» nelle informazioni pubbliche dell'account Stripe (sono dell'account intero, non di OMNIA AI).
+
 ---
 
 ## Passo 1 — Webhook: ogni evento deve arrivare a UNA sola destinazione
@@ -57,7 +68,16 @@ Stripe (live) → **Impostazioni → Fatturazione → Portale clienti**. Attiva 
 - ✅ Aggiornamento dei dati del cliente: indirizzo e partita IVA
 - ❌ Annullamento dell'abbonamento: **spento** (la disdetta si fa dall'area riservata di OMNIA AI)
 - ❌ Cambio di piano: **spento** (si fa dall'area riservata)
-- Informazioni aziendali: titolo «OMNIA AI», privacy `https://omnia-ai.it/privacy`, condizioni `https://omnia-ai.it/condizioni-abbonamento`
+
+**Lascia vuoto tutto il resto della pagina**, in particolare:
+
+- **Norme legali (Termini di servizio e Informativa sulla privacy): NON inserire i link di OMNIA AI.** Quei due link non sono
+  del portale ma di tutto l'account Stripe (si cambiano in Impostazioni → Informazioni sull'attività → dettagli pubblici),
+  che è lo **stesso dell'e-commerce**: Stripe li mostrerebbe anche ai clienti di app.omniaitalia.com. Non servono a OMNIA AI:
+  privacy e condizioni di abbonamento le fa accettare il nostro sito prima del pagamento e le registra con versione e data.
+  «Al momento nessun link impostato» va benissimo.
+- **Link di reindirizzamento:** facoltativo. L'app indica ogni volta da sola dove riportare il cliente.
+- **Dominio personalizzato:** lascia `billing.stripe.com`.
 
 ---
 
