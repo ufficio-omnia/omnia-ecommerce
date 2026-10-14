@@ -222,7 +222,7 @@ async function main() {
   console.log("--- Pagine ---");
   const piani = leggi("src/app/site-omnia-ai/piani/page.tsx");
   atteso("/piani: «Abbonati» solo con la vendita visibile, verso la pagina di acquisto del piano", /\{vendita && \(\s*<Link className="omnia-btn omnia-btn-p" href=\{`\/abbonati\/\$\{p\.slug\}`\}>\s*Abbonati\s*<\/Link>\s*\)\}/.test(piani));
-  atteso("/piani: «Richiedi la demo» resta sempre, anche con la vendita accesa", /Richiedi la demo/.test(piani) && /href="\/demo"/.test(piani));
+  atteso("/piani: «Richiedi la demo» resta sempre, anche con la vendita accesa (non dipende dall'interruttore)", /\)\}\s*<Link\s+className=\{`omnia-btn \$\{!vendita && p\.inEvidenza \? "omnia-btn-p" : "omnia-btn-s"\}`\}\s+href="\/demo"[\s\S]*?Richiedi la demo\s*<\/Link>/.test(piani));
   atteso("/piani: la visibilità viene da venditaAbbonamentiVisibile (interruttore + chiave reale), non da un valore fisso", /venditaAbbonamentiVisibile\(\)/.test(piani) && !/TEMPORANEO/.test(piani));
   atteso("/piani non rimanda alla console", !/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(piani) && !/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(lib));
   const paginaPrezzi = leggi("src/app/site-console/(app)/prezzi/page.tsx");
