@@ -220,11 +220,12 @@ async function main() {
   atteso("le azioni non toccano abbonamenti, ordini o clienti", !/subscriptions|\.from\("orders"\)|\.from\("users"\)/.test(azioni));
 
   console.log("--- Pagine ---");
-  const piani = leggi("src/app/site-omnia-ai/piani/page.tsx");
+  const piani = leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
+  const paginaPiani = leggi("src/app/site-omnia-ai/piani/page.tsx");
   atteso("/piani: «Abbonati» solo con la vendita visibile, verso la pagina di acquisto del piano", /\{vendita && \(\s*<Link className="omnia-btn omnia-btn-p" href=\{`\/abbonati\/\$\{p\.slug\}`\}>\s*Abbonati\s*<\/Link>\s*\)\}/.test(piani));
   atteso("/piani: «Richiedi la demo» resta sempre, anche con la vendita accesa (non dipende dall'interruttore)", /\)\}\s*<Link\s+className=\{`omnia-btn \$\{!vendita && p\.inEvidenza \? "omnia-btn-p" : "omnia-btn-s"\}`\}\s+href="\/demo"[\s\S]*?Richiedi la demo\s*<\/Link>/.test(piani));
-  atteso("/piani: la visibilità viene da venditaAbbonamentiVisibile (interruttore + chiave reale), non da un valore fisso", /venditaAbbonamentiVisibile\(\)/.test(piani) && !/TEMPORANEO/.test(piani));
-  atteso("/piani non rimanda alla console", !/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(piani) && !/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(lib));
+  atteso("/piani: la visibilità viene da venditaAbbonamentiVisibile (interruttore + chiave reale) e passa alla vista; nessun valore fisso", /venditaAbbonamentiVisibile\(\)/.test(paginaPiani) && /<PianiVista catalogo=\{catalogo\} condizioniUrl=\{condizioniUrl\} vendita=\{vendita\} \/>/.test(paginaPiani) && !/TEMPORANEO/.test(piani + paginaPiani));
+  atteso("/piani non rimanda alla console", ![piani, paginaPiani].some((s) => /console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(s)) &&!/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(lib));
   const paginaPrezzi = leggi("src/app/site-console/(app)/prezzi/page.tsx");
   atteso("console «Piani e prezzi»: richiede l'admin e legge prezzi, controllo di Stripe e interruttore", primaDi(paginaPrezzi, "await richiediAdminPagina();", "leggiPrezziConsole()") && /leggiControlloStripe\(\)/.test(paginaPrezzi) && /leggiInterruttoreVendita\(\)/.test(paginaPrezzi));
   const vista = leggi("src/app/site-console/_componenti/messa-in-vendita-vista.tsx");
