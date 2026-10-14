@@ -1,6 +1,8 @@
 import { PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import { formattaGiorno, testoOfferta, type StatoSconto } from "@/lib/omnia-ai-catalogo-calcoli";
 import type { DatiPrezzi } from "@/lib/console/prezzi";
+import type { ControlloStripe } from "@/lib/console/controllo-stripe";
+import MessaInVenditaVista from "./messa-in-vendita-vista";
 import { impostaScontoAttivo, creaSconto, salvaPrezzoPiano } from "../azioni/prezzi";
 import { Badge, Pannello, type Tono } from "./elementi";
 import { formattaDataOra, formattaEuro } from "./formati";
@@ -20,7 +22,7 @@ function descriviSconto(s: DatiPrezzi["sconti"][number]): string {
   return s.tipo === "percentuale" ? `−${s.percentuale}%` : `${euro(s.prezzoScontatoCentesimi ?? 0)} al mese`;
 }
 
-export default function PrezziVista({ dati, oggi }: { dati: DatiPrezzi; oggi: string }) {
+export default function PrezziVista({ dati, controllo, interruttore, oggi }: { dati: DatiPrezzi; controllo: ControlloStripe; interruttore: boolean; oggi: string }) {
   return (
     <>
       <div className="cn-testata">
@@ -42,6 +44,8 @@ export default function PrezziVista({ dati, oggi }: { dati: DatiPrezzi; oggi: st
             ? "Stripe è in modalità REALE: ogni modifica di prezzo crea un prezzo vero sull'account di produzione."
             : "Non riesco a stabilire se la chiave Stripe è di prova o reale."}
       </p>
+
+      <MessaInVenditaVista dati={dati} controllo={controllo} interruttore={interruttore} />
 
       <Pannello titolo="Prezzi di listino (IVA inclusa, al mese)">
         <div className="cn-pannello-corpo">

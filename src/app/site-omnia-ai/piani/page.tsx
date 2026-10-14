@@ -6,6 +6,7 @@ import { PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { testoOfferta } from "@/lib/omnia-ai-catalogo-calcoli";
 import { paginaMetadata } from "@/lib/omnia-ai-seo";
+import { venditaAbbonamentiVisibile } from "@/lib/omnia-ai-vendita";
 
 export const metadata: Metadata = paginaMetadata({
   title: "Piani e prezzi — OMNIA AI",
@@ -15,7 +16,7 @@ export const metadata: Metadata = paginaMetadata({
 });
 
 export default async function PianiPage() {
-  const [condizioniUrl, catalogo] = await Promise.all([getCurrentOmniaAiCondizioniAbbonamentoUrl(), getCatalogoPiani()]);
+  const [condizioniUrl, catalogo, vendita] = await Promise.all([getCurrentOmniaAiCondizioniAbbonamentoUrl(), getCatalogoPiani(), venditaAbbonamentiVisibile()]);
 
   return (
     <PageShell>
@@ -53,12 +54,19 @@ export default async function PianiPage() {
                     <li key={v}>{v}</li>
                   ))}
                 </ul>
-                {/* TEMPORANEO: Stripe è in modalità di prova, "Abbonati"
-                    (verso /abbonati/[piano], pagamento diretto) resta
-                    pronto ma non collegato qui finché non si passa alla
-                    modalità live — nessun visitatore deve arrivare a un
-                    pagamento che non può davvero completare. */}
-                <Link className={`omnia-btn ${p.inEvidenza ? "omnia-btn-p" : "omnia-btn-s"}`} href="/demo">
+                {/* «Abbonati» (verso /abbonati/[piano], pagamento diretto) compare solo con la vendita accesa
+                    in console E la chiave Stripe reale (vedi lib/omnia-ai-vendita.ts): nessun visitatore deve
+                    arrivare a un pagamento che non può davvero completare. */}
+                {vendita && (
+                  <Link className="omnia-btn omnia-btn-p" href={`/abbonati/${p.slug}`}>
+                    Abbonati
+                  </Link>
+                )}
+                <Link
+                  className={`omnia-btn ${!vendita && p.inEvidenza ? "omnia-btn-p" : "omnia-btn-s"}`}
+                  href="/demo"
+                  style={vendita ? { marginTop: 10 } : undefined}
+                >
                   Richiedi la demo
                 </Link>
               </div>
