@@ -9,6 +9,7 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { consumeGaraQuotaIfNeeded } from "@/lib/gara-consumo";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
+import { nessunIntervento, ripulisciPersonaleUscente } from "@/lib/personale-anonimo";
 
 export type ExtractionState = { error?: string; quotaEsaurita?: boolean };
 
@@ -400,6 +401,18 @@ export async function extractGaraData(
 
     const estrazioneAggiornataIl = new Date().toISOString();
 
+    // Personale uscente: l'istruzione nello schema chiede al modello di non riportare
+    // nominativi, codici fiscali e matricole, ma non è una garanzia. Questo filtro lo è:
+    // tiene solo i cinque campi previsti e toglie i codici fiscali e i dati identificativi
+    // etichettati prima che finiscano nel database, nel prompt di generazione e, di lì, nel
+    // documento finale (src/lib/personale-anonimo.ts).
+    let personaleUscente: ReturnType<typeof ripulisciPersonaleUscente>["voci"] | null = null;
+    if (result.personale_uscente) {
+      const pulizia = ripulisciPersonaleUscente(result.personale_uscente);
+      personaleUscente = pulizia.voci;
+      if (!nessunIntervento(pulizia.interventi)) console.warn("Estrazione gara: dati identificativi tolti dal personale uscente", garaId, pulizia.interventi);
+    }
+
     const { error: updateError } = await supabase
       .from("gare")
       .update({
@@ -422,7 +435,7 @@ export async function extractGaraData(
         requisiti_chiave: result.requisiti_chiave ?? null,
         sub_criteri_tabellari: result.sub_criteri_tabellari ?? null,
         sedi: result.sedi ?? null,
-        personale_uscente: result.personale_uscente ?? null,
+        personale_uscente: personaleUscente,
         estrazione_stato: "completata",
         estrazione_aggiornata_il: estrazioneAggiornataIl,
       })

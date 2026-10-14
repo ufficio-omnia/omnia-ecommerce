@@ -1,3 +1,4 @@
+import { personaleUscenteSicuro } from "@/lib/personale-anonimo";
 import { SCHEMA_ORGANIGRAMMA_STRUMENTO } from "@/lib/organigramma-schema-strumento";
 import { SCHEMA_FIGURE_STRUMENTO } from "@/lib/figure-schema-strumento";
 import { testoFigureNelPrompt, type FattiFigure } from "@/lib/figure-contesto";
@@ -144,7 +145,11 @@ function formattaSedi(sedi: SedeGara[] | null): string {
     .join("\n");
 }
 
-function formattaPersonaleUscente(personale: PersonaleUscente[] | null): string {
+function formattaPersonaleUscente(grezzo: PersonaleUscente[] | null): string {
+  // Il filtro gira anche qui, non solo al salvataggio: i dati di gare analizzate prima che
+  // esistesse non sono stati ripuliti nel database, e nel prompt non devono arrivare mai
+  // codici fiscali né altri dati identificativi (src/lib/personale-anonimo.ts).
+  const personale = personaleUscenteSicuro(grezzo);
   if (!personale?.length) return "";
   return personale
     .map((p, i) => {

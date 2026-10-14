@@ -86,6 +86,19 @@ export function mezzanotteRoma(ymd: string): Date {
   return new Date(secondo === primo ? istante : utc - secondo * 60_000);
 }
 
+// L'istante in cui a Roma sono le `ore` ("HH:MM") del giorno `ymd`. Stesso metodo di
+// mezzanotteRoma, con l'offset ricalcolato sull'istante trovato; nell'ora che non
+// esiste (passaggio all'ora legale) o che si ripete (ritorno all'ora solare) il
+// risultato è comunque un istante valido, che differisce al più di un'ora.
+export function istanteRoma(ymd: string, ore: string): Date {
+  const [ora, minuti] = ore.split(":").map(Number);
+  const utc = aUtc(ymd) + (ora * 60 + minuti) * 60_000;
+  const primo = offsetRomaMinuti(new Date(utc));
+  const istante = utc - primo * 60_000;
+  const secondo = offsetRomaMinuti(new Date(istante));
+  return new Date(secondo === primo ? istante : utc - secondo * 60_000);
+}
+
 function costruisci(preset: PresetPeriodo, etichetta: string, da: string, a: string, oggi: string): Periodo {
   return {
     preset,

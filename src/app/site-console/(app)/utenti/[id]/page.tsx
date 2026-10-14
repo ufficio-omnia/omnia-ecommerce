@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { richiediAdminPagina } from "@/lib/console/accesso";
+import { riassuntoAccessiCliente } from "@/lib/console/accessi-dati";
 import { leggiScheda } from "@/lib/console/utenti";
 import SchedaClienteVista from "../../../_componenti/scheda-cliente-vista";
 
@@ -23,6 +24,7 @@ export default async function PaginaSchedaCliente({
 
   const esito = await searchParams;
   const scheda = await leggiScheda(id);
+  const accessi = scheda.stato === "ok" ? await riassuntoAccessiCliente({ id, email: scheda.utente.email }) : null;
 
-  return <SchedaClienteVista scheda={scheda} idSessione={sessione.userId} esito={esito} />;
+  return <SchedaClienteVista scheda={scheda} idSessione={sessione.userId} esito={esito} accessi={accessi} />;
 }

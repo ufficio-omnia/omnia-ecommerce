@@ -38,6 +38,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
     titolo: "Sistema",
     voci: [
       { href: "/knowledge-base", etichetta: "Knowledge base AI", pronto: true },
+      { href: "/accessi-dati", etichetta: "Accessi ai dati", pronto: true },
       { href: "/impostazioni", etichetta: "Impostazioni", pronto: true },
     ],
   },
