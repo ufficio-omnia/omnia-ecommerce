@@ -8,6 +8,8 @@ import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { testoAvvisoProva, type GareGratuite } from "@/lib/omnia-ai-gare-gratuite";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { PIANI_ORDINE } from "@/lib/omnia-ai-plans";
+import { leggiOffertaPilotAperta, leggiPilotAcquistato } from "@/lib/omnia-ai-pilot";
+import { applicaPilotAlCatalogo, promemoriaPilot, testoPromemoriaPilot, type PromemoriaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import DashboardShell from "@/components/omnia-ai/dashboard-shell";
 import ActivateSubscriptionForm from "./activate-subscription-form";
 
@@ -68,6 +70,16 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
 // Cliente in prova (gare gratuite assegnate dalla console, nessun abbonamento mai avuto). In
 // cima a ogni pagina, sopra gli altri avvisi: a gare finite è la cosa più importante da
 // sapere, e il pulsante porta alla pagina Abbonamento, dove i piani sono spiegati.
+// Ultimi 15 giorni del prezzo pilot: quando scade e a quanto torna l'abbonamento. Non c'è se il pilot non ha
+// scadenza (mesi = 0) o non è nella finestra. Sta in cima a ogni pagina finché dura la finestra.
+function PilotAvviso({ promemoria, prezzoPieno }: { promemoria: PromemoriaPilot; prezzoPieno: number }) {
+  return (
+    <div className="omnia-avviso-profilo">
+      {testoPromemoriaPilot(promemoria, prezzoPieno)} <Link href="/dashboard/omnia-ai/abbonamento">Vai all&apos;abbonamento →</Link>
+    </div>
+  );
+}
+
 function ProvaAvviso({ gare }: { gare: GareGratuite }) {
   const { esaurite, testo } = testoAvvisoProva(gare);
   return (
@@ -97,7 +109,9 @@ export default async function OmniaAiLayout({
   if (stato.stato === "cessato") {
     const admin = createAdminClient();
     const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
-    const catalogo = await getCatalogoPiani();
+    const [catalogo, offertaPilot] = await Promise.all([getCatalogoPiani(), leggiOffertaPilotAperta(user.id)]);
+    // se c'è un'offerta riservata a questo cliente, il suo piano mostra il prezzo pilot
+    const vista = applicaPilotAlCatalogo(PIANI_ORDINE.map((slug) => catalogo[slug]), offertaPilot);
 
     return (
       <div className="omnia-app-shell">
@@ -119,7 +133,8 @@ export default async function OmniaAiLayout({
 
         {legalDocuments ? (
           <ActivateSubscriptionForm
-            piani={PIANI_ORDINE.map((slug) => catalogo[slug])}
+            piani={vista.piani}
+            pianoPredefinito={vista.pianoPredefinito}
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}
@@ -145,6 +160,10 @@ export default async function OmniaAiLayout({
       pec: string | null;
     }>();
 
+  // Offerta pilot acquistata: negli ultimi 15 giorni un promemoria sempre visibile.
+  const pilot = stato.stato === "attivo" ? await leggiPilotAcquistato(user.id) : null;
+  const promemoriaDelPilot = pilot ? promemoriaPilot(pilot, new Date()) : null;
+
   const profiloIncompleto =
     !company?.ragione_sociale || !company?.partita_iva || !company?.indirizzo;
   const fatturazioneIncompleta = !company?.codice_sdi && !company?.pec;
@@ -156,6 +175,7 @@ export default async function OmniaAiLayout({
       nomeAzienda={company?.ragione_sociale ?? null}
       avvisi={
         <>
+          {pilot && promemoriaDelPilot && pilot.prezzoPienoCentesimi !== null && <PilotAvviso promemoria={promemoriaDelPilot} prezzoPieno={pilot.prezzoPienoCentesimi} />}
           {stato.stato === "prova" && <ProvaAvviso gare={stato.gare} />}
           {stato.stato === "sola_lettura" && (
             <SolaLetturaAvviso dataCancellazione={stato.dataCancellazioneContenuti} />

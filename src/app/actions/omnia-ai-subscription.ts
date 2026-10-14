@@ -14,6 +14,8 @@ import { getRequestMeta } from "@/lib/legal-acceptance";
 import { getStripePrezzoAttivo } from "@/lib/omnia-ai-stripe-prices";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { assicuraCoupon, idCouponSconto } from "@/lib/omnia-ai-stripe-sconti";
+import { leggiOffertaPilotAperta } from "@/lib/omnia-ai-pilot";
+import { risparmioPilot as calcolaRisparmioPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 
 export type OmniaAiCheckoutState = { error?: string };
@@ -141,8 +143,24 @@ export async function startOmniaAiSubscriptionCheckout(
     }
     priceId = prezzoStripe.id;
 
-    // Sconto in corso: coupon a importo fisso, applicato alla sessione (stesso importo mostrato al cliente).
-    if (voce.sconto) {
+    // Offerta pilot riservata a QUESTO cliente (creata dalla console): ha la precedenza sugli sconti
+    // pubblici. Stesso meccanismo: coupon a importo fisso (listino − prezzo pilot), per i mesi
+    // indicati oppure per sempre (0); a fine pilot Stripe torna da solo al prezzo pieno. Vale solo per
+    // il piano offerto e solo per un cliente autenticato (le offerte sono legate al suo utente).
+    const pilot = userId ? await leggiOffertaPilotAperta(userId) : null;
+    const risparmioPilot = pilot && pilot.piano === planSlug ? calcolaRisparmioPilot(voce.prezzoListinoCentesimi, pilot.prezzoCentesimi) : 0;
+
+    if (pilot && risparmioPilot > 0) {
+      const coupon = await assicuraCoupon(stripe, {
+        id: idCouponSconto(pilot.id, risparmioPilot, pilot.mesi),
+        risparmioCentesimi: risparmioPilot,
+        durataMesi: pilot.mesi,
+        nome: "Offerta riservata",
+      });
+      discounts = [{ coupon }];
+      metadata.pilotOffertaId = pilot.id;
+    } else if (voce.sconto) {
+      // Sconto in corso: coupon a importo fisso, applicato alla sessione (stesso importo mostrato al cliente).
       const coupon = await assicuraCoupon(stripe, {
         id: idCouponSconto(voce.sconto.id, voce.sconto.risparmioCentesimi, voce.sconto.durataMesi),
         risparmioCentesimi: voce.sconto.risparmioCentesimi,

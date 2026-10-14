@@ -5,6 +5,8 @@ import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { PIANI, PIANI_ORDINE, PACCHETTI_CREDITI, formatEuro, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
+import { leggiOffertaPilotAperta, leggiPilotAcquistato } from "@/lib/omnia-ai-pilot";
+import { applicaPilotAlCatalogo, pilotInCorso, testoPilotInCorso } from "@/lib/omnia-ai-pilot-calcoli";
 import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
 import ActivateSubscriptionForm from "../activate-subscription-form";
 import AcquistaCreditiForm from "./acquista-crediti-form";
@@ -47,7 +49,8 @@ export default async function AbbonamentoPage() {
   if (stato.stato !== "attivo") {
     const admin = createAdminClient();
     const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
-    const catalogo = await getCatalogoPiani();
+    const [catalogo, offertaPilot] = await Promise.all([getCatalogoPiani(), leggiOffertaPilotAperta(user.id)]);
+    const vista = applicaPilotAlCatalogo(PIANI_ORDINE.map((slug) => catalogo[slug]), offertaPilot);
 
     // Cliente in prova: non c'è nessun abbonamento da «riattivare». Qui si spiega come funziona e
     // si sceglie il piano (stessa pagina e stesso modulo di chi si abbona per la prima volta).
@@ -64,7 +67,8 @@ export default async function AbbonamentoPage() {
 
         {legalDocuments ? (
           <ActivateSubscriptionForm
-            piani={PIANI_ORDINE.map((slug) => catalogo[slug])}
+            piani={vista.piani}
+            pianoPredefinito={vista.pianoPredefinito}
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}
@@ -100,6 +104,10 @@ export default async function AbbonamentoPage() {
     .order("created_at", { ascending: false })
     .returns<AcquistoCreditiRow[]>();
 
+  // Prezzo pilot in corso: quanto dura e a quanto torna.
+  const pilotAcquistato = await leggiPilotAcquistato(user.id);
+  const pilotAttuale = pilotAcquistato && pilotInCorso(pilotAcquistato, new Date()) ? pilotAcquistato : null;
+
   const dataRinnovo = subscription.current_period_end
     ? new Date(subscription.current_period_end).toLocaleDateString("it-IT")
     : null;
@@ -121,6 +129,15 @@ export default async function AbbonamentoPage() {
         Piano {piano?.nome ?? subscription.plan}: consumo del periodo, crediti aggiuntivi e
         pagamento.
       </p>
+
+      {pilotAttuale && (
+        <section className="omnia-riquadro" aria-label="Prezzo pilot">
+          <span className="omnia-eyebrow">Il tuo prezzo</span>
+          <p className="omnia-messaggio-stato" style={{ marginTop: 12 }}>
+            {testoPilotInCorso(pilotAttuale)}
+          </p>
+        </section>
+      )}
 
       <section className="omnia-riquadro">
         <span className="omnia-eyebrow">Piano e rinnovo</span>

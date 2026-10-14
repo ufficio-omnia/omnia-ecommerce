@@ -13,12 +13,15 @@ const initialState: OmniaAiCheckoutState = {};
 
 export default function ActivateSubscriptionForm({
   piani,
+  pianoPredefinito = null,
   condizioniVersion,
   privacyVersion,
   allegatoVersion,
 }: {
   // i piani con il prezzo e lo sconto di oggi (catalogo modificabile dalla console)
   piani: PianoCatalogo[];
+  // piano selezionato in partenza (l'offerta riservata al cliente), altrimenti Professional
+  pianoPredefinito?: PianoSlug | null;
   condizioniVersion: number;
   privacyVersion: number;
   // versione in vigore dell'Allegato A; null se non esiste ancora
@@ -28,7 +31,7 @@ export default function ActivateSubscriptionForm({
     startOmniaAiSubscriptionCheckout,
     initialState,
   );
-  const [planSlug, setPlanSlug] = useState<PianoSlug>("professional");
+  const [planSlug, setPlanSlug] = useState<PianoSlug>(pianoPredefinito ?? "professional");
   const [acceptCondizioniPrivacy, setAcceptCondizioniPrivacy] = useState(false);
   const [acceptClausoleSpecifiche, setAcceptClausoleSpecifiche] = useState(false);
 

@@ -5,6 +5,9 @@ import type { SchedaCliente } from "@/lib/console/utenti";
 import { eAnonimizzato, etichettaAccettazione, etichettaDocumento, type AccettazioneScheda, type StatoProva } from "@/lib/console/utenti-calcoli";
 import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlCliente } from "../azioni/utenti";
 import { modificaGareGratuite, resetPasswordCliente } from "../azioni/utenti-console";
+import { creaOffertaPilot, revocaOffertaPilot } from "../azioni/pilot";
+import type { PilotCliente } from "@/lib/console/pilot";
+import { statoOffertaPilot, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
 import type { ProvaCliente } from "@/lib/console/gare-gratuite";
 import ModuloAzione from "./modulo-azione";
@@ -110,6 +113,7 @@ export default function SchedaClienteVista({
   esito,
   accessi,
   prova,
+  pilot,
 }: {
   scheda: SchedaCliente;
   // id dell'admin che sta guardando: non può eliminare né anonimizzare sé stesso
@@ -118,6 +122,8 @@ export default function SchedaClienteVista({
   accessi: AccessiCliente;
   // account creato dalla console e gare gratuite (migrazione 0084)
   prova: ProvaCliente;
+  // offerte pilot del cliente (migrazione 0086)
+  pilot: PilotCliente;
 }) {
   const indietro = (
     <Link href="/utenti" className="cn-indietro">
@@ -149,10 +155,10 @@ export default function SchedaClienteVista({
     );
   }
 
-  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} />;
+  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -638,6 +644,93 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova }: { s: 
                   </>
                 );
               })()}
+            </div>
+          </Pannello>
+        </div>
+      )}
+
+      {/* ───── Offerta pilot: solo per i clienti creati dalla console ───── */}
+      {prova.creatoDaConsole && s.utente.ruolo !== "admin" && (
+        <div className="cn-sezione">
+          <Pannello titolo="Offerta pilot">
+            <div className="cn-pannello-corpo">
+              {!pilot.disponibile ? (
+                <p className="cn-nota-inline">L&apos;offerta pilot non è disponibile (migrazione 0086 non ancora eseguita).</p>
+              ) : (
+                (() => {
+                  const aperta = pilot.offerte.find((o) => statoOffertaPilot(o) === "aperta") ?? null;
+                  const acquistata = pilot.offerte.find((o) => statoOffertaPilot(o) === "acquistata") ?? null;
+                  const abbonamentoAttivo = s.abbonamenti.some((a) => a.stato === "attivo");
+                  return (
+                    <>
+                      <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                        Un prezzo dedicato per un piano, per un numero di mesi (0 = sempre quel prezzo). Il cliente lo vede solo nella sua area riservata, che lo porta al pagamento su Stripe; dopo i mesi indicati il rinnovo torna al prezzo pieno da solo, e negli ultimi 15 giorni riceve un promemoria.
+                      </p>
+
+                      {aperta && (
+                        <div style={{ marginTop: 10 }}>
+                          <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                            <Badge tono="accento">offerta aperta</Badge> {testoOffertaPilot(aperta, pilot.nomi[aperta.piano], pilot.listini[aperta.piano])} Creata il {formattaData(aperta.creataIl)} da {aperta.creataDa}: il cliente non l&apos;ha ancora acquistata.
+                          </p>
+                          <PulsanteAzione
+                            azione={revocaOffertaPilot}
+                            campi={{ id: aperta.id }}
+                            conferma="Revocare l'offerta? Il cliente non la vedrà più nella sua area riservata."
+                            etichetta="Revoca l'offerta"
+                            etichettaInCorso="Revoco…"
+                            variante="neutro"
+                          />
+                        </div>
+                      )}
+
+                      {acquistata && (
+                        <p className="cn-nota-inline" style={{ marginTop: aperta ? 12 : 10 }}>
+                          <Badge tono="ok">acquistata</Badge> Piano {pilot.nomi[acquistata.piano]} a {formattaEuro(acquistata.prezzoCentesimi / 100)} al mese, acquistato il {formattaData(acquistata.acquistataIl ?? "")}.{" "}
+                          {acquistata.mesi === 0 || !acquistata.scadeIl
+                            ? "Il prezzo dedicato non ha scadenza."
+                            : `Il prezzo pilot dura fino al ${formattaData(acquistata.scadeIl)}${acquistata.prezzoPienoCentesimi ? `, poi il rinnovo è a ${formattaEuro(acquistata.prezzoPienoCentesimi / 100)} al mese` : ""}. ${acquistata.promemoriaInviatoIl ? `Promemoria dei 15 giorni inviato il ${formattaData(acquistata.promemoriaInviatoIl)}.` : "Il promemoria parte da solo 15 giorni prima della scadenza."}`}
+                        </p>
+                      )}
+
+                      {abbonamentoAttivo ? (
+                        <p className="cn-nota-inline">Il cliente ha già un abbonamento attivo: non si può offrire un nuovo pilot finché dura.</p>
+                      ) : (
+                        <div style={{ marginTop: 12 }}>
+                          <p className="cn-nota-inline" style={{ marginTop: 0, marginBottom: 6 }}>
+                            {aperta ? "Una nuova offerta sostituisce quella aperta." : "Offri un prezzo dedicato:"}
+                          </p>
+                          <ModuloAzione azione={creaOffertaPilot} campi={{ userId: s.utente.id }} etichetta="Offri al cliente" etichettaInCorso="Creo…" messaggioOk="Offerta creata." variante="primario" svuota classe="cn-modulo-linea">
+                            <div>
+                              <label className="cn-etichetta" htmlFor="pilot-piano">
+                                Piano
+                              </label>
+                              <select className="cn-input" id="pilot-piano" name="piano" defaultValue="starter">
+                                {PIANI_ORDINE.map((slug) => (
+                                  <option key={slug} value={slug}>
+                                    {pilot.nomi[slug]} (listino {formattaEuro(pilot.listini[slug] / 100)})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="cn-etichetta" htmlFor="pilot-prezzo">
+                                Prezzo pilot (€ al mese, IVA inclusa)
+                              </label>
+                              <input className="cn-input" id="pilot-prezzo" name="prezzo" required inputMode="decimal" placeholder="es. 399" autoComplete="off" style={{ maxWidth: 130 }} />
+                            </div>
+                            <div>
+                              <label className="cn-etichetta" htmlFor="pilot-mesi">
+                                Mesi di pilot (0 = sempre)
+                              </label>
+                              <input className="cn-input" id="pilot-mesi" name="mesi" type="number" min={0} max={60} step={1} defaultValue={6} style={{ maxWidth: 110 }} />
+                            </div>
+                          </ModuloAzione>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()
+              )}
             </div>
           </Pannello>
         </div>

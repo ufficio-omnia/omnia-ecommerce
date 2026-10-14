@@ -9,6 +9,7 @@ import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-pla
 import { pianoDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
 import { getOmniaAiBaseUrl } from "@/lib/omnia-ai-request";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
+import { registraAcquistoPilot } from "@/lib/omnia-ai-pilot";
 import { collegaIncassiASubscription, registraIncassoDaFattura, schemaAssente } from "@/lib/omnia-ai-incassi";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -503,6 +504,17 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
   }
 
   if (!subscriptionRowId || !userId) return;
+
+  // Offerta pilot: se la sessione nasceva da un'offerta riservata (metadata scritti dal checkout), la si
+  // segna acquistata, con la fine del prezzo pilot letta da Stripe. Idempotente, e un errore qui non
+  // deve impedire di registrare le accettazioni legali qui sotto.
+  if (metadata?.pilotOffertaId) {
+    try {
+      await registraAcquistoPilot({ stripe: createStripeClient("omnia-ai"), offertaId: metadata.pilotOffertaId, userId, stripeSubscriptionId });
+    } catch (e) {
+      console.error("Webhook Stripe (abbonamento AI): registrazione dell'offerta pilot fallita", e instanceof Error ? e.message : e);
+    }
+  }
 
   const {
     condizioniAbbonamentoDocId,
