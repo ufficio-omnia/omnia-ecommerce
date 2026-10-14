@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { verificaDirittoGara } from "@/lib/gara-diritto";
 import { downloadGaraDocumento } from "@/app/actions/download";
@@ -12,6 +13,9 @@ import LogoClienteForm from "./logo-cliente-form";
 import GaraTitolo from "./gara-titolo";
 import ExtractionSection, { type Estrazione } from "./extraction-section";
 import GaraBloccataAvviso from "./gara-bloccata-avviso";
+import RevisionePanel from "./revisione-panel";
+import { leggiContestoRevisione } from "@/lib/omnia-ai-revisione";
+import { calcolaPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 
 // sendGaraMessage (chiamato da questa pagina) fa sempre almeno due chiamate
@@ -147,6 +151,18 @@ export default async function GaraPage({
   // chat e caricamento documenti restano spenti (il vero blocco è nelle azioni, qui solo la vista).
   const diritto = await verificaDirittoGara({ garaId: gara.id, userId: user.id });
 
+  // «Richiedi revisione umana»: compare solo dopo la relazione tecnica FINALE, con il prezzo calcolato per questa gara.
+  const contestoRevisione = await leggiContestoRevisione({ supabase, admin: createAdminClient(), userId: user.id, garaId: gara.id });
+  const esitoRevisione = contestoRevisione?.relazione
+    ? calcolaPrezzoRevisione({
+        scadenza: gara.scadenza,
+        scadenzaOra: contestoRevisione.gara.scadenza_ora,
+        limitePagineDisciplinare: gara.limite_pagine_totale,
+        pagineStimateRelazione: contestoRevisione.relazione.pagineStimate,
+        adesso: new Date(),
+      })
+    : null;
+
   const chunkCountPerDocumento = new Map<string, number>();
   for (const chunk of chunksRaw ?? []) {
     chunkCountPerDocumento.set(
@@ -247,9 +263,11 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
+      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
+
+      {contestoRevisione?.relazione && esitoRevisione && <RevisionePanel garaId={gara.id} esito={esitoRevisione} pagata={contestoRevisione.pagata} />}
     </div>
   );
 }

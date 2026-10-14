@@ -60,7 +60,7 @@ export default function PagamentiVista({
       </Link>
 
       <h1 className="omnia-app-titolo">Pagamenti e fatture</h1>
-      <p className="omnia-app-sottotitolo">I pagamenti del tuo abbonamento OMNIA AI, con la ricevuta di Stripe e la fattura di ciascuno.</p>
+      <p className="omnia-app-sottotitolo">I pagamenti OMNIA AI (abbonamento, crediti e revisioni umane), con la ricevuta di Stripe e la fattura di ciascuno.</p>
 
       <section className="omnia-riquadro" aria-labelledby="ricevuta-non-fattura">
         <span className="omnia-eyebrow" id="ricevuta-non-fattura">

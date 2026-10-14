@@ -90,7 +90,7 @@ export default function FatturazioneVista({
     <div className="cn-testata">
       <div>
         <h1>Da fatturare</h1>
-        <p>Incassi degli abbonamenti OMNIA AI e acquisti di crediti, con i dati per emettere la fattura</p>
+        <p>Incassi degli abbonamenti OMNIA AI, acquisti di crediti e revisioni umane, con i dati per emettere la fattura</p>
       </div>
     </div>
   );
@@ -359,7 +359,7 @@ export default function FatturazioneVista({
           <summary>Come funziona</summary>
           <ul className="cn-elenco">
             <li>
-              <strong>Cosa compare:</strong> ogni pagamento di abbonamento incassato (primo pagamento, rinnovo, conguaglio per cambio piano) e ogni acquisto di crediti. I pagamenti di prova nascono già «non dovuti».
+              <strong>Cosa compare:</strong> ogni pagamento di abbonamento incassato (primo pagamento, rinnovo, conguaglio per cambio piano), ogni acquisto di crediti e ogni revisione umana pagata. I pagamenti di prova nascono già «non dovuti».
             </li>
             <li>
               <strong>Dati del cliente:</strong> dal profilo azienda che ha compilato; i campi che mancano si completano con quelli raccolti da Stripe al pagamento. «Mancano» segnala ciò che serve e non c&apos;è: ragione sociale, partita IVA o codice fiscale, indirizzo, codice SDI o PEC (per un privato basta il codice fiscale).

@@ -173,13 +173,14 @@ export async function eliminaUtente(_stato: StatoAzioneUtente, formData: FormDat
   if (abbonamentoStripe) return { errore: abbonamentoStripe };
 
   const admin = createAdminClient();
-  const [ordiniPagati, incassiReali, creditiReali] = await Promise.all([
+  const [ordiniPagati, incassiReali, creditiReali, revisioniReali] = await Promise.all([
     admin.from("orders").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).eq("status", "pagato"),
     admin.from("omnia_ai_incassi").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).eq("livemode", true),
     admin.from("omnia_ai_credit_purchases").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).not("stripe_session_id", "like", "cs_test_%"),
+    admin.from("omnia_ai_revisioni").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).eq("stato", "pagata").eq("livemode", true),
   ]);
   // la tabella degli incassi può non esistere ancora: in quel caso non c'è nulla da proteggere lì
-  const conteggio = (ordiniPagati.count ?? 0) + (incassiReali.error ? 0 : (incassiReali.count ?? 0)) + (creditiReali.error ? 0 : (creditiReali.count ?? 0));
+  const conteggio = (ordiniPagati.count ?? 0) + (incassiReali.error ? 0 : (incassiReali.count ?? 0)) + (creditiReali.error ? 0 : (creditiReali.count ?? 0)) + (revisioniReali.error ? 0 : (revisioniReali.count ?? 0));
   if (ordiniPagati.error) return { errore: "Controllo dei dati contabili non riuscito: l'account non è stato toccato." };
   if (conteggio > 0) {
     return { errore: "Questo cliente ha ordini pagati o incassi registrati: eliminarlo cancellerebbe anche quei dati contabili, che vanno conservati. Usa «Anonimizza»." };

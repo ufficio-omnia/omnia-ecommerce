@@ -6,6 +6,9 @@ import {
   calcolaImporti,
   descrizioneCrediti,
   descrizioneIncasso,
+  descrizioneRevisioneRiga,
+  snapshotDaDettagliStripe,
+  type DettagliClienteStripe,
   giorniDallIncasso,
   risolviDatiFatturazione,
   type ProfiloFatturazione,
@@ -84,6 +87,25 @@ type CreditiDb = DatiStato & {
   created_at: string;
 };
 
+type RevisioneDb = DatiStato & {
+  id: string;
+  user_id: string | null;
+  gara_titolo: string;
+  pagine: number;
+  maggiorazione_percentuale: number;
+  prezzo_totale_centesimi: number;
+  importo_pagato_centesimi: number | null;
+  pagata_il: string;
+  livemode: boolean;
+  stripe_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  dati_stripe: DettagliClienteStripe;
+};
+
+// Revisioni umane PAGATE (migrazione 0089): stato di fattura e PDF sono nella stessa migrazione.
+const COLONNE_REVISIONE =
+  "id, user_id, gara_titolo, pagine, maggiorazione_percentuale, prezzo_totale_centesimi, importo_pagato_centesimi, pagata_il, livemode, stripe_session_id, stripe_payment_intent_id, dati_stripe, stato_fattura, numero_fattura, data_fattura, note_fattura, fattura_file_path";
+
 type Risposta = { data: unknown; error: { code?: string; message: string } | null };
 
 export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}): Promise<FatturazioneLetta> {
@@ -123,6 +145,14 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
   const incassi = incassiDisponibili ? ((incassiQ.data ?? []) as IncassoDb[]) : [];
   const crediti = (creditiQ.data ?? []) as CreditiDb[];
 
+  // Revisioni umane pagate: senza la tabella (migrazione 0089 non eseguita) non ce ne sono.
+  const revisioniQ = await admin.from("omnia_ai_revisioni").select(COLONNE_REVISIONE).eq("stato", "pagata").order("pagata_il", { ascending: false }).limit(2000);
+  if (revisioniQ.error && !schemaAssente(revisioniQ.error)) {
+    console.error("Console: lettura revisioni per la fatturazione fallita", revisioniQ.error.message);
+    return { stato: "errore", messaggio: "Lettura delle revisioni umane non riuscita." };
+  }
+  const revisioni = revisioniQ.error ? [] : ((revisioniQ.data ?? []) as unknown as RevisioneDb[]);
+
   const [parametri, abbonamentiQ, ordiniQ] = await Promise.all([
     leggiParametriCalcolo(),
     admin.from("subscriptions").select("stripe_subscription_id, plan").not("stripe_subscription_id", "is", null).limit(5000),
@@ -130,7 +160,7 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
   ]);
 
   // Dati di fatturazione: il profilo azienda del cliente, completato da Stripe.
-  const idUtenti = [...new Set([...incassi.flatMap((i) => (i.user_id ? [i.user_id] : [])), ...crediti.map((c) => c.user_id)])];
+  const idUtenti = [...new Set([...incassi.flatMap((i) => (i.user_id ? [i.user_id] : [])), ...crediti.map((c) => c.user_id), ...revisioni.flatMap((r) => (r.user_id ? [r.user_id] : []))])];
   const [utenti, aziende] = await Promise.all([
     inBlocchi<{ id: string; email: string }>(idUtenti, (b) => admin.from("users").select("id, email").in("id", b)),
     inBlocchi<ProfiloFatturazione & { user_id: string }>(idUtenti, (b) =>
@@ -206,6 +236,28 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
     });
   }
 
+  for (const r of revisioni) {
+    // i dati di fatturazione sono quelli raccolti da Stripe nel pagamento, completati dal profilo azienda
+    const { dati, cliente } = comune(r.user_id, snapshotDaDettagliStripe(r.dati_stripe));
+    righe.push({
+      chiave: `revisione:${r.id}`,
+      fonte: "revisione",
+      data: r.pagata_il,
+      descrizione: descrizioneRevisioneRiga(r.gara_titolo, num(r.pagine), num(r.maggiorazione_percentuale)),
+      userId: r.user_id,
+      cliente,
+      // il prezzo è IVA inclusa e Stripe non calcola l'imposta su questo pagamento: si scorpora con l'aliquota
+      importi: calcolaImporti(num(r.importo_pagato_centesimi ?? r.prezzo_totale_centesimi) / 100, null, null, parametri.aliquotaIva),
+      prova: !r.livemode,
+      ...statoDi(r),
+      numeroRicevuta: null,
+      ricevutaUrl: null,
+      dati,
+      giorni: giorniDallIncasso(r.pagata_il, adesso),
+      idStripe: r.stripe_payment_intent_id ?? r.stripe_session_id,
+    });
+  }
+
   righe.sort((a, b) => b.data.localeCompare(a.data));
   const visibili = righe.filter((r) => includiProva || !r.prova);
 
@@ -236,20 +288,29 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
 // Una lettura sola per richiesta.
 export const contaDaFatturare = cache(async (): Promise<{ n: number; lordo: number } | null> => {
   const admin = createAdminClient();
-  const [incassi, crediti] = await Promise.all([
+  const [incassi, crediti, revisioni] = await Promise.all([
     admin.from("omnia_ai_incassi").select("importo_lordo_centesimi").eq("stato_fattura", "da_fatturare").eq("livemode", true).limit(5000),
     admin.from("omnia_ai_credit_purchases").select("importo_centesimi, stripe_session_id").eq("stato_fattura", "da_fatturare").limit(5000),
+    admin.from("omnia_ai_revisioni").select("importo_pagato_centesimi, prezzo_totale_centesimi").eq("stato", "pagata").eq("stato_fattura", "da_fatturare").eq("livemode", true).limit(5000),
   ]);
   // Senza la tabella degli incassi (0078) restano comunque i crediti. Qualunque
   // altro errore, compresa la colonna dello stato che manca (0079), vuol dire che
   // il conteggio non è attendibile: null, e la barra non mostra nulla.
   const tabellaIncassiAssente = incassi.error?.code === "PGRST205" || incassi.error?.code === "42P01";
   if (crediti.error || (incassi.error && !tabellaIncassiAssente)) return null;
+  // Senza la tabella delle revisioni (0089) non ce ne sono; qualunque altro errore rende il conteggio inattendibile.
+  const tabellaRevisioniAssente = revisioni.error?.code === "PGRST205" || revisioni.error?.code === "42P01";
+  if (revisioni.error && !tabellaRevisioniAssente) return null;
+  const revisioniReali = revisioni.error ? [] : ((revisioni.data ?? []) as { importo_pagato_centesimi: number | null; prezzo_totale_centesimi: number }[]);
 
   const reali = ((crediti.data ?? []) as { importo_centesimi: number; stripe_session_id: string | null }[]).filter((c) => !(c.stripe_session_id ?? "").startsWith("cs_test_"));
   const incassiReali = incassi.error ? [] : ((incassi.data ?? []) as { importo_lordo_centesimi: number }[]);
   return {
-    n: incassiReali.length + reali.length,
-    lordo: (incassiReali.reduce((s, i) => s + num(i.importo_lordo_centesimi), 0) + reali.reduce((s, c) => s + num(c.importo_centesimi), 0)) / 100,
+    n: incassiReali.length + reali.length + revisioniReali.length,
+    lordo:
+      (incassiReali.reduce((s, i) => s + num(i.importo_lordo_centesimi), 0) +
+        reali.reduce((s, c) => s + num(c.importo_centesimi), 0) +
+        revisioniReali.reduce((s, r) => s + num(r.importo_pagato_centesimi ?? r.prezzo_totale_centesimi), 0)) /
+      100,
   };
 });

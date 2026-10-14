@@ -149,6 +149,7 @@ export type AbbonamentoScheda = {
 
 export type IncassoScheda = { id: string; data: string; tipo: string; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type AcquistoCreditiScheda = { id: string; data: string; pacchetto: string; crediti: number; lordo: number; prova: boolean; statoFattura: string | null };
+export type RevisioneScheda = { id: string; data: string; garaTitolo: string; pagine: number; lordo: number; maggiorazione: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type MessaggioScheda = { id: string; mittente: "cliente" | "admin"; testo: string; creatoIl: string };
 
 export type ProfiloScheda = {
@@ -173,6 +174,8 @@ export type SchedaCliente =
       abbonamenti: AbbonamentoScheda[];
       saldoCrediti: number;
       acquistiCrediti: AcquistoCreditiScheda[];
+      // revisioni umane pagate (migrazione 0089)
+      revisioni: RevisioneScheda[];
       incassi: IncassoScheda[];
       messaggi: MessaggioScheda[];
       // la tabella degli incassi / le colonne di stato fattura esistono (migrazioni 0078, 0079)
@@ -253,6 +256,14 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
   if (schemaAssente(creditiAcqQ.error)) {
     creditiAcqQ = await admin.from("omnia_ai_credit_purchases").select("id, pacchetto, crediti, importo_centesimi, stripe_session_id, created_at").eq("user_id", id).order("created_at", { ascending: false });
   }
+
+  // Revisioni umane pagate del cliente: senza la tabella (migrazione 0089) non ce ne sono.
+  const revisioniQ: Risposta = await admin
+    .from("omnia_ai_revisioni")
+    .select("id, gara_titolo, pagine, maggiorazione_percentuale, prezzo_totale_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura")
+    .eq("user_id", id)
+    .eq("stato", "pagata")
+    .order("pagata_il", { ascending: false });
 
   const [authUtente, aziendaQ, saldoQ, messaggiQ, documentiQ] = await Promise.all([
     admin.auth.admin.getUserById(id),
@@ -349,6 +360,19 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
       prova: (c.stripe_session_id ?? "").startsWith("cs_test_"),
       statoFattura: c.stato_fattura ?? null,
     })),
+    revisioni: revisioniQ.error
+      ? []
+      : ((revisioniQ.data ?? []) as { id: string; gara_titolo: string; pagine: number; maggiorazione_percentuale: number; prezzo_totale_centesimi: number; importo_pagato_centesimi: number | null; pagata_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((r) => ({
+          id: r.id,
+          data: r.pagata_il,
+          garaTitolo: r.gara_titolo,
+          pagine: num(r.pagine),
+          lordo: num(r.importo_pagato_centesimi ?? r.prezzo_totale_centesimi) / 100,
+          maggiorazione: num(r.maggiorazione_percentuale),
+          prova: !r.livemode,
+          statoFattura: r.stato_fattura ?? null,
+          numeroFattura: r.numero_fattura ?? null,
+        })),
     incassi: incassiDisponibili
       ? ((incassiQ.data ?? []) as { id: string; tipo: string; importo_lordo_centesimi: number; pagato_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((i) => ({
           id: i.id,

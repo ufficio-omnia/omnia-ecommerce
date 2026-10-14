@@ -499,6 +499,51 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
           )}
         </Pannello>
 
+        <Pannello titolo={`Revisioni umane (${s.revisioni.length})`}>
+          {s.revisioni.length === 0 ? (
+            <p className="cn-vuoto">Nessuna revisione umana richiesta.</p>
+          ) : (
+            <div className="cn-scorri">
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Gara</th>
+                    <th className="num">Pagine</th>
+                    <th className="num">Importo lordo</th>
+                    <th>Fattura</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.revisioni.map((r) => (
+                    <tr key={r.id}>
+                      <td className="mono">{formattaData(r.data)}</td>
+                      <td>
+                        {r.garaTitolo}
+                        {r.maggiorazione > 0 && (
+                          <>
+                            {" "}
+                            <Badge tono="avviso">urgenza +{r.maggiorazione}%</Badge>
+                          </>
+                        )}
+                        {r.prova && (
+                          <>
+                            {" "}
+                            <Badge tono="avviso">prova</Badge>
+                          </>
+                        )}
+                      </td>
+                      <td className="num">{formattaIntero(r.pagine)}</td>
+                      <td className="num">{formattaEuro(r.lordo)}</td>
+                      <td>{r.statoFattura === "fatturata" ? `fatturata${r.numeroFattura ? ` ${r.numeroFattura}` : ""}` : r.statoFattura === "non_dovuta" ? "non dovuta" : "da fatturare"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Pannello>
+
         <Pannello titolo={`Acquisti di crediti (${s.acquistiCrediti.length})`}>
           {s.acquistiCrediti.length === 0 ? (
             <p className="cn-vuoto">Nessun acquisto di crediti.</p>

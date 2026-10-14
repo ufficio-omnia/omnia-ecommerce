@@ -159,7 +159,7 @@ atteso("le righe di prova già presenti vengono sistemate, e solo se ancora 'da_
 const incassi = leggi("src/lib/omnia-ai-incassi.ts");
 atteso("il webhook e il backfill non scrivono colonne della 0079 (continuano a funzionare prima della migrazione)", !/stato_fattura|numero_fattura/.test(incassi));
 const webhook = leggi("src/app/api/webhooks/stripe/route.ts");
-atteso("l'inserimento degli acquisti di crediti nel webhook non è stato toccato dalla fatturazione", !/stato_fattura/.test(webhook));
+atteso("l'inserimento degli acquisti di crediti nel webhook non è stato toccato dalla fatturazione", !/stato_fattura/.test(webhook.slice(webhook.indexOf("async function handleOmniaAiCreditsCheckoutCompleted("), webhook.indexOf("async function handleOmniaAiRevisioneCompleted("))));
 
 console.log("--- Sicurezza: azioni, pagine, esportazione ---");
 const azioni = leggi("src/app/site-console/azioni/fatturazione.ts");
@@ -170,7 +170,7 @@ atteso(
   /extra: \{ fattura_file_path: percorsoFatturaPagamento\(fonte, id\), fattura_caricata_il: [^}]*\}/.test(azioni) && (azioni.match(/\bextra\b/g) ?? []).length >= 4 && !/applica\(righe,[^)]*,[^)]*,[^)]+\)/.test(azioni),
 );
 atteso("'fatturata' richiede una data valida non futura; 'non dovuta' richiede una nota", /Indica la data della fattura/.test(azioni) && /dataRoma\(new Date\(\)\)/.test(azioni) && /scrivi nelle note perché/.test(azioni));
-atteso("chiavi delle righe validate (uuid) e tabelle ammesse in lista chiusa", /const CHIAVE = \/\^\(incasso\|crediti\):/.test(azioni) && /const TABELLE = TABELLA_PER_FONTE;/.test(azioni) && /TABELLA_PER_FONTE = \{ incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases" \} as const/.test(leggi("src/lib/omnia-ai-pagamenti.ts")));
+atteso("chiavi delle righe validate (uuid) e tabelle ammesse in lista chiusa", /const CHIAVE = \/\^\(incasso\|crediti\|revisione\):/.test(azioni) && /const TABELLE = TABELLA_PER_FONTE;/.test(azioni) && /TABELLA_PER_FONTE = \{ incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni" \} as const/.test(leggi("src/lib/omnia-ai-pagamenti.ts")));
 atteso("l'azione multipla ha un massimo di righe", /MASSIMO_RIGHE = 200/.test(azioni) && /righe\.length > MASSIMO_RIGHE/.test(azioni));
 for (const [file, lettura] of [
   ["src/app/site-console/(app)/fatturazione/page.tsx", /await leggiFatturazione\(/],

@@ -253,7 +253,9 @@ export async function sendGaraMessage(
   }
 
   let rispostaFinale = "";
-  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa } | null = null;
+  // finale: il Word composto con «componi la relazione finale» (non la bozza di un criterio) — il pulsante
+  // «Richiedi revisione umana» compare solo per questo
+  let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa; finale: boolean } | null = null;
 
   try {
     const queryEmbedding = await embedQuery(messaggio, {
@@ -470,7 +472,7 @@ export async function sendGaraMessage(
                 is_error: true,
               });
             } else {
-              fileGenerato = risultato;
+              fileGenerato = { ...risultato, finale: true };
               strumentiDisponibili = [];
               console.log(
                 `sendGaraMessage: relazione finale composta "${risultato.nomeFile}" (${risultato.filePath}) per gara ${garaId}`,
@@ -608,7 +610,7 @@ export async function sendGaraMessage(
             organigramma: input.organigramma,
             figure: input.figure,
           });
-          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa };
+          fileGenerato = { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa, finale: false };
           strumentiDisponibili = [];
           console.log(
             `sendGaraMessage: bozza generata "${nomeFile}" (${filePath}) per gara ${garaId}, sezione "${input.titolo_sezione}"`,
@@ -731,9 +733,18 @@ export async function sendGaraMessage(
   // l'inserimento resta identico a prima anche se la colonna non fosse
   // ancora stata creata (migrazione 0070).
   const avvisiEconomici = fileGenerato?.avvisiEconomici ?? [];
-  let { error: insertAiError } = await supabase
-    .from("gara_messaggi")
-    .insert((avvisiEconomici.length > 0 ? { ...rigaMessaggio, avvisi_economici: avvisiEconomici } : rigaMessaggio) as typeof rigaMessaggio);
+  // Il segno «relazione finale» (migrazione 0088) si scrive solo per la relazione composta, e se la colonna
+  // non c'è ancora si salva il messaggio come sempre, senza.
+  const rigaConFinale = fileGenerato?.finale ? { ...rigaMessaggio, relazione_finale: true } : rigaMessaggio;
+  const inserisciRiga = (riga: typeof rigaConFinale) =>
+    supabase
+      .from("gara_messaggi")
+      .insert((avvisiEconomici.length > 0 ? { ...riga, avvisi_economici: avvisiEconomici } : riga) as typeof rigaMessaggio);
+  let { error: insertAiError } = await inserisciRiga(rigaConFinale);
+  if (insertAiError && fileGenerato?.finale && /relazione_finale/.test(insertAiError.message ?? "")) {
+    console.error("Colonna gara_messaggi.relazione_finale assente (migrazione 0088 non eseguita): messaggio salvato senza il segno.", insertAiError);
+    ({ error: insertAiError } = await inserisciRiga(rigaMessaggio));
+  }
 
   // Mai consegnare in silenzio: se la colonna manca (migrazione non ancora
   // eseguita) l'avviso viaggia comunque nel testo del messaggio.
