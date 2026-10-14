@@ -5,7 +5,6 @@ import {
   dataOra,
   esc,
   euro,
-  giorno,
   linkStripe,
   nomeCliente,
   oggettoConProva,
