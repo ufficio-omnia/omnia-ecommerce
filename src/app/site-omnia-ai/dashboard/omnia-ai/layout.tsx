@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { testoAvvisoProva, type GareGratuite } from "@/lib/omnia-ai-gare-gratuite";
+import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
+import { PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import DashboardShell from "@/components/omnia-ai/dashboard-shell";
 import ActivateSubscriptionForm from "./activate-subscription-form";
 
@@ -95,6 +97,7 @@ export default async function OmniaAiLayout({
   if (stato.stato === "cessato") {
     const admin = createAdminClient();
     const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
+    const catalogo = await getCatalogoPiani();
 
     return (
       <div className="omnia-app-shell">
@@ -116,6 +119,7 @@ export default async function OmniaAiLayout({
 
         {legalDocuments ? (
           <ActivateSubscriptionForm
+            piani={PIANI_ORDINE.map((slug) => catalogo[slug])}
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}

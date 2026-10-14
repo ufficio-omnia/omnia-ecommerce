@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
-import { PIANI, PACCHETTI_CREDITI, formatEuro, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, PACCHETTI_CREDITI, formatEuro, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
 import ActivateSubscriptionForm from "../activate-subscription-form";
 import AcquistaCreditiForm from "./acquista-crediti-form";
@@ -46,6 +47,7 @@ export default async function AbbonamentoPage() {
   if (stato.stato !== "attivo") {
     const admin = createAdminClient();
     const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
+    const catalogo = await getCatalogoPiani();
 
     // Cliente in prova: non c'è nessun abbonamento da «riattivare». Qui si spiega come funziona e
     // si sceglie il piano (stessa pagina e stesso modulo di chi si abbona per la prima volta).
@@ -62,6 +64,7 @@ export default async function AbbonamentoPage() {
 
         {legalDocuments ? (
           <ActivateSubscriptionForm
+            piani={PIANI_ORDINE.map((slug) => catalogo[slug])}
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}

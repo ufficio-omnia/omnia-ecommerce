@@ -14,7 +14,10 @@ function lookupKeyPerPiano(piano: PianoSlug): string {
   return `omnia_ai_${piano}`;
 }
 
-export async function getStripePriceId(stripe: Stripe, piano: PianoSlug): Promise<string> {
+// Il prezzo Stripe ATTIVO di un piano (quello che si compra oggi). Quando la console cambia il
+// prezzo di listino si crea un nuovo prezzo Stripe e il lookup_key passa a lui: gli abbonamenti
+// già attivi restano sul vecchio prezzo, che non si tocca.
+export async function getStripePrezzoAttivo(stripe: Stripe, piano: PianoSlug): Promise<Stripe.Price> {
   const lookupKey = lookupKeyPerPiano(piano);
   const prices = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
   const price = prices.data[0];
@@ -25,8 +28,14 @@ export async function getStripePriceId(stripe: Stripe, piano: PianoSlug): Promis
     );
   }
 
-  return price.id;
+  return price;
 }
+
+export async function getStripePriceId(stripe: Stripe, piano: PianoSlug): Promise<string> {
+  return (await getStripePrezzoAttivo(stripe, piano)).id;
+}
+
+export const lookupKeyDelPiano = lookupKeyPerPiano;
 
 // Inverso: da un lookup_key Stripe allo slug del piano — usato nel
 // webhook per risalire al piano da un prezzo, senza fidarsi solo del

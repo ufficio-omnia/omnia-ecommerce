@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { getCurrentOmniaAiCondizioniAbbonamentoUrl } from "@/lib/omnia-ai-legal";
-import { PIANI, PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
+import { PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
+import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
+import { testoOfferta } from "@/lib/omnia-ai-catalogo-calcoli";
 import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
 export const metadata: Metadata = paginaMetadata({
@@ -13,7 +15,7 @@ export const metadata: Metadata = paginaMetadata({
 });
 
 export default async function PianiPage() {
-  const condizioniUrl = await getCurrentOmniaAiCondizioniAbbonamentoUrl();
+  const [condizioniUrl, catalogo] = await Promise.all([getCurrentOmniaAiCondizioniAbbonamentoUrl(), getCatalogoPiani()]);
 
   return (
     <PageShell>
@@ -29,17 +31,20 @@ export default async function PianiPage() {
       <section className="omnia-pagina-corpo">
         <div className="omnia-prezzi">
           {PIANI_ORDINE.map((slug) => {
-            const p = PIANI[slug];
+            // prezzi e sconti dal catalogo (modificabili dalla console), mai dalla costante del codice
+            const p = catalogo[slug];
             return (
               <div key={p.slug} className={`omnia-prezzo${p.inEvidenza ? " in-evidenza" : ""}`}>
                 <b>{p.nome}</b>
                 <div className="omnia-prezzo-cifra">
+                  {p.sconto && <span className="omnia-prezzo-prima">{formatEuroCifra(p.prezzoListinoCentesimi)} €</span>}
                   <span className="omnia-prezzo-valore">
                     {formatEuroCifra(p.prezzoCentesimi)}
                     <span className="omnia-prezzo-simbolo">€</span>
                   </span>
                   <span className="omnia-prezzo-periodo">al mese · IVA inclusa</span>
                 </div>
+                {p.sconto && <p className="omnia-prezzo-offerta">{testoOfferta(p.sconto, p.prezzoListinoCentesimi)}</p>}
                 <p style={{ marginTop: 10, fontSize: 14, color: "var(--fioco)", fontWeight: 300, textAlign: "left" }}>
                   {p.descrizione}
                 </p>

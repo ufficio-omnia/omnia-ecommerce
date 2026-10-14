@@ -11,7 +11,9 @@ import {
   validateOmniaAiAcceptance,
 } from "@/lib/omnia-ai-legal";
 import { getRequestMeta } from "@/lib/legal-acceptance";
-import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
+import { getStripePrezzoAttivo } from "@/lib/omnia-ai-stripe-prices";
+import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
+import { assicuraCoupon, idCouponSconto } from "@/lib/omnia-ai-stripe-sconti";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 
 export type OmniaAiCheckoutState = { error?: string };
@@ -125,8 +127,31 @@ export async function startOmniaAiSubscriptionCheckout(
   // eventuale cambio piano futuro, programmato tramite Subscription
   // Schedule, deve poter riferire lo stesso prezzo più volte nel tempo.
   let priceId: string;
+  let discounts: { coupon: string }[] | undefined;
   try {
-    priceId = await getStripePriceId(stripe, planSlug as PianoSlug);
+    const prezzoStripe = await getStripePrezzoAttivo(stripe, planSlug as PianoSlug);
+    const voce = (await getCatalogoPiani())[planSlug as PianoSlug];
+
+    // Ciò che si addebita deve essere ciò che il cliente ha visto: il prezzo attivo su Stripe deve
+    // coincidere col listino del catalogo (migrazione 0085). Se non coincide (una modifica di prezzo
+    // rimasta a metà) si ferma tutto, invece di addebitare un importo diverso da quello mostrato.
+    if (prezzoStripe.unit_amount !== voce.prezzoListinoCentesimi) {
+      console.error("Checkout AI: prezzo Stripe diverso dal listino", planSlug, prezzoStripe.unit_amount, voce.prezzoListinoCentesimi);
+      return { error: "Il prezzo di questo piano è in aggiornamento: riprova tra qualche minuto o scrivici dalla pagina Contatti." };
+    }
+    priceId = prezzoStripe.id;
+
+    // Sconto in corso: coupon a importo fisso, applicato alla sessione (stesso importo mostrato al cliente).
+    if (voce.sconto) {
+      const coupon = await assicuraCoupon(stripe, {
+        id: idCouponSconto(voce.sconto.id, voce.sconto.risparmioCentesimi, voce.sconto.durataMesi),
+        risparmioCentesimi: voce.sconto.risparmioCentesimi,
+        durataMesi: voce.sconto.durataMesi,
+        nome: voce.sconto.nome,
+      });
+      discounts = [{ coupon }];
+      metadata.scontoId = voce.sconto.id;
+    }
   } catch (err) {
     console.error("Errore recupero prezzo Stripe (abbonamento AI):", err);
     return { error: "Errore nell'avvio del pagamento. Riprova." };
@@ -140,6 +165,7 @@ export async function startOmniaAiSubscriptionCheckout(
       billing_address_collection: "required",
       tax_id_collection: { enabled: true },
       line_items: [{ price: priceId, quantity: 1 }],
+      ...(discounts ? { discounts } : {}),
       // Scritta sia qui (letta da checkout.session.completed) sia su
       // subscription_data.metadata (letta da customer.subscription.*,
       // che non porta i metadata della sessione): nessuno dei due

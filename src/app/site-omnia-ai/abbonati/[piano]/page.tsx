@@ -7,6 +7,8 @@ import PageShell from "@/components/omnia-ai/page-shell";
 import { hasActiveSubscription } from "@/lib/subscription";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { PIANI, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
+import { testoOfferta } from "@/lib/omnia-ai-catalogo-calcoli";
 import AbbonatiPianoForm from "./abbonati-piano-form";
 
 function isPianoSlug(value: string): value is PianoSlug {
@@ -39,7 +41,7 @@ export default async function AbbonatiPianoPage({
 }) {
   const { piano } = await params;
   if (!isPianoSlug(piano)) notFound();
-  const p = PIANI[piano];
+  const p = (await getCatalogoPiani())[piano];
 
   const supabase = await createClient();
   const {
@@ -62,9 +64,11 @@ export default async function AbbonatiPianoPage({
       <section className="omnia-pagina-hero">
         <h1>Abbonati al piano {p.nome}</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
+          {p.sconto && <span className="omnia-prezzo-prima">{formatEuroCifra(p.prezzoListinoCentesimi)} € </span>}
           {formatEuroCifra(p.prezzoCentesimi)}€ al mese, IVA inclusa — {p.gareIncluse} gare incluse
           ogni mese. Rinnovo automatico, disdici quando vuoi.
         </p>
+        {p.sconto && <p className="omnia-prezzo-offerta" style={{ textAlign: "center" }}>{testoOfferta(p.sconto, p.prezzoListinoCentesimi)}</p>}
         <p className="micro" style={{ marginTop: 12 }}>
           <Link href="/piani">← Cambia piano</Link>
         </p>

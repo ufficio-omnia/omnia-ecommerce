@@ -6,15 +6,19 @@ import {
   type OmniaAiCheckoutState,
 } from "@/app/actions/omnia-ai-subscription";
 import ConsensiAbbonamento from "@/components/omnia-ai/consensi-abbonamento";
-import { PIANI, PIANI_ORDINE, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { testoOfferta, type PianoCatalogo } from "@/lib/omnia-ai-catalogo-calcoli";
 
 const initialState: OmniaAiCheckoutState = {};
 
 export default function ActivateSubscriptionForm({
+  piani,
   condizioniVersion,
   privacyVersion,
   allegatoVersion,
 }: {
+  // i piani con il prezzo e lo sconto di oggi (catalogo modificabile dalla console)
+  piani: PianoCatalogo[];
   condizioniVersion: number;
   privacyVersion: number;
   // versione in vigore dell'Allegato A; null se non esiste ancora
@@ -35,8 +39,8 @@ export default function ActivateSubscriptionForm({
       <input type="hidden" name="planSlug" value={planSlug} />
 
       <div className="omnia-piani-scelta">
-        {PIANI_ORDINE.map((slug) => {
-          const p = PIANI[slug];
+        {piani.map((p) => {
+          const slug = p.slug;
           return (
             <label
               key={slug}
@@ -51,10 +55,12 @@ export default function ActivateSubscriptionForm({
               />
               <div className="nome">{p.nome}</div>
               <div className="prezzo">
+                {p.sconto && <span className="omnia-prezzo-prima">{formatEuroCifra(p.prezzoListinoCentesimi)} €</span>}
                 <span className="cifra">{formatEuroCifra(p.prezzoCentesimi)}</span>
                 <span className="simbolo">€</span>
                 <span className="periodo">/mese</span>
               </div>
+              {p.sconto && <p className="omnia-prezzo-offerta">{testoOfferta(p.sconto, p.prezzoListinoCentesimi)}</p>}
               <ul>
                 {p.voci.map((v) => (
                   <li key={v}>{v}</li>
@@ -93,7 +99,7 @@ export default function ActivateSubscriptionForm({
         className="omnia-btn omnia-btn-p"
         style={{ marginTop: 16 }}
       >
-        {pending ? "Attivazione in corso..." : `Attiva il piano ${PIANI[planSlug].nome}`}
+        {pending ? "Attivazione in corso..." : `Attiva il piano ${piani.find((p) => p.slug === planSlug)?.nome ?? ""}`}
       </button>
     </form>
   );
