@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { signOut } from "@/app/actions/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
@@ -83,6 +84,13 @@ export default async function OmniaAiLayout({
 
     return (
       <div className="omnia-app-shell">
+        {/* In questa pagina non c'è né la barra laterale né il menu del profilo: senza questo
+            pulsante un cliente senza abbonamento non avrebbe modo di uscire. */}
+        <form action={signOut} style={{ textAlign: "right" }}>
+          <button type="submit" className="omnia-btn omnia-btn-s omnia-btn-esci">
+            Esci ({user.email})
+          </button>
+        </form>
         <h1 className="omnia-app-titolo">
           {stato.avevaAbbonamento ? "Riattiva OMNIA AI" : "Attiva OMNIA AI"}
         </h1>

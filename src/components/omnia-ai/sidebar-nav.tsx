@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "@/app/actions/auth";
 import BrandMark from "./brand-mark";
 import { useMarchioStato } from "./marchio-stato-context";
 
@@ -48,6 +49,11 @@ export default function SidebarNav({ nomeAzienda }: { nomeAzienda: string | null
 
       <div className="omnia-sidebar-footer">
         <Link href="/dashboard/omnia-ai/assistenza">Supporto</Link>
+        <form action={signOut}>
+          <button type="submit" className="omnia-sidebar-esci">
+            Esci
+          </button>
+        </form>
         {nomeAzienda && <div className="omnia-sidebar-azienda">{nomeAzienda}</div>}
       </div>
     </nav>

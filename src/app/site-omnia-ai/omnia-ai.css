@@ -1995,6 +1995,26 @@ li {
   background: var(--vetro-2);
   color: var(--testo);
 }
+/* «Esci»: pulsante vero in un form, con lo stesso aspetto dei link del piè di barra. */
+.omnia-sidebar-esci {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fioco);
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.omnia-sidebar-esci:hover {
+  background: var(--vetro-2);
+  color: var(--testo);
+}
+.omnia-btn-esci {
+  white-space: nowrap;
+}
 .omnia-sidebar-azienda {
   padding: 6px 8px 0;
   font-size: 12px;

@@ -9,6 +9,7 @@ import { dataRoma } from "@/lib/console/giorni-lavorativi";
 import { dataRoma as dataLeggibile } from "@/lib/data-it";
 import { sendEmail } from "@/lib/email";
 import { escapeHtml } from "@/lib/html";
+import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { TABELLA_PER_FONTE, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
@@ -163,6 +164,21 @@ async function avvisaClienteFattura(userId: string | null, dataPagamento: string
   });
 }
 
+// Notifica «fattura disponibile» nel campanello del cliente. Fire-and-forget (creaNotifica non
+// solleva mai errori): se il tipo non è ancora ammesso dal database (migrazione 0083) l'errore
+// va nel log e il resto continua.
+async function notificaFatturaDisponibile(userId: string, riga: string, dataPagamento: string): Promise<void> {
+  const quando = dataPagamento ? ` del ${dataLeggibile(dataPagamento)}` : "";
+  await creaNotifica({
+    userId,
+    tipo: "fattura_disponibile",
+    garaId: null,
+    titolo: "La tua fattura è disponibile",
+    corpo: `La fattura del pagamento${quando} è pronta: la trovi in «Pagamenti e fatture».`,
+    chiaveDedup: riga,
+  });
+}
+
 export async function aggiornaStatoFattura(_stato: StatoAzioneFattura, formData: FormData): Promise<StatoAzioneFattura> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
@@ -187,6 +203,9 @@ export async function aggiornaStatoFattura(_stato: StatoAzioneFattura, formData:
   // Il cliente si avvisa solo la prima volta che la fattura compare: sostituire un file
   // già caricato non manda un'altra email.
   const emailInviata = pdf?.primoCaricamento ? await avvisaClienteFattura(pdf.userId, pdf.dataPagamento) : undefined;
+  // E la notifica nel campanello dell'area riservata: l'email può finire nello spam o non partire,
+  // la notifica c'è comunque. Una sola per pagamento (chiave di deduplica).
+  if (pdf?.primoCaricamento && pdf.userId) await notificaFatturaDisponibile(pdf.userId, riga, pdf.dataPagamento);
   tornaAllElenco(esito, valori.stato, formData, emailInviata);
 }
 

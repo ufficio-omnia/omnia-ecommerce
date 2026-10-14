@@ -12,6 +12,18 @@ import {
 
 const INTERVALLO_MS = 6000;
 
+// Dove porta una notifica che non riguarda una gara: prima restava un semplice pulsante
+// «segna come letta» senza nessuna destinazione, quindi «la tua fattura è disponibile» non
+// portava da nessuna parte.
+const DESTINAZIONE_PER_TIPO: Record<string, string> = {
+  fattura_disponibile: "/dashboard/omnia-ai/pagamenti",
+  pagamento_fallito: "/dashboard/omnia-ai/abbonamento",
+  rinnovo_3gg: "/dashboard/omnia-ai/abbonamento",
+  gare_piano_esaurite: "/dashboard/omnia-ai/abbonamento",
+  gare_gratuite_esaurite: "/dashboard/omnia-ai/abbonamento",
+  pilot_in_scadenza: "/dashboard/omnia-ai/abbonamento",
+};
+
 function formattaOrario(iso: string): string {
   const data = new Date(iso);
   const oggi = new Date();
@@ -124,10 +136,11 @@ export default function NotificationBell() {
                   <div className="orario">{formattaOrario(n.created_at)}</div>
                 </>
               );
-              return n.gara_id ? (
+              const destinazione = n.gara_id ? `/dashboard/omnia-ai/gare/${n.gara_id}` : (DESTINAZIONE_PER_TIPO[n.tipo] ?? null);
+              return destinazione ? (
                 <Link
                   key={n.id}
-                  href={`/dashboard/omnia-ai/gare/${n.gara_id}`}
+                  href={destinazione}
                   className={`omnia-notifica-riga${n.letta ? "" : " non-letta"}`}
                   onClick={() => {
                     if (!n.letta) segna(n.id);
