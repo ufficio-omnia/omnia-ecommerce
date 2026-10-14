@@ -355,7 +355,7 @@ async function main() {
     const tabelleAssenti = { from: () => ({ insert: () => ({ select: () => ({ single: async () => ({ data: null, error: { code: "PGRST205", message: "manca" } }) }) }) }), storage: db.storage } as unknown as SupabaseClient;
     uguale("registro non creato e file non leggibile: l'email parte subito senza allegato (non c'è un secondo tentativo)", [await senzaRumore(() => inviaEmailEvento({ ...dati, admin: tabelleAssenti })), inviate.length, !inviate[0]?.attachments], ["inviata", 1, true]);
   }
-  atteso("MAX_TENTATIVI_EMAIL e soglia dell'allegato sono coerenti", TENTATIVI_PRIMA_DI_SENZA_ALLEGATO >= 2 && TENTATIVI_PRIMA_DI_SENZA_ALLEGATO < MAX_TENTATIVI_EMAIL);
+  atteso("l'ufficio viene avvisato entro circa un'ora anche se il file non si legge (al più 5 tentativi da 15 minuti)", TENTATIVI_PRIMA_DI_SENZA_ALLEGATO >= 2 && TENTATIVI_PRIMA_DI_SENZA_ALLEGATO <= 5 && TENTATIVI_PRIMA_DI_SENZA_ALLEGATO < MAX_TENTATIVI_EMAIL, String(TENTATIVI_PRIMA_DI_SENZA_ALLEGATO));
 
   console.log("--- Revisione pagata: le due email ---");
   const riga: RigaRevisione = {
@@ -443,6 +443,8 @@ async function main() {
   const azione = leggi("src/app/actions/omnia-ai-revisione.ts");
   const ordine = ["supabase.auth.getUser()", "requireOmniaAiWriteAccess(", 'formData.get("acceptCondizioni")', "validaContattiRevisione(", "leggiContestoRevisione(", "contesto.pagata", "calcolaPrezzoRevisione(", "prezzoMostratoCentesimi", "storage.from(\"gare\").exists(", '.from("omnia_ai_revisioni")\n    .insert(', "stripe.checkout.sessions.create("];
   atteso("l'ordine dei controlli: accesso, scrittura, accettazioni, contatti, relazione, già pagata, prezzo, prezzo mostrato, file, registrazione, pagamento", ordine.every((v, i) => i === 0 || primaDi(azione, ordine[i - 1], v)), ordine.find((v, i) => i > 0 && !primaDi(azione, ordine[i - 1], v)));
+  atteso("entrambe le accettazioni sono obbligatorie (condizioni e privacy; clausole da approvare specificamente)", /formData\.get\("acceptCondizioni"\) !== "on"\) return \{ error:/.test(azione) && /formData\.get\("acceptClausole"\) !== "on"\) return \{ error:/.test(azione));
+  atteso("prima di prendere soldi il Word deve esistere davvero", /if \(!esiste\) return \{ error: "Il file Word della relazione tecnica non risulta più disponibile/.test(azione));
   atteso("il prezzo si ricalcola sempre sul server (mai quello del browser) e solo l'ora di adesso conta", /calcolaPrezzoRevisione\(\{[\s\S]*?adesso: new Date\(\)/.test(azione) && /unit_amount: prezzo\.totaleCentesimi/.test(azione) && !/unit_amount: Number\(formData/.test(azione));
   atteso("se il prezzo mostrato è diverso si ferma e dice quello nuovo", /mostrato !== prezzo\.totaleCentesimi/.test(azione) && /prezzoAggiornatoCentesimi: prezzo\.totaleCentesimi/.test(azione));
   atteso("pagamento una tantum con l'email dell'account, dati di fatturazione e partita IVA", /mode: "payment"/.test(azione) && /customer_email: user\.email/.test(azione) && /billing_address_collection: "required"/.test(azione) && /tax_id_collection: \{ enabled: true \}/.test(azione) && !/formData\.get\("email"\)/.test(azione));
@@ -475,7 +477,7 @@ async function main() {
   console.log("--- Pulsante e pagina di acquisto ---");
   const pannello = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/revisione-panel.tsx");
   atteso("il pulsante dice «RICHIEDI REVISIONE UMANA» e porta alla pagina di acquisto", /RICHIEDI REVISIONE UMANA/.test(pannello) && /href=\{`\/dashboard\/omnia-ai\/gare\/\$\{garaId\}\/revisione`\}/.test(pannello));
-  atteso("spiega: contatto in 5 ore lavorative, revisione in 48 ore lavorative, intestazione, piè di pagina e copertina grafica personalizzata", /REVISIONE\.oreContattoLavorative\} ore lavorative/.test(pannello) && /REVISIONE\.oreConsegnaLavorative\} ore lavorative/.test(pannello) && /intestazione, piè di pagina e copertina grafica personalizzata/.test(pannello) && /consulente umano si mette in contatto personale/.test(pannello));
+  atteso("spiega: contatto in 5 ore lavorative, revisione in 48 ore lavorative, intestazione, piè di pagina e copertina grafica personalizzata", /consulente umano si mette in contatto personale con te <strong>entro \{REVISIONE\.oreContattoLavorative\} ore lavorative<\/strong>/.test(pannello) && /consegnata <strong>entro \{REVISIONE\.oreConsegnaLavorative\} ore lavorative<\/strong>/.test(pannello) && /intestazione, piè di pagina e copertina grafica personalizzata/.test(pannello) && /consulente umano si mette in contatto personale/.test(pannello));
   atteso("indica il prezzo della gara e le regole: da 250 a 550 €, +25% entro 72 ore, +50% entro 48, non gestibile sotto 47", /Prezzo per questa gara/.test(pannello) && /prezzoBaseCentesimi/.test(pannello) && /prezzoMassimoCentesimi/.test(pannello) && /oreMaggiorazione25/.test(pannello) && /maggiorazione25/.test(pannello) && /oreMaggiorazione50/.test(pannello) && /maggiorazione50/.test(pannello) && /oreMinimePerGestire/.test(pannello));
   atteso("con la gara troppo vicina o scaduta niente pulsante: il messaggio al suo posto", /!esito\.ok \?/.test(pannello) && primaDi(pannello, "!esito.ok", "RICHIEDI REVISIONE UMANA"));
   atteso("a revisione già pagata niente pulsante, solo lo stato", primaDi(pannello, "pagata ?", "!esito.ok ?") && /Revisione umana richiesta/.test(pannello));
