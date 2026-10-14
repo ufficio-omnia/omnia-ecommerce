@@ -67,7 +67,7 @@ export default function PagamentiVista({
           Ricevuta e fattura sono due documenti diversi
         </span>
         <p className="omnia-messaggio-stato avviso" style={{ marginTop: 12 }}>
-          <strong>La ricevuta di Stripe non è la fattura.</strong> Stripe te la invia a ogni addebito come conferma del pagamento con carta, ma non ha valore fiscale. La fattura la emette Omnia Consulting e ti arriva separatamente: appena è pronta la trovi qui, accanto al pagamento, e puoi scaricarla quando vuoi.
+          <strong>La ricevuta di Stripe non è la fattura.</strong> Stripe te la invia a ogni addebito come conferma del pagamento con carta, ma non ha valore fiscale. Nelle pagine di Stripe compare anche una voce «fattura» con un numero (per esempio FJXLL3LD-0018): è la numerazione interna di Stripe, non la nostra fattura. La fattura la emette Omnia Consulting e ti arriva separatamente: appena è pronta la trovi qui, accanto al pagamento, e puoi scaricarla quando vuoi.
         </p>
       </section>
 
@@ -101,7 +101,7 @@ export default function PagamentiVista({
                   <th>Descrizione</th>
                   <th className="num">Importo (IVA inclusa)</th>
                   <th>Stato</th>
-                  <th>Ricevuta Stripe</th>
+                  <th>Documento Stripe</th>
                   <th>Fattura</th>
                 </tr>
               </thead>
@@ -123,14 +123,19 @@ export default function PagamentiVista({
                       )}
                     </td>
                     <td>
+                      {/* Il numero che arriva da Stripe (p.numeroRicevuta) è quello della SUA «fattura»
+                          interna, non di una ricevuta: mostrarlo sotto «ricevuta» lo farebbe scambiare per
+                          un numero di fattura. Non si mostra; si lascia solo il collegamento. */}
                       {p.ricevutaUrl ? (
-                        <a href={p.ricevutaUrl} target="_blank" rel="noopener noreferrer">
-                          Apri la ricevuta
-                        </a>
+                        <>
+                          <a href={p.ricevutaUrl} target="_blank" rel="noopener noreferrer">
+                            Apri su Stripe
+                          </a>
+                          <div className="omnia-pagamento-nota">Documento Stripe, non fiscale</div>
+                        </>
                       ) : (
                         <span className="omnia-pagamento-nota">—</span>
                       )}
-                      {p.numeroRicevuta && <div className="omnia-pagamento-nota">n. {p.numeroRicevuta}</div>}
                     </td>
                     <td>
                       <CellaFattura p={p} />

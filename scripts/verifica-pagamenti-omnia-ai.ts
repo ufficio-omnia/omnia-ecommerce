@@ -194,7 +194,14 @@ atteso("la pagina dice che la ricevuta di Stripe non è la fattura", /La ricevut
 atteso("la pagina dice che la fattura arriva separatamente", /ti arriva separatamente/.test(vista));
 atteso("il link di download passa dalla rotta del cliente", /\/dashboard\/omnia-ai\/pagamenti\/fattura\/\$\{p\.fonte\}\/\$\{p\.id\}/.test(vista));
 atteso("nessun indirizzo diretto del bucket nella vista", !/storage|supabase\.co|signedUrl|invoices/.test(vista));
-atteso("la tabella ha data, descrizione, importo, stato, ricevuta e fattura", ["Data", "Descrizione", "Importo (IVA inclusa)", "Stato", "Ricevuta Stripe", "Fattura"].every((t) => vista.includes(`<th`) && vista.includes(t)));
+atteso("la tabella ha data, descrizione, importo, stato, documento Stripe e fattura", ["Data", "Descrizione", "Importo (IVA inclusa)", "Stato", "Documento Stripe", "Fattura"].every((t) => vista.includes(`<th`) && vista.includes(t)));
+// Il «numero ricevuta» salvato dal webhook è in realtà il numero della fattura INTERNA di Stripe
+// (invoice.number) e il link porta alla sua pagina «Fattura pagata»: sotto la voce «ricevuta»
+// un cliente lo scambierebbe per un numero di fattura. Al cliente non si mostra, e si spiega.
+atteso("il numero interno di Stripe non è mostrato al cliente (si scambierebbe per un numero di fattura)", !/\{p\.numeroRicevuta\}/.test(vista) && !/n\. \{/.test(vista));
+atteso("la pagina spiega che su Stripe compare una «fattura» con un numero che non è la nostra fattura", /compare anche una voce «fattura» con un numero/.test(vista) && /numerazione interna di Stripe, non la nostra fattura/.test(vista));
+atteso("il collegamento a Stripe è dichiarato come documento non fiscale", /Documento Stripe, non fiscale/.test(vista) && !/Apri la ricevuta/.test(vista));
+atteso("anche in console il link a Stripe è dichiarato non fiscale", /documento Stripe \(non fiscale\)/.test(leggi("src/app/site-console/_componenti/fatturazione-vista.tsx")) && /documento Stripe \(non fiscale\)/.test(leggi("src/app/site-console/_componenti/ricavi-vista.tsx")));
 atteso("voce «Pagamenti e fatture» nella barra laterale", /Pagamenti e fatture/.test(leggi("src/components/omnia-ai/sidebar-nav.tsx")) && /\/dashboard\/omnia-ai\/pagamenti/.test(leggi("src/components/omnia-ai/sidebar-nav.tsx")));
 atteso("la pagina Abbonamento rimanda ai pagamenti", /\/dashboard\/omnia-ai\/pagamenti/.test(paginaAbbonamento));
 atteso("l'area del cliente non rimanda alla console", ![vista, paginaPagamenti, rottaCliente].some((t) => /console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(t)));

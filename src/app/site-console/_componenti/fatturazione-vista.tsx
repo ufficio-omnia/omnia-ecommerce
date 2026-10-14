@@ -280,7 +280,7 @@ export default function FatturazioneVista({
                         {r.ricevutaUrl && (
                           <small>
                             <a href={r.ricevutaUrl} target="_blank" rel="noreferrer">
-                              ricevuta Stripe
+                              documento Stripe (non fiscale)
                             </a>
                           </small>
                         )}
