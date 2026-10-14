@@ -164,7 +164,8 @@ async function main() {
   atteso("salire o scendere di piano si decide dall'ordine dei piani, non dai prezzi", /PIANI_ORDINE\.indexOf\(pianoDestinazione\) > PIANI_ORDINE\.indexOf\(pianoAttuale\)/.test(cambio) && !/prezzoCentesimi/.test(cambio));
 
   console.log("--- Cosa vede il cliente ---");
-  const piani = leggi("src/app/site-omnia-ai/piani/page.tsx");
+  // la pagina legge il catalogo, la vista (piani-vista.tsx) lo disegna: si controllano insieme
+  const piani = leggi("src/app/site-omnia-ai/piani/page.tsx") + "\n" + leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
   const acquisto = leggi("src/app/site-omnia-ai/abbonati/[piano]/page.tsx");
   const attivazione = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/activate-subscription-form.tsx");
   const layout = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx");
@@ -173,7 +174,7 @@ async function main() {
   atteso("pagina di acquisto /abbonati: prezzo e sconto dal catalogo", /\(await getCatalogoPiani\(\)\)\[piano\]/.test(acquisto) && /testoOfferta\(p\.sconto/.test(acquisto) && /p\.prezzoCentesimi/.test(acquisto));
   atteso("modulo di attivazione: riceve i piani con i prezzi di oggi (nessun prezzo dalla costante)", /piani: PianoCatalogo\[\]/.test(attivazione) && /piani\.map\(\(p\) =>/.test(attivazione) && !/PIANI\[/.test(attivazione) && /testoOfferta\(p\.sconto/.test(attivazione));
   atteso("area riservata: i due punti che mostrano il modulo di attivazione costruiscono il catalogo dai prezzi di oggi e lo passano (con l'eventuale offerta riservata al cliente)", /applicaPilotAlCatalogo\(PIANI_ORDINE\.map\(\(slug\) => catalogo\[slug\]\)/.test(layout) && /applicaPilotAlCatalogo\(PIANI_ORDINE\.map\(\(slug\) => catalogo\[slug\]\)/.test(abbonamento) && /piani=\{vista\.piani\}/.test(layout) && /piani=\{vista\.piani\}/.test(abbonamento));
-  const visibili = ["src/app/site-omnia-ai/piani/page.tsx", "src/app/site-omnia-ai/abbonati/[piano]/page.tsx", "src/app/site-omnia-ai/dashboard/omnia-ai/activate-subscription-form.tsx"];
+  const visibili = ["src/app/site-omnia-ai/piani/page.tsx", "src/app/site-omnia-ai/piani/piani-vista.tsx", "src/app/site-omnia-ai/abbonati/[piano]/page.tsx", "src/app/site-omnia-ai/dashboard/omnia-ai/activate-subscription-form.tsx"];
   atteso("nessuna pagina che mostra i prezzi ai clienti legge più il prezzo dalla costante del codice", visibili.every((f) => !/PIANI\[[^\]]+\]\.prezzoCentesimi/.test(leggi(f))));
   atteso("i testi dei clienti non rimandano alla console", ![piani, acquisto, attivazione, layout, leggi("src/lib/omnia-ai-catalogo.ts"), leggi("src/lib/omnia-ai-catalogo-calcoli.ts"), leggi("src/lib/omnia-ai-stripe-sconti.ts")].some((t) => /console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(t)));
   const catalogoDb = leggi("src/lib/omnia-ai-catalogo.ts");
