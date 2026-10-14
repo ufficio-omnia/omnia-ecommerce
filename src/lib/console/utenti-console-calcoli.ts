@@ -53,3 +53,35 @@ export function generaPassword(casuale: () => number): string {
   }
   return caratteri.join("");
 }
+
+// ───── Password: consegna al cliente ─────
+
+// A che punto è la password di un cliente creato dalla console:
+//  - iniziale:      la password è quella scelta dall'amministratore, il cliente non l'ha ancora cambiata
+//  - reset_inviato: l'amministratore l'ha azzerata e ha mandato l'email; il cliente non ha ancora scelto
+//  - consegnata:    il cliente ha scelto la SUA password: da qui la console non può più farci nulla
+export type StatoPasswordCliente = "iniziale" | "reset_inviato" | "consegnata";
+
+export function statoPasswordCliente(riga: { resetRichiestoIl: string | null; passwordConsegnataIl: string | null }): StatoPasswordCliente {
+  if (riga.passwordConsegnataIl) return "consegnata";
+  if (riga.resetRichiestoIl) return "reset_inviato";
+  return "iniziale";
+}
+
+// L'unica azione sulla password che la console conosce è il reset, e solo prima della consegna.
+export function resetPasswordPermesso(stato: StatoPasswordCliente): boolean {
+  return stato !== "consegnata";
+}
+
+export const MESSAGGIO_PASSWORD_GIA_CONSEGNATA =
+  "Il cliente ha già scelto la sua password: da qui la console non può più modificarla né azzerarla. Se l'ha dimenticata può usare «Password dimenticata» nella pagina di accesso.";
+
+// Email al cliente: il link porta alla pagina di attivazione, che lo fa entrare e lo manda a
+// scegliere la password. Il testo dice chiaramente che da quel momento nessuno la conosce né può
+// modificarla.
+export function testoEmailResetPassword(link: string, escapeHtml: (t: string) => string): { oggetto: string; html: string } {
+  return {
+    oggetto: "Scegli la tua password per OMNIA AI",
+    html: `<p>Abbiamo azzerato la password iniziale del tuo account OMNIA AI.</p><p>Per accedere, scegli ora la tua password con questo link:</p><p><a href="${escapeHtml(link)}">Scegli la tua password</a></p><p>Il link è valido per un tempo limitato e si usa una sola volta: se è scaduto, scrivici e te ne mandiamo uno nuovo.</p><p>Una volta scelta, la password la conosci solo tu: nessuno di Omnia potrà vederla né modificarla.</p>`,
+  };
+}

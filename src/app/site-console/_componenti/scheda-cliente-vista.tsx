@@ -4,7 +4,8 @@ import { PIANI, PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
 import type { SchedaCliente } from "@/lib/console/utenti";
 import { eAnonimizzato, etichettaAccettazione, etichettaDocumento, type AccettazioneScheda, type StatoProva } from "@/lib/console/utenti-calcoli";
 import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlCliente } from "../azioni/utenti";
-import { modificaGareGratuite } from "../azioni/utenti-console";
+import { modificaGareGratuite, resetPasswordCliente } from "../azioni/utenti-console";
+import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
 import type { ProvaCliente } from "@/lib/console/gare-gratuite";
 import ModuloAzione from "./modulo-azione";
 import { eliminaOrdine, ottieniLinkFattura } from "../azioni/ordini";
@@ -601,6 +602,46 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova }: { s: 
           </div>
         </Pannello>
       </div>
+
+      {/* ───── Password del cliente creato dalla console ───── */}
+      {prova.creatoDaConsole && s.utente.ruolo !== "admin" && (
+        <div className="cn-sezione">
+          <Pannello titolo="Password">
+            <div className="cn-pannello-corpo">
+              {(() => {
+                const statoPassword = statoPasswordCliente(prova.creatoDaConsole);
+                if (statoPassword === "consegnata") {
+                  return (
+                    <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                      Il cliente ha scelto la sua password il {formattaDataOra(prova.creatoDaConsole.passwordConsegnataIl ?? "")}. <strong>Da qui la console non può più modificarla né azzerarla</strong>: se la dimentica usa «Password dimenticata» nella pagina di accesso.
+                    </p>
+                  );
+                }
+                return (
+                  <>
+                    <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                      {statoPassword === "iniziale"
+                        ? "Il cliente usa ancora la password iniziale che hai scelto tu."
+                        : `Hai azzerato la password iniziale il ${formattaDataOra(prova.creatoDaConsole.resetRichiestoIl ?? "")}: il cliente non ha ancora scelto la sua, la vecchia non funziona più.`}
+                    </p>
+                    <PulsanteAzione
+                      azione={resetPasswordCliente}
+                      campi={{ userId: s.utente.id }}
+                      conferma={`${statoPassword === "iniziale" ? "Azzerare la password iniziale" : "Rinviare l'email e azzerare di nuovo la password"} di ${s.utente.email}? La password che hai scelto smette di funzionare e al cliente arriva un'email per sceglierne una sua. Dopo che l'avrà scelta, da qui non potrai più modificarla.`}
+                      etichetta={statoPassword === "iniziale" ? "Reset password" : "Rinvia l'email di reset"}
+                      etichettaInCorso="Invio…"
+                      variante="neutro"
+                    />
+                    <p className="cn-nota-inline">
+                      Il cliente riceve un link per scegliere la password; una volta scelta, nessuno di Omnia può vederla né modificarla.
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          </Pannello>
+        </div>
+      )}
 
       {/* ───── Accessi ai suoi dati (registro promesso dal contratto) ───── */}
       <div className="cn-sezione">

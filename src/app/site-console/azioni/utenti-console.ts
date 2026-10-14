@@ -1,10 +1,15 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediAdminAzione } from "@/lib/console/accesso";
-import { validaNuovoUtente } from "@/lib/console/utenti-console-calcoli";
+import { MESSAGGIO_PASSWORD_GIA_CONSEGNATA, resetPasswordPermesso, statoPasswordCliente, testoEmailResetPassword, validaNuovoUtente } from "@/lib/console/utenti-console-calcoli";
+import type { StatoAzione } from "./ordini";
+import { sendEmail } from "@/lib/email";
+import { escapeHtml } from "@/lib/html";
+import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { applicaVariazione } from "@/lib/omnia-ai-gare-gratuite";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 
@@ -136,4 +141,71 @@ export async function modificaGareGratuite(_stato: StatoUtenteConsole, formData:
 
   revalidatePath("/site-console", "layout");
   return { ok: true, ...(erroreLog ? { avviso: "Modifica fatta, ma il movimento non è stato scritto nel registro." } : {}) };
+}
+
+// ───── Reset della password e consegna al cliente ─────
+//
+// L'unica azione che la console ha sulla password di un cliente creato da lei: azzera la password
+// iniziale (la sostituisce con una casuale che nessuno conosce, nemmeno il server la conserva) e
+// manda al cliente un'email con il link per sceglierne una sua. Si può ripetere (per rinviare
+// l'email) finché il cliente non ha scelto la sua password; da quel momento il server rifiuta, qualunque
+// cosa mostri l'interfaccia. Il link non viene mai mostrato né scritto nel log: va solo nell'email.
+export async function resetPasswordCliente(_stato: StatoAzione, formData: FormData): Promise<StatoAzione> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+
+  const userId = String(formData.get("userId") ?? "");
+  if (!UUID.test(userId)) return { errore: "Utente non valido." };
+
+  const admin = createAdminClient();
+
+  const { data: utente } = await admin.from("users").select("id, email, role").eq("id", userId).maybeSingle<{ id: string; email: string; role: string }>();
+  if (!utente) return { errore: "Utente non trovato." };
+  if (utente.role !== "cliente") return { errore: "La password si azzera solo ai clienti." };
+
+  const { data: riga, error: erroreRiga } = await admin
+    .from("omnia_ai_utenti_console")
+    .select("reset_richiesto_il, password_consegnata_il")
+    .eq("user_id", userId)
+    .maybeSingle<{ reset_richiesto_il: string | null; password_consegnata_il: string | null }>();
+  if (erroreRiga) {
+    if (schemaAssente(erroreRiga)) return { errore: "Le tabelle degli utenti creati dalla console non esistono ancora (migrazione 0084)." };
+    console.error("Console: lettura utente da console fallita", erroreRiga.message);
+    return { errore: "Lettura non riuscita." };
+  }
+  if (!riga) return { errore: "Questo cliente non è stato creato dalla console: non puoi azzerargli la password da qui." };
+
+  // Il controllo che conta: sul server, non sul pulsante.
+  const stato = statoPasswordCliente({ resetRichiestoIl: riga.reset_richiesto_il, passwordConsegnataIl: riga.password_consegnata_il });
+  if (!resetPasswordPermesso(stato)) return { errore: MESSAGGIO_PASSWORD_GIA_CONSEGNATA };
+
+  // 1) La password iniziale smette di funzionare: ne prende il posto una casuale, mai mostrata né salvata.
+  //    Si fa PRIMA di generare il link, così nessuna operazione sull'utente può invalidarlo.
+  const casuale = `${randomBytes(32).toString("base64url")}Aa1!`;
+  const { error: errorePassword } = await admin.auth.admin.updateUserById(userId, { password: casuale });
+  if (errorePassword) {
+    console.error("Console: azzeramento della password fallito", errorePassword.message);
+    return { errore: "Non sono riuscito ad azzerare la password: non è cambiato nulla." };
+  }
+
+  // 2) Link per scegliere la nuova password: stesso meccanismo dell'attivazione dell'account
+  //    (token_hash verificato dalla pagina /attiva-account), mai un link che passa dalla console.
+  const { data: link, error: erroreLink } = await admin.auth.admin.generateLink({ type: "magiclink", email: utente.email });
+  const token = link?.properties?.hashed_token;
+  if (erroreLink || !token) {
+    console.error("Console: generazione del link di scelta password fallita", erroreLink?.message);
+    return { errore: "La password iniziale è stata azzerata ma il link non è stato generato: premi di nuovo «Reset password» per riprovare." };
+  }
+  const url = `${OMNIA_AI_BASE_URL}/attiva-account?token_hash=${encodeURIComponent(token)}&type=magiclink&next=${encodeURIComponent("/imposta-password")}`;
+
+  const { error: erroreAggiornamento } = await admin.from("omnia_ai_utenti_console").update({ reset_richiesto_il: new Date().toISOString() }).eq("user_id", userId);
+  if (erroreAggiornamento) console.error("Console: reset_richiesto_il non registrato", erroreAggiornamento.message);
+
+  // 3) L'email al cliente.
+  const email = testoEmailResetPassword(url, escapeHtml);
+  const inviata = await sendEmail({ to: utente.email, from: "OMNIA AI <noreply@omniaitalia.com>", subject: email.oggetto, html: email.html });
+
+  revalidatePath("/site-console", "layout");
+  if (!inviata) return { errore: "La password è stata azzerata ma l'email NON è partita: premi di nuovo «Reset password» per rinviarla." };
+  return {};
 }

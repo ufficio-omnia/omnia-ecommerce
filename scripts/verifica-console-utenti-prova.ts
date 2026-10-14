@@ -7,7 +7,7 @@ import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOmniaAiAccessState, requireOmniaAiWriteAccess, MESSAGGIO_SOLA_LETTURA } from "../src/lib/omnia-ai-access";
 import { MAX_GARE_GRATUITE, applicaVariazione, calcolaGareGratuite, testoAvvisoProva } from "../src/lib/omnia-ai-gare-gratuite";
-import { PASSWORD_MAX, PASSWORD_MIN, generaPassword, validaNuovoUtente } from "../src/lib/console/utenti-console-calcoli";
+import { PASSWORD_MAX, PASSWORD_MIN, generaPassword, resetPasswordPermesso, statoPasswordCliente, testoEmailResetPassword, validaNuovoUtente } from "../src/lib/console/utenti-console-calcoli";
 
 const fallimenti: string[] = [];
 function atteso(nome: string, ok: boolean, dettaglio = "") {
@@ -179,6 +179,68 @@ async function main() {
   atteso("il modulo avverte che la password non si può rivedere e non parte nessuna email", /dopo non potrai più rivederla/.test(leggi("src/app/site-console/_componenti/form-nuovo-utente.tsx")) && /Nessuna email parte da qui/.test(leggi("src/app/site-console/_componenti/form-nuovo-utente.tsx")));
   atteso("la scheda cliente ha il riquadro «Prova gratuita» con il modulo e il registro dei movimenti", /titolo="Prova gratuita"/.test(leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx")) && /modificaGareGratuite/.test(leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx")));
   atteso("dopo la creazione la scheda mostra l'avviso «Utente creato»", /utente_creato/.test(leggi("src/app/site-console/_componenti/avviso-esito.tsx")) && /esito=utente_creato/.test(corpoCrea));
+
+  console.log("--- Password: reset e consegna al cliente ---");
+  uguale("password iniziale (mai toccata)", statoPasswordCliente({ resetRichiestoIl: null, passwordConsegnataIl: null }), "iniziale");
+  uguale("reset inviato, il cliente non ha ancora scelto", statoPasswordCliente({ resetRichiestoIl: "2026-10-14T10:00:00Z", passwordConsegnataIl: null }), "reset_inviato");
+  uguale("il cliente ha scelto la sua", statoPasswordCliente({ resetRichiestoIl: "2026-10-14T10:00:00Z", passwordConsegnataIl: "2026-10-14T11:00:00Z" }), "consegnata");
+  uguale("la consegna vale anche senza un reset (il cliente ha cambiato la password da solo)", statoPasswordCliente({ resetRichiestoIl: null, passwordConsegnataIl: "2026-10-14T11:00:00Z" }), "consegnata");
+  atteso("il reset è permesso prima della consegna (anche per rinviare l'email)", resetPasswordPermesso("iniziale") && resetPasswordPermesso("reset_inviato"));
+  atteso("dopo la consegna la console non può più fare nulla", !resetPasswordPermesso("consegnata"));
+  const mail = testoEmailResetPassword("https://omnia-ai.it/attiva-account?token_hash=abc&type=magiclink", (t) => t.replace(/&/g, "&amp;"));
+  atteso("l'email contiene il link (con i caratteri speciali protetti), dice che la password è solo del cliente e il link è a tempo", mail.html.includes('href="https://omnia-ai.it/attiva-account?token_hash=abc&amp;type=magiclink"') && /nessuno di Omnia potrà vederla né modificarla/.test(mail.html) && /valido per un tempo limitato/.test(mail.html));
+  const resetFn = leggi("src/app/site-console/azioni/utenti-console.ts");
+  const corpoReset = resetFn.slice(resetFn.indexOf("export async function resetPasswordCliente"));
+  atteso("il reset parte dal controllo admin e si ferma subito se non lo è", /const sessione = await richiediAdminAzione\(\);\s*if \(!sessione\) return \{ errore: "Non autorizzato\." \};/.test(corpoReset));
+  atteso("vale solo per clienti (non admin) creati dalla console", /utente\.role !== "cliente"/.test(corpoReset) && /if \(!riga\) return \{ errore: "Questo cliente non è stato creato dalla console/.test(corpoReset));
+  atteso("DOPO la consegna il server rifiuta, PRIMA di toccare qualsiasi cosa", primaDi(corpoReset, "if (!resetPasswordPermesso(stato)) return { errore: MESSAGGIO_PASSWORD_GIA_CONSEGNATA }", "updateUserById") && primaDi(corpoReset, "if (!resetPasswordPermesso(stato))", "generateLink") && primaDi(corpoReset, "if (!resetPasswordPermesso(stato))", "sendEmail("));
+  atteso("la password che subentra è casuale (randomBytes), mai quella del modulo né mostrata", /randomBytes\(32\)/.test(corpoReset) && /updateUserById\(userId, \{ password: casuale \}\)/.test(corpoReset) && !/formData\.get\("password"\)/.test(corpoReset));
+  atteso("la password si azzera PRIMA di generare il link (nessuna operazione sull'utente può invalidarlo)", primaDi(corpoReset, "updateUserById(userId", "generateLink("));
+  atteso("il link porta alla pagina di attivazione del sito OMNIA AI (non alla console) e va solo nell'email", /\$\{OMNIA_AI_BASE_URL\}\/attiva-account\?token_hash=/.test(corpoReset) && !/CONSOLE_BASE_URL|console\.omniaitalia/.test(corpoReset) && /html: email\.html/.test(corpoReset));
+  atteso("il link e il token non finiscono nel log né nella risposta", ![...corpoReset.matchAll(/console\.(error|log|warn)\([^)]*\)/g)].some((m) => /\b(url|token|casuale|link\b)/.test(m[0].replace(/"[^"]*"/g, ""))) && !/return \{[^}]*\burl\b/.test(corpoReset));
+  atteso("se l'email non parte lo dice (e si può rinviare)", /l'email NON è partita: premi di nuovo/.test(corpoReset));
+  atteso("registra quando è stato richiesto il reset", /reset_richiesto_il: new Date\(\)\.toISOString\(\)/.test(corpoReset));
+  const consolePassword: string[] = [];
+  const cerca = (dir: string) => {
+    for (const voce of fs.readdirSync(path.join(__dirname, "..", dir), { withFileTypes: true })) {
+      const relativo = `${dir}/${voce.name}`;
+      if (voce.isDirectory()) cerca(relativo);
+      else if (/\.(ts|tsx)$/.test(voce.name)) {
+        const t = leggi(relativo);
+        for (const m of t.matchAll(/(updateUserById|updateUser|createUser)\(([^)]*)\)/g)) if (/password/.test(m[2])) consolePassword.push(`${relativo}: ${m[1]}`);
+      }
+    }
+  };
+  cerca("src/app/site-console");
+  cerca("src/lib/console");
+  // I soli punti della console che scrivono una password: crearla (createUser), azzerarla (reset) e la
+  // chiusura dell'account (anonimizzazione), che la sostituisce con una casuale e blocca l'accesso:
+  // non è un modo di impostare una password conosciuta.
+  uguale("la console scrive una password solo in tre punti: creazione, reset e anonimizzazione", consolePassword.sort(), [
+    "src/app/site-console/azioni/utenti-console.ts: createUser",
+    "src/app/site-console/azioni/utenti-console.ts: updateUserById",
+    "src/app/site-console/azioni/utenti.ts: updateUserById",
+  ]);
+  atteso(
+    "l'anonimizzazione mette una password casuale e blocca l'account (nessuna password conosciuta)",
+    /password: `\$\{randomUUID\(\)\}\$\{randomUUID\(\)\}`,\s*email_confirm: true,\s*ban_duration/.test(leggi("src/app/site-console/azioni/utenti.ts")),
+  );
+  for (const [file, aspettativa] of [
+    ["src/app/actions/omnia-ai-auth.ts", /await segnaPasswordConsegnata\(data\.user\?\.id\);\s*redirect\("\/dashboard\/omnia-ai"\)/],
+    ["src/app/actions/omnia-ai-account-settings.ts", /await segnaPasswordConsegnata\(data\.user\?\.id\);\s*return \{ success: "Password aggiornata\." \}/],
+    ["src/app/actions/auth.ts", /await segnaPasswordConsegnata\(data\.user\?\.id\);\s*redirect\("\/dashboard"\)/],
+  ] as const) {
+    atteso(`${file.split("/").pop()}: quando il cliente sceglie la sua password si registra la consegna (solo dopo il successo)`, aspettativa.test(leggi(file)));
+  }
+  const consegna = leggi("src/lib/omnia-ai-password-consegnata.ts");
+  atteso("la consegna si registra una volta sola e solo per gli utenti da console (update con .is(null) sulla tabella degli utenti da console)", /from\("omnia_ai_utenti_console"\)[\s\S]*?\.update\(\{ password_consegnata_il:[\s\S]*?\.eq\("user_id", userId\)[\s\S]*?\.is\("password_consegnata_il", null\)/.test(consegna));
+  atteso("non solleva mai errori al cliente (try/catch, tabella assente tollerata)", /try \{/.test(consegna) && /catch \(e\)/.test(consegna) && /42P01/.test(consegna));
+  atteso("il codice dell'area cliente non rimanda alla console", !/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(consegna));
+  const schedaVista = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
+  const pannelloPassword = schedaVista.slice(schedaVista.indexOf("Password del cliente creato dalla console"), schedaVista.indexOf("Accessi ai suoi dati (registro promesso"));
+  atteso("scheda: il pannello Password c'è solo per i clienti creati dalla console", /prova\.creatoDaConsole && s\.utente\.ruolo !== "admin"/.test(pannelloPassword));
+  atteso("scheda: dopo la consegna non c'è nessun pulsante, solo la spiegazione", /statoPassword === "consegnata"[\s\S]*?return \([\s\S]*?non può più modificarla né azzerarla[\s\S]*?\);\s*\}/.test(pannelloPassword) && pannelloPassword.indexOf("PulsanteAzione") > pannelloPassword.indexOf('statoPassword === "consegnata"'));
+  atteso("scheda: la conferma avverte che dopo la scelta non si potrà più modificare", /Dopo che l'avrà scelta, da qui non potrai più modificarla/.test(pannelloPassword));
 
   console.log("--- Area cliente in prova ---");
   const layout = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx");
