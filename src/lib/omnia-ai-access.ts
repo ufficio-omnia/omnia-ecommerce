@@ -1,10 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { leggiGareGratuite, type GareGratuite } from "@/lib/omnia-ai-gare-gratuite";
 
 const GIORNI_SOLA_LETTURA = 30;
 const MS_GIORNO = 24 * 60 * 60 * 1000;
 
 export type OmniaAiAccessState =
   | { stato: "attivo" }
+  // cliente che non ha mai avuto un abbonamento ma ha gare gratuite assegnate dalla console
+  // (anche a zero: a zero può consultare e scaricare, non avviare nuove analisi)
+  | { stato: "prova"; gare: GareGratuite }
   | { stato: "sola_lettura"; dataCancellazioneContenuti: Date }
   | { stato: "cessato"; avevaAbbonamento: boolean };
 
@@ -31,6 +35,10 @@ export async function getOmniaAiAccessState(
     .maybeSingle<SubscriptionRow>();
 
   if (!subscription) {
+    // Mai abbonato: se la console gli ha assegnato gare gratuite lavora in prova, altrimenti
+    // vede la pagina di attivazione come prima.
+    const gare = await leggiGareGratuite(client, userId);
+    if (gare) return { stato: "prova", gare };
     return { stato: "cessato", avevaAbbonamento: false };
   }
 
@@ -76,5 +84,7 @@ export async function requireOmniaAiWriteAccess(
   client: SupabaseClient,
 ): Promise<string | null> {
   const stato = await getOmniaAiAccessState(userId, client);
-  return stato.stato === "attivo" ? null : MESSAGGIO_SOLA_LETTURA;
+  // In prova si lavora come un abbonato: il limite sono le gare gratuite, che si controllano
+  // quando parte un'analisi (consumeGaraQuotaIfNeeded), non qui.
+  return stato.stato === "attivo" || stato.stato === "prova" ? null : MESSAGGIO_SOLA_LETTURA;
 }

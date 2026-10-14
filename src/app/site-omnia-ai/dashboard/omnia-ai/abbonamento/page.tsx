@@ -47,13 +47,17 @@ export default async function AbbonamentoPage() {
     const admin = createAdminClient();
     const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
 
+    // Cliente in prova: non c'è nessun abbonamento da «riattivare». Qui si spiega come funziona e
+    // si sceglie il piano (stessa pagina e stesso modulo di chi si abbona per la prima volta).
+    const inProva = stato.stato === "prova";
+
     return (
       <div className="omnia-app-shell">
-        <h1 className="omnia-app-titolo">Riattiva OMNIA AI</h1>
+        <h1 className="omnia-app-titolo">{inProva ? "Scegli il tuo abbonamento" : "Riattiva OMNIA AI"}</h1>
         <p className="omnia-app-sottotitolo">
-          Scegli un piano per riattivare l&apos;abbonamento. I crediti aggiuntivi eventualmente
-          residui dell&apos;abbonamento precedente non sono più disponibili: si sono estinti con la
-          cessazione.
+          {inProva
+            ? `${stato.gare.rimanenti > 0 ? `Hai ancora ${stato.gare.rimanenti} ${stato.gare.rimanenti === 1 ? "gara gratuita" : "gare gratuite"}: puoi continuare a usarle. ` : "Hai usato tutte le gare gratuite. "}Un abbonamento ti dà ogni mese un numero di gare incluse: una gara si consuma quando parte l'analisi dei documenti, e da lì generazioni e revisioni sulla stessa gara sono comprese. Si rinnova ogni mese e puoi disdirlo quando vuoi. Confronta i piani qui sotto e scegli quello più adatto al numero di gare a cui partecipi.`
+            : "Scegli un piano per riattivare l'abbonamento. I crediti aggiuntivi eventualmente residui dell'abbonamento precedente non sono più disponibili: si sono estinti con la cessazione."}
         </p>
 
         {legalDocuments ? (

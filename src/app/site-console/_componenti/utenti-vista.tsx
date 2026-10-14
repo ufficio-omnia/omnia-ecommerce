@@ -84,6 +84,9 @@ export default function UtentiVista({
         <h1>Utenti</h1>
         <p>Account dei due siti, con ordini, abbonamento OMNIA AI, crediti e accettazioni legali registrate</p>
       </div>
+      <Link href="/utenti/nuovo" className="cn-btn primario">
+        Nuovo utente
+      </Link>
     </div>
   );
 

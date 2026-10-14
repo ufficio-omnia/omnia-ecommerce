@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
+import { testoAvvisoProva, type GareGratuite } from "@/lib/omnia-ai-gare-gratuite";
 import DashboardShell from "@/components/omnia-ai/dashboard-shell";
 import ActivateSubscriptionForm from "./activate-subscription-form";
 
@@ -58,6 +59,19 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
       verranno cancellati in modo irreversibile il{" "}
       <strong>{dataCancellazione.toLocaleDateString("it-IT")}</strong>.{" "}
       <Link href="/dashboard/omnia-ai/abbonamento">Riattiva abbonamento →</Link>
+    </div>
+  );
+}
+
+// Cliente in prova (gare gratuite assegnate dalla console, nessun abbonamento mai avuto). In
+// cima a ogni pagina, sopra gli altri avvisi: a gare finite è la cosa più importante da
+// sapere, e il pulsante porta alla pagina Abbonamento, dove i piani sono spiegati.
+function ProvaAvviso({ gare }: { gare: GareGratuite }) {
+  const { esaurite, testo } = testoAvvisoProva(gare);
+  return (
+    <div className="omnia-avviso-profilo">
+      {testo}{" "}
+      <Link href="/dashboard/omnia-ai/abbonamento">{esaurite ? "Scegli un abbonamento →" : "Scopri i piani →"}</Link>
     </div>
   );
 }
@@ -138,6 +152,7 @@ export default async function OmniaAiLayout({
       nomeAzienda={company?.ragione_sociale ?? null}
       avvisi={
         <>
+          {stato.stato === "prova" && <ProvaAvviso gare={stato.gare} />}
           {stato.stato === "sola_lettura" && (
             <SolaLetturaAvviso dataCancellazione={stato.dataCancellazioneContenuti} />
           )}

@@ -4,6 +4,9 @@ import { PIANI, PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
 import type { SchedaCliente } from "@/lib/console/utenti";
 import { eAnonimizzato, etichettaAccettazione, etichettaDocumento, type AccettazioneScheda, type StatoProva } from "@/lib/console/utenti-calcoli";
 import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlCliente } from "../azioni/utenti";
+import { modificaGareGratuite } from "../azioni/utenti-console";
+import type { ProvaCliente } from "@/lib/console/gare-gratuite";
+import ModuloAzione from "./modulo-azione";
 import { eliminaOrdine, ottieniLinkFattura } from "../azioni/ordini";
 import AvvisoEsito, { type ParametriEsito } from "./avviso-esito";
 import { Badge, Pannello, Tessera } from "./elementi";
@@ -105,12 +108,15 @@ export default function SchedaClienteVista({
   idSessione,
   esito,
   accessi,
+  prova,
 }: {
   scheda: SchedaCliente;
   // id dell'admin che sta guardando: non può eliminare né anonimizzare sé stesso
   idSessione: string;
   esito: ParametriEsito;
   accessi: AccessiCliente;
+  // account creato dalla console e gare gratuite (migrazione 0084)
+  prova: ProvaCliente;
 }) {
   const indietro = (
     <Link href="/utenti" className="cn-indietro">
@@ -142,10 +148,10 @@ export default function SchedaClienteVista({
     );
   }
 
-  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} />;
+  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro, accessi }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -521,6 +527,78 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi }: { s: SchedaO
               </table>
             </div>
           )}
+        </Pannello>
+      </div>
+
+      {/* ───── Prova gratuita e account creato dalla console ───── */}
+      <div className="cn-sezione">
+        <Pannello titolo="Prova gratuita">
+          <div className="cn-pannello-corpo">
+            {!prova.disponibile ? (
+              <p className="cn-nota-inline">Le gare gratuite non sono disponibili (migrazione 0084 non ancora eseguita).</p>
+            ) : (
+              <>
+                {prova.creatoDaConsole && (
+                  <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                    Account creato dalla console il {formattaData(prova.creatoDaConsole.creatoIl)} da {prova.creatoDaConsole.creatoDa}.
+                  </p>
+                )}
+                {prova.gare ? (
+                  <p className="cn-nota-inline" style={{ marginTop: prova.creatoDaConsole ? 6 : 0 }}>
+                    Gare gratuite: <strong>{prova.gare.assegnate}</strong> assegnate, <strong>{prova.gare.usate}</strong> usate, <strong>{prova.gare.rimanenti}</strong> rimaste.
+                  </p>
+                ) : (
+                  <p className="cn-nota-inline" style={{ marginTop: prova.creatoDaConsole ? 6 : 0 }}>
+                    Nessuna gara gratuita assegnata.
+                  </p>
+                )}
+                {prova.haAvutoAbbonamento ? (
+                  <p className="cn-nota-inline">Ha avuto un abbonamento: le gare gratuite servono solo alla prova, prima del primo abbonamento, e non si modificano più.</p>
+                ) : s.utente.ruolo === "admin" ? (
+                  <p className="cn-nota-inline">È un amministratore: non ha gare gratuite.</p>
+                ) : (
+                  <ModuloAzione azione={modificaGareGratuite} campi={{ userId: s.utente.id }} etichetta="Applica" etichettaInCorso="Applico…" messaggioOk="Gare gratuite aggiornate." variante="primario" svuota classe="cn-modulo-linea">
+                    <div>
+                      <label className="cn-etichetta" htmlFor="delta">
+                        Gare (+ assegna, − toglie)
+                      </label>
+                      <input className="cn-input" id="delta" name="delta" type="number" step={1} required placeholder="es. 2 oppure -1" style={{ maxWidth: 150 }} />
+                    </div>
+                    <div>
+                      <label className="cn-etichetta" htmlFor="motivo-gare">
+                        Motivo (facoltativo)
+                      </label>
+                      <input className="cn-input" id="motivo-gare" name="motivo" maxLength={300} placeholder="es. richiesta del cliente" />
+                    </div>
+                  </ModuloAzione>
+                )}
+                {prova.movimenti.length > 0 && (
+                  <div className="cn-scorri" style={{ marginTop: 12 }}>
+                    <table className="cn-tab">
+                      <thead>
+                        <tr>
+                          <th>Quando</th>
+                          <th className="num">Gare</th>
+                          <th>Operatore</th>
+                          <th>Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {prova.movimenti.map((m, i) => (
+                          <tr key={i}>
+                            <td>{formattaDataOra(m.creatoIl)}</td>
+                            <td className="num">{m.delta > 0 ? `+${m.delta}` : m.delta}</td>
+                            <td>{m.operatore}</td>
+                            <td>{m.motivo ?? "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </Pannello>
       </div>
 
