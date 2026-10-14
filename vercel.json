@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/omnia-ai-purge-cessati",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/omnia-ai-email-retry",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
