@@ -82,6 +82,19 @@ create table if not exists public.omnia_ai_revisioni (
   creata_il timestamptz not null default now()
 );
 
+-- Se la tabella esiste già (creata dalla prima versione di questa migrazione, senza la fatturazione e
+-- l'ora di scadenza), le colonne mancanti si aggiungono qui. Su una tabella nuova non fa nulla.
+alter table public.omnia_ai_revisioni
+  add column if not exists scadenza_ora time without time zone,
+  add column if not exists stato_fattura text not null default 'da_fatturare' check (stato_fattura in ('da_fatturare', 'fatturata', 'non_dovuta')),
+  add column if not exists numero_fattura text,
+  add column if not exists data_fattura date,
+  add column if not exists note_fattura text,
+  add column if not exists fatturazione_aggiornata_il timestamptz,
+  add column if not exists fatturazione_aggiornata_da uuid,
+  add column if not exists fattura_file_path text,
+  add column if not exists fattura_caricata_il timestamptz;
+
 create index if not exists omnia_ai_revisioni_stato_fattura_idx
   on public.omnia_ai_revisioni (stato_fattura)
   where stato = 'pagata';
@@ -102,7 +115,7 @@ alter table public.omnia_ai_revisioni enable row level security;
 grant select, insert, update on public.omnia_ai_revisioni to service_role;
 
 -- Il cliente legge i propri pagamenti, solo alcune colonne.
-do $
+do $$
 begin
   if not exists (
     select 1 from pg_policies
@@ -112,7 +125,7 @@ begin
       for select using (user_id = auth.uid());
   end if;
 end
-$;
+$$;
 
 grant select (
   id, user_id, gara_id, gara_titolo, pagine, maggiorazione_percentuale, prezzo_totale_centesimi,

@@ -488,6 +488,14 @@ async function main() {
   const m91 = leggi("supabase/migrations/0091_gare_scadenza_ora.sql");
   atteso("0091: ora di scadenza della gara, facoltativa (senza ora si intende 23:59)", /add column if not exists scadenza_ora time without time zone/.test(m91) && !/not null/.test(m91.replace(/--[^\n]*/g, "")) && /23:59/.test(m91));
   atteso("0089: nessun indice unico sui pagamenti (un doppio pagamento resta registrato)", !/create unique index[^;]*omnia_ai_revisioni/.test(m89));
+  // La prima versione della 0089 è già stata eseguita sul database: rieseguirla non deve lasciare la tabella senza le colonne nate dopo.
+  const colonneNuove089 = ["scadenza_ora", "stato_fattura", "numero_fattura", "data_fattura", "note_fattura", "fatturazione_aggiornata_il", "fatturazione_aggiornata_da", "fattura_file_path", "fattura_caricata_il"];
+  atteso("0089: ogni colonna nata dopo la prima versione si aggiunge anche a una tabella già esistente", colonneNuove089.every((c) => new RegExp(`add column if not exists ${c} `).test(m89Codice)), colonneNuove089.find((c) => !new RegExp(`add column if not exists ${c} `).test(m89Codice)));
+  const cartellaMigrazioni = path.join(__dirname, "..", "supabase", "migrations");
+  for (const nomeFile of fs.readdirSync(cartellaMigrazioni).filter((n) => /^009[01]_|^008[89]_/.test(n))) {
+    const sql = fs.readFileSync(path.join(cartellaMigrazioni, nomeFile), "utf-8").replace(/--[^\n]*/g, "");
+    atteso(`${nomeFile}: i blocchi tra dollari sono aperti e chiusi con «$$» (un «$» solo dà errore in Supabase)`, (sql.match(/\$\$/g) ?? []).length % 2 === 0 && !/\bdo \$\s*\n/i.test(sql) && !/^\s*\$;/m.test(sql));
+  }
   const m90 = leggi("supabase/migrations/0090_omnia_ai_email_eventi_allegati.sql");
   atteso("0090: tre colonne per l'allegato e i due tipi nuovi", /allegato_bucket text/.test(m90) && /allegato_path text/.test(m90) && /allegato_nome text/.test(m90) && /'revisione_umana_richiesta'/.test(m90) && /'revisione_umana_ricevuta'/.test(m90) && /drop constraint if exists omnia_ai_email_eventi_tipo_check/.test(m90));
 
