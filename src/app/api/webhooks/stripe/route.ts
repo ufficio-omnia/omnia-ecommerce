@@ -11,6 +11,16 @@ import { getOmniaAiBaseUrl } from "@/lib/omnia-ai-request";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { registraAcquistoPilot } from "@/lib/omnia-ai-pilot";
 import { collegaIncassiASubscription, registraIncassoDaFattura, schemaAssente } from "@/lib/omnia-ai-incassi";
+import {
+  notificaCambioMetodoPagamento,
+  notificaCambioProgrammato,
+  notificaCreditiAcquistati,
+  notificaMancatoPagamento,
+  notificaNuovoAbbonamento,
+  notificaPagamentoRicevuto,
+  notificaVariazioniAbbonamento,
+} from "@/lib/omnia-ai-email-webhook";
+import { nuovoMetodoDaAbbonamento, nuovoMetodoDaCliente } from "@/lib/omnia-ai-email-eventi-calcoli";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -44,14 +54,25 @@ export async function POST(request: NextRequest) {
 
   switch (event.type) {
     case "checkout.session.completed":
-      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+      await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session, event.id);
       break;
     // Questo account Stripe crea una Subscription SOLO per gli
     // abbonamenti OMNIA AI: l'e-commerce è sempre mode:"payment", non
     // genera mai questi due eventi. Nessuna discriminazione necessaria.
     case "customer.subscription.updated":
-      await handleOmniaAiSubscriptionUpdated(event.data.object as Stripe.Subscription, event.livemode);
+      await handleOmniaAiSubscriptionUpdated(event.data.object as Stripe.Subscription, event.livemode, event.id, event.data.previous_attributes as Partial<Stripe.Subscription> | undefined);
       break;
+    // Il cliente cambia il metodo di pagamento dal portale di Stripe: l'evento arriva sul cliente
+    // (metodo predefinito per le fatture) e/o sull'abbonamento. Conta solo se prima ce n'era un altro:
+    // l'impostazione iniziale, nel checkout, non è un cambio. Un'email sola, anche se arrivano entrambi.
+    case "customer.updated": {
+      const cliente = event.data.object as Stripe.Customer;
+      const metodoId = nuovoMetodoDaCliente(cliente, event.data.previous_attributes as Partial<Stripe.Customer> | undefined);
+      if (metodoId) {
+        await notificaCambioMetodoPagamento({ admin: createAdminClient(), livemode: event.livemode, eventoId: event.id, stripeCustomerId: cliente.id, metodoId });
+      }
+      break;
+    }
     case "customer.subscription.deleted":
       await handleOmniaAiSubscriptionDeleted(event.data.object as Stripe.Subscription, event.livemode);
       break;
@@ -62,7 +83,7 @@ export async function POST(request: NextRequest) {
     case "subscription_schedule.created":
     case "subscription_schedule.updated":
     case "subscription_schedule.released":
-      await handleOmniaAiSubscriptionScheduleEvent(event.data.object as Stripe.SubscriptionSchedule);
+      await handleOmniaAiSubscriptionScheduleEvent(event.data.object as Stripe.SubscriptionSchedule, event.livemode, event.id);
       break;
     // Evento in tempo reale (non una verifica giornaliera come le
     // scadenze): un tentativo di addebito del rinnovo fallito. Lo stato
@@ -70,7 +91,7 @@ export async function POST(request: NextRequest) {
     // parte, da customer.subscription.updated — qui serve solo avvisare
     // il cliente subito.
     case "invoice.payment_failed":
-      await handleOmniaAiInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+      await handleOmniaAiInvoicePaymentFailed(event.data.object as Stripe.Invoice, event.livemode, event.id);
       break;
     // Un pagamento di abbonamento andato a buon fine (primo pagamento, rinnovo,
     // conguaglio di cambio piano): diventa una riga di omnia_ai_incassi, base dei
@@ -89,6 +110,9 @@ export async function POST(request: NextRequest) {
       if (esito.stato === "tabella_assente") {
         console.error("Webhook Stripe (incasso AI): tabella omnia_ai_incassi assente, eseguire la migrazione 0078. Incasso non registrato:", (event.data.object as Stripe.Invoice).id);
       }
+      // Al cliente: pagamento ricevuto (primo pagamento, rinnovi e conguagli). Mai bloccante, e mai
+      // doppia (registro delle email): un evento reinviato da Stripe non rimanda l'email.
+      await notificaPagamentoRicevuto({ admin: createAdminClient(), livemode: event.livemode, eventoId: event.id, invoice: event.data.object as Stripe.Invoice });
       break;
     }
   }
@@ -96,13 +120,13 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ received: true });
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session, eventoId: string) {
   // Discriminatore esplicito nei metadata: un abbonamento OMNIA AI ha un
   // percorso di creazione completamente diverso (mode:"subscription",
   // nessun productId/buyerType/dati di fatturazione propri — quelli li
   // raccoglie Stripe). Il ramo e-commerce sotto resta invariato.
   if (session.metadata?.tipo === "omnia_ai_abbonamento") {
-    await handleOmniaAiSubscriptionCheckoutCompleted(session);
+    await handleOmniaAiSubscriptionCheckoutCompleted(session, eventoId);
     return;
   }
 
@@ -111,7 +135,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // dati di fatturazione propri, li raccoglie lo stesso checkout
   // dell'abbonamento a monte.
   if (session.metadata?.tipo === "omnia_ai_crediti") {
-    await handleOmniaAiCreditsCheckoutCompleted(session);
+    await handleOmniaAiCreditsCheckoutCompleted(session, eventoId);
     return;
   }
 
@@ -350,7 +374,7 @@ function mapStripeSubscriptionStatus(
   return "scaduto";
 }
 
-async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session, eventoId: string) {
   const metadata = session.metadata;
   const planSlug = metadata?.planSlug;
   const stripeSubscriptionId =
@@ -388,6 +412,10 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
   // (mai su un evento rielaborato: l'account a quel punto esiste già,
   // rimandare la stessa email non avrebbe senso).
   let justCreatedEmail: string | null = null;
+  // per l'email all'ufficio: questa consegna ha creato la riga dell'abbonamento (non è un evento
+  // rielaborato) e, se sì, anche l'account del cliente
+  let abbonamentoCreatoOra = false;
+  let accountCreatoOra = false;
 
   if (!subscriptionRowId) {
     if (!userId) {
@@ -451,6 +479,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
       // isAccountNuovo lo sostituisce in quel caso. Per un account
       // preesistente (mai toccato da questa creazione) resta invece il
       // segnale giusto: nullo finché non ha mai impostato una password.
+      accountCreatoOra = isAccountNuovo;
       const { data: authUser } = await admin.auth.admin.getUserById(userId);
       const needsActivation = isAccountNuovo || !authUser?.user?.email_confirmed_at;
       if (needsActivation) justCreatedEmail = email;
@@ -497,6 +526,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
     }
 
     subscriptionRowId = sub.id;
+    abbonamentoCreatoOra = true;
 
     // Il primo pagamento (invoice.paid) può essere arrivato prima di questa
     // riga: i suoi incassi restano senza utente finché non si agganciano qui.
@@ -609,11 +639,38 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
       });
     }
   }
+
+  // All'ufficio: nuovo cliente (solo alla prima elaborazione dell'evento; mai bloccante).
+  if (abbonamentoCreatoOra) {
+    await notificaNuovoAbbonamento({
+      admin,
+      livemode: session.livemode,
+      eventoId,
+      session,
+      stripeSubscriptionId,
+      planSlug,
+      userId,
+      accountNuovo: accountCreatoOra,
+    });
+  }
 }
 
-async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscription, livemode: boolean) {
+async function handleOmniaAiSubscriptionUpdated(
+  subscription: Stripe.Subscription,
+  livemode: boolean,
+  eventoId: string,
+  precedenti: Partial<Stripe.Subscription> | undefined,
+) {
   const admin = createAdminClient();
   const item = subscription.items.data[0];
+
+  // La riga locale PRIMA dell'aggiornamento: serve a capire che cosa è cambiato (cambio piano, disdetta)
+  // per le email; senza una riga (abbonamento non ancora registrato) non si può dire.
+  const { data: prima } = await admin
+    .from("subscriptions")
+    .select("user_id, plan, piano_programmato, cancel_at_period_end")
+    .eq("stripe_subscription_id", subscription.id)
+    .maybeSingle<{ user_id: string; plan: string | null; piano_programmato: string | null; cancel_at_period_end: boolean | null }>();
 
   const update: Record<string, unknown> = {
     status: mapStripeSubscriptionStatus(subscription.status),
@@ -655,6 +712,18 @@ async function handleOmniaAiSubscriptionUpdated(subscription: Stripe.Subscriptio
 
   if (error) {
     console.error("Webhook Stripe (abbonamento AI): errore aggiornamento subscription", error);
+  }
+
+  // Email: cambio piano e disdetta (ufficio; il cliente riceve la conferma di disdetta) e cambio del
+  // metodo di pagamento (cliente). Mai bloccanti, mai doppie. Dopo l'aggiornamento: lo stato di Stripe
+  // è quello vero anche se la scrittura locale fosse fallita.
+  if (prima) {
+    await notificaVariazioniAbbonamento({ admin, livemode, eventoId, subscription, userId: prima.user_id, prima, nuovoPiano: pianoAggiornato });
+    const metodoId = nuovoMetodoDaAbbonamento(subscription, precedenti);
+    if (metodoId) {
+      const stripeCustomerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+      await notificaCambioMetodoPagamento({ admin, livemode, eventoId, stripeCustomerId, metodoId });
+    }
   }
 }
 
@@ -708,7 +777,7 @@ async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscriptio
   }
 }
 
-async function handleOmniaAiInvoicePaymentFailed(invoice: Stripe.Invoice) {
+async function handleOmniaAiInvoicePaymentFailed(invoice: Stripe.Invoice, livemode: boolean, eventoId: string) {
   // API drift verificata su node_modules/stripe: dalla versione in uso
   // Invoice non ha più un campo "subscription" diretto, è annidato sotto
   // parent.subscription_details.subscription.
@@ -720,24 +789,28 @@ async function handleOmniaAiInvoicePaymentFailed(invoice: Stripe.Invoice) {
   const admin = createAdminClient();
   const { data: sub } = await admin
     .from("subscriptions")
-    .select("user_id")
+    .select("user_id, plan, cancel_at_period_end")
     .eq("stripe_subscription_id", stripeSubscriptionId)
-    .maybeSingle<{ user_id: string }>();
-
-  if (!sub) return;
+    .maybeSingle<{ user_id: string; plan: string | null; cancel_at_period_end: boolean | null }>();
 
   // Deduplicata sull'id della fattura Stripe: un nuovo tentativo di
   // addebito sulla STESSA fattura (comune, Stripe ne fa più di uno prima
   // di arrendersi) rimanda lo stesso evento più volte, non deve
   // generare una notifica per ogni ritentativo.
-  await creaNotifica({
-    userId: sub.user_id,
-    tipo: "pagamento_fallito",
-    garaId: null,
-    titolo: "Pagamento non riuscito",
-    corpo: "L'addebito per il rinnovo del tuo abbonamento non è andato a buon fine. Verifica il metodo di pagamento dalla pagina Abbonamento.",
-    chiaveDedup: invoice.id ?? stripeSubscriptionId,
-  });
+  if (sub) {
+    await creaNotifica({
+      userId: sub.user_id,
+      tipo: "pagamento_fallito",
+      garaId: null,
+      titolo: "Pagamento non riuscito",
+      corpo: "L'addebito per il rinnovo del tuo abbonamento non è andato a buon fine. Verifica il metodo di pagamento dalla pagina Abbonamento.",
+      chiaveDedup: invoice.id ?? stripeSubscriptionId,
+    });
+  }
+
+  // All'ufficio: mancato pagamento di un abbonamento senza disdetta (al primo tentativo fallito e, se
+  // Stripe si arrende, all'ultimo). Mai bloccante, mai doppia.
+  await notificaMancatoPagamento({ admin, livemode, eventoId, invoice, prima: sub ?? null, userId: sub?.user_id ?? null });
 }
 
 // Il cambio piano immediato (upgrade) passa dalla Subscription stessa
@@ -746,7 +819,7 @@ async function handleOmniaAiInvoicePaymentFailed(invoice: Stripe.Invoice) {
 // la fase successiva a quella corrente (se esiste) per capire se c'è un
 // cambio in programma, a quale piano e da quando — mai scritto
 // dall'azione che lo richiede, solo da qui.
-async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.SubscriptionSchedule) {
+async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.SubscriptionSchedule, livemode: boolean, eventoId: string) {
   // Al rilascio Stripe svuota "subscription" e sposta l'id in
   // "released_subscription" (la schedule non gestisce più nulla, ma
   // l'abbonamento sottostante resta) — senza questo fallback l'evento
@@ -760,6 +833,13 @@ async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.Subscript
   if (!stripeSubscriptionId) return;
 
   const admin = createAdminClient();
+
+  // La riga locale PRIMA dell'aggiornamento: serve a capire se un cambio di piano programmato è nuovo.
+  const { data: prima } = await admin
+    .from("subscriptions")
+    .select("user_id, plan, piano_programmato")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle<{ user_id: string; plan: string | null; piano_programmato: string | null }>();
 
   let pianoProgrammato: string | null = null;
   let pianoProgrammatoDa: string | null = null;
@@ -801,9 +881,24 @@ async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.Subscript
   if (error) {
     console.error("Webhook Stripe (schedule AI): errore aggiornamento subscription", error);
   }
+
+  // All'ufficio: il cliente ha chiesto un cambio di piano (downgrade). Solo quando compare, non a
+  // ogni evento della schedule; mai bloccante, mai doppia.
+  if (prima && !rilasciata && pianoProgrammato) {
+    await notificaCambioProgrammato({
+      admin,
+      livemode,
+      eventoId,
+      stripeSubscriptionId,
+      userId: prima.user_id,
+      prima,
+      pianoProgrammato,
+      dal: pianoProgrammatoDa ? new Date(pianoProgrammatoDa) : null,
+    });
+  }
 }
 
-async function handleOmniaAiCreditsCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleOmniaAiCreditsCheckoutCompleted(session: Stripe.Checkout.Session, eventoId: string) {
   const metadata = session.metadata;
   const userId = metadata?.userId;
   const pacchettoSlug = metadata?.pacchetto;
@@ -862,4 +957,16 @@ async function handleOmniaAiCreditsCheckoutCompleted(session: Stripe.Checkout.Se
   if (incrementError) {
     console.error("Webhook Stripe (crediti AI): errore incremento saldo crediti", incrementError);
   }
+
+  // Email: all'ufficio l'acquisto, al cliente il pagamento ricevuto. Solo alla prima elaborazione
+  // dell'evento (le consegne ripetute escono prima, sopra); mai bloccante.
+  await notificaCreditiAcquistati({
+    admin,
+    livemode: session.livemode,
+    eventoId,
+    sessionId: session.id,
+    userId,
+    pacchettoSlug: pacchettoSlug as PacchettoCreditiSlug,
+    importoCentesimi,
+  });
 }
