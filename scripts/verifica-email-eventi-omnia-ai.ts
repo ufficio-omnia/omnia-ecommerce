@@ -67,8 +67,11 @@ const corpo = (sorgente: string, da: string, a?: string) => {
 type Inviata = { from: string; to: string[]; subject: string; html: string };
 const inviate: Inviata[] = [];
 let invioGuasto = false;
+// rete caduta: la richiesta stessa lancia un errore (diverso da una risposta d'errore del servizio)
+let reteGuasta = false;
 process.env.RESEND_API_KEY = "chiave-di-prova";
 globalThis.fetch = (async (_url: unknown, init?: { body?: string }) => {
+  if (reteGuasta) throw new TypeError("fetch failed");
   if (invioGuasto) return new Response("servizio non disponibile", { status: 503 });
   inviate.push(JSON.parse(init?.body ?? "{}") as Inviata);
   return new Response("{}", { status: 200 });
@@ -202,7 +205,6 @@ const fattura = (extra: Record<string, unknown> = {}) =>
 const sessioneAbbonamento = (extra: Record<string, unknown> = {}) =>
   ({ id: "cs_1", amount_total: 149000, customer_email: "mario@pulizierossi.it", customer_details: { email: "mario@pulizierossi.it", name: "Mario Rossi", tax_ids: [] }, metadata: {}, ...extra }) as unknown as Stripe.Checkout.Session;
 const ctx = (admin: SupabaseClient, extra: { livemode?: boolean; eventoId?: string } = {}) => ({ admin, livemode: extra.livemode ?? true, eventoId: extra.eventoId ?? "evt_1" });
-const senzaMarcaturaProva = (m: Inviata) => !/\[PROVA\]/.test(m.subject);
 
 async function main() {
   console.log("--- Formattazione ---");
@@ -557,6 +559,56 @@ async function main() {
     invioGuasto = false;
     const esito = await riprovaEmailNonInviate(db);
     uguale("tornata la posta: partono entrambe, all'ufficio e al cliente", [esito.rimandate, aUfficio().length, aCliente().length], [2, 1, 1]);
+  }
+
+  console.log("--- Rete caduta, due richieste distinte, guasto interno ---");
+  {
+    azzera();
+    const tabelle = basi();
+    reteGuasta = true;
+    let lanciata = false;
+    let esito = "";
+    try {
+      esito = await senzaRumore(() => inviaEmailEvento({ admin: dbFinto(tabelle), chiave: "rete", tipo: "disdetta", destinatario: "ufficio", a: UFFICIO, email: { oggetto: "Rete", html: "<p>r</p>" }, livemode: true }));
+    } catch {
+      lanciata = true;
+    }
+    reteGuasta = false;
+    uguale("rete caduta (la richiesta lancia un errore): nessuna eccezione, email «fallita» e da rimandare", [lanciata, esito, tabelle.omnia_ai_email_eventi[0]?.stato], [false, "fallita", "fallita"]);
+  }
+  {
+    azzera();
+    const db = dbFinto(basi());
+    const dati = { ...ctx(db), stripeSubscriptionId: "sub_1", userId: "u1", prima: { plan: "professional", piano_programmato: null }, pianoProgrammato: "starter", dal: new Date(FINE_PERIODO * 1000) };
+    await notificaCambioProgrammato({ ...dati, eventoId: "evt_A" });
+    await notificaCambioProgrammato({ ...dati, eventoId: "evt_B" });
+    uguale("downgrade chiesto, annullato e chiesto di nuovo (due eventi diversi): due email, non una sola in assoluto", aUfficio().length, 2);
+  }
+  {
+    // il database non risponde: nessuna notifica può far fallire l'elaborazione dell'evento Stripe
+    azzera();
+    const rotto = { from: () => { throw new Error("database non raggiungibile"); } } as unknown as SupabaseClient;
+    const base = ctx(rotto);
+    const chiamate: [string, () => Promise<void>][] = [
+      ["nuovo abbonamento", () => notificaNuovoAbbonamento({ ...base, session: sessioneAbbonamento(), stripeSubscriptionId: "sub_1", planSlug: "professional", userId: "u1", accountNuovo: true })],
+      ["variazioni abbonamento", () => notificaVariazioniAbbonamento({ ...base, subscription: abbonamentoStripe({ cancel_at_period_end: true }), userId: "u1", prima: { plan: "starter", piano_programmato: null, cancel_at_period_end: false }, nuovoPiano: "professional" })],
+      ["cambio programmato", () => notificaCambioProgrammato({ ...base, stripeSubscriptionId: "sub_1", userId: "u1", prima: { plan: "professional", piano_programmato: null }, pianoProgrammato: "starter", dal: null })],
+      ["crediti", () => notificaCreditiAcquistati({ ...base, sessionId: "cs_1", userId: "u1", pacchettoSlug: "singola", importoCentesimi: 29000 })],
+      ["mancato pagamento", () => notificaMancatoPagamento({ ...base, invoice: fattura(), prima: { plan: "professional", cancel_at_period_end: false }, userId: "u1" })],
+      ["pagamento ricevuto", () => notificaPagamentoRicevuto({ ...base, invoice: fattura(), stripe: stripeFinto })],
+      ["metodo di pagamento", () => notificaCambioMetodoPagamento({ ...base, stripeCustomerId: "cus_1", metodoId: "pm_2", stripe: stripeFinto })],
+    ];
+    const lanciate: string[] = [];
+    await senzaRumore(async () => {
+      for (const [nome, chiamata] of chiamate) {
+        try {
+          await chiamata();
+        } catch {
+          lanciate.push(nome);
+        }
+      }
+    });
+    uguale("database non raggiungibile: nessuna delle sette notifiche lancia, il webhook va avanti", lanciate, []);
   }
 
   console.log("--- Collegamenti nel webhook ---");
