@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { indexGaraDocumento, isIndexableFile } from "@/lib/gara-indexing";
 import { sanitizeFileName } from "@/lib/document-text";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { verificaDirittoGara } from "@/lib/gara-diritto";
 import { collectGaraFilePaths, removeGaraFiles } from "@/lib/gara-storage";
 
 export type GaraState = { error?: string; warning?: string; duplicato?: string };
@@ -176,6 +177,12 @@ export async function uploadGaraDocumento(
     .single<{ id: string }>();
 
   if (!gara) return { error: "Gara non trovata." };
+
+  // Gare del piano, crediti o gare gratuite finite e questa gara non ha mai consumato una gara:
+  // il documento non si carica e quindi non si indicizza (l'indicizzazione costa, e alimenta la
+  // chat). Prima di toccare lo storage. L'interfaccia nasconde già il modulo di caricamento.
+  const diritto = await verificaDirittoGara({ garaId, userId: user.id });
+  if (!diritto.consentito) return { error: diritto.messaggio };
 
   // Il bucket "gare" accetta upload solo da admin via RLS storage: usiamo
   // la service role, come già fatto per fatture/documenti prodotto,

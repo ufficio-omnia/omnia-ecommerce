@@ -2,6 +2,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
+import { verificaDirittoGara } from "@/lib/gara-diritto";
 import { downloadGaraDocumento } from "@/app/actions/download";
 import { deleteGara, removeGaraDocumento } from "@/app/actions/gare";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
@@ -10,6 +11,7 @@ import UploadDocumentoForm from "./upload-documento-form";
 import LogoClienteForm from "./logo-cliente-form";
 import GaraTitolo from "./gara-titolo";
 import ExtractionSection, { type Estrazione } from "./extraction-section";
+import GaraBloccataAvviso from "./gara-bloccata-avviso";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 
 // sendGaraMessage (chiamato da questa pagina) fa sempre almeno due chiamate
@@ -141,6 +143,10 @@ export default async function GaraPage({
     allegati: allegatiPerMessaggio.get(m.id) ?? [],
   }));
 
+  // Gare del piano, crediti o gare gratuite finite e questa gara non ha mai consumato una gara:
+  // chat e caricamento documenti restano spenti (il vero blocco è nelle azioni, qui solo la vista).
+  const diritto = await verificaDirittoGara({ garaId: gara.id, userId: user.id });
+
   const chunkCountPerDocumento = new Map<string, number>();
   for (const chunk of chunksRaw ?? []) {
     chunkCountPerDocumento.set(
@@ -174,6 +180,14 @@ export default async function GaraPage({
           className="omnia-btn omnia-btn-s omnia-btn-piccolo"
         />
       </div>
+
+      {!diritto.consentito && (
+        <GaraBloccataAvviso
+          messaggio={diritto.messaggio}
+          motivo={diritto.motivo}
+          pianoAttuale={subscriptionAttiva?.plan ?? null}
+        />
+      )}
 
       <section className="omnia-riquadro">
         <span className="omnia-eyebrow">Documenti</span>
@@ -221,7 +235,13 @@ export default async function GaraPage({
         )}
 
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--bordo)" }}>
-          <UploadDocumentoForm garaId={gara.id} />
+          {diritto.consentito ? (
+            <UploadDocumentoForm garaId={gara.id} />
+          ) : (
+            <p className="omnia-riquadro-nota" style={{ margin: 0 }}>
+              Il caricamento di nuovi documenti è disattivato per questa gara (vedi l&apos;avviso in alto).
+            </p>
+          )}
         </div>
 
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
@@ -229,7 +249,7 @@ export default async function GaraPage({
 
       <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
 
-      <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} />
+      <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
     </div>
   );
 }

@@ -67,10 +67,14 @@ export default function ChatSection({
   garaId,
   messaggi,
   limitePagineTotale,
+  spenta = false,
 }: {
   garaId: string;
   messaggi: GaraMessaggio[];
   limitePagineTotale: number | null;
+  // gare del piano, crediti o gare gratuite finite e questa gara non ne ha consumata una: niente
+  // modulo di invio (la sola lettura dei messaggi già scambiati resta). Il vero blocco è in sendGaraMessage.
+  spenta?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -129,23 +133,41 @@ export default function ChatSection({
       <div className="omnia-chat-intestazione">
         <BrandMark stato="riposo" width={28} height={28} />
         <div>
-          <h2>Chat con OMNIA AI</h2>
+          <h2>
+            Chat con OMNIA AI
+            {spenta && (
+              <span className="omnia-badge ambra" style={{ marginLeft: 10 }}>
+                Disattivata
+              </span>
+            )}
+          </h2>
           <p>Documenti, criteri dell&apos;offerta tecnica, ricerche sul web e generazione documenti Word</p>
         </div>
       </div>
 
-      <p className="omnia-chat-nota">
-        <strong>Come procedere:</strong> chiedi di sviluppare i criteri uno alla volta (ognuno genera
-        una bozza a sé). Solo quando tutti i criteri sono stati sviluppati, chiedi di
-        &quot;elaborare la relazione finale&quot; per comporli in un unico documento definitivo.
-      </p>
-      <p className="omnia-chat-nota">
-        Il numero di pagine indicato sotto ogni documento è una stima: prima di consegnare, apri
-        sempre il file in Word e controlla il numero di pagine effettivo — dipende dal computer su
-        cui lo apri.
-      </p>
+      {!spenta && (
+        <>
+          <p className="omnia-chat-nota">
+            <strong>Come procedere:</strong> chiedi di sviluppare i criteri uno alla volta (ognuno genera
+            una bozza a sé). Solo quando tutti i criteri sono stati sviluppati, chiedi di
+            &quot;elaborare la relazione finale&quot; per comporli in un unico documento definitivo.
+          </p>
+          <p className="omnia-chat-nota">
+            Il numero di pagine indicato sotto ogni documento è una stima: prima di consegnare, apri
+            sempre il file in Word e controlla il numero di pagine effettivo — dipende dal computer su
+            cui lo apri.
+          </p>
+        </>
+      )}
 
-      <div ref={scrollRef} className="omnia-chat-corpo">
+      {spenta && (
+        <p className="omnia-chat-nota">
+          La chat è disattivata per questa gara (vedi l&apos;avviso in alto). I messaggi e i documenti già
+          scambiati restano consultabili.
+        </p>
+      )}
+
+      {(!spenta || messaggi.length > 0) && <div ref={scrollRef} className="omnia-chat-corpo">
         {messaggi.length ? (
           messaggi.map((m) => (
             <div key={m.id} className={`omnia-msg-riga ${m.ruolo}`}>
@@ -228,9 +250,9 @@ export default function ChatSection({
           </div>
         )}
         {pending && <ThinkingIndicator />}
-      </div>
+      </div>}
 
-      <form ref={formRef} action={formAction} className="omnia-chat-input">
+      {!spenta && <form ref={formRef} action={formAction} className="omnia-chat-input">
         <input type="hidden" name="garaId" value={garaId} />
         <input
           ref={fileInputRef}
@@ -284,7 +306,7 @@ export default function ChatSection({
           </button>
         </div>
         {state.error && <p className="omnia-messaggio-stato errore">{state.error}</p>}
-      </form>
+      </form>}
     </section>
   );
 }

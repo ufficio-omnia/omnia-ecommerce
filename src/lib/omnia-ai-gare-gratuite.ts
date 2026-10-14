@@ -24,13 +24,21 @@ export function calcolaGareGratuite(riga: { assegnate: number; usate: number } |
 // o se la tabella non esiste ancora (migrazione 0084 non eseguita): chi chiama si comporta
 // come per un cliente senza abbonamento, mai con un errore.
 export async function leggiGareGratuite(client: SupabaseClient, userId: string): Promise<GareGratuite | null> {
+  return (await leggiGareGratuiteConEsito(client, userId)).gare;
+}
+
+// Come leggiGareGratuite, ma dice anche se la lettura è fallita davvero (tabella assente non conta:
+// è il caso atteso prima della migrazione). Serve a chi deve distinguere «nessun contatore» da
+// «non sono riuscito a leggerlo» (il blocco della chat: mai negare per un guasto momentaneo).
+export async function leggiGareGratuiteConEsito(client: SupabaseClient, userId: string): Promise<{ gare: GareGratuite | null; riuscita: boolean }> {
   const { data, error } = await client.from("omnia_ai_gare_gratuite").select("assegnate, usate").eq("user_id", userId).maybeSingle<{ assegnate: number; usate: number }>();
   if (error) {
     // tabella assente (42P01, PGRST205) è il caso atteso prima della migrazione: nessun rumore
-    if (!["42P01", "PGRST205", "PGRST204"].includes(error.code ?? "")) console.error("Gare gratuite: lettura non riuscita", error.code, error.message);
-    return null;
+    const attesa = ["42P01", "PGRST205", "PGRST204"].includes(error.code ?? "");
+    if (!attesa) console.error("Gare gratuite: lettura non riuscita", error.code, error.message);
+    return { gare: null, riuscita: attesa };
   }
-  return calcolaGareGratuite(data);
+  return { gare: calcolaGareGratuite(data), riuscita: true };
 }
 
 // Controllo di una variazione decisa dalla console (positiva = assegna, negativa = toglie).
