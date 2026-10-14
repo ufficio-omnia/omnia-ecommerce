@@ -50,6 +50,15 @@ function stripeFinto(schedule: Schedule, guasti: { retrieve?: boolean; release?:
   };
   return { stripe, stato, chiamate };
 }
+// Una disdetta che deve riuscire: un'eccezione diventa un controllo fallito con il suo messaggio,
+// non un'interruzione dell'intero test.
+async function disdici(stripe: StripePerDisdetta) {
+  try {
+    return { r: await disdiciSuStripe(stripe, "sub_1"), errore: null as string | null };
+  } catch (e) {
+    return { r: { cambioProgrammatoAnnullato: false }, errore: e instanceof Error ? e.message : String(e) };
+  }
+}
 async function esito(f: () => Promise<unknown>): Promise<string> {
   try {
     await f();
@@ -67,7 +76,8 @@ async function main() {
   console.log("--- Disdetta senza cambio di piano programmato ---");
   {
     const { stripe, stato, chiamate } = stripeFinto(null);
-    const r = await disdiciSuStripe(stripe, "sub_1");
+    const { r, errore } = await disdici(stripe);
+    atteso("la disdetta riesce senza errori", errore === null, errore ?? "");
     uguale("legge l'abbonamento e registra la disdetta, nient'altro", chiamate, ["retrieve:sub_1", 'update:sub_1:{"cancel_at_period_end":true}']);
     uguale("disdetta registrata, cambio non annullato (non c'era)", [stato.cancel_at_period_end, r.cambioProgrammatoAnnullato], [true, false]);
   }
@@ -75,7 +85,8 @@ async function main() {
   console.log("--- Disdetta con un downgrade programmato ---");
   for (const [descrizione, schedule] of [["schedule come identificativo", "sub_sched_9"], ["schedule come oggetto espanso", { id: "sub_sched_9" }]] as const) {
     const { stripe, stato, chiamate } = stripeFinto(schedule);
-    const r = await disdiciSuStripe(stripe, "sub_1");
+    const { r, errore } = await disdici(stripe);
+    atteso(`${descrizione}: la disdetta riesce senza errori`, errore === null, errore ?? "");
     uguale(`${descrizione}: prima annulla il cambio, poi registra la disdetta`, chiamate, ["retrieve:sub_1", "release:sub_sched_9", 'update:sub_1:{"cancel_at_period_end":true}']);
     uguale(`${descrizione}: disdetta registrata, schedule tolta, cambio annullato segnalato`, [stato.cancel_at_period_end, stato.schedule, r.cambioProgrammatoAnnullato], [true, null, true]);
   }
