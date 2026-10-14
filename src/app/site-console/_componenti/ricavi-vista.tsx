@@ -183,7 +183,7 @@ export default function RicaviVista({
                         {i.prova && <Badge tono="avviso">prova</Badge>}
                         {i.ricevutaUrl && (
                           <a href={i.ricevutaUrl} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>
-                            ricevuta Stripe
+                            documento Stripe (non fiscale)
                           </a>
                         )}
                       </td>
