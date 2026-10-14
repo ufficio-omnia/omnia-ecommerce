@@ -204,7 +204,7 @@ async function main() {
   atteso("prima della migrazione 0080 l'Allegato A compare senza collegamento, mai con un link rotto", /allegatoUrl \? \(/.test(pagina) && /: \(\s*RISERVATEZZA_DOCUMENTI\.allegato\s*\)/.test(pagina));
   atteso("privacy e cookie puntano alle pagine in vigore", /href="\/privacy"/.test(pagina) && /href="\/cookie-policy"/.test(pagina));
   atteso("link dal piè di pagina", /<Link href="\/riservatezza">Riservatezza<\/Link>/.test(leggi("src/components/omnia-ai/site-footer.tsx")));
-  atteso("link dalla pagina dei piani", /href="\/riservatezza"/.test(leggi("src/app/site-omnia-ai/piani/page.tsx")));
+  atteso("link dalla pagina dei piani", /href="\/riservatezza"/.test(leggi("src/app/site-omnia-ai/piani/piani-vista.tsx")));
   const sitemap = leggi("src/app/sitemap.ts");
   const voceSitemap = sitemap.match(/\{ path: "\/riservatezza", lastModified: "(\d{4}-\d{2}-\d{2})" \}/);
   atteso("nella sitemap di omnia-ai.it, con una data fissa valida", Boolean(voceSitemap) && !Number.isNaN(Date.parse(`${voceSitemap?.[1]}T00:00:00Z`)));
