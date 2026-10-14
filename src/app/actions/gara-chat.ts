@@ -28,6 +28,7 @@ import {
   type EsitoValoriImpresa,
 } from "@/lib/relazione-tecnica";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { verificaDirittoGara } from "@/lib/gara-diritto";
 import { espandiSezioneSottoTetto, riepilogoEsitiEspansione } from "@/lib/espansione-mirata";
 import { leggiFattiFigure } from "@/lib/figure-fatti";
 import {
@@ -145,6 +146,12 @@ export async function sendGaraMessage(
     .single<GaraContesto>();
 
   if (!gara) return { error: "Gara non trovata." };
+
+  // Chat spenta per una gara che non spetta al cliente (gare del piano, crediti o gare gratuite
+  // finite, e la gara non ha mai consumato una gara): prima di salvare il messaggio, prima di
+  // qualunque chiamata al modello. L'interfaccia nasconde già il modulo; questo è il vero blocco.
+  const diritto = await verificaDirittoGara({ garaId, userId: user.id });
+  if (!diritto.consentito) return { error: diritto.messaggio };
 
   const { data: company } = await supabase
     .from("companies")
