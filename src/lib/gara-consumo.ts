@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
+import { MESSAGGIO_GARE_GRATUITE_ESAURITE, calcolaGareGratuite } from "@/lib/omnia-ai-gare-gratuite";
 
 export type ConsumoResult = { error?: string };
 
@@ -182,6 +183,14 @@ export async function consumeGaraQuotaIfNeeded({
     return {};
   }
 
+  // Cliente che non ha MAI avuto un abbonamento e ha gare gratuite assegnate dalla console:
+  // si scala il contatore gratuito. Chi ha avuto un abbonamento, anche cessato, non ci passa.
+  const { count: abbonamentiAvuti } = await admin.from("subscriptions").select("id", { count: "exact", head: true }).eq("user_id", userId);
+  if ((abbonamentiAvuti ?? 0) === 0) {
+    const gratuita = await consumaGaraGratuita({ admin, userId, garaId, titolo: garaEsistente?.titolo ?? null });
+    if (gratuita) return gratuita;
+  }
+
   // Deduplicata per periodo di fatturazione (non per tentativo): un
   // cliente che riprova più volte nello stesso periodo non riceve una
   // notifica per ogni tentativo fallito, solo la prima volta che il
@@ -197,4 +206,69 @@ export async function consumeGaraQuotaIfNeeded({
   });
 
   return { error: MESSAGGIO_QUOTA_ESAURITA };
+}
+
+// Consumo dal contatore delle gare gratuite (migrazione 0084). Restituisce null se il cliente
+// non ha un contatore (non è in prova: chi chiama prosegue col comportamento di sempre).
+// Stesso ordine del consumo da credito: prima si registra il consumo (l'indice unico su
+// gara_id rende l'operazione idempotente), poi si incrementa «usate» con una guardia contro
+// una lettura vecchia concorrente. A zero il cliente non perde nulla di quanto ha già: non
+// può solo avviare nuove analisi.
+async function consumaGaraGratuita({
+  admin,
+  userId,
+  garaId,
+  titolo,
+}: {
+  admin: ReturnType<typeof createAdminClient>;
+  userId: string;
+  garaId: string;
+  titolo: string | null;
+}): Promise<ConsumoResult | null> {
+  const { data: riga } = await admin.from("omnia_ai_gare_gratuite").select("assegnate, usate").eq("user_id", userId).maybeSingle<{ assegnate: number; usate: number }>();
+  const gare = calcolaGareGratuite(riga);
+  if (!gare || !riga) return null;
+
+  if (gare.rimanenti <= 0) {
+    await notificaGareGratuiteEsaurite(userId, gare.assegnate);
+    return { error: MESSAGGIO_GARE_GRATUITE_ESAURITE };
+  }
+
+  const { error: insertError } = await admin.from("gara_consumi").insert({
+    gara_id: garaId,
+    gara_titolo: titolo,
+    user_id: userId,
+    subscription_id: null,
+    tipo: "gratuita",
+  });
+  if (insertError) {
+    // già consumata da una richiesta concorrente: idempotente
+    if (insertError.code === "23505") return {};
+    console.error("Errore inserimento consumo gara (gratuita):", insertError);
+    return { error: MESSAGGIO_GARE_GRATUITE_ESAURITE };
+  }
+
+  const { error: aggiornaError } = await admin
+    .from("omnia_ai_gare_gratuite")
+    .update({ usate: riga.usate + 1, aggiornato_il: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("usate", riga.usate);
+  if (aggiornaError) console.error("Errore aggiornamento gare gratuite dopo consumo:", aggiornaError);
+
+  // Era l'ultima: il cliente lo sa subito, nel campanello (oltre che nel banner).
+  if (gare.rimanenti - 1 <= 0) await notificaGareGratuiteEsaurite(userId, gare.assegnate);
+  return {};
+}
+
+// Una sola notifica per «ciclo» di gare gratuite: se la console ne assegna altre e finiscono di
+// nuovo, la chiave cambia (dipende dal totale assegnato) e se ne genera una nuova.
+async function notificaGareGratuiteEsaurite(userId: string, assegnate: number): Promise<void> {
+  await creaNotifica({
+    userId,
+    tipo: "gare_gratuite_esaurite",
+    garaId: null,
+    titolo: "Gare gratuite esaurite",
+    corpo: "Hai usato tutte le gare gratuite. Per avviare nuove analisi scegli un abbonamento dalla pagina «Abbonamento».",
+    chiaveDedup: `${userId}:gratuite:${assegnate}`,
+  });
 }

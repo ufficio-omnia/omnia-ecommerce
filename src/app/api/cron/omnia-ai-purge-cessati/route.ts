@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { collectGaraFilePaths, removeGaraFiles } from "@/lib/gara-storage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
+import { inviaPromemoriaPilot } from "@/lib/omnia-ai-pilot";
 
 // Mezzanotte UTC del giorno corrente + offset: le colonne "scadenza"
 // coinvolte sono un date puro (gare.scadenza), confrontato per
@@ -156,6 +157,14 @@ export async function GET(request: NextRequest) {
       corpo: `Il tuo abbonamento si rinnova fra 3 giorni, il ${new Date(sub.current_period_end).toLocaleDateString("it-IT")}.`,
       chiaveDedup: `${sub.id}:${sub.current_period_end}`,
     });
+  }
+
+  // Promemoria degli ultimi 15 giorni del prezzo pilot (migrazione 0086): notifica ed email, una volta
+  // per offerta. Un errore qui non deve fermare il resto del lavoro giornaliero.
+  try {
+    await inviaPromemoriaPilot();
+  } catch (e) {
+    console.error("Cron OMNIA AI: promemoria pilot fallito", e instanceof Error ? e.message : e);
   }
 
   // Una riga per ogni esecuzione, anche quando non c'è nulla da

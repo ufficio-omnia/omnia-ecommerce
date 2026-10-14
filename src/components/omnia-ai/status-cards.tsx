@@ -8,6 +8,8 @@ export type StatusCardsProps = {
   saldoCrediti: number;
   dataRinnovo: string | null;
   prossimaScadenza: { titolo: string; giorni: number } | null;
+  // cliente in prova: al posto delle «gare del piano» si mostrano le gare gratuite (usate / assegnate)
+  gareGratuite?: { assegnate: number; usate: number } | null;
 };
 
 function testoProssimaScadenza(p: StatusCardsProps["prossimaScadenza"]): string {
@@ -32,6 +34,7 @@ export default function StatusCards({
   saldoCrediti,
   dataRinnovo,
   prossimaScadenza,
+  gareGratuite = null,
 }: StatusCardsProps) {
   return (
     <div className="omnia-riquadri-stato">
@@ -47,11 +50,23 @@ export default function StatusCards({
 
       <div className="omnia-riquadro-stato omnia-riquadro-stato-filigrana">
         <BrandMark />
-        <div className="omnia-riquadro-stato-etichetta">Gare del piano</div>
-        <div className="omnia-riquadro-stato-valore">
-          {consumatePiano} <span className="unita">/ {gareIncluse}</span>
-        </div>
-        {dataRinnovo && <div className="omnia-riquadro-stato-nota">Rinnovo il {dataRinnovo}</div>}
+        {gareGratuite ? (
+          <>
+            <div className="omnia-riquadro-stato-etichetta">Gare gratuite</div>
+            <div className="omnia-riquadro-stato-valore">
+              {gareGratuite.usate} <span className="unita">/ {gareGratuite.assegnate}</span>
+            </div>
+            <div className="omnia-riquadro-stato-nota">Prova gratuita</div>
+          </>
+        ) : (
+          <>
+            <div className="omnia-riquadro-stato-etichetta">Gare del piano</div>
+            <div className="omnia-riquadro-stato-valore">
+              {consumatePiano} <span className="unita">/ {gareIncluse}</span>
+            </div>
+            {dataRinnovo && <div className="omnia-riquadro-stato-nota">Rinnovo il {dataRinnovo}</div>}
+          </>
+        )}
       </div>
 
       <div className="omnia-riquadro-stato">

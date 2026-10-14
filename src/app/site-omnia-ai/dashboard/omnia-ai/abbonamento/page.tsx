@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
-import { PIANI, PACCHETTI_CREDITI, formatEuro, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, PACCHETTI_CREDITI, formatEuro, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
+import { leggiOffertaPilotAperta, leggiPilotAcquistato } from "@/lib/omnia-ai-pilot";
+import { applicaPilotAlCatalogo, pilotInCorso, testoPilotInCorso } from "@/lib/omnia-ai-pilot-calcoli";
 import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
 import ActivateSubscriptionForm from "../activate-subscription-form";
 import AcquistaCreditiForm from "./acquista-crediti-form";
@@ -46,18 +49,26 @@ export default async function AbbonamentoPage() {
   if (stato.stato !== "attivo") {
     const admin = createAdminClient();
     const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
+    const [catalogo, offertaPilot] = await Promise.all([getCatalogoPiani(), leggiOffertaPilotAperta(user.id)]);
+    const vista = applicaPilotAlCatalogo(PIANI_ORDINE.map((slug) => catalogo[slug]), offertaPilot);
+
+    // Cliente in prova: non c'è nessun abbonamento da «riattivare». Qui si spiega come funziona e
+    // si sceglie il piano (stessa pagina e stesso modulo di chi si abbona per la prima volta).
+    const inProva = stato.stato === "prova";
 
     return (
       <div className="omnia-app-shell">
-        <h1 className="omnia-app-titolo">Riattiva OMNIA AI</h1>
+        <h1 className="omnia-app-titolo">{inProva ? "Scegli il tuo abbonamento" : "Riattiva OMNIA AI"}</h1>
         <p className="omnia-app-sottotitolo">
-          Scegli un piano per riattivare l&apos;abbonamento. I crediti aggiuntivi eventualmente
-          residui dell&apos;abbonamento precedente non sono più disponibili: si sono estinti con la
-          cessazione.
+          {inProva
+            ? `${stato.gare.rimanenti > 0 ? `Hai ancora ${stato.gare.rimanenti} ${stato.gare.rimanenti === 1 ? "gara gratuita" : "gare gratuite"}: puoi continuare a usarle. ` : "Hai usato tutte le gare gratuite. "}Un abbonamento ti dà ogni mese un numero di gare incluse: una gara si consuma quando parte l'analisi dei documenti, e da lì generazioni e revisioni sulla stessa gara sono comprese. Si rinnova ogni mese e puoi disdirlo quando vuoi. Confronta i piani qui sotto e scegli quello più adatto al numero di gare a cui partecipi.`
+            : "Scegli un piano per riattivare l'abbonamento. I crediti aggiuntivi eventualmente residui dell'abbonamento precedente non sono più disponibili: si sono estinti con la cessazione."}
         </p>
 
         {legalDocuments ? (
           <ActivateSubscriptionForm
+            piani={vista.piani}
+            pianoPredefinito={vista.pianoPredefinito}
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}
@@ -93,6 +104,10 @@ export default async function AbbonamentoPage() {
     .order("created_at", { ascending: false })
     .returns<AcquistoCreditiRow[]>();
 
+  // Prezzo pilot in corso: quanto dura e a quanto torna.
+  const pilotAcquistato = await leggiPilotAcquistato(user.id);
+  const pilotAttuale = pilotAcquistato && pilotInCorso(pilotAcquistato, new Date()) ? pilotAcquistato : null;
+
   const dataRinnovo = subscription.current_period_end
     ? new Date(subscription.current_period_end).toLocaleDateString("it-IT")
     : null;
@@ -114,6 +129,15 @@ export default async function AbbonamentoPage() {
         Piano {piano?.nome ?? subscription.plan}: consumo del periodo, crediti aggiuntivi e
         pagamento.
       </p>
+
+      {pilotAttuale && (
+        <section className="omnia-riquadro" aria-label="Prezzo pilot">
+          <span className="omnia-eyebrow">Il tuo prezzo</span>
+          <p className="omnia-messaggio-stato" style={{ marginTop: 12 }}>
+            {testoPilotInCorso(pilotAttuale)}
+          </p>
+        </section>
+      )}
 
       <section className="omnia-riquadro">
         <span className="omnia-eyebrow">Piano e rinnovo</span>

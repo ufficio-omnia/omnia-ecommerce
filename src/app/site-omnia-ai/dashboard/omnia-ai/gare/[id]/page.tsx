@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { downloadGaraDocumento } from "@/app/actions/download";
 import { deleteGara, removeGaraDocumento } from "@/app/actions/gare";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
@@ -53,6 +54,7 @@ export default async function GaraPage({
   // Serve solo per proporre il confronto "credito o piano superiore" nel
   // messaggio di quota esaurita (ExtractionSection): il gate vero e
   // proprio resta in consumeGaraQuotaIfNeeded, invariato.
+  const statoAccesso = await getOmniaAiAccessState(user.id, supabase);
   const { data: subscriptionAttiva } = await supabase
     .from("subscriptions")
     .select("plan")
@@ -225,7 +227,7 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} />
+      <ExtractionSection garaId={gara.id} estrazione={gara} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} />
     </div>

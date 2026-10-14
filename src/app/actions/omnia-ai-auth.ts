@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { segnaPasswordConsegnata } from "@/lib/omnia-ai-password-consegnata";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 
 export type OmniaAiAuthState = { error?: string };
@@ -89,11 +90,12 @@ export async function setInitialPasswordOmniaAi(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({ password });
+  const { data, error } = await supabase.auth.updateUser({ password });
 
   if (error) {
     return { error: error.message };
   }
 
+  await segnaPasswordConsegnata(data.user?.id);
   redirect("/dashboard/omnia-ai");
 }

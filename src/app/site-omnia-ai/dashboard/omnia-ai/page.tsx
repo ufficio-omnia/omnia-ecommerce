@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
+import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import StatusCards from "@/components/omnia-ai/status-cards";
 import GareRecentiList from "@/components/omnia-ai/gare-recenti-list";
 import CosaVuoiFareOggi from "@/components/omnia-ai/cosa-vuoi-fare-oggi";
@@ -30,8 +31,9 @@ export default async function OmniaAiHomePage() {
 
   if (!user) return null;
 
-  const [consumoPeriodo, { data: gareRaw }, { data: documentiRaw }] = await Promise.all([
+  const [consumoPeriodo, statoAccesso, { data: gareRaw }, { data: documentiRaw }] = await Promise.all([
     getConsumoPeriodoCorrente(user.id, supabase),
+    getOmniaAiAccessState(user.id, supabase),
     supabase
       .from("gare")
       .select("id, titolo, stazione_appaltante, scadenza, estrazione_stato, estrazione_aggiornata_il, created_at")
@@ -125,6 +127,7 @@ export default async function OmniaAiHomePage() {
         saldoCrediti={consumoPeriodo?.saldoCrediti ?? 0}
         dataRinnovo={dataRinnovo}
         prossimaScadenza={prossimaScadenza}
+        gareGratuite={statoAccesso.stato === "prova" ? statoAccesso.gare : null}
       />
 
       <GareRecentiList gare={gareRighe} />

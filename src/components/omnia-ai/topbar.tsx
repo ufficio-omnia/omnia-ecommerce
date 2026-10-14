@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { signOut } from "@/app/actions/auth";
 import ProfiloMenu from "./profilo-menu";
 import NotificationBell from "./notification-bell";
 
@@ -16,6 +17,13 @@ export default function Topbar({ nomeSaluto, email }: { nomeSaluto: string; emai
         </Link>
         <NotificationBell />
         <ProfiloMenu email={email} />
+        {/* «Esci» sta anche dentro il menu del profilo, ma nascosto dietro un clic sull'email:
+            un cliente non lo trova. Qui è sempre visibile. */}
+        <form action={signOut}>
+          <button type="submit" className="omnia-btn omnia-btn-s omnia-btn-esci">
+            Esci
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeClient } from "@/lib/stripe";
-import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
 
 type SubscriptionRow = {
@@ -60,8 +60,11 @@ async function validaRichiestaCambioPiano(
   if (!(pianoAttuale in PIANI)) return { error: "Piano attuale non riconosciuto." };
   if (pianoDestinazione === pianoAttuale) return { error: "È già il tuo piano attuale." };
 
+  // Salire o scendere di piano si decide dall'ORDINE dei piani (Starter < Professional < Enterprise),
+  // non dal confronto dei prezzi nel codice: i prezzi si modificano dalla console e non devono
+  // poter scambiare un upgrade con un downgrade.
   const tipo: "upgrade" | "downgrade" =
-    PIANI[pianoDestinazione].prezzoCentesimi > PIANI[pianoAttuale].prezzoCentesimi ? "upgrade" : "downgrade";
+    PIANI_ORDINE.indexOf(pianoDestinazione) > PIANI_ORDINE.indexOf(pianoAttuale) ? "upgrade" : "downgrade";
 
   return { subscription, pianoAttuale, pianoDestinazione, tipo };
 }

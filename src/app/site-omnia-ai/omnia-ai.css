@@ -1995,6 +1995,26 @@ li {
   background: var(--vetro-2);
   color: var(--testo);
 }
+/* «Esci»: pulsante vero in un form, con lo stesso aspetto dei link del piè di barra. */
+.omnia-sidebar-esci {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fioco);
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.omnia-sidebar-esci:hover {
+  background: var(--vetro-2);
+  color: var(--testo);
+}
+.omnia-btn-esci {
+  white-space: nowrap;
+}
 .omnia-sidebar-azienda {
   padding: 6px 8px 0;
   font-size: 12px;
@@ -2668,4 +2688,19 @@ li {
   .omnia-menu-mobile[data-aperto="true"] {
     transition: none;
   }
+}
+
+/* Prezzi con sconto: il listino barrato accanto al prezzo di oggi e il testo dell'offerta. */
+.omnia-prezzo-prima {
+  margin-right: 8px;
+  font-size: 15px;
+  color: var(--fioco);
+  text-decoration: line-through;
+}
+.omnia-prezzo-offerta {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--verde);
+  text-align: left;
 }

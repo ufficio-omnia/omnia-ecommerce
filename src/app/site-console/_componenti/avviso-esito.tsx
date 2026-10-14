@@ -6,7 +6,15 @@
 export type ParametriEsito = { esito?: string; ordine?: string; email?: string; data?: string };
 
 export default function AvvisoEsito({ esito, ordine, email, data }: ParametriEsito) {
-  if (!esito || !ordine) return null;
+  if (!esito) return null;
+  if (esito === "utente_creato") {
+    return (
+      <div className="cn-esito ok" role="status" style={{ marginBottom: 14 }}>
+        Utente creato. Comunicagli email e password: entra da omnia-ai.it/login. Le gare gratuite e il resto si gestiscono da questa scheda.
+      </div>
+    );
+  }
+  if (!ordine) return null;
 
   let testo: string;
   switch (esito) {

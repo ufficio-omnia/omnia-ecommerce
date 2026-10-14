@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PACCHETTI_CREDITI, PIANI, PIANI_ORDINE, formatEuro } from "@/lib/omnia-ai-plans";
 import type { BankDetails } from "@/lib/bank-details";
 import type { StatoParametri } from "@/lib/console/costi";
@@ -71,7 +72,7 @@ export default function ImpostazioniVista({ banca, parametri }: { banca: BankDet
       </div>
 
       <div className="cn-sezione">
-        <Pannello titolo="Listino OMNIA AI (sola lettura)">
+        <Pannello titolo="Listino OMNIA AI (crediti in sola lettura; i prezzi dei piani sono in Piani e prezzi)">
           <div className="cn-scorri">
             <table className="cn-tab">
               <thead>
@@ -85,7 +86,10 @@ export default function ImpostazioniVista({ banca, parametri }: { banca: BankDet
                 {PIANI_ORDINE.map((slug) => (
                   <tr key={slug}>
                     <td>Abbonamento {PIANI[slug].nome}</td>
-                    <td className="num">{formatEuro(PIANI[slug].prezzoCentesimi)} / mese</td>
+                    {/* I prezzi dei piani si modificano da «Piani e prezzi»: la costante del codice sarebbe un valore vecchio. */}
+                    <td className="num">
+                      <Link href="/prezzi">vedi Piani e prezzi</Link>
+                    </td>
                     <td>{PIANI[slug].gareIncluse} gare incluse ogni mese</td>
                   </tr>
                 ))}

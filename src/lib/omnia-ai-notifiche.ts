@@ -7,7 +7,10 @@ export type NotificaTipo =
   | "gara_scadenza_2gg"
   | "gare_piano_esaurite"
   | "rinnovo_3gg"
-  | "pagamento_fallito";
+  | "pagamento_fallito"
+  | "fattura_disponibile"
+  | "gare_gratuite_esaurite"
+  | "pilot_in_scadenza";
 
 // Fire-and-forget come logAiUsage: un fallimento nel generare una
 // notifica non deve mai bloccare il flusso reale che l'ha innescata

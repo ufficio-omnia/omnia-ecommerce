@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { segnaPasswordConsegnata } from "@/lib/omnia-ai-password-consegnata";
 
 export type AccountSettingsState = { error?: string; success?: string };
 
@@ -47,11 +48,12 @@ export async function updateAccountPassword(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.updateUser({ password });
+  const { data, error } = await supabase.auth.updateUser({ password });
 
   if (error) {
     return { error: error.message };
   }
 
+  await segnaPasswordConsegnata(data.user?.id);
   return { success: "Password aggiornata." };
 }
