@@ -97,7 +97,7 @@ export default function RicaviVista({
         <Tessera etichetta="OMNIA AI" valore={formattaEuro(t.omniaAiNetto)} dettaglio={`Abbonamenti, crediti e revisioni · ${formattaEuro(t.omniaAiLordo)} lordi`} />
         <Tessera etichetta="Abbonamenti AI" valore={formattaEuro(t.abbonamentiNetto)} dettaglio={`${formattaIntero(t.incassiAbbonamento)} incassi (primi pagamenti, rinnovi, conguagli)`} />
         <Tessera etichetta="Crediti AI" valore={formattaEuro(t.creditiNetto)} dettaglio={`${formattaIntero(t.acquistiCrediti)} acquisti`} />
-        <Tessera etichetta="Revisioni umane" valore={formattaEuro(t.revisioniNetto)} dettaglio={`${formattaIntero(t.acquistiRevisione)} richieste pagate`} />
+        <Tessera etichetta="Revisioni umane" valore={formattaEuro(t.revisioniNetto)} dettaglio={`${formattaIntero(t.acquistiRevisione)} ${t.acquistiRevisione === 1 ? "richiesta pagata" : "richieste pagate"}`} />
       </div>
 
       <div className="cn-sezione">
