@@ -53,7 +53,7 @@ export function direzioneCambioPiano(da: string | null | undefined, a: string | 
 }
 
 // Collegamento al pannello di Stripe (di prova o vero) per l'ufficio.
-export function linkStripe(oggetto: "subscriptions" | "invoices" | "customers", id: string, livemode: boolean): string {
+export function linkStripe(oggetto: "subscriptions" | "invoices" | "customers" | "payments", id: string, livemode: boolean): string {
   return `https://dashboard.stripe.com${livemode ? "" : "/test"}/${oggetto}/${encodeURIComponent(id)}`;
 }
 
@@ -142,30 +142,30 @@ export function nomeCliente(c: ClienteEmail): string {
   return c.nome?.trim() || c.email?.trim() || "cliente non identificato";
 }
 
-function oggettoConProva(oggetto: string, prova: boolean): string {
+export function oggettoConProva(oggetto: string, prova: boolean): string {
   return prova ? `[PROVA] ${oggetto}` : oggetto;
 }
 
-function tabella(righe: [string, string | null | undefined][]): string {
+export function tabella(righe: [string, string | { html: string } | null | undefined][]): string {
   const celle = righe
-    .filter(([, valore]) => valore !== null && valore !== undefined && valore !== "")
+    .filter(([, valore]) => valore !== null && valore !== undefined && valore !== "" && !(typeof valore === "object" && !valore.html))
     .map(
       ([etichetta, valore]) =>
-        `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;vertical-align:top;white-space:nowrap;">${esc(etichetta)}</td><td style="padding:6px 0;font-weight:600;">${esc(valore)}</td></tr>`,
+        `<tr><td style="padding:6px 16px 6px 0;color:#6b7280;vertical-align:top;white-space:nowrap;">${esc(etichetta)}</td><td style="padding:6px 0;font-weight:600;">${typeof valore === "object" ? (valore as { html: string }).html : esc(valore as string)}</td></tr>`,
     )
     .join("");
   return `<table style="border-collapse:collapse;margin:12px 0 4px;">${celle}</table>`;
 }
 
-function pulsante(testo: string, url: string): string {
+export function pulsante(testo: string, url: string): string {
   return `<p style="margin:20px 0;"><a href="${esc(url)}" style="background:#6d5dfc;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;display:inline-block;">${esc(testo)}</a></p>`;
 }
 
-function collegamento(testo: string, url: string): string {
+export function collegamento(testo: string, url: string): string {
   return `<p style="margin:12px 0;"><a href="${esc(url)}" style="color:#4f46e5;">${esc(testo)}</a></p>`;
 }
 
-function cornice({ titolo, corpo, prova, piede }: { titolo: string; corpo: string; prova: boolean; piede: string }): string {
+export function cornice({ titolo, corpo, prova, piede }: { titolo: string; corpo: string; prova: boolean; piede: string }): string {
   const avvisoProva = prova
     ? `<p style="background:#fff4d6;border:1px solid #f0d58a;border-radius:8px;padding:8px 12px;font-size:13px;margin:16px 0;">Evento dell'account Stripe di PROVA: nessun addebito reale.</p>`
     : "";
@@ -177,8 +177,8 @@ ${corpo}
 </div>`;
 }
 
-const PIEDE_UFFICIO = "Email automatica generata dagli eventi di Stripe di OMNIA AI.";
-const PIEDE_CLIENTE = "Questa è una email automatica: non rispondere a questo indirizzo. Per assistenza usa la pagina Supporto della tua area riservata.";
+export const PIEDE_UFFICIO = "Email automatica generata dagli eventi di Stripe di OMNIA AI.";
+export const PIEDE_CLIENTE = "Questa è una email automatica: non rispondere a questo indirizzo. Per assistenza usa la pagina Supporto della tua area riservata.";
 
 // ───── email all'ufficio ─────
 

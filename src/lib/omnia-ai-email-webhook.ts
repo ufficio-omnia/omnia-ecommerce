@@ -37,12 +37,12 @@ export type StripeLetture = {
   paymentMethods: { retrieve(id: string): Promise<{ card?: { brand?: string | null; last4?: string | null; exp_month?: number | null; exp_year?: number | null } | null }> };
 };
 
-function linkArea(percorso: string): string {
+export function linkArea(percorso: string): string {
   return `${getOmniaAiBaseUrl()}${percorso}`;
 }
 
 // L'email e il nome del cliente dall'archivio (utente + profilo azienda), con i dati di Stripe come ripiego.
-async function leggiCliente(
+export async function leggiCliente(
   admin: SupabaseClient,
   userId: string | null | undefined,
   ripiego: { email?: string | null; nome?: string | null; partitaIva?: string | null } = {},
@@ -71,7 +71,7 @@ async function leggiCliente(
   };
 }
 
-async function eseguiSenzaBloccare(nome: string, azione: () => Promise<void>): Promise<void> {
+export async function eseguiSenzaBloccare(nome: string, azione: () => Promise<void>): Promise<void> {
   try {
     await azione();
   } catch (e) {

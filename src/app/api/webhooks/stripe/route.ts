@@ -21,6 +21,7 @@ import {
   notificaVariazioniAbbonamento,
 } from "@/lib/omnia-ai-email-webhook";
 import { nuovoMetodoDaAbbonamento, nuovoMetodoDaCliente } from "@/lib/omnia-ai-email-eventi-calcoli";
+import { notificaRevisioneUmana, type RigaRevisione } from "@/lib/omnia-ai-email-revisione";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -127,6 +128,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, eventoI
   // raccoglie Stripe). Il ramo e-commerce sotto resta invariato.
   if (session.metadata?.tipo === "omnia_ai_abbonamento") {
     await handleOmniaAiSubscriptionCheckoutCompleted(session, eventoId);
+    return;
+  }
+
+  // Revisione umana della relazione tecnica (pagamento una tantum): la richiesta diventa «pagata» solo qui.
+  if (session.metadata?.tipo === "omnia_ai_revisione") {
+    await handleOmniaAiRevisioneCompleted(session, eventoId);
     return;
   }
 
@@ -969,4 +976,80 @@ async function handleOmniaAiCreditsCheckoutCompleted(session: Stripe.Checkout.Se
     pacchettoSlug: pacchettoSlug as PacchettoCreditiSlug,
     importoCentesimi,
   });
+}
+
+// Revisione umana pagata: la richiesta passa a «pagata» (idempotente: Stripe può rimandare l'evento) e
+// partono le email, all'ufficio con il Word della relazione in allegato e la conferma al cliente. Le email
+// hanno il loro registro contro i doppioni, quindi si richiamano anche per un evento rimandato: così
+// un'email che non era partita riparte.
+async function handleOmniaAiRevisioneCompleted(session: Stripe.Checkout.Session, eventoId: string) {
+  const revisioneId = session.metadata?.revisioneId;
+  if (!revisioneId) {
+    console.error("Webhook Stripe (revisione umana): revisioneId mancante nella sessione", session.id);
+    return;
+  }
+  if (session.payment_status !== "paid") {
+    console.error("Webhook Stripe (revisione umana): sessione non pagata", session.id, session.payment_status);
+    return;
+  }
+
+  const admin = createAdminClient();
+  const { data: riga, error } = await admin
+    .from("omnia_ai_revisioni")
+    .select("*")
+    .eq("id", revisioneId)
+    .maybeSingle<RigaRevisione & { stato: string; stripe_session_id: string | null; messaggio_id: string | null }>();
+  if (error || !riga) {
+    console.error("Webhook Stripe (revisione umana): richiesta non trovata", revisioneId, error?.message);
+    return;
+  }
+  // la richiesta deve essere quella di QUESTO pagamento e di QUESTO cliente
+  if (riga.stripe_session_id && riga.stripe_session_id !== session.id) {
+    console.error("Webhook Stripe (revisione umana): la sessione non corrisponde alla richiesta", revisioneId, session.id);
+    return;
+  }
+  if (session.metadata?.userId && riga.user_id && session.metadata.userId !== riga.user_id) {
+    console.error("Webhook Stripe (revisione umana): il cliente non corrisponde alla richiesta", revisioneId);
+    return;
+  }
+
+  let revisione: RigaRevisione = riga;
+  if (riga.stato !== "pagata") {
+    const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
+    const { data: aggiornata, error: erroreAggiornamento } = await admin
+      .from("omnia_ai_revisioni")
+      .update({
+        stato: "pagata",
+        pagata_il: new Date().toISOString(),
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+        importo_pagato_centesimi: session.amount_total,
+        livemode: session.livemode,
+        dati_stripe: session.customer_details ?? null,
+      })
+      .eq("id", riga.id)
+      .eq("stato", "in_attesa_pagamento")
+      .select("*")
+      .maybeSingle<RigaRevisione>();
+    if (erroreAggiornamento) {
+      console.error("Webhook Stripe (revisione umana): errore registrazione del pagamento", erroreAggiornamento.message);
+      return;
+    }
+    if (aggiornata) revisione = aggiornata;
+  }
+
+  // Un altro pagamento già registrato per la stessa relazione (due schede di pagamento aperte insieme)?
+  let pagamentoDoppio = false;
+  if (riga.messaggio_id) {
+    const { count } = await admin
+      .from("omnia_ai_revisioni")
+      .select("id", { count: "exact", head: true })
+      .eq("messaggio_id", riga.messaggio_id)
+      .eq("stato", "pagata")
+      .neq("id", riga.id)
+      .lt("pagata_il", revisione.pagata_il ?? new Date().toISOString());
+    pagamentoDoppio = (count ?? 0) > 0;
+  }
+
+  await notificaRevisioneUmana({ admin, livemode: session.livemode, eventoId, revisione, sessione: session, pagamentoDoppio });
 }
