@@ -2,12 +2,20 @@
 
 import { useActionState, type FormEvent } from "react";
 import { cancelOmniaAiSubscription } from "@/app/actions/omnia-ai-subscription";
+import { AVVISO_CAMBIO_PIANO_ANNULLATO_CON_DISDETTA, testoConfermaDisdetta } from "@/lib/omnia-ai-disdetta";
 
 type Stato = { error?: string; ok?: boolean };
 
 const initialState: Stato = {};
 
-export default function DisdiciAbbonamentoButton({ dataRinnovo }: { dataRinnovo: string | null }) {
+export default function DisdiciAbbonamentoButton({
+  dataRinnovo,
+  cambioPianoProgrammato = false,
+}: {
+  dataRinnovo: string | null;
+  // c'è un downgrade programmato: disdire lo annulla (Stripe non accetta le due cose insieme)
+  cambioPianoProgrammato?: boolean;
+}) {
   // Non riusa DeleteButton: qui il risultato non è immediato come una
   // cancellazione (cancelOmniaAiSubscription non tocca lo stato locale,
   // arriva solo dal webhook) — serve un messaggio di successo esplicito,
@@ -19,10 +27,7 @@ export default function DisdiciAbbonamentoButton({ dataRinnovo }: { dataRinnovo:
   }, initialState);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    const confirmMessage = `Disdire l'abbonamento? Il servizio resta attivo fino al ${
-      dataRinnovo ?? "termine del periodo corrente"
-    }, comprese le gare residue del piano: da quella data non si rinnova più. I crediti aggiuntivi residui si estinguono con la cessazione, senza rimborso.`;
-    if (!window.confirm(confirmMessage)) {
+    if (!window.confirm(testoConfermaDisdetta(dataRinnovo, cambioPianoProgrammato))) {
       event.preventDefault();
     }
   }
@@ -40,6 +45,7 @@ export default function DisdiciAbbonamentoButton({ dataRinnovo }: { dataRinnovo:
       {state.ok && (
         <p className="omnia-messaggio-stato successo" style={{ marginTop: 12 }}>
           Disdetta registrata su Stripe. L&apos;aggiornamento sarà visibile qui a breve.
+          {cambioPianoProgrammato && ` ${AVVISO_CAMBIO_PIANO_ANNULLATO_CON_DISDETTA}`}
         </p>
       )}
     </form>
