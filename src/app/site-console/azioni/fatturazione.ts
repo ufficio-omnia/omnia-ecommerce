@@ -6,19 +6,27 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediAdminAzione } from "@/lib/console/accesso";
 import { STATI_FATTURA, filtroPredefinito, leggiFiltroFattura, type StatoFattura } from "@/lib/console/fatturazione-calcoli";
 import { dataRoma } from "@/lib/console/giorni-lavorativi";
+import { dataRoma as dataLeggibile } from "@/lib/data-it";
+import { sendEmail } from "@/lib/email";
+import { escapeHtml } from "@/lib/html";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { TABELLA_PER_FONTE, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
+import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 
 // Stato di fatturazione degli incassi OMNIA AI e degli acquisti di crediti, segnato
-// a mano. Ogni azione parte da richiediAdminAzione(). Tocca SOLO le colonne di
-// fatturazione: importi, date di incasso e id Stripe non si modificano mai da qui.
+// a mano, e PDF della fattura caricato sul singolo pagamento (il cliente lo scarica dalla
+// sua area riservata, «Pagamenti e fatture»). Ogni azione parte da richiediAdminAzione().
+// Tocca SOLO le colonne di fatturazione: importi, date di incasso e id Stripe non si
+// modificano mai da qui.
 
 export type StatoAzioneFattura = { errore?: string };
 
 const CHIAVE = /^(incasso|crediti):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GIORNO = /^\d{4}-\d{2}-\d{2}$/;
-const TABELLE = { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases" } as const;
+const TABELLE = TABELLA_PER_FONTE;
 const MASSIMO_RIGHE = 200;
 const DATA_MINIMA = "2020-01-01";
+const LIMITE_BYTE_FATTURA = 15 * 1024 * 1024;
 
 type Valori = { stato: StatoFattura; numero: string | null; data: string | null; note: string | null };
 
@@ -45,7 +53,7 @@ function leggiModulo(formData: FormData, conNumero: boolean): Valori | string {
 
 // Aggiorna le righe indicate (chiavi "incasso:<uuid>" / "crediti:<uuid>"). Ritorna
 // il numero di righe aggiornate o un messaggio di errore.
-async function applica(chiavi: string[], v: Valori, userId: string): Promise<number | string> {
+async function applica(chiavi: string[], v: Valori, userId: string, extra: Record<string, unknown> = {}): Promise<number | string> {
   const perTabella: Record<keyof typeof TABELLE, string[]> = { incasso: [], crediti: [] };
   for (const chiave of new Set(chiavi)) {
     if (!CHIAVE.test(chiave)) return "Riga non valida.";
@@ -69,13 +77,15 @@ async function applica(chiavi: string[], v: Valori, userId: string): Promise<num
         note_fattura: v.note,
         fatturazione_aggiornata_il: adesso,
         fatturazione_aggiornata_da: userId,
+        ...extra,
       })
       .in("id", ids)
       .select("id");
 
     if (error) {
       console.error("Console: aggiornamento stato fattura fallito", error.message);
-      return schemaAssente(error) ? "Stato di fatturazione non disponibile: eseguire la migrazione 0079." : "Aggiornamento non riuscito.";
+      if (schemaAssente(error)) return Object.keys(extra).length > 0 ? "Caricamento del PDF non disponibile: eseguire la migrazione 0081." : "Stato di fatturazione non disponibile: eseguire la migrazione 0079.";
+      return "Aggiornamento non riuscito.";
     }
     aggiornate += data?.length ?? 0;
   }
@@ -83,15 +93,74 @@ async function applica(chiavi: string[], v: Valori, userId: string): Promise<num
   return aggiornate;
 }
 
-function tornaAllElenco(aggiornate: number, stato: StatoFattura, formData: FormData): never {
+function tornaAllElenco(aggiornate: number, stato: StatoFattura, formData: FormData, email?: boolean): never {
   revalidatePath("/site-console", "layout");
   const parametri = new URLSearchParams({ esito: "aggiornate", n: String(aggiornate), nuovo: stato });
+  // l'email al cliente c'è solo al primo caricamento del PDF: se non parte va detto
+  if (email !== undefined) parametri.set("email", email ? "1" : "0");
   const includiProva = formData.get("prova") === "1";
   // si torna alla scheda in cui si stava lavorando: l'indicazione si omette solo se è quella predefinita
   const filtro = leggiFiltroFattura(String(formData.get("filtro") ?? ""), includiProva);
   if (filtro !== filtroPredefinito(includiProva)) parametri.set("stato", filtro);
   if (includiProva) parametri.set("prova", "1");
   redirect(`/fatturazione?${parametri.toString()}`);
+}
+
+type CaricamentoPdf = { errore: string } | { extra: Record<string, unknown>; primoCaricamento: boolean; userId: string | null; dataPagamento: string };
+
+// Carica il PDF di una fattura sul pagamento indicato. Si carica SOLO una fattura già
+// emessa: il pagamento deve risultare «fatturata», altrimenti il cliente si troverebbe
+// una fattura scaricabile su un pagamento ancora da fatturare. Il file sta nel bucket
+// privato «invoices», in un percorso fisso per pagamento (ricaricarlo lo sostituisce).
+async function caricaPdfFattura(riga: string, file: File, stato: StatoFattura): Promise<CaricamentoPdf> {
+  if (stato !== "fatturata") return { errore: "Per caricare il PDF segna il pagamento come «fatturata»." };
+  if (!CHIAVE.test(riga)) return { errore: "Riga non valida." };
+  if (file.size > LIMITE_BYTE_FATTURA) return { errore: "Il file supera i 15 MB." };
+  // Non basta il tipo dichiarato dal browser: un PDF vero comincia con «%PDF».
+  if (!(await file.slice(0, 5).text()).startsWith("%PDF")) return { errore: "Il file non è un PDF." };
+
+  const [fonte, id] = riga.split(":") as [keyof typeof TABELLE, string];
+  const colonnaData = fonte === "incasso" ? "pagato_il" : "created_at";
+  const admin = createAdminClient();
+
+  const { data: attuale, error: erroreLettura } = await admin
+    .from(TABELLE[fonte])
+    .select(`user_id, fattura_caricata_il, ${colonnaData}`)
+    .eq("id", id)
+    .maybeSingle<Record<string, string | null>>();
+  if (erroreLettura) {
+    console.error("Console: lettura del pagamento per il PDF fattura fallita", erroreLettura.message);
+    return { errore: schemaAssente(erroreLettura) ? "Caricamento del PDF non disponibile: eseguire la migrazione 0081." : "Lettura del pagamento non riuscita." };
+  }
+  if (!attuale) return { errore: "Riga non trovata." };
+
+  const { error: erroreUpload } = await admin.storage.from("invoices").upload(percorsoFatturaPagamento(fonte, id), file, { contentType: "application/pdf", upsert: true });
+  if (erroreUpload) {
+    console.error("Console: upload del PDF fattura fallito", erroreUpload.message);
+    return { errore: "Caricamento del file non riuscito." };
+  }
+
+  return {
+    extra: { fattura_file_path: percorsoFatturaPagamento(fonte, id), fattura_caricata_il: attuale.fattura_caricata_il ?? new Date().toISOString() },
+    primoCaricamento: !attuale.fattura_caricata_il,
+    userId: attuale.user_id,
+    dataPagamento: String(attuale[colonnaData] ?? ""),
+  };
+}
+
+// Avvisa il cliente che la fattura è disponibile (stessa cosa che si fa per gli ordini
+// dell'e-commerce). Il link porta all'area riservata di OMNIA AI, non alla console. Il
+// testo è fisso: nessun dato del cliente finisce nell'HTML se non la data del pagamento.
+async function avvisaClienteFattura(userId: string | null, dataPagamento: string): Promise<boolean> {
+  if (!userId) return false;
+  const { data: utente } = await createAdminClient().from("users").select("email").eq("id", userId).maybeSingle<{ email: string }>();
+  if (!utente?.email) return false;
+  const quando = dataPagamento ? ` del ${dataLeggibile(dataPagamento)}` : "";
+  return sendEmail({
+    to: utente.email,
+    subject: "La tua fattura OMNIA AI è disponibile",
+    html: `<p>La fattura relativa al tuo pagamento${escapeHtml(quando)} è ora disponibile nella tua area riservata di OMNIA AI, nella pagina «Pagamenti e fatture».</p><p><a href="${OMNIA_AI_BASE_URL}/dashboard/omnia-ai/pagamenti">Vai a Pagamenti e fatture</a></p><p>Ricorda che la ricevuta che ti invia Stripe a ogni addebito non è la fattura.</p>`,
+  });
 }
 
 export async function aggiornaStatoFattura(_stato: StatoAzioneFattura, formData: FormData): Promise<StatoAzioneFattura> {
@@ -101,11 +170,24 @@ export async function aggiornaStatoFattura(_stato: StatoAzioneFattura, formData:
   const valori = leggiModulo(formData, true);
   if (typeof valori === "string") return { errore: valori };
 
-  const esito = await applica([String(formData.get("riga") ?? "")], valori, sessione.userId);
+  const riga = String(formData.get("riga") ?? "");
+  const file = formData.get("file");
+
+  let pdf: Extract<CaricamentoPdf, { extra: Record<string, unknown> }> | null = null;
+  if (file instanceof File && file.size > 0) {
+    const esitoPdf = await caricaPdfFattura(riga, file, valori.stato);
+    if ("errore" in esitoPdf) return { errore: esitoPdf.errore };
+    pdf = esitoPdf;
+  }
+
+  const esito = await applica([riga], valori, sessione.userId, pdf?.extra);
   if (typeof esito === "string") return { errore: esito };
   if (esito === 0) return { errore: "Riga non trovata." };
 
-  tornaAllElenco(esito, valori.stato, formData);
+  // Il cliente si avvisa solo la prima volta che la fattura compare: sostituire un file
+  // già caricato non manda un'altra email.
+  const emailInviata = pdf?.primoCaricamento ? await avvisaClienteFattura(pdf.userId, pdf.dataPagamento) : undefined;
+  tornaAllElenco(esito, valori.stato, formData, emailInviata);
 }
 
 // Per più righe insieme (es. tutte le righe di un mese): stessa data e stesse note

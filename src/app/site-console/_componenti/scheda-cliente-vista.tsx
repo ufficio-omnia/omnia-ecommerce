@@ -18,6 +18,8 @@ import PulsanteApriLink from "./pulsante-apri-link";
 // documento, IP), crediti, incassi, messaggi e le azioni sull'account.
 
 type SchedaOk = Extract<SchedaCliente, { stato: "ok" }>;
+// riassunto del registro degli accessi ai dati del cliente; null se il registro non è disponibile
+type AccessiCliente = { quanti: number; generali: number; ultimo: string | null } | null;
 
 const STATO_ORDINE: Record<string, { etichetta: string; tono: "ok" | "avviso" | "neutro" | "errore" }> = {
   pagato: { etichetta: "pagato", tono: "ok" },
@@ -102,11 +104,13 @@ export default function SchedaClienteVista({
   scheda,
   idSessione,
   esito,
+  accessi,
 }: {
   scheda: SchedaCliente;
   // id dell'admin che sta guardando: non può eliminare né anonimizzare sé stesso
   idSessione: string;
   esito: ParametriEsito;
+  accessi: AccessiCliente;
 }) {
   const indietro = (
     <Link href="/utenti" className="cn-indietro">
@@ -138,10 +142,10 @@ export default function SchedaClienteVista({
     );
   }
 
-  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} />;
+  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -517,6 +521,27 @@ function SchedaOkVista({ s, idSessione, esito, indietro }: { s: SchedaOk; idSess
               </table>
             </div>
           )}
+        </Pannello>
+      </div>
+
+      {/* ───── Accessi ai suoi dati (registro promesso dal contratto) ───── */}
+      <div className="cn-sezione">
+        <Pannello titolo="Accessi del personale ai suoi dati">
+          <div className="cn-pannello-corpo">
+            {accessi === null ? (
+              <p className="cn-nota-inline">Il registro non è disponibile (migrazione 0082 non ancora eseguita).</p>
+            ) : (
+              <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                {accessi.quanti === 0
+                  ? "Nessun accesso registrato: nessuno ha guardato i dati di questo cliente."
+                  : `${accessi.quanti} ${accessi.quanti === 1 ? "accesso registrato" : "accessi registrati"}${accessi.generali > 0 ? ` (${accessi.generali} generali al database)` : ""}, l'ultimo il ${formattaDataOra(accessi.ultimo ?? "")}.`}
+              </p>
+            )}
+            <p className="cn-nota-inline">
+              <Link href={`/accessi-dati/estratto/${s.utente.id}`}>Estratto per il cliente</Link> ·{" "}
+              <Link href={`/accessi-dati?cliente=${encodeURIComponent(s.utente.email)}`}>Registra un accesso a questo cliente</Link>
+            </p>
+          </div>
         </Pannello>
       </div>
 

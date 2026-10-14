@@ -169,6 +169,8 @@ export type RigaFatturazione = {
   numeroFattura: string | null;
   dataFattura: string | null;
   note: string | null;
+  // il PDF della fattura è stato caricato (il cliente lo scarica dalla sua area riservata)
+  fatturaFile: boolean;
   numeroRicevuta: string | null;
   ricevutaUrl: string | null;
   dati: DatiFatturazione;

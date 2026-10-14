@@ -77,6 +77,7 @@ export default async function AbbonatiPianoPage({
             emailUtente={user?.email ?? null}
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
+            allegatoVersion={legalDocuments.allegatoA?.version ?? null}
           />
         ) : (
           <p className="omnia-messaggio-stato errore">

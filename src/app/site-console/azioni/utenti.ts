@@ -10,7 +10,8 @@ import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { richiediAdminAzione } from "@/lib/console/accesso";
 import { testoPerEmail } from "@/lib/html";
 import { aggiungiGiorni, mezzanotteRoma } from "@/lib/console/periodo";
-import { eAnonimizzato } from "@/lib/console/utenti-calcoli";
+import { abbonamentiDaAnnullareSuStripe, eAnonimizzato, messaggioAbbonamentoDaAnnullare } from "@/lib/console/utenti-calcoli";
+import { schemaAssente } from "@/lib/omnia-ai-incassi";
 
 // Azioni sulla scheda cliente: rispondere, abbonamento a mano, eliminare e anonimizzare.
 // Ognuna parte da richiediAdminAzione(). Spostate dal vecchio pannello admin
@@ -129,16 +130,47 @@ async function leggiBersaglio(userId: string, sessioneId: string, verbo: string)
   return data;
 }
 
+// Rifiuta (restituisce il messaggio) se l'utente ha un abbonamento Stripe non annullato
+// e non di prova: eliminare o anonimizzare dal database non lo annulla su Stripe e il
+// cliente continuerebbe a pagare. La console non chiama Stripe: l'abbonamento si annulla
+// da Stripe e poi si torna qui. Da chiamare PRIMA di qualunque scrittura.
+async function controllaAbbonamentiStripe(userId: string, verbo: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const base = "plan, status, stripe_subscription_id";
+  const lettura = (colonne: string) => admin.from("subscriptions").select(colonne).eq("user_id", userId).not("stripe_subscription_id", "is", null);
+
+  type Riga = { plan: string; status: string; stripe_subscription_id: string | null; livemode?: boolean | null };
+  let risposta = await lettura(`${base}, livemode`);
+  let colonnaDisponibile = true;
+  if (schemaAssente(risposta.error)) {
+    // migrazione 0078 non eseguita: non si sa quali siano di prova, e nel dubbio si rifiuta
+    colonnaDisponibile = false;
+    risposta = await lettura(base);
+  }
+  if (risposta.error) {
+    console.error("Console: controllo degli abbonamenti Stripe fallito", risposta.error.message);
+    return "Controllo dell'abbonamento Stripe non riuscito: l'account non è stato toccato.";
+  }
+
+  const righe = ((risposta.data ?? []) as unknown as Riga[]).map((r) => ({ ...r, livemode: colonnaDisponibile ? (r.livemode ?? null) : null }));
+  const daAnnullare = abbonamentiDaAnnullareSuStripe(righe);
+  return daAnnullare.length > 0 ? messaggioAbbonamentoDaAnnullare(daAnnullare, verbo) : null;
+}
+
 // Elimina l'account e a cascata ordini e fatture. In più rispetto al vecchio
-// pannello: rifiuta se ci sono DATI CONTABILI veri (ordini pagati, incassi di
-// abbonamenti reali, crediti acquistati davvero), che si cancellerebbero a cascata
-// insieme all'utente e che vanno conservati: in quel caso si anonimizza.
+// pannello: rifiuta se ha un abbonamento Stripe non annullato (vedi
+// controllaAbbonamentiStripe) e se ci sono DATI CONTABILI veri (ordini pagati,
+// incassi di abbonamenti reali, crediti acquistati davvero), che si cancellerebbero
+// a cascata insieme all'utente e che vanno conservati: in quel caso si anonimizza.
 export async function eliminaUtente(_stato: StatoAzioneUtente, formData: FormData): Promise<StatoAzioneUtente> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
 
   const bersaglio = await leggiBersaglio(String(formData.get("userId") ?? ""), sessione.userId, "eliminare");
   if (typeof bersaglio === "string") return { errore: bersaglio };
+
+  const abbonamentoStripe = await controllaAbbonamentiStripe(bersaglio.id, "eliminare");
+  if (abbonamentoStripe) return { errore: abbonamentoStripe };
 
   const admin = createAdminClient();
   const [ordiniPagati, incassiReali, creditiReali] = await Promise.all([
@@ -183,6 +215,9 @@ export async function anonimizzaUtente(_stato: StatoAzioneUtente, formData: Form
   const bersaglio = await leggiBersaglio(String(formData.get("userId") ?? ""), sessione.userId, "anonimizzare");
   if (typeof bersaglio === "string") return { errore: bersaglio };
   if (eAnonimizzato(bersaglio.email)) return { errore: "L'account è già anonimizzato." };
+
+  const abbonamentoStripe = await controllaAbbonamentiStripe(bersaglio.id, "anonimizzare");
+  if (abbonamentoStripe) return { errore: abbonamentoStripe };
 
   const admin = createAdminClient();
   const emailAnonima = `cliente-anonimizzato-${bersaglio.id.slice(0, 8)}@omniaitalia.invalid`;

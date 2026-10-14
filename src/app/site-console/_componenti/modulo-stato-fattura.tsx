@@ -19,12 +19,18 @@ export default function ModuloStatoFattura({
   filtro,
   prova,
   azione,
+  haFile,
+  fileDisponibile,
 }: {
   chiave: string;
   statoAttuale: StatoFattura;
   numero: string | null;
   data: string | null;
   note: string | null;
+  // il PDF della fattura è già stato caricato
+  haFile: boolean;
+  // il caricamento del PDF è possibile (migrazione 0081 eseguita)
+  fileDisponibile: boolean;
   // AAAA-MM-GG di oggi (Roma): data proposta per una fattura appena emessa
   oggi: string;
   filtro: string;
@@ -61,6 +67,15 @@ export default function ModuloStatoFattura({
               Data fattura
             </label>
             <input id={`data-${chiave}`} name="data" type="date" className="cn-input" defaultValue={data ?? oggi} max={oggi} required />
+            {fileDisponibile && (
+              <>
+                <label className="cn-etichetta" htmlFor={`pdf-${chiave}`}>
+                  PDF della fattura {haFile ? "(già caricato: sceglierne uno nuovo lo sostituisce)" : "(facoltativo)"}
+                </label>
+                <input id={`pdf-${chiave}`} name="file" type="file" accept="application/pdf" className="cn-file" />
+                <small className="cn-nota-inline">Il cliente la scarica da «Pagamenti e fatture» e, la prima volta, riceve un&apos;email.</small>
+              </>
+            )}
           </>
         )}
 

@@ -29,6 +29,8 @@ export type FatturazioneLetta =
       righe: RigaFatturazione[];
       // le colonne dello stato di fatturazione esistono (migrazione 0079)
       statoDisponibile: boolean;
+      // le colonne del PDF della fattura esistono (migrazione 0081)
+      fileFatturaDisponibile: boolean;
       // la tabella degli incassi esiste (migrazione 0078)
       incassiDisponibili: boolean;
       // righe di prova non mostrate (se i dati di prova sono nascosti)
@@ -45,8 +47,16 @@ const COLONNE_INCASSO =
   "id, user_id, stripe_invoice_id, stripe_subscription_id, tipo, importo_lordo_centesimi, imposta_centesimi, imponibile_centesimi, pagato_il, livemode, numero_ricevuta, ricevuta_url, cliente_snapshot";
 const COLONNE_CREDITI = "id, user_id, pacchetto, crediti, importo_centesimi, stripe_session_id, created_at";
 const COLONNE_STATO = "stato_fattura, numero_fattura, data_fattura, note_fattura";
+// il PDF della fattura caricato dalla console (migrazione 0081)
+const COLONNE_FILE = "fattura_file_path, fattura_caricata_il";
 
-type DatiStato = { stato_fattura?: StatoFattura; numero_fattura?: string | null; data_fattura?: string | null; note_fattura?: string | null };
+type DatiStato = {
+  stato_fattura?: StatoFattura;
+  numero_fattura?: string | null;
+  data_fattura?: string | null;
+  note_fattura?: string | null;
+  fattura_file_path?: string | null;
+};
 
 type IncassoDb = DatiStato & {
   id: string;
@@ -80,15 +90,23 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
   const includiProva = opzioni.includiProva ?? false;
   const admin = createAdminClient();
 
-  // Prima con le colonne dello stato di fatturazione; se non esistono ancora
-  // (migrazione 0079) si legge senza e ogni riga risulta "da fatturare".
+  // Si prova con tutte le colonne, poi senza quelle del PDF (migrazione 0081 non ancora
+  // eseguita), poi anche senza quelle dello stato di fatturazione (0079): in quest'ultimo
+  // caso ogni riga risulta «da fatturare».
+  const leggiTutto = async (colonneIncasso: string, colonneCrediti: string): Promise<[Risposta, Risposta]> => [
+    await admin.from("omnia_ai_incassi").select(colonneIncasso).order("pagato_il", { ascending: false }).limit(2000),
+    await admin.from("omnia_ai_credit_purchases").select(colonneCrediti).order("created_at", { ascending: false }).limit(2000),
+  ];
   let statoDisponibile = true;
-  let incassiQ: Risposta = await admin.from("omnia_ai_incassi").select(`${COLONNE_INCASSO}, ${COLONNE_STATO}`).order("pagato_il", { ascending: false }).limit(2000);
-  let creditiQ: Risposta = await admin.from("omnia_ai_credit_purchases").select(`${COLONNE_CREDITI}, ${COLONNE_STATO}`).order("created_at", { ascending: false }).limit(2000);
+  let fileFatturaDisponibile = true;
+  let [incassiQ, creditiQ] = await leggiTutto(`${COLONNE_INCASSO}, ${COLONNE_STATO}, ${COLONNE_FILE}`, `${COLONNE_CREDITI}, ${COLONNE_STATO}, ${COLONNE_FILE}`);
+  if (schemaAssente(incassiQ.error) || schemaAssente(creditiQ.error)) {
+    fileFatturaDisponibile = false;
+    [incassiQ, creditiQ] = await leggiTutto(`${COLONNE_INCASSO}, ${COLONNE_STATO}`, `${COLONNE_CREDITI}, ${COLONNE_STATO}`);
+  }
   if (schemaAssente(incassiQ.error) || schemaAssente(creditiQ.error)) {
     statoDisponibile = false;
-    incassiQ = await admin.from("omnia_ai_incassi").select(COLONNE_INCASSO).order("pagato_il", { ascending: false }).limit(2000);
-    creditiQ = await admin.from("omnia_ai_credit_purchases").select(COLONNE_CREDITI).order("created_at", { ascending: false }).limit(2000);
+    [incassiQ, creditiQ] = await leggiTutto(COLONNE_INCASSO, COLONNE_CREDITI);
   }
 
   // Senza la tabella degli incassi (0078) restano solo i crediti.
@@ -140,6 +158,7 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
     numeroFattura: r.numero_fattura ?? null,
     dataFattura: r.data_fattura ?? null,
     note: r.note_fattura ?? null,
+    fatturaFile: Boolean(r.fattura_file_path),
   });
 
   for (const i of incassi) {
@@ -201,6 +220,7 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
     parametri,
     righe: visibili,
     statoDisponibile,
+    fileFatturaDisponibile,
     incassiDisponibili,
     provaNascoste: righe.length - visibili.length,
     ordiniSenzaFattura: {

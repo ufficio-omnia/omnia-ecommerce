@@ -67,7 +67,7 @@ uguale("un identificativo fiscale con valore nullo non rompe nulla", risolviDati
 console.log("--- Righe, filtri, testi ---");
 const riga = (o: Partial<RigaFatturazione> = {}): RigaFatturazione => ({
   chiave: "incasso:11111111-1111-1111-1111-111111111111", fonte: "incasso", data: "2026-10-01T10:00:00Z", descrizione: "Abbonamento OMNIA AI Starter: rinnovo", userId: "u", cliente: "Pulizie Rossi S.r.l.",
-  importi: calcolaImporti(699, null, null, 22), prova: false, stato: "da_fatturare", numeroFattura: null, dataFattura: null, note: null, numeroRicevuta: null, ricevutaUrl: null, dati: completo, giorni: 5, idStripe: "in_1", ...o,
+  importi: calcolaImporti(699, null, null, 22), prova: false, stato: "da_fatturare", numeroFattura: null, dataFattura: null, note: null, fatturaFile: false, numeroRicevuta: null, ricevutaUrl: null, dati: completo, giorni: 5, idStripe: "in_1", ...o,
 });
 uguale("descrizione di un rinnovo con il piano", descrizioneIncasso("rinnovo", "starter"), "Abbonamento OMNIA AI Starter: rinnovo");
 uguale("descrizione di un conguaglio senza piano noto", descrizioneIncasso("conguaglio", null), "Abbonamento OMNIA AI: conguaglio per cambio piano");
@@ -164,9 +164,13 @@ atteso("l'inserimento degli acquisti di crediti nel webhook non è stato toccato
 console.log("--- Sicurezza: azioni, pagine, esportazione ---");
 const azioni = leggi("src/app/site-console/azioni/fatturazione.ts");
 atteso("le due azioni partono da richiediAdminAzione prima di toccare i dati", (azioni.match(/await richiediAdminAzione\(\)/g) ?? []).length === 2 && azioni.indexOf("await richiediAdminAzione()") < azioni.indexOf("leggiModulo(formData, true)"));
-atteso("le azioni aggiornano SOLO le colonne di fatturazione (nessun importo)", /\.update\(\{\s*stato_fattura: v\.stato,\s*numero_fattura: v\.numero,\s*data_fattura: v\.data,\s*note_fattura: v\.note,\s*fatturazione_aggiornata_il: adesso,\s*fatturazione_aggiornata_da: userId,\s*\}\)/.test(azioni) && !/importo|stripe_/.test(azioni.slice(azioni.indexOf(".update("), azioni.indexOf(".select(\"id\")"))));
+atteso("le azioni aggiornano SOLO le colonne di fatturazione (nessun importo)", /\.update\(\{\s*stato_fattura: v\.stato,\s*numero_fattura: v\.numero,\s*data_fattura: v\.data,\s*note_fattura: v\.note,\s*fatturazione_aggiornata_il: adesso,\s*fatturazione_aggiornata_da: userId,\s*\.\.\.extra,\s*\}\)/.test(azioni) && !/importo|stripe_/.test(azioni.slice(azioni.indexOf(".update("), azioni.indexOf(".select(\"id\")"))));
+atteso(
+  "le uniche colonne in più sono quelle del PDF della fattura (percorso e data di caricamento), solo dal caricamento",
+  /extra: \{ fattura_file_path: percorsoFatturaPagamento\(fonte, id\), fattura_caricata_il: [^}]*\}/.test(azioni) && (azioni.match(/\bextra\b/g) ?? []).length >= 4 && !/applica\(righe,[^)]*,[^)]*,[^)]+\)/.test(azioni),
+);
 atteso("'fatturata' richiede una data valida non futura; 'non dovuta' richiede una nota", /Indica la data della fattura/.test(azioni) && /dataRoma\(new Date\(\)\)/.test(azioni) && /scrivi nelle note perché/.test(azioni));
-atteso("chiavi delle righe validate (uuid) e tabelle ammesse in lista chiusa", /const CHIAVE = \/\^\(incasso\|crediti\):/.test(azioni) && /const TABELLE = \{ incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases" \}/.test(azioni));
+atteso("chiavi delle righe validate (uuid) e tabelle ammesse in lista chiusa", /const CHIAVE = \/\^\(incasso\|crediti\):/.test(azioni) && /const TABELLE = TABELLA_PER_FONTE;/.test(azioni) && /TABELLA_PER_FONTE = \{ incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases" \} as const/.test(leggi("src/lib/omnia-ai-pagamenti.ts")));
 atteso("l'azione multipla ha un massimo di righe", /MASSIMO_RIGHE = 200/.test(azioni) && /righe\.length > MASSIMO_RIGHE/.test(azioni));
 for (const [file, lettura] of [
   ["src/app/site-console/(app)/fatturazione/page.tsx", /await leggiFatturazione\(/],

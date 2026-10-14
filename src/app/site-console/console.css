@@ -1598,3 +1598,79 @@ a.cn-nav-voce:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ───── Registro degli accessi ai dati dei clienti ───── */
+
+.cn-elenco-regola {
+  margin: 8px 0 10px;
+  padding-left: 18px;
+  color: var(--cn-secondario);
+  font-size: 12.5px;
+  line-height: 1.7;
+  list-style: none;
+}
+
+.cn-azioni-testata {
+  display: flex;
+  gap: 8px;
+}
+
+.cn-dati-estratto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.cn-dati-estratto dt {
+  color: var(--cn-fioco);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cn-dati-estratto dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+}
+
+.cn-frase-estratto {
+  margin-top: 16px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+/* Stampa (estratto per il cliente): fondo bianco, niente barra laterale né comandi. */
+@media print {
+  :root {
+    color-scheme: light;
+    --cn-sfondo: #fff;
+    --cn-barra: #fff;
+    --cn-pannello: #fff;
+    --cn-rilievo: #f3f4f6;
+    --cn-bordo: #d1d5db;
+    --cn-bordo-forte: #9ca3af;
+    --cn-testo: #111;
+    --cn-secondario: #374151;
+    --cn-fioco: #4b5563;
+  }
+
+  body {
+    background: #fff;
+    color: #111;
+  }
+
+  .cn-barra,
+  .cn-nascondi-stampa {
+    display: none !important;
+  }
+
+  .cn-shell {
+    display: block;
+  }
+
+  .cn-principale {
+    padding: 0;
+  }
+}

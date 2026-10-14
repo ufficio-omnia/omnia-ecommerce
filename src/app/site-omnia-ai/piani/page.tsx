@@ -73,6 +73,13 @@ export default async function PianiPage() {
           </Link>
           .
         </p>
+        <p className="micro" style={{ marginTop: 8 }}>
+          Come trattiamo i documenti di gara che ci affidi:{" "}
+          <Link href="/riservatezza" style={{ color: "inherit", textDecoration: "underline" }}>
+            Riservatezza e trattamento dei dati
+          </Link>
+          .
+        </p>
       </section>
     </PageShell>
   );

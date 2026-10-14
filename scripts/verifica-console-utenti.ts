@@ -8,6 +8,7 @@ import path from "path";
 import { escapeHtml, testoPerEmail } from "../src/lib/html";
 import { aggiungiGiorni, mezzanotteRoma } from "../src/lib/console/periodo";
 import {
+  abbonamentiDaAnnullareSuStripe,
   conteggiPerTipo,
   costruisciRigheUtenti,
   descriviAccettazione,
@@ -15,6 +16,7 @@ import {
   filtraUtenti,
   leggiOrdineUtenti,
   leggiTipoUtente,
+  messaggioAbbonamentoDaAnnullare,
   ordinaUtenti,
   statoProvaAbbonamento,
   statoProvaOrdine,
@@ -152,6 +154,32 @@ uguale("fine giornata d'inverno (CET): 31/12 → 23:00 UTC", mezzanotteRoma(aggi
 uguale("fine giornata d'estate (CEST): 31/07 → 22:00 UTC", mezzanotteRoma(aggiungiGiorni("2026-07-31", 1)).toISOString(), "2026-07-31T22:00:00.000Z");
 uguale("passaggio all'ora legale (25/10/2026): il 25 dura 25 ore, la fine è 00:00 del 26 = 23:00 UTC", mezzanotteRoma(aggiungiGiorni("2026-10-25", 1)).toISOString(), "2026-10-25T23:00:00.000Z");
 
+console.log("--- Abbonamenti Stripe da annullare prima di eliminare o anonimizzare ---");
+{
+  const sub = (plan: string, status: string, stripe: string | null, livemode: boolean | null) => ({ plan, status, stripe_subscription_id: stripe, livemode });
+  const blocca = (r: ReturnType<typeof sub>) => abbonamentiDaAnnullareSuStripe([r]).length === 1;
+  uguale("abbonamento live attivo: blocca", blocca(sub("starter", "attivo", "sub_1", true)), true);
+  uguale("abbonamento live annullato: non blocca", blocca(sub("starter", "annullato", "sub_1", true)), false);
+  uguale("abbonamento di prova attivo: non blocca", blocca(sub("starter", "attivo", "sub_2", false)), false);
+  uguale("livemode nullo (sconosciuto) e attivo: blocca", blocca(sub("starter", "attivo", "sub_3", null)), true);
+  uguale("senza stripe_subscription_id (creato a mano) e attivo: non blocca", [blocca(sub("starter", "attivo", null, null)), blocca(sub("starter", "attivo", null, true)), blocca(sub("starter", "attivo", "", true))], [false, false, false]);
+  uguale("live «scaduto»: blocca (il database può essere indietro rispetto a Stripe, un pagamento può essere in nuovo tentativo)", blocca(sub("starter", "scaduto", "sub_4", true)), true);
+  uguale("livemode nullo e annullato: non blocca", blocca(sub("starter", "annullato", "sub_5", null)), false);
+  uguale("stato sconosciuto: nel dubbio blocca", blocca(sub("starter", "qualcosa_di_nuovo", "sub_6", true)), true);
+  uguale("nessuna riga: niente da annullare", abbonamentiDaAnnullareSuStripe([]), []);
+  {
+    // storia reale: un abbonamento di prova vecchio, uno live annullato, uno live attivo
+    const storia = [sub("starter", "attivo", "sub_prova", false), sub("starter", "annullato", "sub_vecchio", true), sub("Professional", "attivo", "sub_vero", true)];
+    uguale("in una storia mista restano solo quelli da annullare, con le righe intatte", abbonamentiDaAnnullareSuStripe(storia).map((r) => r.stripe_subscription_id), ["sub_vero"]);
+    uguale("l'elenco ricevuto non viene modificato", storia.length, 3);
+  }
+  const uno = messaggioAbbonamentoDaAnnullare([sub("Professional", "attivo", "sub_vero", true)], "eliminare");
+  atteso("messaggio: dice che va annullato da Stripe prima, il piano (nome del catalogo) e l'azione rifiutata", /annullalo prima da Stripe/.test(uno) && /«Professional»/.test(uno) && /potrai eliminare l'account/.test(uno) && /non è stato toccato/.test(uno), uno);
+  const due = messaggioAbbonamentoDaAnnullare([sub("starter", "attivo", "sub_a", true), sub("starter", "scaduto", "sub_b", null), sub("enterprise", "attivo", "sub_c", true)], "anonimizzare");
+  atteso("messaggio con più abbonamenti: quanti sono e i piani, senza ripetere lo stesso", /ha 3 abbonamenti OMNIA AI non annullati \(«Starter», «Enterprise»\)/.test(due) && /potrai anonimizzare l'account/.test(due), due);
+  atteso("messaggio con un piano fuori catalogo: lo si dice com'è scritto nel database", /«vecchio-piano»/.test(messaggioAbbonamentoDaAnnullare([sub("vecchio-piano", "attivo", "sub_x", true)], "eliminare")));
+}
+
 console.log("--- Sicurezza: azioni ---");
 const azioniUtenti = leggi("src/app/site-console/azioni/utenti.ts");
 const funzioni = azioniUtenti.split(/^export async function /m).slice(1);
@@ -176,12 +204,32 @@ atteso("elimina e anonimizza: mai il proprio account, mai un altro admin, utente
   atteso("elimina utente: controlla ordini pagati, incassi veri e crediti acquistati PRIMA di cancellare", controllo > 0 && elimina.indexOf("omnia_ai_incassi") > 0 && elimina.indexOf("omnia_ai_credit_purchases") > 0 && cancellazione > controllo && /conteggio > 0/.test(elimina));
   atteso("elimina utente: se il controllo non riesce non si tocca l'account", /if \(ordiniPagati\.error\)/.test(elimina) && elimina.indexOf("if (ordiniPagati.error)") < cancellazione);
   atteso("elimina utente: i file delle fatture si tolgono dallo storage", /storage\.from\("invoices"\)\.remove\(percorsi\)/.test(elimina));
+  // l'abbonamento Stripe non terminato blocca: dopo la guardia admin e i controlli su sé stessi/altro admin, prima di ogni lettura contabile e di ogni scrittura
+  const controlloStripe = elimina.indexOf('controllaAbbonamentiStripe(bersaglio.id, "eliminare")');
+  atteso(
+    "elimina utente: rifiuta se c'è un abbonamento Stripe non annullato, dopo i controlli su sé stessi/altro admin e prima di qualunque scrittura",
+    controlloStripe > elimina.indexOf("leggiBersaglio(") && controlloStripe > elimina.indexOf('typeof bersaglio === "string"') && controlloStripe > 0 && controlloStripe < elimina.indexOf("createAdminClient()") && controlloStripe < elimina.indexOf("omnia_ai_incassi") && controlloStripe < elimina.indexOf("auth.admin.deleteUser") && controlloStripe < elimina.indexOf("storage.from") && /if \(abbonamentoStripe\) return \{ errore: abbonamentoStripe \}/.test(elimina),
+  );
 }
 {
   const anonimizza = funzioni.find((f) => f.startsWith("anonimizzaUtente"))!;
   atteso("anonimizza: email .invalid, password casuale, accesso bloccato, dati di fatturazione tolti", /@omniaitalia\.invalid/.test(anonimizza) && /randomUUID\(\)/.test(anonimizza) && /ban_duration/.test(anonimizza) && /from\("companies"\)\.delete\(\)/.test(anonimizza));
   atteso("anonimizza: non lo si fa due volte", /eAnonimizzato\(bersaglio\.email\)/.test(anonimizza));
+  const controlloStripe = anonimizza.indexOf('controllaAbbonamentiStripe(bersaglio.id, "anonimizzare")');
+  atteso(
+    "anonimizza: rifiuta se c'è un abbonamento Stripe non annullato, dopo i controlli già presenti e prima di toccare account, profilo e dati di fatturazione",
+    controlloStripe > anonimizza.indexOf('typeof bersaglio === "string"') && controlloStripe > anonimizza.indexOf("eAnonimizzato(bersaglio.email)") && controlloStripe > 0 && controlloStripe < anonimizza.indexOf("createAdminClient()") && controlloStripe < anonimizza.indexOf("auth.admin.updateUserById") && controlloStripe < anonimizza.indexOf('from("users").update') && controlloStripe < anonimizza.indexOf('from("companies").delete()') && /if \(abbonamentoStripe\) return \{ errore: abbonamentoStripe \}/.test(anonimizza),
+  );
   atteso("anonimizza: l'indirizzo prodotto è riconosciuto dal riconoscimento usato nell'elenco", eAnonimizzato("cliente-anonimizzato-12345678@omniaitalia.invalid"));
+}
+{
+  // la funzione che legge gli abbonamenti dell'utente: solo righe con Stripe, ripiego senza la colonna livemode (e allora nel dubbio si blocca), errore = rifiuto
+  const inizio = azioniUtenti.indexOf("async function controllaAbbonamentiStripe(");
+  const controllo = azioniUtenti.slice(inizio, azioniUtenti.indexOf("export async function eliminaUtente"));
+  atteso("controllo Stripe: legge subscriptions dell'utente con stripe_subscription_id non nullo e il filtro puro decide", inizio > 0 && /from\("subscriptions"\)/.test(controllo) && /\.eq\("user_id", userId\)/.test(controllo) && /\.not\("stripe_subscription_id", "is", null\)/.test(controllo) && /abbonamentiDaAnnullareSuStripe\(righe\)/.test(controllo));
+  atteso("controllo Stripe: senza la colonna livemode (migrazione 0078) ripiega e tratta tutto come sconosciuto, quindi blocca", /schemaAssente\(risposta\.error\)/.test(controllo) && /colonnaDisponibile \? \(r\.livemode \?\? null\) : null/.test(controllo));
+  atteso("controllo Stripe: se la lettura fallisce si rifiuta senza toccare nulla", /if \(risposta\.error\) \{[^}]*return "[^"]*non è stato toccato/.test(controllo));
+  atteso("controllo Stripe: la console non chiama Stripe (solo rifiuto)", !/from "stripe"|@\/lib\/stripe|createStripeClient/.test(azioniUtenti));
 }
 const azioniOrdini = leggi("src/app/site-console/azioni/ordini.ts");
 atteso("ritorno alla scheda: solo «/utenti/<uuid>», mai un indirizzo qualunque", /const RITORNO_SCHEDA = \/\^\\\/utenti\\\/\[0-9a-f\]\{8\}/.test(azioniOrdini) && /RITORNO_SCHEDA\.test\(ritorno\) \? ritorno : predefinita/.test(azioniOrdini));

@@ -20,6 +20,7 @@ const OMNIA_AI_ROUTES: { path: string; lastModified: string }[] = [
   { path: "/demo", lastModified: "2026-09-21" },
   { path: "/contatti", lastModified: "2026-09-21" },
   { path: "/privacy", lastModified: "2026-09-11" },
+  { path: "/riservatezza", lastModified: "2026-10-13" },
   { path: "/cookie-policy", lastModified: "2026-09-11" },
   { path: "/condizioni-abbonamento", lastModified: "2026-09-11" },
 ];

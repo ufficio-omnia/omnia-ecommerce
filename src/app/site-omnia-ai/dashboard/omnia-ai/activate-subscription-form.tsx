@@ -5,6 +5,7 @@ import {
   startOmniaAiSubscriptionCheckout,
   type OmniaAiCheckoutState,
 } from "@/app/actions/omnia-ai-subscription";
+import ConsensiAbbonamento from "@/components/omnia-ai/consensi-abbonamento";
 import { PIANI, PIANI_ORDINE, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
 
 const initialState: OmniaAiCheckoutState = {};
@@ -12,9 +13,12 @@ const initialState: OmniaAiCheckoutState = {};
 export default function ActivateSubscriptionForm({
   condizioniVersion,
   privacyVersion,
+  allegatoVersion,
 }: {
   condizioniVersion: number;
   privacyVersion: number;
+  // versione in vigore dell'Allegato A; null se non esiste ancora
+  allegatoVersion: number | null;
 }) {
   const [state, formAction, pending] = useActionState(
     startOmniaAiSubscriptionCheckout,
@@ -25,7 +29,6 @@ export default function ActivateSubscriptionForm({
   const [acceptClausoleSpecifiche, setAcceptClausoleSpecifiche] = useState(false);
 
   const canSubmit = acceptCondizioniPrivacy && acceptClausoleSpecifiche;
-  const condizioniUrl = `/documenti-legali/condizioni-abbonamento/${condizioniVersion}`;
 
   return (
     <form action={formAction}>
@@ -62,65 +65,16 @@ export default function ActivateSubscriptionForm({
         })}
       </div>
 
-      <div className="omnia-riquadro" style={{ marginTop: 24 }}>
-        <span className="omnia-eyebrow">Condizioni contrattuali</span>
-
-        <div className="omnia-check-riga">
-          <input
-            id="acceptCondizioniPrivacy"
-            name="acceptCondizioniPrivacy"
-            type="checkbox"
-            checked={acceptCondizioniPrivacy}
-            onChange={(e) => setAcceptCondizioniPrivacy(e.target.checked)}
-            required
-          />
-          <label htmlFor="acceptCondizioniPrivacy">
-            Dichiaro di aver letto e accettato le{" "}
-            <a href={condizioniUrl} target="_blank" rel="noopener noreferrer">
-              Condizioni di abbonamento (versione {condizioniVersion})
-            </a>{" "}
-            e di aver preso visione della{" "}
-            <a
-              href={`/documenti-legali/privacy-policy/${privacyVersion}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Privacy policy (versione {privacyVersion})
-            </a>
-            .
-          </label>
-        </div>
-
-        <div className="omnia-check-riga">
-          <input
-            id="acceptClausoleSpecifiche"
-            name="acceptClausoleSpecifiche"
-            type="checkbox"
-            checked={acceptClausoleSpecifiche}
-            onChange={(e) => setAcceptClausoleSpecifiche(e.target.checked)}
-            required
-          />
-          <label htmlFor="acceptClausoleSpecifiche">
-            Dichiaro di approvare specificamente, ai sensi di legge, le clausole n.{" "}
-            <a href={`${condizioniUrl}#clausola-5`} target="_blank" rel="noopener noreferrer">
-              5
-            </a>{" "}
-            (Gare incluse e crediti aggiuntivi),{" "}
-            <a href={`${condizioniUrl}#clausola-8`} target="_blank" rel="noopener noreferrer">
-              8
-            </a>{" "}
-            (Cosa succede dopo la cessazione),{" "}
-            <a href={`${condizioniUrl}#clausola-11`} target="_blank" rel="noopener noreferrer">
-              11
-            </a>{" "}
-            (Nessuna garanzia sull&apos;esito della gara) e{" "}
-            <a href={`${condizioniUrl}#clausola-14`} target="_blank" rel="noopener noreferrer">
-              14
-            </a>{" "}
-            (Limitazione di responsabilità) delle Condizioni di abbonamento.
-          </label>
-        </div>
-      </div>
+      <ConsensiAbbonamento
+        condizioniVersion={condizioniVersion}
+        privacyVersion={privacyVersion}
+        allegatoVersion={allegatoVersion}
+        condizioniAccettate={acceptCondizioniPrivacy}
+        onCondizioniChange={setAcceptCondizioniPrivacy}
+        clausoleApprovate={acceptClausoleSpecifiche}
+        onClausoleChange={setAcceptClausoleSpecifiche}
+        margineSuperiore={24}
+      />
 
       <p className="omnia-riquadro-nota" style={{ marginTop: 16 }}>
         Rinnovo automatico mensile finché non disdici: puoi farlo in qualsiasi momento dalla tua

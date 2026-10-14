@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import PageShell from "@/components/omnia-ai/page-shell";
-import CondizioniAbbonamentoV1 from "@/components/omnia-ai/legal/condizioni-abbonamento-v1";
+import DocumentoLegaleVersionato, { versioneRegistrataPiuVicina } from "@/components/omnia-ai/legal/documento-legale-versionato";
+import { getCurrentOmniaAiDocumento } from "@/lib/omnia-ai-legal";
 import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
 export const metadata: Metadata = paginaMetadata({
@@ -10,10 +11,17 @@ export const metadata: Metadata = paginaMetadata({
   path: "/condizioni-abbonamento",
 });
 
-export default function CondizioniAbbonamentoPage() {
+// Pagina «corrente»: mostra la versione in vigore secondo legal_documents (la v2 dopo la
+// migrazione 0080), non una versione fissa. Se il database non risponde o non ha righe
+// si ricade sulla v1, che è sempre registrata; se indica una versione che il codice non
+// conosce ancora si mostra la più recente che possiede.
+export default async function CondizioniAbbonamentoPage() {
+  const corrente = await getCurrentOmniaAiDocumento("omnia_ai_condizioni_abbonamento");
+  const versione = versioneRegistrataPiuVicina("condizioni-abbonamento", corrente?.version ?? 1) ?? 1;
+
   return (
     <PageShell>
-      <CondizioniAbbonamentoV1 />
+      <DocumentoLegaleVersionato slug="condizioni-abbonamento" version={String(versione)} />
     </PageShell>
   );
 }

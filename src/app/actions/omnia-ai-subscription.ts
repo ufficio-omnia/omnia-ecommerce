@@ -112,6 +112,13 @@ export async function startOmniaAiSubscriptionCheckout(
     privacyPolicyDocId: legalDocuments.privacyPolicy.id,
     privacyPolicyVersion: String(legalDocuments.privacyPolicy.version),
   };
+  // L'Allegato A viaggia insieme agli altri documenti: stesso id e stessa versione che il
+  // cliente ha visto in questo checkout, non quelli vigenti quando arriva il webhook (se
+  // una nuova versione entrasse in vigore nel frattempo, si registrerebbe quella sbagliata).
+  if (legalDocuments.allegatoA) {
+    metadata.allegatoADocId = legalDocuments.allegatoA.id;
+    metadata.allegatoAVersion = String(legalDocuments.allegatoA.version);
+  }
   if (userId) metadata.userId = userId;
 
   // Prezzo Stripe persistente (mai price_data creato al volo): un

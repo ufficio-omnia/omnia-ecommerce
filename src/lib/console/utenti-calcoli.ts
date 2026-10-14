@@ -1,4 +1,4 @@
-import { normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { statoAbbonamento, type StatoAbbonamento } from "./abbonamenti-calcoli";
 import type { AbbonamentoRiga } from "./costi-calcoli";
 
@@ -19,6 +19,7 @@ export const ETICHETTA_DOCUMENTO: Record<string, string> = {
   omnia_ai_privacy_policy: "Privacy policy OMNIA AI",
   omnia_ai_cookie_policy: "Cookie policy OMNIA AI",
   omnia_ai_condizioni_abbonamento: "Condizioni di abbonamento OMNIA AI",
+  omnia_ai_allegato_a: "Allegato A — nomina a responsabile del trattamento",
 };
 
 export const ETICHETTA_ACCETTAZIONE: Record<string, string> = {
@@ -39,6 +40,35 @@ export function etichettaAccettazione(tipo: string): string {
 // un indirizzo del dominio riservato ".invalid".
 export function eAnonimizzato(email: string | null): boolean {
   return Boolean(email && /^cliente-anonimizzato-.+@omniaitalia\.invalid$/.test(email));
+}
+
+// ───── Abbonamenti Stripe da annullare prima di eliminare o anonimizzare ─────
+//
+// Eliminare o anonimizzare un utente dal database NON annulla il suo abbonamento su
+// Stripe: se è vero (live) il cliente continuerebbe a essere addebitato. La console non
+// chiama Stripe: rifiuta, e l'abbonamento si annulla da Stripe.
+//
+// Blocca ogni riga con un abbonamento Stripe, di cui non si sa che sia di PROVA
+// (livemode diverso da false: vero, oppure nullo = sconosciuto), e non annullata. Quelle
+// di prova non bloccano. Lo stato nel database può essere indietro rispetto a Stripe
+// (es. un «scaduto» con un pagamento in nuovo tentativo): solo «annullato» sblocca,
+// ogni altro stato blocca, e nel dubbio si rifiuta.
+export type AbbonamentoDaControllare = { plan: string; status: string; stripe_subscription_id: string | null; livemode: boolean | null };
+
+export function abbonamentiDaAnnullareSuStripe<T extends AbbonamentoDaControllare>(righe: T[]): T[] {
+  return righe.filter((r) => Boolean(r.stripe_subscription_id) && r.livemode !== false && r.status !== "annullato");
+}
+
+// Il messaggio per l'admin: quale piano e dove si annulla. `verbo` è l'azione rifiutata
+// all'infinito («eliminare», «anonimizzare»).
+export function messaggioAbbonamentoDaAnnullare(righe: AbbonamentoDaControllare[], verbo: string): string {
+  const piani = righe.map((r) => {
+    const slug = normalizzaPianoSlug(r.plan);
+    return slug ? `«${PIANI[slug].nome}»` : `«${r.plan}»`;
+  });
+  const elenco = [...new Set(piani)].join(", ");
+  const soggetto = righe.length === 1 ? `ha un abbonamento OMNIA AI ${elenco} non annullato` : `ha ${righe.length} abbonamenti OMNIA AI non annullati (${elenco})`;
+  return `Questo cliente ${soggetto} su Stripe: annullalo prima da Stripe, poi potrai ${verbo} l'account. Altrimenti il cliente continuerebbe a essere addebitato. L'account non è stato toccato.`;
 }
 
 // ───── Elenco ─────
