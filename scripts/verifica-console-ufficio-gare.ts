@@ -116,7 +116,8 @@ async function main() {
     uguale("è un titolare: l'Ufficio Gare con stato e ultimo accesso", await leggiLegameUfficioGare(T, admin), { ruolo: "titolare", ufficioGare: { id: M, email: "gare@azienda.it", attivo: true, creatoIl: "2026-10-10T08:00:00Z", invitoInviatoIl: "2026-10-10T08:00:00Z", ultimoAccesso: "2026-10-12T09:00:00Z" } });
   }
   for (const codice of ["42P01", "PGRST205"]) {
-    const { admin } = fintoAdmin({ comeMembro: { data: null, error: { code: codice, message: "assente" } } });
+    const errore = { data: null, error: { code: codice, message: "assente" } };
+    const { admin } = fintoAdmin({ comeMembro: errore, comeTitolare: errore });
     uguale(`tabella assente (${codice}): nessun legame, non un errore`, [await leggiLegameUfficioGare(V, admin), await leggiTitolareDelMembro(V, admin), await leggiMembroDelTitolare(V, admin)], [null, null, null]);
   }
   {
@@ -167,10 +168,10 @@ async function main() {
 
   console.log("--- Viste ---");
   const elenco = leggi("src/app/site-console/_componenti/utenti-vista.tsx");
-  atteso("elenco: tessera degli Uffici Gare, badge sul membro (legato al titolare) e sul titolare, filtro", elenco.includes('etichetta="Uffici Gare"') && elenco.includes("r.ufficioGareDi && (") && elenco.includes("<Link href={`/utenti/${r.ufficioGareDi.titolareId}`}>") && elenco.includes("ha un Ufficio Gare") && elenco.includes("sospeso"));
+  atteso("elenco: tessera degli Uffici Gare, badge sul membro (legato al titolare) e sul titolare, filtro", elenco.includes('etichetta="Uffici Gare"') && elenco.includes("{r.ufficioGareDi && (") && elenco.includes("{r.ufficioGare && (") && elenco.includes("<Link href={`/utenti/${r.ufficioGareDi.titolareId}`}>") && elenco.includes("ha un Ufficio Gare") && elenco.includes("sospeso"));
   const scheda = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
-  atteso("scheda: pannello «Ufficio Gare» per il titolare e per il membro, con i collegamenti reciproci", scheda.includes('<Pannello titolo="Ufficio Gare">') && scheda.includes("s.legameUfficioGare.titolare.id") && scheda.includes("s.legameUfficioGare.ufficioGare.id") && scheda.includes("in attesa del primo accesso"));
-  atteso("scheda: se la lettura del legame non riesce lo dice", scheda.includes("s.legameUfficioGareNonLetto"));
+  atteso("scheda: pannello «Ufficio Gare» per il titolare e per il membro, con i collegamenti reciproci", scheda.includes("{s.legameUfficioGare && (") && scheda.includes('<Pannello titolo="Ufficio Gare">') && scheda.includes("s.legameUfficioGare.titolare.id") && scheda.includes("s.legameUfficioGare.ufficioGare.id") && scheda.includes("in attesa del primo accesso"));
+  atteso("scheda: se la lettura del legame non riesce lo dice", scheda.includes("{s.legameUfficioGareNonLetto && ("));
   atteso("scheda di un Ufficio Gare: abbonamento a mano e gare gratuite sostituiti dal messaggio", (scheda.match(/MESSAGGIO_E_UN_UFFICIO_GARE/g) ?? []).length >= 3 && scheda.includes('const eMembro = s.legameUfficioGare?.ruolo === "ufficio_gare";') && /\{eMembro \? \(\s*<p className="cn-nota" style=\{\{ padding: 14 \}\}>\s*\{MESSAGGIO_E_UN_UFFICIO_GARE\}/.test(scheda));
   const lettura = leggi("src/lib/console/utenti.ts");
   atteso("lettura dell'elenco: i legami si leggono con tolleranza della tabella assente, un altro errore non passa per «nessun legame»", lettura.includes('from("omnia_ai_membri").select("membro_id, titolare_id, attivo")') && /membriQ\.error && !schemaAssente\(membriQ\.error\) \? null/.test(lettura) && lettura.includes("membri: membriLetti ?? []"));
