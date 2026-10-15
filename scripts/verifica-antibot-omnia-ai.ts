@@ -10,6 +10,7 @@ import {
   CAMPO_TURNSTILE,
   LUNGHEZZA_MASSIMA_GETTONE,
   MESSAGGIO_VERIFICA_FALLITA,
+  TIMEOUT_VERIFICA_MS,
   URL_VERIFICA_TURNSTILE,
   statoTurnstile,
   verificaGettoneTurnstile,
@@ -71,6 +72,8 @@ async function main() {
   );
 
   console.log("--- Verifica del gettone (Cloudflare finto) ---");
+  // Valori fissati da Cloudflare: scritti qui in chiaro, non letti dalle costanti (un confronto con se stesse non scopre nulla).
+  uguale("limiti e indirizzo di Cloudflare: gettone al massimo 2048 caratteri, verifica su challenges.cloudflare.com, 5 secondi di attesa", [LUNGHEZZA_MASSIMA_GETTONE, URL_VERIFICA_TURNSTILE, TIMEOUT_VERIFICA_MS], [2048, "https://challenges.cloudflare.com/turnstile/v0/siteverify", 5000]);
   const opzioni = (fetchFn: typeof fetch, extra: { ip?: string | null; timeoutMs?: number } = {}) => ({ chiaveSegreta: "segreta-di-prova", fetchFn, ...extra });
 
   const ok = cloudflareFinto(() => json({ success: true }));
@@ -122,7 +125,13 @@ async function main() {
   ], [{ ok: true, motivo: "servizio_non_raggiungibile" }, { ok: true, motivo: "servizio_non_raggiungibile" }, { ok: true, motivo: "servizio_non_raggiungibile" }]);
   const lento = ((_url: string, init?: RequestInit) => new Promise<Response>((_risolvi, rifiuta) => init?.signal?.addEventListener("abort", () => rifiuta(new Error("interrotta"))))) as unknown as typeof fetch;
   const inizio = Date.now();
-  uguale("Cloudflare che non risponde mai: dopo il tempo massimo si va avanti (qui 40 ms)", await senzaRumore(() => verificaGettoneTurnstile("g", opzioni(lento, { timeoutMs: 40 }))), { ok: true, motivo: "servizio_non_raggiungibile" });
+  // Un guasto che blocca per sempre non deve far «passare» il test in silenzio (un'attesa senza fine non dà errori):
+  // si corre contro un limite di 1,5 secondi.
+  const esitoLento = await Promise.race([
+    senzaRumore(() => verificaGettoneTurnstile("g", opzioni(lento, { timeoutMs: 40 }))),
+    new Promise<string>((risolvi) => setTimeout(() => risolvi("BLOCCATO: nessun tempo massimo"), 1500)),
+  ]);
+  uguale("Cloudflare che non risponde mai: dopo il tempo massimo si va avanti (qui 40 ms)", esitoLento, { ok: true, motivo: "servizio_non_raggiungibile" });
   atteso("e non si aspetta di più del tempo massimo", Date.now() - inizio < 1500, `${Date.now() - inizio} ms`);
 
   console.log("--- Azioni pubbliche ---");
@@ -177,7 +186,7 @@ async function main() {
   atteso("la chiave SEGRETA non compare in nessun file del browser («use client»)", sorgentiClient.length > 20 && sorgentiClient.every((f) => !/TURNSTILE_SECRET_KEY/.test(leggi(f))), sorgentiClient.find((f) => /TURNSTILE_SECRET_KEY/.test(leggi(f))));
   atteso("la chiave segreta non ha il prefisso NEXT_PUBLIC (che la manderebbe al browser)", ![...fileSotto("src"), ...fileSotto("scripts")].some((f) => /NEXT_PUBLIC_TURNSTILE_SECRET|NEXT_PUBLIC_TURNSTILE_SECRET_KEY/.test(leggi(f)) && !f.endsWith("verifica-antibot-omnia-ai.ts")));
   const lato = leggi("src/lib/turnstile.ts");
-  atteso("lato server: con la verifica non attiva non si chiede nulla; attiva, si usa la chiave segreta e l'indirizzo di chi scrive", /!== "attiva" \|\| !chiaveSegreta\) return \{ ok: true \}/.test(lato) && /x-forwarded-for/.test(lato) && /MESSAGGIO_VERIFICA_FALLITA/.test(lato) && MESSAGGIO_VERIFICA_FALLITA.length > 20);
+  atteso("lato server: con la verifica non attiva non si chiede nulla; attiva, si usa la chiave segreta e l'indirizzo di chi scrive", /!== "attiva" \|\| !chiaveSegreta\) return \{ ok: true \}/.test(lato) && /x-forwarded-for/.test(lato) && /\{ ok: false, errore: MESSAGGIO_VERIFICA_FALLITA \}/.test(lato) && MESSAGGIO_VERIFICA_FALLITA.length > 20);
   const esempio = leggi(".env.example");
   atteso(".env.example elenca le due variabili (vuote)", /^NEXT_PUBLIC_TURNSTILE_SITE_KEY=\s*$/m.test(esempio) && /^TURNSTILE_SECRET_KEY=\s*$/m.test(esempio));
   const stato = leggi("src/lib/console/stato-sistema.ts");
