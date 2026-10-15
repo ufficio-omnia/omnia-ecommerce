@@ -129,12 +129,13 @@ async function main() {
     const e = validaInvitoUfficioGare(v);
     return e.ok ? null : e.errore;
   };
-  atteso("email vuota rifiutata", !!errore({ ...buono, email: "   " }));
+  atteso("email vuota rifiutata, con il messaggio che dice cosa inserire", /^Inserisci/.test(errore({ ...buono, email: "   " }) ?? ""));
   atteso("email senza chiocciola rifiutata", !!errore({ ...buono, email: "gare.azienda.it" }));
   atteso("email con spazi dentro rifiutata", !!errore({ ...buono, email: "ga re@azienda.it" }));
   atteso("email senza dominio rifiutata", !!errore({ ...buono, email: "gare@azienda" }));
   atteso("email troppo lunga rifiutata", !!errore({ ...buono, email: `${"a".repeat(250)}@azienda.it` }));
   atteso("la stessa email del titolare è rifiutata, anche con maiuscole e spazi", !!errore({ ...buono, email: " TITOLARE@Azienda.it " }));
+  atteso("la stessa email del titolare è rifiutata anche se il titolare ha maiuscole nell'indirizzo", !!errore({ ...buono, email: "titolare@azienda.it", emailTitolare: " Titolare@Azienda.IT " }));
   atteso("senza il consenso del titolare niente invito", !!errore({ ...buono, consenso: false }));
   atteso("titolare senza email noto: l'invito vale se il resto è a posto", validaInvitoUfficioGare({ ...buono, emailTitolare: null }).ok);
 
