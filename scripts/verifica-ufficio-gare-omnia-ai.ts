@@ -470,6 +470,14 @@ async function main() {
     atteso("riattivazione: prima si toglie il blocco del login, poi si riapre l'accesso ai dati", r.indexOf('ban_duration: "none"') !== -1 && r.indexOf('ban_duration: "none"') < r.indexOf("attivo: true"));
     const x = corpoDi("rimuoviUfficioGare");
     atteso("rimozione: prima si chiude l'accesso ai dati, poi si elimina l'utente", x.indexOf("attivo: false") !== -1 && x.indexOf("attivo: false") < x.indexOf("deleteUser"));
+    atteso("rimozione: se l'eliminazione fallisce l'esito è un errore (l'accesso resta chiuso), mai un successo", /deleteUser\(lettura\.ufficio\.membroId\);\s*if \(error\) \{[\s\S]*?return \{ error: "Rimozione non riuscita: l'accesso resta sospeso/.test(x));
+    atteso("sospensione: il blocco del login è di 100 anni e si applica davvero", /const DURATA_SOSPENSIONE = "876000h";/.test(azioni) && s.includes("{ ban_duration: DURATA_SOSPENSIONE }"));
+    const ins = corpoDi("creaUfficioGare");
+    atteso("creazione: se l'Ufficio Gare esiste già si rifiuta, con il messaggio che dice cosa fare", /if \(lettura\.esito === "presente"\) return \{ error: "Hai già un Ufficio Gare: se vuoi cambiarlo, rimuovilo prima/.test(ins));
+    atteso("creazione: un indirizzo già registrato si rifiuta con il messaggio neutro", /if \(esistente\) return \{ error: MESSAGGIO_EMAIL_NON_UTILIZZABILE \};/.test(ins));
+    atteso("creazione: l'indirizzo è dato per confermato (l'ha indicato il titolare: nessun link di conferma)", ins.includes("{ email, password: casuale, email_confirm: true }"));
+    const rin = corpoDi("rinviaLinkUfficioGare");
+    atteso("rinvio: si registra l'ora vera dell'invio", rin.includes(".update({ invito_inviato_il: new Date().toISOString() })") && !rin.includes("2000-01-01"));
   }
   const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/ufficio-gare/page.tsx");
   atteso("la pagina parte dalla guardia del titolare e non legge la sessione per conto suo", pagina.includes("await richiediTitolarePagina()") && !pagina.includes("auth.getUser"));
