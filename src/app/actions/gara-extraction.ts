@@ -7,7 +7,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
 import { consumeGaraQuotaIfNeeded } from "@/lib/gara-consumo";
-import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
+import { richiediAccountAzione } from "@/lib/omnia-ai-account-guardie";
+import { accessoNegatoPerAccount } from "@/lib/omnia-ai-account-lavoro";
+import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
+import { messaggioPerUfficioGare } from "@/lib/omnia-ai-account-calcoli";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { nessunIntervento, ripulisciPersonaleUscente } from "@/lib/personale-anonimo";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
@@ -192,16 +195,14 @@ export async function extractGaraData(
   formData: FormData,
 ): Promise<ExtractionState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
   // Vale anche per la rianalisi (gratuita per contratto, ma resta pur
   // sempre l'avvio di una nuova generazione di contenuto): bloccata in
   // sola lettura come ogni altra azione che genera contenuto.
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
@@ -241,8 +242,13 @@ export async function extractGaraData(
     };
   }
 
-  const consumo = await consumeGaraQuotaIfNeeded({ garaId, userId: user.id });
+  const consumo = await consumeGaraQuotaIfNeeded({ garaId, userId: contesto.accountId });
   if (consumo.error) {
+    // L'Ufficio Gare non compra nulla: vede il promemoria per l'amministratore, e al titolare parte l'email.
+    if (contesto.ruolo === "ufficio_gare") {
+      avvisaTitolareDopoLaRisposta({ contesto, emailUfficioGare: user.email, motivo: "gare_finite" });
+      return { error: messaggioPerUfficioGare("gare_finite"), quotaEsaurita: true };
+    }
     return { error: consumo.error, quotaEsaurita: true };
   }
 
@@ -336,7 +342,7 @@ export async function extractGaraData(
     });
 
     await logAiUsage({
-      userId: user.id,
+      userId: contesto.accountId,
       garaId,
       operazione: "estrazione_gara",
       provider: "anthropic",
@@ -464,7 +470,7 @@ export async function extractGaraData(
     // successiva (nuovo estrazione_aggiornata_il) genera di nuovo una
     // notifica, la stessa conclusione non viene mai notificata due volte.
     await creaNotifica({
-      userId: user.id,
+      userId: contesto.accountId,
       tipo: "analisi_conclusa",
       garaId,
       titolo: "Analisi documenti conclusa",

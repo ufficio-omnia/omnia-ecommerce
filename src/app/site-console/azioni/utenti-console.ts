@@ -12,6 +12,7 @@ import { escapeHtml } from "@/lib/html";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { applicaVariazione } from "@/lib/omnia-ai-gare-gratuite";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO, MESSAGGIO_E_UN_UFFICIO_GARE, leggiTitolareDelMembro } from "@/lib/console/ufficio-gare";
 
 // Clienti creati dalla console e gare gratuite (migrazione 0084). Ogni azione parte da
 // richiediAdminAzione(). La password iniziale la sceglie l'amministratore e passa SOLO da qui
@@ -99,6 +100,11 @@ export async function modificaGareGratuite(_stato: StatoUtenteConsole, formData:
   const { data: utente } = await admin.from("users").select("id, role").eq("id", userId).maybeSingle<{ id: string; role: string }>();
   if (!utente) return { errore: "Utente non trovato." };
   if (utente.role === "admin") return { errore: "È un amministratore: non ha gare gratuite." };
+
+  // Un Ufficio Gare lavora sulle gare del titolare: le gare gratuite si assegnano al titolare, non a lui.
+  const titolareDelMembro = await leggiTitolareDelMembro(userId, admin);
+  if (titolareDelMembro === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+  if (titolareDelMembro) return { errore: MESSAGGIO_E_UN_UFFICIO_GARE };
 
   const { count: abbonamenti } = await admin.from("subscriptions").select("id", { count: "exact", head: true }).eq("user_id", userId);
   if ((abbonamenti ?? 0) > 0) return { errore: "Questo cliente ha avuto un abbonamento: le gare gratuite servono solo alla prova, prima del primo abbonamento." };

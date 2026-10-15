@@ -10,6 +10,9 @@ export type StatusCardsProps = {
   prossimaScadenza: { titolo: string; giorni: number } | null;
   // cliente in prova: al posto delle «gare del piano» si mostrano le gare gratuite (usate / assegnate)
   gareGratuite?: { assegnate: number; usate: number } | null;
+  // vista dell'Ufficio Gare: un solo numero («gare a disposizione», null se non si è potuto leggere), niente piano, rinnovo né crediti
+  ufficioGare?: boolean;
+  gareDisponibili?: number | null;
 };
 
 function testoProssimaScadenza(p: StatusCardsProps["prossimaScadenza"]): string {
@@ -35,7 +38,39 @@ export default function StatusCards({
   dataRinnovo,
   prossimaScadenza,
   gareGratuite = null,
+  ufficioGare = false,
+  gareDisponibili = null,
 }: StatusCardsProps) {
+  if (ufficioGare) {
+    return (
+      <div className="omnia-riquadri-stato">
+        <div className="omnia-riquadro-stato">
+          <div className="omnia-riquadro-stato-etichetta">Gare attive</div>
+          <div className="omnia-riquadro-stato-valore">{gareAttive}</div>
+        </div>
+
+        <div className="omnia-riquadro-stato">
+          <div className="omnia-riquadro-stato-etichetta">Gare completate</div>
+          <div className="omnia-riquadro-stato-valore">{gareCompletate}</div>
+        </div>
+
+        <div className="omnia-riquadro-stato omnia-riquadro-stato-filigrana">
+          <BrandMark />
+          <div className="omnia-riquadro-stato-etichetta">Gare a disposizione</div>
+          <div className="omnia-riquadro-stato-valore">{gareDisponibili ?? "—"}</div>
+        </div>
+
+        <div className="omnia-riquadro-stato">
+          <div className="omnia-riquadro-stato-etichetta">Prossima scadenza</div>
+          <div className="omnia-riquadro-stato-valore" style={{ fontSize: 18 }}>
+            {testoProssimaScadenza(prossimaScadenza)}
+          </div>
+          {prossimaScadenza && <div className="omnia-riquadro-stato-nota">{prossimaScadenza.titolo}</div>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="omnia-riquadri-stato">
       <div className="omnia-riquadro-stato">

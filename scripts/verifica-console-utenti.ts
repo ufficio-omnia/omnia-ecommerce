@@ -117,7 +117,7 @@ uguale("senza dati: nessuna riga e nessun errore", costruisciRigheUtenti({ ...da
 }
 
 console.log("--- Filtri e ordinamenti ---");
-uguale("conteggi per tipo", conteggiPerTipo(righe), { tutti: 5, ecommerce: 2, omnia_ai: 3, da_rispondere: 1, senza_accettazioni: 3, senza_attivita: 0, admin: 1 });
+uguale("conteggi per tipo", conteggiPerTipo(righe), { tutti: 5, ecommerce: 2, omnia_ai: 3, ufficio_gare: 0, da_rispondere: 1, senza_accettazioni: 3, senza_attivita: 0, admin: 1 });
 uguale("filtro «Con ordini»", filtraUtenti(righe, "ecommerce", "").map((r) => r.id), [U1, U5]);
 uguale("filtro «Con abbonamento AI»", filtraUtenti(righe, "omnia_ai", "").map((r) => r.id), [U1, U2, U3]);
 uguale("filtro «Da rispondere»", filtraUtenti(righe, "da_rispondere", "").map((r) => r.id), [U1]);

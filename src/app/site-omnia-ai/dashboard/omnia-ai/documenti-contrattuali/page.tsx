@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import DocumentiContrattualiVista from "@/components/omnia-ai/documenti-contrattuali-vista";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import {
   datiAllegatoMancanti,
   raggruppaAccettazioni,
@@ -17,11 +18,10 @@ export const metadata: Metadata = { title: "Documenti contrattuali — OMNIA AI"
 // vedere altro che i propri. I documenti legali hanno invece lettura pubblica.
 export default async function DocumentiContrattualiPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+  // Solo il titolare: l'Ufficio Gare non vede questa pagina (la barra laterale non la mostra, il controllo vero è qui).
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { user } = sessione;
 
   const [accettazioni, documenti, abbonamenti, profilo] = await Promise.all([
     supabase

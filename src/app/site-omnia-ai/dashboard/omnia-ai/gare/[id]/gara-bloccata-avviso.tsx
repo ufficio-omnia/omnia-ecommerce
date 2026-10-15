@@ -10,10 +10,13 @@ export default function GaraBloccataAvviso({
   messaggio,
   motivo,
   pianoAttuale,
+  ufficioGare = false,
 }: {
   messaggio: string;
   motivo: "quota_esaurita" | "gratuite_esaurite" | "verifica_non_riuscita";
   pianoAttuale: string | null;
+  // l'Ufficio Gare non compra nulla: vede solo il promemoria per l'amministratore, senza link né prezzi
+  ufficioGare?: boolean;
 }) {
   return (
     <div className="omnia-messaggio-stato avviso" role="status" style={{ marginTop: 24 }}>
@@ -21,14 +24,14 @@ export default function GaraBloccataAvviso({
         <strong>Chat e caricamento documenti disattivati per questa gara.</strong>
       </p>
       <p style={{ margin: "8px 0 0" }}>{messaggio}</p>
-      {motivo === "gratuite_esaurite" && (
+      {!ufficioGare && motivo === "gratuite_esaurite" && (
         <p style={{ margin: "12px 0 0" }}>
           <Link href="/dashboard/omnia-ai/abbonamento" className="omnia-btn omnia-btn-p">
             Scegli un abbonamento
           </Link>
         </p>
       )}
-      {motivo === "quota_esaurita" && <QuotaEsauritaConfronto pianoAttuale={pianoAttuale} />}
+      {!ufficioGare && motivo === "quota_esaurita" && <QuotaEsauritaConfronto pianoAttuale={pianoAttuale} />}
     </div>
   );
 }

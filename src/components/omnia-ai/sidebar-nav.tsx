@@ -5,17 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions/auth";
 import BrandMark from "./brand-mark";
 import { useMarchioStato } from "./marchio-stato-context";
-
-const VOCI = [
-  { href: "/dashboard/omnia-ai", label: "Dashboard" },
-  { href: "/dashboard/omnia-ai/gare", label: "Gare" },
-  { href: "/dashboard/omnia-ai/documenti-aziendali", label: "Documenti aziendali" },
-  { href: "/dashboard/omnia-ai/profilo-azienda", label: "Profilo azienda" },
-  { href: "/dashboard/omnia-ai/abbonamento", label: "Abbonamento" },
-  { href: "/dashboard/omnia-ai/pagamenti", label: "Pagamenti e fatture" },
-  { href: "/dashboard/omnia-ai/documenti-contrattuali", label: "Documenti contrattuali" },
-  { href: "/dashboard/omnia-ai/impostazioni", label: "Impostazioni" },
-];
+import { VOCI_MENU_TITOLARE, type VoceMenu } from "@/lib/omnia-ai-account-calcoli";
 
 // "Dashboard" è l'unica voce il cui href è anche prefisso di ogni altra
 // (/dashboard/omnia-ai/gare inizia con /dashboard/omnia-ai): per lei
@@ -24,7 +14,9 @@ function isVoceAttiva(pathname: string, href: string): boolean {
   return href === "/dashboard/omnia-ai" ? pathname === href : pathname.startsWith(href);
 }
 
-export default function SidebarNav({ nomeAzienda }: { nomeAzienda: string | null }) {
+// Le voci arrivano dal ruolo (omnia-ai-account-calcoli.ts): il titolare le vede tutte, l'Ufficio Gare solo Dashboard e Gare.
+// Nascondere una voce è solo cortesia: l'accesso alle pagine lo blocca ogni pagina per conto suo.
+export default function SidebarNav({ nomeAzienda, voci = VOCI_MENU_TITOLARE }: { nomeAzienda: string | null; voci?: VoceMenu[] }) {
   const pathname = usePathname();
   const { stato } = useMarchioStato();
 
@@ -36,7 +28,7 @@ export default function SidebarNav({ nomeAzienda }: { nomeAzienda: string | null
       </Link>
 
       <div className="omnia-sidebar-nav">
-        {VOCI.map((voce) => (
+        {voci.map((voce) => (
           <Link
             key={voce.href}
             href={voce.href}

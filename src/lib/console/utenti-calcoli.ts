@@ -79,6 +79,8 @@ export type OrdineUtenteDb = { id: string; user_id: string; status: string; tota
 export type AbbonamentoUtenteDb = AbbonamentoRiga & { id: string; user_id: string; livemode: boolean | null };
 export type MessaggioDb = { user_id: string; sender: string; created_at: string };
 export type AccessoUtente = { ultimoAccesso: string | null; bannato: boolean };
+// legame Ufficio Gare → titolare (tabella omnia_ai_membri, migrazione 0092)
+export type MembroDb = { membro_id: string; titolare_id: string; attivo: boolean };
 
 export type DatiElencoUtenti = {
   utenti: UtenteDb[];
@@ -92,6 +94,8 @@ export type DatiElencoUtenti = {
   crediti: { user_id: string; balance: number }[];
   messaggi: MessaggioDb[];
   accessi: Map<string, AccessoUtente>;
+  // Uffici Gare (migrazione 0092): se manca (tabella non ancora creata) nessun utente è un Ufficio Gare
+  membri?: MembroDb[];
 };
 
 export type RigaUtente = {
@@ -121,6 +125,10 @@ export type RigaUtente = {
   accettazioniMancanti: number;
   // l'ultimo messaggio della conversazione è del cliente
   daRispondere: boolean;
+  // questo utente è l'Ufficio Gare di un altro (titolare): non è un cliente a sé
+  ufficioGareDi: null | { titolareId: string; titolare: string; attivo: boolean };
+  // questo utente (titolare) ha un Ufficio Gare
+  ufficioGare: null | { id: string; email: string; attivo: boolean };
 };
 
 export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): RigaUtente[] {
@@ -139,6 +147,11 @@ export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): Rig
     const attuale = ultimoMessaggio.get(m.user_id);
     if (!attuale || m.created_at > attuale.created_at) ultimoMessaggio.set(m.user_id, m);
   }
+
+  // Uffici Gare: chi è membro di chi
+  const utentePerId = new Map(dati.utenti.map((u) => [u.id, u]));
+  const membroPerId = new Map((dati.membri ?? []).map((m) => [m.membro_id, m]));
+  const membroPerTitolare = new Map((dati.membri ?? []).map((m) => [m.titolare_id, m]));
 
   return dati.utenti.map((u) => {
     const ordini = ordiniPerUtente.get(u.id) ?? [];
@@ -183,16 +196,28 @@ export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): Rig
       saldoCrediti: saldi.get(u.id) ?? 0,
       accettazioniMancanti: ordiniSenza + abbSenza,
       daRispondere: ultimoMessaggio.get(u.id)?.sender === "cliente",
+      ufficioGareDi: (() => {
+        const legame = membroPerId.get(u.id);
+        if (!legame) return null;
+        const titolare = utentePerId.get(legame.titolare_id);
+        return { titolareId: legame.titolare_id, titolare: aziende.get(legame.titolare_id)?.ragione_sociale ?? titolare?.email ?? legame.titolare_id, attivo: legame.attivo };
+      })(),
+      ufficioGare: (() => {
+        const legame = membroPerTitolare.get(u.id);
+        if (!legame) return null;
+        return { id: legame.membro_id, email: utentePerId.get(legame.membro_id)?.email ?? legame.membro_id, attivo: legame.attivo };
+      })(),
     };
   });
 }
 
-export type TipoUtente = "tutti" | "ecommerce" | "omnia_ai" | "da_rispondere" | "senza_accettazioni" | "admin" | "senza_attivita";
+export type TipoUtente = "tutti" | "ecommerce" | "omnia_ai" | "ufficio_gare" | "da_rispondere" | "senza_accettazioni" | "admin" | "senza_attivita";
 
 export const TIPI_UTENTE: { valore: TipoUtente; etichetta: string }[] = [
   { valore: "tutti", etichetta: "Tutti" },
   { valore: "ecommerce", etichetta: "Con ordini" },
   { valore: "omnia_ai", etichetta: "Con abbonamento AI" },
+  { valore: "ufficio_gare", etichetta: "Uffici Gare" },
   { valore: "da_rispondere", etichetta: "Da rispondere" },
   { valore: "senza_accettazioni", etichetta: "Senza accettazioni" },
   { valore: "senza_attivita", etichetta: "Senza attività" },
@@ -207,9 +232,11 @@ const corrisponde: Record<TipoUtente, (r: RigaUtente) => boolean> = {
   tutti: () => true,
   ecommerce: (r) => r.ordini.totale > 0,
   omnia_ai: (r) => r.abbonamento !== null,
+  // gli Uffici Gare stessi (non i titolari che li hanno)
+  ufficio_gare: (r) => r.ufficioGareDi !== null,
   da_rispondere: (r) => r.daRispondere,
   senza_accettazioni: (r) => r.accettazioniMancanti > 0,
-  senza_attivita: (r) => r.ordini.totale === 0 && r.abbonamento === null && r.ruolo !== "admin",
+  senza_attivita: (r) => r.ordini.totale === 0 && r.abbonamento === null && r.ruolo !== "admin" && r.ufficioGareDi === null,
   admin: (r) => r.ruolo === "admin",
 };
 

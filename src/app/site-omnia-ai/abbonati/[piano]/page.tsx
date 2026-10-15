@@ -10,6 +10,7 @@ import { PIANI, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { testoOfferta } from "@/lib/omnia-ai-catalogo-calcoli";
 import AbbonatiPianoForm from "./abbonati-piano-form";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 function isPianoSlug(value: string): value is PianoSlug {
   return value in PIANI;
@@ -47,6 +48,13 @@ export default async function AbbonatiPianoPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Chi ha una sessione deve essere un titolare: l'Ufficio Gare non può abbonarsi (creerebbe un secondo abbonamento
+  // a suo nome); lo si rimanda alla dashboard. Chi non ha sessione (acquisto diretto dal sito) prosegue come sempre.
+  if (user) {
+    const sessione = await richiediTitolarePagina();
+    if (!sessione) return null;
+  }
 
   // Chi è già abbonato non ha motivo di vedere una pagina di acquisto:
   // il controllo server nell'azione lo bloccherebbe comunque, ma

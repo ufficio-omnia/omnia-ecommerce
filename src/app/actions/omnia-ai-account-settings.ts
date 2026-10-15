@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { segnaPasswordConsegnata } from "@/lib/omnia-ai-password-consegnata";
+import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 
 export type AccountSettingsState = { error?: string; success?: string };
 
@@ -11,6 +12,10 @@ export async function updateAccountEmail(
   _prevState: AccountSettingsState,
   formData: FormData,
 ): Promise<AccountSettingsState> {
+  // Solo il titolare: l'Ufficio Gare non cambia l'email dell'account (la sua password la sceglie dal link ricevuto o da «Password dimenticata»).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
@@ -36,6 +41,10 @@ export async function updateAccountPassword(
   _prevState: AccountSettingsState,
   formData: FormData,
 ): Promise<AccountSettingsState> {
+  // Solo il titolare (vedi sopra).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 

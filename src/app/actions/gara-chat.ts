@@ -27,8 +27,8 @@ import {
   applicaSostituzioniAnonimizzazione,
   type EsitoValoriImpresa,
 } from "@/lib/relazione-tecnica";
-import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
-import { verificaDirittoGara } from "@/lib/gara-diritto";
+import { richiediAccountAzione } from "@/lib/omnia-ai-account-guardie";
+import { accessoNegatoPerAccount, dirittoGaraPerAccount } from "@/lib/omnia-ai-account-lavoro";
 import { espandiSezioneSottoTetto, riepilogoEsitiEspansione } from "@/lib/espansione-mirata";
 import { leggiFattiFigure } from "@/lib/figure-fatti";
 import {
@@ -99,13 +99,11 @@ export async function sendGaraMessage(
 ): Promise<ChatState> {
   const inizioRichiestaMs = Date.now();
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
-
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
@@ -150,15 +148,17 @@ export async function sendGaraMessage(
   // Chat spenta per una gara che non spetta al cliente (gare del piano, crediti o gare gratuite
   // finite, e la gara non ha mai consumato una gara): prima di salvare il messaggio, prima di
   // qualunque chiamata al modello. L'interfaccia nasconde già il modulo; questo è il vero blocco.
-  const diritto = await verificaDirittoGara({ garaId, userId: user.id });
+  const diritto = await dirittoGaraPerAccount({ contesto, user, garaId });
   if (!diritto.consentito) return { error: diritto.messaggio };
 
-  const { data: company } = await supabase
+  // Il profilo azienda serve a scrivere l'offerta: è del titolare, anche quando a lavorare è l'Ufficio Gare
+  // (che non lo vede né lo modifica ma lo usa). Letto con la chiave di servizio, SEMPRE per l'account effettivo.
+  const { data: company } = await createAdminClient()
     .from("companies")
     .select(
       "ragione_sociale, forma_giuridica, numero_dipendenti, fatturato_medio_annuo, certificazioni, referenze, settori_attivita, presentazione",
     )
-    .eq("user_id", user.id)
+    .eq("user_id", contesto.accountId)
     .maybeSingle<CompanyContesto>();
 
   const { data: storicoRaw } = await supabase
@@ -175,7 +175,7 @@ export async function sendGaraMessage(
     .from("gara_messaggi")
     .insert({
       gara_id: garaId,
-      user_id: user.id,
+      user_id: contesto.accountId,
       ruolo: "utente",
       contenuto: messaggio || "[Allegato]",
     })
@@ -214,7 +214,7 @@ export async function sendGaraMessage(
         const { error: insertAllegatoError } = await supabase.from("gara_messaggio_allegati").insert({
           messaggio_id: messaggioInserito.id,
           gara_id: garaId,
-          user_id: user.id,
+          user_id: contesto.accountId,
           nome_file: file.name,
           file_path: filePath,
           mime_type: file.type || "application/octet-stream",
@@ -259,7 +259,7 @@ export async function sendGaraMessage(
 
   try {
     const queryEmbedding = await embedQuery(messaggio, {
-      userId: user.id,
+      userId: contesto.accountId,
       garaId,
       operazione: "chat_gara_ricerca",
     });
@@ -356,7 +356,7 @@ export async function sendGaraMessage(
     // Piattaforma gestionale e sue funzioni dal profilo (resiliente se la
     // migrazione 0072 non è ancora stata eseguita): decide se il cruscotto è
     // disegnabile e lo dice al modello.
-    const fattiFigure = await leggiFattiFigure({ supabase, userId: user.id }).catch(() => null);
+    const fattiFigure = await leggiFattiFigure({ supabase, userId: contesto.accountId }).catch(() => null);
     const systemPrompt = buildSystemPrompt(
       gara,
       company ?? null,
@@ -416,7 +416,7 @@ export async function sendGaraMessage(
       const response = await stream.finalMessage();
 
       await logAiUsage({
-        userId: user.id,
+        userId: contesto.accountId,
         garaId,
         operazione: "chat_gara",
         provider: "anthropic",
@@ -463,7 +463,7 @@ export async function sendGaraMessage(
 
         if (toolUse.name === "componi_relazione_finale") {
           try {
-            const risultato = await componiRelazioneFinale({ garaId, userId: user.id });
+            const risultato = await componiRelazioneFinale({ garaId, userId: contesto.accountId });
             if ("error" in risultato) {
               toolResults.push({
                 type: "tool_result",
@@ -555,7 +555,7 @@ export async function sendGaraMessage(
             limitePagineTotale: gara.limite_pagine_totale,
             subCriteriTabellari: gara.sub_criteri_tabellari,
             formattazione: formattazioneCorrente,
-            context: { userId: user.id, garaId },
+            context: { userId: contesto.accountId, garaId },
           });
           // Espansione dei sotto-criteri che occupano molto meno del proprio
           // tetto (le bozze si fermano al 60-75%: verificato con il modello
@@ -576,7 +576,7 @@ export async function sendGaraMessage(
                 criteriValutazione: gara.criteri_valutazione,
                 punteggioTecnico: gara.punteggio_tecnico_max ?? undefined,
                 formattazione: formattazioneCorrente,
-                context: { userId: user.id, garaId },
+                context: { userId: contesto.accountId, garaId },
               });
               contenutoCorretto = espansione.contenuto;
               for (const riga of riepilogoEsitiEspansione(espansione.esiti)) console.log(`sendGaraMessage [${garaId}] ${riga}`);
@@ -597,7 +597,7 @@ export async function sendGaraMessage(
 
           const { nomeFile, filePath, pagineStimate, avvisiEconomici, valoriImpresa, avvisiOrganigramma, avvisiFigure } = await generaBozzaSezione({
             garaId,
-            userId: user.id,
+            userId: contesto.accountId,
             titoloSezione: input.titolo_sezione,
             titoloRelazione: input.titolo_relazione,
             contenuto: contenutoFinale,
@@ -683,7 +683,7 @@ export async function sendGaraMessage(
         });
 
         await logAiUsage({
-          userId: user.id,
+          userId: contesto.accountId,
           garaId,
           operazione: "chat_gara_wrapup",
           provider: "anthropic",
@@ -720,7 +720,7 @@ export async function sendGaraMessage(
 
   const rigaMessaggio = {
     gara_id: garaId,
-    user_id: user.id,
+    user_id: contesto.accountId,
     ruolo: "assistente",
     contenuto: contenutoFinale,
     file_nome: fileGenerato?.nomeFile ?? null,

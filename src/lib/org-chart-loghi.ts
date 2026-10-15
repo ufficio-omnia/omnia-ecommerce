@@ -30,18 +30,16 @@ async function caricaLogo(
 // del cliente/stazione appaltante è specifico della singola gara.
 // Nessuno è obbligatorio: un logo mancante viene semplicemente omesso
 // dal disegno, non è un errore.
-export async function recuperaLoghiOrganigramma(garaId: string): Promise<LoghiOrganigramma> {
+// userId è l'account effettivo (il titolare, anche quando a lavorare è l'Ufficio Gare), risolto sul server dal
+// chiamante: il profilo azienda si legge con la chiave di servizio, la gara con la sessione (regole di accesso).
+export async function recuperaLoghiOrganigramma(garaId: string, userId: string): Promise<LoghiOrganigramma> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return {};
 
   const [{ data: company }, { data: gara }] = await Promise.all([
-    supabase
+    createAdminClient()
       .from("companies")
       .select("logo_path, software_logo_path")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .maybeSingle<{ logo_path: string | null; software_logo_path: string | null }>(),
     supabase
       .from("gare")

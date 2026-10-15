@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 import { CHIAVE_PAGAMENTO, COLONNA_DATA_PER_FONTE, TABELLA_PER_FONTE, UUID, nomeFileFattura, percorsoFatturaPagamento } from "@/lib/omnia-ai-pagamenti";
 
 // Scarica la fattura PDF di un pagamento dell'abbonamento (o di un acquisto di crediti).
@@ -27,10 +28,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const origine = fonte as keyof typeof TABELLA_PER_FONTE;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", request.url));
+  // Solo il titolare: i pagamenti e le fatture sono amministrazione (l'Ufficio Gare non li vede). Senza sessione,
+  // al login; per l'Ufficio Gare (o un ruolo non verificabile) la fattura «non è disponibile».
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) {
+    return guardia.errore.startsWith("Sessione scaduta") ? NextResponse.redirect(new URL("/login", request.url)) : nonTrovata();
+  }
+  const { user } = guardia;
 
   const colonnaData = COLONNA_DATA_PER_FONTE[origine];
   const { data: grezza } = await supabase

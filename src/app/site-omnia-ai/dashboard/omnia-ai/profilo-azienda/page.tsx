@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import CompanyProfileForm from "./company-profile-form";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 export type Company = {
   ragione_sociale: string | null;
@@ -31,13 +31,10 @@ export type Company = {
 
 export default async function ProfiloAziendaPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  // Solo il titolare: l'Ufficio Gare non vede questa pagina (la barra laterale non la mostra, il controllo vero è qui).
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { user } = sessione;
 
   // I campi del livello di Direzione dell'organigramma (migrazione 0071) e le
   // funzioni della piattaforma (0072) sono facoltativi: se una migrazione non è

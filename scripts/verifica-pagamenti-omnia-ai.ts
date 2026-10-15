@@ -148,7 +148,8 @@ console.log("--- Rotta di download del cliente ---");
 const rottaCliente = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/pagamenti/fattura/[fonte]/[id]/route.ts");
 const posizione = (testo: string, pezzo: string) => testo.indexOf(pezzo);
 atteso("controlla il formato di fonte e id prima di tutto", posizione(rottaCliente, "CHIAVE_PAGAMENTO.test(fonte)") !== -1 && posizione(rottaCliente, "CHIAVE_PAGAMENTO.test(fonte)") < posizione(rottaCliente, "createClient()"));
-atteso("senza sessione rimanda al login", /if \(!user\) return NextResponse\.redirect\(new URL\("\/login"/.test(rottaCliente));
+atteso("senza sessione rimanda al login", /guardia\.errore\.startsWith\("Sessione scaduta"\) \? NextResponse\.redirect\(new URL\("\/login", request\.url\)\)/.test(rottaCliente));
+atteso("solo il titolare scarica le fatture (l'Ufficio Gare non le vede), con la guardia prima di leggere la riga", /await richiediTitolareAzione\(\)/.test(rottaCliente) && posizione(rottaCliente, "richiediTitolareAzione()") < posizione(rottaCliente, ".from(TABELLA_PER_FONTE"));
 atteso("legge la riga con la sessione del cliente e il filtro sul suo id", /await createClient\(\)/.test(rottaCliente) && /\.eq\("user_id", user\.id\)/.test(rottaCliente));
 atteso("il client di servizio entra solo dopo aver letto la riga del cliente", posizione(rottaCliente, "createAdminClient()") > posizione(rottaCliente, '.eq("user_id", user.id)'));
 atteso("la fattura si scarica solo se «fatturata» e con un file", /stato_fattura !== "fatturata" \|\| !riga\.fattura_file_path/.test(rottaCliente));
@@ -202,7 +203,7 @@ atteso("il numero interno di Stripe non è mostrato al cliente (si scambierebbe 
 atteso("la pagina spiega che su Stripe compare una «fattura» con un numero che non è la nostra fattura", /compare anche una voce «fattura» con un numero/.test(vista) && /numerazione interna di Stripe, non la nostra fattura/.test(vista));
 atteso("il collegamento a Stripe è dichiarato come documento non fiscale", /Documento Stripe, non fiscale/.test(vista) && !/Apri la ricevuta/.test(vista));
 atteso("anche in console il link a Stripe è dichiarato non fiscale", /documento Stripe \(non fiscale\)/.test(leggi("src/app/site-console/_componenti/fatturazione-vista.tsx")) && /documento Stripe \(non fiscale\)/.test(leggi("src/app/site-console/_componenti/ricavi-vista.tsx")));
-atteso("voce «Pagamenti e fatture» nella barra laterale", /Pagamenti e fatture/.test(leggi("src/components/omnia-ai/sidebar-nav.tsx")) && /\/dashboard\/omnia-ai\/pagamenti/.test(leggi("src/components/omnia-ai/sidebar-nav.tsx")));
+atteso("voce «Pagamenti e fatture» nella barra laterale del titolare (le voci stanno in omnia-ai-account-calcoli.ts)", /\/pagamenti`, label: "Pagamenti e fatture"/.test(leggi("src/lib/omnia-ai-account-calcoli.ts")) && /VOCI_MENU_TITOLARE/.test(leggi("src/components/omnia-ai/sidebar-nav.tsx")));
 atteso("la pagina Abbonamento rimanda ai pagamenti", /\/dashboard\/omnia-ai\/pagamenti/.test(paginaAbbonamento));
 atteso("l'area del cliente non rimanda alla console", ![vista, paginaPagamenti, rottaCliente].some((t) => /console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(t)));
 

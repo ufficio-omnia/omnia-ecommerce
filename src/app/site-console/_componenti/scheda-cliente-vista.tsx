@@ -9,6 +9,7 @@ import { creaOffertaPilot, revocaOffertaPilot } from "../azioni/pilot";
 import type { PilotCliente } from "@/lib/console/pilot";
 import { statoOffertaPilot, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
+import { MESSAGGIO_E_UN_UFFICIO_GARE } from "@/lib/console/ufficio-gare";
 import type { ProvaCliente } from "@/lib/console/gare-gratuite";
 import ModuloAzione from "./modulo-azione";
 import { eliminaOrdine, ottieniLinkFattura } from "../azioni/ordini";
@@ -168,6 +169,8 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
   const ultimoMessaggio = s.messaggi.length > 0 ? s.messaggi[s.messaggi.length - 1] : null;
   const daRispondere = ultimoMessaggio?.mittente === "cliente";
   const sonoIo = s.utente.id === idSessione;
+  // un Ufficio Gare non è un cliente a sé: niente abbonamento a mano né gare gratuite (si fanno sul titolare)
+  const eMembro = s.legameUfficioGare?.ruolo === "ufficio_gare";
   const elencoPiani = PIANI_ORDINE.map((slug) => ({ slug, nome: PIANI[slug].nome }));
 
   return (
@@ -196,6 +199,70 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
       </div>
 
       <AvvisoEsito {...esito} />
+
+      {s.legameUfficioGareNonLetto && (
+        <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
+          Non sono riuscito a controllare se questo utente ha un Ufficio Gare o lo è: riprova tra qualche istante.
+        </p>
+      )}
+      {s.legameUfficioGare && (
+        <div className="cn-sezione">
+          <Pannello titolo="Ufficio Gare">
+            <div className="cn-pannello-corpo">
+              {s.legameUfficioGare.ruolo === "ufficio_gare" ? (
+                <dl className="cn-dl">
+                  <div>
+                    <dt>Ruolo</dt>
+                    <dd>
+                      Ufficio Gare dell&apos;azienda <Link href={`/utenti/${s.legameUfficioGare.titolare.id}`}>{s.legameUfficioGare.titolare.azienda ?? s.legameUfficioGare.titolare.email}</Link>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Titolare</dt>
+                    <dd>{s.legameUfficioGare.titolare.email}</dd>
+                  </div>
+                  <div>
+                    <dt>Stato</dt>
+                    <dd>{s.legameUfficioGare.attivo ? <Badge tono="ok">attivo</Badge> : <Badge tono="errore">sospeso dal titolare</Badge>}</dd>
+                  </div>
+                  <div>
+                    <dt>Creato il</dt>
+                    <dd>{formattaDataOra(s.legameUfficioGare.creatoIl)}</dd>
+                  </div>
+                </dl>
+              ) : (
+                <dl className="cn-dl">
+                  <div>
+                    <dt>Ufficio Gare</dt>
+                    <dd>
+                      <Link href={`/utenti/${s.legameUfficioGare.ufficioGare.id}`}>{s.legameUfficioGare.ufficioGare.email}</Link>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Stato</dt>
+                    <dd>
+                      {!s.legameUfficioGare.ufficioGare.attivo ? <Badge tono="errore">sospeso</Badge> : s.legameUfficioGare.ufficioGare.ultimoAccesso ? <Badge tono="ok">attivo</Badge> : <Badge tono="avviso">in attesa del primo accesso</Badge>}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Creato il</dt>
+                    <dd>{formattaDataOra(s.legameUfficioGare.ufficioGare.creatoIl)}</dd>
+                  </div>
+                  <div>
+                    <dt>Ultimo accesso</dt>
+                    <dd>{s.legameUfficioGare.ufficioGare.ultimoAccesso ? formattaDataOra(s.legameUfficioGare.ufficioGare.ultimoAccesso) : "mai"}</dd>
+                  </div>
+                </dl>
+              )}
+              <p className="cn-nota-inline" style={{ marginTop: 10 }}>
+                {s.legameUfficioGare.ruolo === "ufficio_gare"
+                  ? "Lavora sulle gare del titolare: consuma le sue gare e i suoi crediti. Non ha abbonamento, crediti né fatture propri: le operazioni commerciali si fanno sul titolare."
+                  : "L'Ufficio Gare lavora sulle gare di questo cliente, consuma le sue gare e i suoi crediti, e viene eliminato insieme a lui."}
+              </p>
+            </div>
+          </Pannello>
+        </div>
+      )}
 
       <div className="cn-tessere">
         <Tessera
@@ -363,7 +430,11 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
 
       <div className="cn-sezione">
         <Pannello titolo="Abbonamento a mano">
-          {s.abbonamentoGestitoDaStripe ? (
+          {eMembro ? (
+            <p className="cn-nota" style={{ padding: 14 }}>
+              {MESSAGGIO_E_UN_UFFICIO_GARE}
+            </p>
+          ) : s.abbonamentoGestitoDaStripe ? (
             <p className="cn-nota" style={{ padding: 14 }}>
               L&apos;abbonamento di questo cliente è gestito da Stripe (paga con carta): stato e scadenza si cambiano da Stripe, non da qui, altrimenti il database divergerebbe da ciò che Stripe addebita davvero.
             </p>
@@ -586,7 +657,9 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
       <div className="cn-sezione">
         <Pannello titolo="Prova gratuita">
           <div className="cn-pannello-corpo">
-            {!prova.disponibile ? (
+            {eMembro ? (
+              <p className="cn-nota-inline">{MESSAGGIO_E_UN_UFFICIO_GARE}</p>
+            ) : !prova.disponibile ? (
               <p className="cn-nota-inline">Le gare gratuite non sono disponibili (migrazione 0084 non ancora eseguita).</p>
             ) : (
               <>

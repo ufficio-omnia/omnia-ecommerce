@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { leggiFunzioniPiattaforma, type FattiFigure } from "@/lib/figure-contesto";
 
 // Lettura dei fatti certi per le figure: piattaforma gestionale e sue funzioni
@@ -8,8 +9,11 @@ import { leggiFunzioniPiattaforma, type FattiFigure } from "@/lib/figure-contest
 
 type RigaProfilo = { software_nome: string | null; funzioni_piattaforma?: string | null };
 
-export async function leggiFattiFigure(params: { supabase: SupabaseClient; userId: string }): Promise<FattiFigure> {
-  const { supabase, userId } = params;
+// Il profilo azienda è del TITOLARE (userId = account effettivo, risolto sul server): si legge con la chiave di
+// servizio perché l'Ufficio Gare, che lavora per suo conto, non ha accesso diretto a quella tabella.
+export async function leggiFattiFigure(params: { supabase?: SupabaseClient; userId: string }): Promise<FattiFigure> {
+  const { userId } = params;
+  const supabase = createAdminClient();
   let res = await supabase.from("companies").select("software_nome, funzioni_piattaforma").eq("user_id", userId).maybeSingle<RigaProfilo>();
   if (res.error) res = await supabase.from("companies").select("software_nome").eq("user_id", userId).maybeSingle<RigaProfilo>();
   const profilo = res.data;

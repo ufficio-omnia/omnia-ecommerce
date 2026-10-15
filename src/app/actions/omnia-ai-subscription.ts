@@ -18,6 +18,7 @@ import { leggiOffertaPilotAperta } from "@/lib/omnia-ai-pilot";
 import { risparmioPilot as calcolaRisparmioPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 import { disdiciSuStripe } from "@/lib/omnia-ai-disdetta";
+import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 
 export type OmniaAiCheckoutState = { error?: string };
 
@@ -29,6 +30,13 @@ export async function startOmniaAiSubscriptionCheckout(
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Chi ha già una sessione deve essere un titolare: l'Ufficio Gare non può abbonarsi (creerebbe un secondo
+  // abbonamento a suo nome). Chi non ha sessione (acquisto diretto dal sito) prosegue come sempre.
+  if (user) {
+    const guardia = await richiediTitolareAzione();
+    if (!guardia.ok) return { error: guardia.errore };
+  }
 
   const planSlug = String(formData.get("planSlug") ?? "");
   if (!(planSlug in PIANI)) return { error: "Piano non valido." };
@@ -225,12 +233,10 @@ export async function startOmniaAiSubscriptionCheckout(
 // zona AI invocate da un form.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function cancelOmniaAiSubscription(_prevState: { error?: string }, _formData: FormData): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
   const admin = createAdminClient();
 
@@ -268,12 +274,10 @@ export async function cancelOmniaAiSubscription(_prevState: { error?: string }, 
 // stripe_subscription_id e scritto qui per le volte successive.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function openOmniaAiBillingPortal(_prevState: { error?: string }, _formData: FormData): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
   const admin = createAdminClient();
 

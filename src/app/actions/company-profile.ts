@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 
 export type CompanyProfileState = { error?: string; success?: boolean };
 
@@ -79,11 +80,10 @@ export async function saveCompanyProfile(
   formData: FormData,
 ): Promise<CompanyProfileState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
   const ragioneSociale = optionalText(formData, "ragioneSociale");
   const partitaIva = optionalText(formData, "partitaIva");

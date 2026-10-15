@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
+import { richiediAccountPagina } from "@/lib/omnia-ai-account-guardie";
+import { clientePerAccount } from "@/lib/omnia-ai-account-lavoro";
+import { leggiFontiQuota } from "@/lib/gara-diritto";
+import { gareRimanenti } from "@/lib/gara-diritto-calcoli";
+import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
 import StatusCards from "@/components/omnia-ai/status-cards";
 import GareRecentiList from "@/components/omnia-ai/gare-recenti-list";
 import CosaVuoiFareOggi from "@/components/omnia-ai/cosa-vuoi-fare-oggi";
@@ -25,25 +30,28 @@ const LIMITE_ATTIVITA = 10;
 // vendita al suo posto.
 export default async function OmniaAiHomePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+  // Titolare o Ufficio Gare: i dati sono sempre dell'account effettivo (il titolare).
+  const sessione = await richiediAccountPagina();
+  if (!sessione) return null;
+  const { user, contesto } = sessione;
+  const accountId = contesto.accountId;
+  const ufficioGare = contesto.ruolo === "ufficio_gare";
+  // abbonamento, crediti e gare gratuite si leggono sul titolare (l'Ufficio Gare non ha accesso a quelle tabelle)
+  const clienteAbbonamento = clientePerAccount(contesto, supabase);
 
   const [consumoPeriodo, statoAccesso, { data: gareRaw }, { data: documentiRaw }] = await Promise.all([
-    getConsumoPeriodoCorrente(user.id, supabase),
-    getOmniaAiAccessState(user.id, supabase),
+    getConsumoPeriodoCorrente(accountId, clienteAbbonamento),
+    getOmniaAiAccessState(accountId, clienteAbbonamento),
     supabase
       .from("gare")
       .select("id, titolo, stazione_appaltante, scadenza, estrazione_stato, estrazione_aggiornata_il, created_at")
-      .eq("user_id", user.id)
+      .eq("user_id", accountId)
       .order("scadenza", { ascending: true, nullsFirst: false })
       .returns<GaraRow[]>(),
     supabase
       .from("gara_documenti")
       .select("gara_id, nome_file, created_at")
-      .eq("user_id", user.id)
+      .eq("user_id", accountId)
       .order("created_at", { ascending: false })
       .returns<{ gara_id: string; nome_file: string; created_at: string }[]>(),
   ]);
@@ -95,6 +103,18 @@ export default async function OmniaAiHomePage() {
 
   const titoloPerGara = new Map(gare.map((g) => [g.id, g.titolo] as const));
 
+  // L'Ufficio Gare vede un solo numero, «gare a disposizione», e non le voci amministrative (piano, rinnovo,
+  // crediti). Se è zero il titolare riceve l'email (una al giorno, deciso dal database): a mostrarlo
+  // all'Ufficio Gare ci pensa la pagina, con il promemoria.
+  let gareDisponibili: number | null = null;
+  if (ufficioGare && (statoAccesso.stato === "attivo" || statoAccesso.stato === "prova")) {
+    const fonti = await leggiFontiQuota(clienteAbbonamento, accountId);
+    if (fonti) {
+      gareDisponibili = gareRimanenti(fonti);
+      if (gareDisponibili === 0) avvisaTitolareDopoLaRisposta({ contesto, emailUfficioGare: user.email, motivo: "gare_finite" });
+    }
+  }
+
   const attivita: AttivitaVoce[] = [
     ...documenti.map((d) => ({
       testo: `Documento "${d.nome_file}" caricato su ${titoloPerGara.get(d.gara_id) ?? "una gara"}`,
@@ -128,10 +148,12 @@ export default async function OmniaAiHomePage() {
         dataRinnovo={dataRinnovo}
         prossimaScadenza={prossimaScadenza}
         gareGratuite={statoAccesso.stato === "prova" ? statoAccesso.gare : null}
+        ufficioGare={ufficioGare}
+        gareDisponibili={gareDisponibili}
       />
 
       <GareRecentiList gare={gareRighe} />
-      <CosaVuoiFareOggi />
+      <CosaVuoiFareOggi ufficioGare={ufficioGare} />
       <AttivitaRecente voci={attivita} />
     </div>
   );

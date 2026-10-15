@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatEuro } from "@/lib/omnia-ai-plans";
 import { REVISIONE, descriviFontePagine, testoRegoleUrgenza, testoScadenza, type EsitoPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import type { RichiestaRevisione } from "@/lib/omnia-ai-revisione";
+import RevisioneAvvisoForm from "./revisione-avviso-form";
 
 // Riquadro «Revisione umana» dentro la gara: compare solo dopo la relazione tecnica FINALE (con tutti i
 // criteri). Spiega che cosa si ottiene, i tempi, quanto costa per QUESTA gara e quando il prezzo sale, e
@@ -10,10 +11,13 @@ export default function RevisionePanel({
   garaId,
   esito,
   pagata,
+  ufficioGare = false,
 }: {
   garaId: string;
   esito: EsitoPrezzoRevisione;
   pagata: RichiestaRevisione | null;
+  // l'Ufficio Gare vede la spiegazione ma non il prezzo, e il pulsante avvisa l'amministratore invece di aprire il pagamento
+  ufficioGare?: boolean;
 }) {
   const prezzo = esito.ok ? esito.prezzo : null;
 
@@ -50,6 +54,8 @@ export default function RevisionePanel({
         <div className="omnia-messaggio-stato avviso">
           <p style={{ margin: 0 }}>{esito.messaggio}</p>
         </div>
+      ) : ufficioGare ? (
+        <RevisioneAvvisoForm garaId={garaId} />
       ) : (
         <>
           <div className="omnia-dati-griglia" style={{ marginTop: 8 }}>

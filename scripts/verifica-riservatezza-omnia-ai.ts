@@ -95,7 +95,7 @@ async function main() {
   const migrazioneGare = leggi("supabase/migrations/0036_gare.sql");
   atteso("il bucket «gare» è privato", /values \('gare', 'gare', false\)/.test(migrazioneGare));
   const download = leggi("src/app/actions/download.ts");
-  atteso("ogni download di documenti di gara controlla la sessione e firma un collegamento di 60 secondi", (download.match(/\.from\("gare"\)\s*\.createSignedUrl\([^)]*,\s*60/g) ?? []).length === 3 && (download.match(/auth\.getUser\(\)/g) ?? []).length >= 3);
+  atteso("ogni download di documenti di gara controlla la sessione e firma un collegamento di 60 secondi", (download.match(/\.from\("gare"\)\s*\.createSignedUrl\([^)]*,\s*60/g) ?? []).length === 3 && (download.match(/await richiediAccountAzione\(\)/g) ?? []).length === 3);
   const sorgentiApp = ["src/app", "src/lib", "src/components"];
   const conUrlPubblico: string[] = [];
   const visita = (dir: string) => {
@@ -113,7 +113,7 @@ async function main() {
   atteso("il lavoro giornaliero è pianificato", /omnia-ai-purge-cessati/.test(leggi("vercel.json")));
   const gare = leggi("src/app/actions/gare.ts");
   atteso("il cliente cancella una gara dall'area riservata: righe e file", /collectGaraFilePaths\(supabase, garaId\)/.test(gare) && /from\("gare"\)\.delete\(\)\.eq\("id", garaId\)/.test(gare) && /await removeGaraFiles\(filePaths\)/.test(gare));
-  atteso("la cancellazione di una gara è bloccata solo in sola lettura, non dopo la cessazione dei contenuti", /requireOmniaAiWriteAccess/.test(gare));
+  atteso("la cancellazione di una gara è bloccata solo in sola lettura, non dopo la cessazione dei contenuti", /export async function deleteGara[\s\S]*?accessoNegatoPerAccount\(contesto, user, supabase\)/.test(gare));
 
   console.log("--- Cancellazione dei file di una gara (nessun file dimenticato) ---");
   type Righe = Record<string, { file_path: string | null }[]>;

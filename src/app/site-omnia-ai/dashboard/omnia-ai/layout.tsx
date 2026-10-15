@@ -12,6 +12,17 @@ import { leggiOffertaPilotAperta, leggiPilotAcquistato } from "@/lib/omnia-ai-pi
 import { applicaPilotAlCatalogo, promemoriaPilot, testoPromemoriaPilot, type PromemoriaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import DashboardShell from "@/components/omnia-ai/dashboard-shell";
 import ActivateSubscriptionForm from "./activate-subscription-form";
+import { ErroreContestoAccount, type ContestoAccount } from "@/lib/omnia-ai-account";
+import { leggiSessioneAccount } from "@/lib/omnia-ai-account-guardie";
+import {
+  MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO,
+  MESSAGGIO_UFFICIO_GARE_GARE_FINITE,
+  MESSAGGIO_UFFICIO_GARE_SOSPESO,
+  MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA,
+  VOCI_MENU_UFFICIO_GARE,
+} from "@/lib/omnia-ai-account-calcoli";
+import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
+import type { User } from "@supabase/supabase-js";
 
 // Avviso non bloccante ma ben visibile: il profilo azienda resta
 // necessario al prodotto (contesto per l'AI in analisi/generazione), ma
@@ -90,18 +101,94 @@ function ProvaAvviso({ gare }: { gare: GareGratuite }) {
   );
 }
 
+// Schermata a pagina intera per l'Ufficio Gare quando non può lavorare (accesso sospeso, abbonamento cessato,
+// verifica non riuscita): nessuna barra laterale, solo il motivo e il pulsante per uscire.
+function SchermataFermo({ email, titolo, testo }: { email: string; titolo: string; testo: string }) {
+  return (
+    <div className="omnia-app-shell">
+      <form action={signOut} style={{ textAlign: "right" }}>
+        <button type="submit" className="omnia-btn omnia-btn-s omnia-btn-esci">
+          Esci ({email})
+        </button>
+      </form>
+      <h1 className="omnia-app-titolo">{titolo}</h1>
+      <p className="omnia-app-sottotitolo">{testo}</p>
+    </div>
+  );
+}
+
+// L'area riservata vista dall'Ufficio Gare: stessa dashboard del titolare ma con il solo menu delle gare, senza
+// campanella né menu del profilo, senza gli avvisi amministrativi (profilo azienda, fatturazione, pilot) e con
+// l'abbonamento, le gare e i crediti letti sul TITOLARE (l'Ufficio Gare non ha accesso a quelle tabelle).
+async function VistaUfficioGare({ user, contesto, children }: { user: User; contesto: ContestoAccount; children: React.ReactNode }) {
+  const email = user.email ?? "";
+  if (contesto.sospeso) {
+    return <SchermataFermo email={email} titolo="Accesso sospeso" testo={MESSAGGIO_UFFICIO_GARE_SOSPESO} />;
+  }
+
+  const admin = createAdminClient();
+  const stato = await getOmniaAiAccessState(contesto.accountId, admin);
+
+  if (stato.stato === "cessato") {
+    // Vicolo cieco: l'Ufficio Gare non può fare nulla finché il titolare non riattiva. Al titolare parte l'email.
+    avvisaTitolareDopoLaRisposta({ contesto, emailUfficioGare: user.email, motivo: "abbonamento_non_attivo" });
+    return <SchermataFermo email={email} titolo="Abbonamento non attivo" testo={MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO} />;
+  }
+
+  const { data: company } = await admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>();
+
+  const avviso =
+    stato.stato === "sola_lettura"
+      ? `${MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO} Se l'abbonamento non viene riattivato, tutti i contenuti verranno cancellati il ${stato.dataCancellazioneContenuti.toLocaleDateString("it-IT")}.`
+      : stato.stato === "prova"
+        ? stato.gare.rimanenti <= 0
+          ? MESSAGGIO_UFFICIO_GARE_GARE_FINITE
+          : testoAvvisoProva(stato.gare).testo
+        : null;
+
+  return (
+    <DashboardShell
+      nomeSaluto={email}
+      email={email}
+      nomeAzienda={company?.ragione_sociale ?? null}
+      voci={VOCI_MENU_UFFICIO_GARE}
+      ufficioGare
+      avvisi={avviso ? <div className="omnia-avviso-profilo">{avviso}</div> : undefined}
+    >
+      {children}
+    </DashboardShell>
+  );
+}
+
 export default async function OmniaAiLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
+  // Chi è: il titolare (tutto come sempre) o l'Ufficio Gare (vista ridotta). Un errore nel capirlo NON si
+  // tratta come «titolare»: si ferma, per non aprire le pagine amministrative a chi non deve vederle.
+  let sessione;
+  try {
+    sessione = await leggiSessioneAccount();
+  } catch (e) {
+    if (e instanceof ErroreContestoAccount) {
+      return <SchermataFermo email="" titolo="Verifica non riuscita" testo={MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA} />;
+    }
+    throw e;
+  }
+  if (!sessione) {
     redirect("/login");
+  }
+  const { user, contesto } = sessione;
+
+  if (contesto.ruolo === "ufficio_gare") {
+    return (
+      <VistaUfficioGare user={user} contesto={contesto}>
+        {children}
+      </VistaUfficioGare>
+    );
   }
 
   const stato = await getOmniaAiAccessState(user.id, supabase);

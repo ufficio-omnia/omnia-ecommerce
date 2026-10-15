@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { richiediAccountPagina } from "@/lib/omnia-ai-account-guardie";
 import GaraRiga, { type GaraRigaProps } from "@/components/omnia-ai/gara-riga";
 import CreateGaraForm from "./create-gara-form";
 
@@ -14,13 +14,10 @@ type GaraRow = {
 
 export default async function GarePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  // Titolare o Ufficio Gare: le gare sono dell'azienda (del titolare); le regole di accesso mostrano quelle giuste.
+  const sessione = await richiediAccountPagina();
+  if (!sessione) return null;
+  const { contesto } = sessione;
 
   const { data: gare } = await supabase
     .from("gare")
@@ -34,7 +31,7 @@ export default async function GarePage() {
     supabase
       .from("gara_documenti")
       .select("gara_id")
-      .eq("user_id", user.id)
+      .eq("user_id", contesto.accountId)
       .returns<{ gara_id: string }[]>(),
     gareIds.length > 0
       ? supabase

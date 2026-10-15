@@ -144,7 +144,8 @@ async function datiIntestazioneRelazione(garaId: string, userId: string): Promis
       .select("stazione_appaltante, amministrazione_committente, cig")
       .eq("id", garaId)
       .maybeSingle<{ stazione_appaltante: string | null; amministrazione_committente: string | null; cig: string | null }>(),
-    supabase
+    // profilo azienda del TITOLARE: chiave di servizio (l'Ufficio Gare non ha accesso diretto a quella tabella)
+    createAdminClient()
       .from("companies")
       .select("ragione_sociale")
       .eq("user_id", userId)
@@ -378,7 +379,7 @@ export async function generaBozzaSezione(params: {
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma
     ? await Promise.all([
         serveStileVecchio ? ricavaStileOrganigramma({ userId, garaId }) : Promise.resolve(null),
-        recuperaLoghiOrganigramma(garaId),
+        recuperaLoghiOrganigramma(garaId, userId),
       ])
     : [null, undefined];
 
@@ -1264,7 +1265,8 @@ export async function componiRelazioneFinale(params: {
   // sostituzione "operatore economico" → nome reale, a differenza delle
   // singole bozze generate in chat — bug root-cause della persistenza
   // del termine generico nel documento finale scaricato.
-  const { data: companyBudget } = await supabase
+  // profilo azienda del TITOLARE: chiave di servizio (l'Ufficio Gare non ha accesso diretto a quella tabella)
+  const { data: companyBudget } = await createAdminClient()
     .from("companies")
     .select("ragione_sociale")
     .eq("user_id", userId)
@@ -1432,7 +1434,7 @@ export async function componiRelazioneFinale(params: {
   const [stileOrganigramma, loghiOrganigramma] = contieneOrganigramma
     ? await Promise.all([
         serveStileVecchio ? ricavaStileOrganigramma({ userId, garaId }) : Promise.resolve(null),
-        recuperaLoghiOrganigramma(garaId),
+        recuperaLoghiOrganigramma(garaId, userId),
       ])
     : [null, undefined];
 

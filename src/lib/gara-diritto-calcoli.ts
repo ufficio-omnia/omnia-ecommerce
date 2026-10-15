@@ -41,3 +41,10 @@ export function dirittoDaFonti(f: FontiQuota): DirittoGara {
   if (f.gratuite) return { consentito: false, motivo: "gratuite_esaurite", messaggio: MESSAGGIO_GARA_BLOCCATA_GRATUITE };
   return { consentito: false, motivo: "quota_esaurita", messaggio: MESSAGGIO_GARA_BLOCCATA_QUOTA };
 }
+
+// Quante gare restano da avviare in tutto: quelle del piano non ancora usate, i crediti e le gare gratuite.
+// Serve a mostrare all'Ufficio Gare un solo numero («gare a disposizione») senza i dettagli amministrativi.
+export function gareRimanenti(f: FontiQuota): number {
+  const delPiano = f.piano ? Math.max(0, f.piano.gareIncluse - f.piano.consumate) : 0;
+  return delPiano + Math.max(0, f.crediti) + (f.gratuite ? Math.max(0, f.gratuite.rimanenti) : 0);
+}

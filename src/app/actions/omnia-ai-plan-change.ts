@@ -1,10 +1,10 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeClient } from "@/lib/stripe";
 import { PIANI, PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
+import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 
 type SubscriptionRow = {
   id: string;
@@ -105,11 +105,10 @@ export type PreviewCambioPiano =
   | { error: string };
 
 export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Promise<PreviewCambioPiano> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
   const validazione = await validaRichiestaCambioPiano(user.id, pianoDestinazioneRaw);
   if ("error" in validazione) return validazione;
@@ -177,11 +176,10 @@ export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
 // azione né dalla pagina di ritorno — stessa disciplina del resto della
 // tappa 6.
 export async function confirmOmniaAiPlanChange(pianoDestinazioneRaw: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
   const validazione = await validaRichiestaCambioPiano(user.id, pianoDestinazioneRaw);
   if ("error" in validazione) return validazione;
@@ -262,11 +260,10 @@ export async function confirmOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
 // stato locale (piano_programmato tornato a null) arriva solo dal
 // webhook subscription_schedule.released.
 export async function cancelOmniaAiScheduledPlanChange(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
   const admin = createAdminClient();
   const { data: subscription } = await admin
