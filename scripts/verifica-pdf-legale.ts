@@ -197,7 +197,7 @@ async function main() {
 
     const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/documenti-contrattuali/page.tsx");
     atteso("la sezione legge con la sessione del cliente (RLS), mai con la chiave di servizio", /createClient\(\)/.test(pagina) && !/createAdminClient/.test(pagina) && /\.eq\("user_id", user\.id\)/.test(pagina));
-    atteso("la sezione è nel menu dell'area riservata", /href: "\/dashboard\/omnia-ai\/documenti-contrattuali", label: "Documenti contrattuali"/.test(leggi("src/components/omnia-ai/sidebar-nav.tsx")));
+    atteso("la sezione è nel menu dell'area riservata", /\/documenti-contrattuali`, label: "Documenti contrattuali"/.test(leggi("src/lib/omnia-ai-account-calcoli.ts")));
     const vista = leggi("src/components/omnia-ai/documenti-contrattuali-vista.tsx");
     atteso("ogni documento ha Leggi e Scarica PDF; il PDF porta l'abbonamento (per la riga dell'accettazione)", /\/pdf\?abbonamento=\$\{g\.abbonamentoId\}/.test(vista) && /Accettato il \{dataOraRoma\(d\.accettatoIl\)\}/.test(vista));
     atteso("data e ora dell'accettazione in evidenza (grassetto) e avviso se mancano dati di fatturazione, con il collegamento al profilo", /<strong>Accettato il/.test(vista) && /Nel profilo azienda mancano/.test(vista) && /profilo-azienda/.test(vista));

@@ -75,10 +75,16 @@ async function main() {
     [true, true, ...AMMINISTRATIVE.map(() => true)],
   );
   uguale(
-    "l'Ufficio Gare vede dashboard, gare (anche la singola e la revisione) e supporto",
-    [RADICE_AREA, `${RADICE_AREA}/`, `${RADICE_AREA}/gare`, `${RADICE_AREA}/gare/abc`, `${RADICE_AREA}/gare/abc/revisione`, `${RADICE_AREA}/assistenza`, `${RADICE_AREA}?x=1`].map((p) => percorsoConsentito("ufficio_gare", p)),
-    [true, true, true, true, true, true, true],
+    "l'Ufficio Gare vede dashboard, gare (anche la singola) e supporto",
+    [RADICE_AREA, `${RADICE_AREA}/`, `${RADICE_AREA}/gare`, `${RADICE_AREA}/gare/abc`, `${RADICE_AREA}/assistenza`, `${RADICE_AREA}?x=1`].map((p) => percorsoConsentito("ufficio_gare", p)),
+    [true, true, true, true, true, true],
   );
+  uguale(
+    "la pagina di richiesta della revisione (pagamento) è del solo titolare: l'Ufficio Gare ha il pulsante che avvisa, dentro la gara",
+    [`${RADICE_AREA}/gare/abc/revisione`, `${RADICE_AREA}/gare/abc/revisione/`, `${RADICE_AREA}/gare/abc/revisione?richiesta=1`, `${RADICE_AREA}/gare/revisione`, `${RADICE_AREA}/gare/abc/revisione/x`].map((p) => percorsoConsentito("ufficio_gare", p)),
+    [false, false, false, false, false],
+  );
+  atteso("il titolare invece apre la pagina della revisione", percorsoConsentito("titolare", `${RADICE_AREA}/gare/abc/revisione`));
   uguale(
     "l'Ufficio Gare NON vede nessuna pagina amministrativa",
     AMMINISTRATIVE.map((s) => percorsoConsentito("ufficio_gare", `${RADICE_AREA}/${s}`)),

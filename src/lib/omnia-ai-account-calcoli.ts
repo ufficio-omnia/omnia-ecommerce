@@ -59,6 +59,8 @@ export function percorsoConsentito(ruolo: RuoloAccount, percorso: string): boole
   }
   if (decodificato.split("/").slice(1).some((segmento) => segmento === "" || segmento === "." || segmento === "..")) return false;
   if (pulito === RADICE_AREA) return true;
+  // La richiesta di revisione umana (pagamento) è del titolare: l'Ufficio Gare ha il solo pulsante che lo avvisa, dentro la gara.
+  if (decodificato.split("/").slice(1).slice(3).includes("revisione")) return false;
   return SEZIONI_UFFICIO_GARE.some((sezione) => sottoPercorso(pulito, `${RADICE_AREA}/${sezione}`));
 }
 
