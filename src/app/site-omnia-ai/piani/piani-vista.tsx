@@ -2,6 +2,7 @@ import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
 import { testoOfferta, type Catalogo as CatalogoTipo } from "@/lib/omnia-ai-catalogo-calcoli";
+import RevisioneBanda from "./revisione-banda";
 
 // La pagina dei piani, senza accesso ai dati: la pagina (page.tsx) legge catalogo, condizioni e se la
 // vendita è visibile, e li passa qui. Separata per poterla mostrare con la vendita accesa in anteprima.
@@ -61,6 +62,8 @@ export default function PianiVista({ catalogo, condizioniUrl, vendita }: { catal
             );
           })}
         </div>
+
+        <RevisioneBanda />
 
         <p className="micro" style={{ marginTop: 32 }}>
           Le gare incluse si azzerano ad ogni rinnovo e non si cumulano. Se non bastano, puoi

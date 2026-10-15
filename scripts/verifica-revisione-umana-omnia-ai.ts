@@ -556,6 +556,22 @@ async function main() {
   atteso("modulo: se il prezzo cambia mentre si compila, mostra quello nuovo e chiede di confermare di nuovo", /stato\.prezzoAggiornatoCentesimi \?\? prezzo\.totaleCentesimi/.test(modulo) && /Il prezzo è stato aggiornato in base alla scadenza/.test(modulo));
   atteso("la pagina e il modulo non rimandano alla console", ![paginaAcquisto, modulo, pannello].some((t) => /console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(t)));
 
+  console.log("--- Fascia «revisione umana» sulla pagina dei piani ---");
+  const banda = leggi("src/app/site-omnia-ai/piani/revisione-banda.tsx");
+  const bandaCodice = banda.replace(/\/\/[^\n]*/g, "");
+  const bandaTesto = bandaCodice.replace(/\{REVISIONE\.\w+\}/g, "").replace(/<[^>]+>/g, " ");
+  atteso("la fascia presenta il servizio: titolo, consulenti esperti, dall'interfaccia, intestazione, piè di pagina e copertina grafica personalizzata", /L&apos;AI scrive\. Un consulente esperto rifinisce\./.test(banda) && /consulenti esperti in gare d&apos;appalto/.test(banda) && /Dall&apos;interfaccia chiedi con un clic/.test(banda) && /intestazione, piè di pagina e copertina grafica personalizzata/.test(banda));
+  atteso("i numeri (5 ore lavorative, 48 ore, 48 ore minime) vengono dalle regole del servizio, mai scritti a mano", /entro \{REVISIONE\.oreContattoLavorative\} ore lavorative/.test(banda) && (banda.match(/entro \{REVISIONE\.oreConsegna\} ore dalla richiesta/g) ?? []).length === 2 && /almeno \{REVISIONE\.oreMinimePerGestire\} ore/.test(banda) && !/\d/.test(bandaTesto));
+  atteso("nessun prezzo, cifra in euro, IVA o maggiorazione (scelta dell'ufficio)", !/€|euro|\bIVA\b|prezzo|costo|tariff|maggior|\b250\b|\b550\b/i.test(bandaCodice.replace(/import[^\n]*\n/g, "")));
+  atteso("nessuna promessa sull'esito della gara (le condizioni dicono che la revisione non garantisce l'aggiudicazione)", !/vinc|aggiudic|garanti|sicuro|assicura|ammission|punteggio/i.test(bandaCodice));
+  atteso("la fascia non rimanda alla console", !/console\.omniaitalia\.com|CONSOLE_BASE_URL|site-console|lib\/console/.test(banda));
+  const vistaPiani = leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
+  atteso("sulla pagina dei piani la fascia sta sotto le schede e prima delle note, sempre (non dipende dalla vendita accesa)", primaDi(vistaPiani, "          })}\n        </div>", "<RevisioneBanda />") && primaDi(vistaPiani, "<RevisioneBanda />", '<p className="micro"') && /^\s*<RevisioneBanda \/>\s*$/m.test(vistaPiani));
+  const cssSito = leggi("src/app/site-omnia-ai/omnia-ai.css");
+  const cssBanda = cssSito.slice(cssSito.indexOf(".omnia-revisione {"), cssSito.indexOf(".omnia-revisione-nota {") + 120);
+  atteso("stile: superficie neutra con i colori della palette, nessun colore dal ruolo fisso (viola, verde, ambra, rosso) e nessun colore nuovo", cssBanda.length > 200 && !/var\(--(viola|verde|ambra|rosso)\)/.test(cssBanda) && !/#(?!c4c1d8\b)[0-9a-f]{3,8}\b/i.test(cssBanda));
+  atteso("stile: sul telefono i tre punti vanno in colonna", /@media \(max-width: 900px\) \{[\s\S]*?\.omnia-revisione-punti \{\s*grid-template-columns: 1fr;/.test(cssSito));
+
   console.log("--- Ora di scadenza: estrazione, lettura, visualizzazione ---");
   const estrazione = leggi("src/app/actions/gara-extraction.ts");
   const requisitiAlto = corpo(estrazione, "scadenza_ora: {", "importo: {");
