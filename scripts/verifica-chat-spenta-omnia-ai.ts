@@ -192,23 +192,23 @@ async function main() {
   ]) {
     atteso(`stessa regola nel consumo e nel controllo: ${regola}`, consumo.includes(regola) && diritto.includes(regola), "manca in uno dei due file");
   }
-  atteso("il consumo vero resta in gara-consumo.ts (la gara si consuma ancora all'avvio dell'analisi)", /consumeGaraQuotaIfNeeded\(\{ garaId, userId: user\.id \}\)/.test(leggi("src/app/actions/gara-extraction.ts")));
+  atteso("il consumo vero resta in gara-consumo.ts (la gara si consuma ancora all'avvio dell'analisi)", /consumeGaraQuotaIfNeeded\(\{ garaId, userId: contesto\.accountId \}\)/.test(leggi("src/app/actions/gara-extraction.ts")));
 
   console.log("--- Il blocco sta prima di ogni scrittura e di ogni chiamata al modello ---");
   const chat = leggi("src/app/actions/gara-chat.ts");
   const invio = corpo(chat, "export async function sendGaraMessage");
-  atteso("chat: il controllo c'è e rifiuta con il suo messaggio", /const diritto = await verificaDirittoGara\(\{ garaId, userId: user\.id \}\);\n\s*if \(!diritto\.consentito\) return \{ error: diritto\.messaggio \};/.test(invio));
-  atteso("chat: dopo la verifica che la gara sia del cliente", primaDi(invio, 'if (!gara) return { error: "Gara non trovata." };', "verificaDirittoGara("));
-  atteso("chat: prima di salvare qualsiasi messaggio", primaDi(invio, "verificaDirittoGara(", 'from("gara_messaggi")'));
-  atteso("chat: prima del caricamento degli allegati", primaDi(invio, "verificaDirittoGara(", "admin.storage"));
-  atteso("chat: prima della ricerca nei documenti e di ogni chiamata al modello", primaDi(invio, "verificaDirittoGara(", "embedQuery(") && primaDi(invio, "verificaDirittoGara(", "createAnthropicClient()"));
-  atteso("chat: l'accesso in scrittura (sola lettura/cessato) resta controllato prima", primaDi(invio, "requireOmniaAiWriteAccess(", "verificaDirittoGara("));
+  atteso("chat: il controllo c'è e rifiuta con il suo messaggio", /const diritto = await dirittoGaraPerAccount\(\{ contesto, user, garaId \}\);\n\s*if \(!diritto\.consentito\) return \{ error: diritto\.messaggio \};/.test(invio));
+  atteso("chat: dopo la verifica che la gara sia del cliente", primaDi(invio, 'if (!gara) return { error: "Gara non trovata." };', "dirittoGaraPerAccount("));
+  atteso("chat: prima di salvare qualsiasi messaggio", primaDi(invio, "dirittoGaraPerAccount(", 'from("gara_messaggi")'));
+  atteso("chat: prima del caricamento degli allegati", primaDi(invio, "dirittoGaraPerAccount(", "admin.storage"));
+  atteso("chat: prima della ricerca nei documenti e di ogni chiamata al modello", primaDi(invio, "dirittoGaraPerAccount(", "embedQuery(") && primaDi(invio, "dirittoGaraPerAccount(", "createAnthropicClient()"));
+  atteso("chat: l'accesso in scrittura (sola lettura/cessato) resta controllato prima", primaDi(invio, "accessoNegatoPerAccount(", "dirittoGaraPerAccount("));
   const gare = leggi("src/app/actions/gare.ts");
   const carica = corpo(gare, "export async function uploadGaraDocumento", "export async function removeGaraDocumento");
-  atteso("documenti: il controllo c'è e rifiuta con il suo messaggio", /const diritto = await verificaDirittoGara\(\{ garaId, userId: user\.id \}\);\n\s*if \(!diritto\.consentito\) return \{ error: diritto\.messaggio \};/.test(carica));
-  atteso("documenti: dopo la verifica che la gara sia del cliente", primaDi(carica, 'if (!gara) return { error: "Gara non trovata." };', "verificaDirittoGara("));
-  atteso("documenti: prima di toccare lo storage", primaDi(carica, "verificaDirittoGara(", "admin.storage"));
-  atteso("documenti: prima di registrare il documento e prima dell'indicizzazione", primaDi(carica, "verificaDirittoGara(", 'from("gara_documenti")') && primaDi(carica, "verificaDirittoGara(", "indexGaraDocumento("));
+  atteso("documenti: il controllo c'è e rifiuta con il suo messaggio", /const diritto = await dirittoGaraPerAccount\(\{ contesto, user, garaId \}\);\n\s*if \(!diritto\.consentito\) return \{ error: diritto\.messaggio \};/.test(carica));
+  atteso("documenti: dopo la verifica che la gara sia del cliente", primaDi(carica, 'if (!gara) return { error: "Gara non trovata." };', "dirittoGaraPerAccount("));
+  atteso("documenti: prima di toccare lo storage", primaDi(carica, "dirittoGaraPerAccount(", "admin.storage"));
+  atteso("documenti: prima di registrare il documento e prima dell'indicizzazione", primaDi(carica, "dirittoGaraPerAccount(", 'from("gara_documenti")') && primaDi(carica, "dirittoGaraPerAccount(", "indexGaraDocumento("));
   atteso("l'indicizzazione dei documenti parte solo dal caricamento (nessun altro punto la richiama)", !fs
     .readdirSync(path.join(__dirname, "..", "src/app/actions"))
     .filter((f) => f !== "gare.ts")
@@ -217,7 +217,7 @@ async function main() {
 
   console.log("--- La vista ---");
   const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/page.tsx");
-  atteso("la pagina della gara calcola il diritto con lo stesso controllo delle azioni", /await verificaDirittoGara\(\{ garaId: gara\.id, userId: user\.id \}\)/.test(pagina));
+  atteso("la pagina della gara calcola il diritto con lo stesso controllo delle azioni", /await dirittoGaraPerAccount\(\{ contesto, user, garaId: gara\.id \}\)/.test(pagina));
   atteso("a chat spenta la pagina mostra un solo avviso in alto", /\{!diritto\.consentito && \(\s*<GaraBloccataAvviso/.test(pagina) && /messaggio=\{diritto\.messaggio\}/.test(pagina) && /motivo=\{diritto\.motivo\}/.test(pagina));
   atteso("il modulo di caricamento documenti non si mostra se spento", /\{diritto\.consentito \? \(\s*<UploadDocumentoForm garaId=\{gara\.id\} \/>/.test(pagina));
   atteso("alla chat arriva spenta={!diritto.consentito}", /spenta=\{!diritto\.consentito\}/.test(pagina));
