@@ -191,7 +191,7 @@ export default function UtentiVista({
                       <td className="cn-cella-doppia">
                         <Link href={`/utenti/${r.id}`}>{r.email}</Link>
                         <small>
-                          {r.azienda ?? (r.anonimizzato ? "anonimizzato" : r.ufficioGareDi ? "Ufficio Gare" : "senza profilo azienda")}
+                          {r.azienda ?? (r.anonimizzato ? "anonimizzato" : r.ufficioGareDi ? null : "senza profilo azienda")}
                           {r.ufficioGareDi && (
                             <>
                               {" "}
