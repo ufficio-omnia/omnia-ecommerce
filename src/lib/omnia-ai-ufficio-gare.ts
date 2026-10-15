@@ -88,7 +88,10 @@ export async function mandaLinkPasswordUfficioGare({
     console.error("Ufficio Gare: generazione del link di scelta password fallita", erroreLink?.message);
     return false;
   }
-  const url = `${origine}/attiva-account?token_hash=${encodeURIComponent(token)}&type=magiclink&next=${encodeURIComponent("/imposta-password")}`;
+  // In locale il sito (zona) non si capisce dal dominio ma da un cookie che il browser può avere ancora su «console»:
+  // il link porta con sé la zona, così apre sempre OMNIA AI. Sul sito vero (omnia-ai.it) la zona è il dominio e non si aggiunge nulla.
+  const inLocale = /^https?:\/\/localhost(:\d+)?$/.test(origine);
+  const url = `${origine}/attiva-account?${inLocale ? "__zone=omnia-ai&" : ""}token_hash=${encodeURIComponent(token)}&type=magiclink&next=${encodeURIComponent("/imposta-password")}`;
 
   const { data: azienda } = await admin.from("companies").select("ragione_sociale").eq("user_id", titolareId).maybeSingle<{ ragione_sociale: string | null }>();
   const email = emailInvitoUfficioGare({ linkPassword: url, nomeAzienda: azienda?.ragione_sociale ?? null, emailTitolare });

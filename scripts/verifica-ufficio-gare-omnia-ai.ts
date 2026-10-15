@@ -402,6 +402,17 @@ async function main() {
       atteso("genera un link «magiclink» per l'email dell'Ufficio Gare e legge l'azienda del titolare", chiamate.includes("generateLink(magiclink,gare@azienda.it)") && chiamate.includes("companies.eq(user_id=T1)"));
       atteso("nessun errore registrato nel percorso riuscito", registrati.length === 0);
 
+      // in locale il link porta con sé la zona (il cookie del browser può essere rimasto su «console»); sul sito vero no
+      inviati.length = 0;
+      await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({}).admin, ...parametri, origine: "http://localhost:3000" });
+      atteso("in locale il link apre OMNIA AI anche se il browser ricorda un'altra zona", inviati.length === 1 && (inviati[0].corpo.html.includes("http://localhost:3000/attiva-account?__zone=omnia-ai&amp;token_hash=") || inviati[0].corpo.html.includes("http://localhost:3000/attiva-account?__zone=omnia-ai&token_hash=")));
+      inviati.length = 0;
+      await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({}).admin, ...parametri, origine: "https://omnia-ai.it" });
+      atteso("sul sito vero il link non porta nessuna zona", inviati.length === 1 && !inviati[0].corpo.html.includes("__zone"));
+      inviati.length = 0;
+      await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({}).admin, ...parametri, origine: "https://localhost.evil.example" });
+      atteso("un dominio che solo comincia per «localhost» non è locale", inviati.length === 1 && !inviati[0].corpo.html.includes("__zone"));
+
       inviati.length = 0;
       const errore = await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({ link: { errore: "boom" } }).admin, ...parametri });
       atteso("generazione del link fallita: false e nessuna email", errore === false && inviati.length === 0);
