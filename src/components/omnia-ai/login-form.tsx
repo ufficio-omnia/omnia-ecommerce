@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { loginOmniaAi, type OmniaAiAuthState } from "@/app/actions/omnia-ai-auth";
+import TurnstileCampo from "@/components/turnstile-campo";
 
 const initialState: OmniaAiAuthState = {};
 
@@ -30,6 +31,8 @@ export default function OmniaAiLoginForm() {
           autoComplete="current-password"
         />
       </div>
+
+      <TurnstileCampo resetKey={state} tema="dark" />
 
       {state.error && <p className="omnia-esito errore">{state.error}</p>}
 

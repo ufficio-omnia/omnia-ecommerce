@@ -1,6 +1,7 @@
 "use server";
 
 import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
+import { verificaFormUmano } from "@/lib/turnstile";
 
 export type DemoRequestState = { error?: string; success?: string };
 
@@ -36,6 +37,9 @@ export async function requestDemo(
   if (!EMAIL_REGEX.test(email)) {
     return { error: "Inserisci un indirizzo email valido." };
   }
+
+  const verifica = await verificaFormUmano(formData);
+  if (!verifica.ok) return { error: verifica.errore };
 
   const righe = [
     ["Nome", nome],
