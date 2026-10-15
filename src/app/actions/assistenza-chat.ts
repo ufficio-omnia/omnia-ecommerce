@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAnthropicClient } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
 import { inviaEmailAssistenza } from "@/lib/assistenza-email";
+import { richiediAccountAzione } from "@/lib/omnia-ai-account-guardie";
 
 export type AssistenzaChatState = { error?: string };
 
@@ -52,11 +53,11 @@ export async function sendAssistenzaMessage(
   formData: FormData,
 ): Promise<AssistenzaChatState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Titolare o Ufficio Gare. La conversazione col supporto è di CHI SCRIVE (user.id: la sua riga, mai quella del
+  // titolare); i costi e i dati dell'azienda sono del titolare (contesto.accountId).
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
   const messaggio = String(formData.get("messaggio") ?? "").trim();
   if (!messaggio) return { error: "Scrivi un messaggio." };
@@ -117,7 +118,7 @@ export async function sendAssistenzaMessage(
       const response = await stream.finalMessage();
 
       await logAiUsage({
-        userId: user.id,
+        userId: contesto.accountId,
         garaId: null,
         operazione: "chat_assistenza",
         provider: "anthropic",
@@ -149,6 +150,7 @@ export async function sendAssistenzaMessage(
       try {
         await inviaEmailAssistenza({
           userId: user.id,
+          titolareId: contesto.accountId,
           motivo: input.motivo,
           garaRiferimento: input.gara_riferimento ?? null,
         });
@@ -214,11 +216,11 @@ export async function sendAssistenzaMessage(
 // decidere, un solo punto di implementazione per entrambi i trigger.
 export async function richiediEscalationAssistenza(): Promise<AssistenzaChatState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  // Titolare o Ufficio Gare. La conversazione col supporto è di CHI SCRIVE (user.id: la sua riga, mai quella del
+  // titolare); i costi e i dati dell'azienda sono del titolare (contesto.accountId).
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
   await supabase.from("assistenza_messaggi").insert({
     user_id: user.id,
@@ -229,6 +231,7 @@ export async function richiediEscalationAssistenza(): Promise<AssistenzaChatStat
   try {
     await inviaEmailAssistenza({
       userId: user.id,
+      titolareId: contesto.accountId,
       motivo: "Richiesta diretta del cliente, nessun giro con l'assistente.",
       garaRiferimento: null,
     });

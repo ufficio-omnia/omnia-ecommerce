@@ -13,6 +13,10 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { REVISIONE, calcolaPrezzoRevisione, validaContattiRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import { VERSIONE_CONDIZIONI_REVISIONE, testoCanonicoCondizioniRevisione } from "@/lib/omnia-ai-revisione-condizioni";
 import { leggiContestoRevisione } from "@/lib/omnia-ai-revisione";
+import { richiediAccountAzione, richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
+import { accessoNegatoPerAccount } from "@/lib/omnia-ai-account-lavoro";
+import { avvisaTitolareRevisione } from "@/lib/omnia-ai-ufficio-gare-avvisi";
+import { MESSAGGIO_UFFICIO_GARE_REVISIONE, MESSAGGIO_UFFICIO_GARE_REVISIONE_GIA_AVVISATO } from "@/lib/omnia-ai-account-calcoli";
 
 // `prezzoAggiornatoCentesimi`: il prezzo che il cliente aveva davanti non vale più (la scadenza della
 // gara è passata a una fascia di urgenza diversa mentre compilava): la pagina mostra quello nuovo.
@@ -22,10 +26,11 @@ export type RevisioneState = { error?: string; prezzoAggiornatoCentesimi?: numbe
 // prezzo si ricalcola sempre: quello arrivato dal browser serve solo a accorgersi se nel frattempo è cambiato.
 export async function avviaRevisioneUmana(_prevState: RevisioneState, formData: FormData): Promise<RevisioneState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || !user.email) return { error: "Sessione scaduta: accedi di nuovo e riprova." };
+  // Solo il titolare compra la revisione: l'Ufficio Gare può solo avvisarlo (avvisaAmministratoreRevisione).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
+  if (!user.email) return { error: "Sessione scaduta: accedi di nuovo e riprova." };
 
   const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
   if (accessoNegato) return { error: accessoNegato };
@@ -149,4 +154,53 @@ export async function avviaRevisioneUmana(_prevState: RevisioneState, formData: 
   if (erroreSessione) console.error("Revisione umana: id della sessione Stripe non salvato (lo scriverà il webhook)", erroreSessione.message);
 
   redirect(sessione.url);
+}
+
+export type AvvisoRevisioneState = { error?: string; success?: string };
+
+// L'Ufficio Gare vede il pulsante «Richiedi revisione umana»: il clic NON compra nulla, avvisa il titolare con
+// un'email (una al giorno per gara, deciso dal database); il titolare la compra dalla sua pagina, come sempre.
+// Per il titolare questa azione non serve (compra direttamente), e il server lo dice.
+export async function avvisaAmministratoreRevisione(_prevState: AvvisoRevisioneState, formData: FormData): Promise<AvvisoRevisioneState> {
+  const supabase = await createClient();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
+  if (contesto.ruolo !== "ufficio_gare") return { error: "La revisione umana la richiedi e la paghi dalla pagina della gara." };
+
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
+  if (accessoNegato) return { error: accessoNegato };
+  if (!user.email) return { error: "Sessione scaduta: accedi di nuovo e riprova." };
+
+  const garaId = String(formData.get("garaId") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(garaId)) return { error: "Gara non valida." };
+
+  // La gara e la relazione si leggono con la sessione (le regole di accesso la limitano alla gara del titolare);
+  // la richiesta già pagata e le condizioni, con la chiave di servizio e l'account effettivo.
+  const admin = createAdminClient();
+  const dati = await leggiContestoRevisione({ supabase, admin, userId: contesto.accountId, garaId });
+  if (!dati) return { error: "Gara non trovata." };
+  if (!dati.relazione) return { error: "La revisione umana si richiede dopo aver elaborato la relazione tecnica finale, con tutti i criteri." };
+  if (dati.pagata) return { error: "La revisione umana di questa relazione è già stata richiesta e pagata." };
+
+  // Stessa verifica del titolare: se la gara scade troppo presto la revisione non è gestibile, e non si disturba l'amministratore.
+  const esito = calcolaPrezzoRevisione({
+    scadenza: dati.gara.scadenza,
+    scadenzaOra: dati.gara.scadenza_ora,
+    limitePagineDisciplinare: dati.gara.limite_pagine_totale,
+    pagineStimateRelazione: dati.relazione.pagineStimate,
+    adesso: new Date(),
+  });
+  if (!esito.ok) return { error: esito.messaggio };
+
+  const avviso = await avvisaTitolareRevisione({
+    admin,
+    titolareId: contesto.accountId,
+    membroId: contesto.userId,
+    emailUfficioGare: user.email,
+    garaId: dati.gara.id,
+    titoloGara: dati.gara.titolo,
+  });
+  if (avviso === "non_riuscito") return { error: "Non sono riuscito ad avvisare l'amministratore: riprova tra qualche istante." };
+  return { success: avviso === "gia_inviato_oggi" ? MESSAGGIO_UFFICIO_GARE_REVISIONE_GIA_AVVISATO : MESSAGGIO_UFFICIO_GARE_REVISIONE };
 }

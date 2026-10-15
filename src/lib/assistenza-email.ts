@@ -23,23 +23,28 @@ function escapeHtml(testo: string): string {
 // messaggio di conferma al cliente.
 export async function inviaEmailAssistenza(params: {
   userId: string;
+  // Se chi scrive è l'Ufficio Gare di un'azienda: il titolare (l'azienda, il piano e i contatti sono i suoi).
+  // userId resta chi ha scritto, perché la conversazione è la sua.
+  titolareId?: string | null;
   motivo: string;
   garaRiferimento: string | null;
 }): Promise<{ ok: boolean }> {
   const { userId, motivo, garaRiferimento } = params;
+  const titolareId = params.titolareId && params.titolareId !== userId ? params.titolareId : null;
+  const accountId = titolareId ?? userId;
   const admin = createAdminClient();
 
-  const [{ data: utente }, { data: company }, { data: subscription }, { data: messaggi }] = await Promise.all([
+  const [{ data: utente }, { data: company }, { data: subscription }, { data: messaggi }, { data: titolare }] = await Promise.all([
     admin.from("users").select("email").eq("id", userId).single<{ email: string }>(),
     admin
       .from("companies")
       .select("ragione_sociale, telefono_aziendale")
-      .eq("user_id", userId)
+      .eq("user_id", accountId)
       .maybeSingle<{ ragione_sociale: string | null; telefono_aziendale: string | null }>(),
     admin
       .from("subscriptions")
       .select("plan")
-      .eq("user_id", userId)
+      .eq("user_id", accountId)
       .eq("status", "attivo")
       .order("created_at", { ascending: false })
       .limit(1)
@@ -50,6 +55,7 @@ export async function inviaEmailAssistenza(params: {
       .eq("user_id", userId)
       .order("created_at", { ascending: true })
       .returns<{ ruolo: string; contenuto: string; created_at: string }[]>(),
+    titolareId ? admin.from("users").select("email").eq("id", titolareId).maybeSingle<{ email: string }>() : Promise.resolve({ data: null as { email: string } | null }),
   ]);
 
   const nomePiano = subscription ? (PIANI[subscription.plan as PianoSlug]?.nome ?? subscription.plan) : "nessun abbonamento attivo";
@@ -64,7 +70,8 @@ export async function inviaEmailAssistenza(params: {
 
   const html = `
     <h2>Richiesta di assistenza OMNIA AI</h2>
-    <p><strong>Cliente:</strong> ${escapeHtml(company?.ragione_sociale ?? "—")} (${escapeHtml(utente?.email ?? "—")})</p>
+    <p><strong>Cliente:</strong> ${escapeHtml(company?.ragione_sociale ?? "—")} (${escapeHtml(titolareId ? (titolare?.email ?? "—") : (utente?.email ?? "—"))})</p>
+    ${titolareId ? `<p><strong>Scrive l'Ufficio Gare:</strong> ${escapeHtml(utente?.email ?? "—")} (non l'amministratore dell'azienda)</p>` : ""}
     <p><strong>Telefono:</strong> ${escapeHtml(company?.telefono_aziendale ?? "—")}</p>
     <p><strong>Piano:</strong> ${escapeHtml(nomePiano)}</p>
     <p><strong>Gara di riferimento:</strong> ${garaRiferimento ? escapeHtml(garaRiferimento) : "nessuna indicata"}</p>

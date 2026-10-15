@@ -14,6 +14,7 @@ import DisdiciAbbonamentoButton from "./disdici-abbonamento-button";
 import GestisciPagamentoButton from "./gestisci-pagamento-button";
 import CambiaPianoForm from "./cambia-piano-form";
 import AnnullaCambioPianoButton from "./annulla-cambio-piano-button";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 type ConsumoRow = {
   gara_id: string | null;
@@ -38,11 +39,10 @@ type AcquistoCreditiRow = {
 // un abbonamento attivo da leggere).
 export default async function AbbonamentoPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+  // Solo il titolare: l'Ufficio Gare non vede questa pagina (la barra laterale non la mostra, il controllo vero è qui).
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { user } = sessione;
 
   const stato = await getOmniaAiAccessState(user.id, supabase);
 

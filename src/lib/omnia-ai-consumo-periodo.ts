@@ -1,5 +1,5 @@
 import { PIANI, normalizzaPianoSlug, type PianoSlug } from "@/lib/omnia-ai-plans";
-import type { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SubscriptionAttivaRow = {
   id: string;
@@ -30,7 +30,7 @@ export type ConsumoPeriodoCorrente = {
 // finestra temporale, coerente con lo stile append-only già usato altrove).
 export async function getConsumoPeriodoCorrente(
   userId: string,
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseClient,
 ): Promise<ConsumoPeriodoCorrente | null> {
   const { data: subscription } = await supabase
     .from("subscriptions")

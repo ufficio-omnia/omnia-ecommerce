@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { richiediAccountAzione } from "@/lib/omnia-ai-account-guardie";
+import { MESSAGGIO_UFFICIO_GARE_FATTURAZIONE_INCOMPLETA } from "@/lib/omnia-ai-account-calcoli";
 
 export type DownloadState = { error?: string; url?: string };
 
@@ -76,16 +78,11 @@ export async function downloadGaraDocumento(
   if (!docId) return {};
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  // La RLS ("gara_documenti_all_own") garantisce che questa query
-  // restituisca il documento solo se appartiene all'utente corrente.
+  // La RLS ("gara_documenti_all_account") garantisce che questa query restituisca il documento solo se
+  // appartiene all'account dell'utente (il titolare, anche per il suo Ufficio Gare).
   const { data: doc } = await supabase
     .from("gara_documenti")
     .select("file_path, nome_file")
@@ -120,13 +117,9 @@ export async function downloadGaraMessaggioFile(
   if (!msgId) return {};
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { contesto } = guardia;
 
   // Codice destinatario o PEC servono per trasmettere la fattura
   // dell'abbonamento allo SDI: senza uno dei due non possiamo fatturare,
@@ -135,16 +128,19 @@ export async function downloadGaraMessaggioFile(
   // caricamento documenti, generazione stessa) — solo questo download,
   // qui lato server: un avviso nella dashboard da solo non basterebbe a
   // impedirlo davvero.
-  const { data: company } = await supabase
+  // Il profilo è del TITOLARE: chiave di servizio, perché l'Ufficio Gare non ha accesso diretto a quella tabella.
+  const { data: company } = await createAdminClient()
     .from("companies")
     .select("codice_sdi, pec")
-    .eq("user_id", user.id)
+    .eq("user_id", contesto.accountId)
     .maybeSingle<{ codice_sdi: string | null; pec: string | null }>();
 
   if (!company?.codice_sdi && !company?.pec) {
     return {
       error:
-        "Per scaricare i documenti generati devi prima completare i dati di fatturazione (codice destinatario o PEC) nel profilo azienda: ci servono per poterti fatturare l'abbonamento.",
+        contesto.ruolo === "ufficio_gare"
+          ? MESSAGGIO_UFFICIO_GARE_FATTURAZIONE_INCOMPLETA
+          : "Per scaricare i documenti generati devi prima completare i dati di fatturazione (codice destinatario o PEC) nel profilo azienda: ci servono per poterti fatturare l'abbonamento.",
     };
   }
 
@@ -184,16 +180,11 @@ export async function downloadAllegatoMessaggio(
   if (!allegatoId) return {};
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  // La RLS ("gara_messaggio_allegati_all_own") garantisce che questa
-  // query restituisca l'allegato solo se appartiene all'utente corrente.
+  // La RLS ("gara_messaggio_allegati_all_account") garantisce che questa query restituisca l'allegato solo se
+  // appartiene all'account dell'utente (il titolare, anche per il suo Ufficio Gare).
   const { data: allegato } = await supabase
     .from("gara_messaggio_allegati")
     .select("file_path")

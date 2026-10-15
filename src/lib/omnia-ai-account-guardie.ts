@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ErroreContestoAccount, risolviContestoAccount, type ContestoAccount } from "@/lib/omnia-ai-account";
 import {
   MESSAGGIO_UFFICIO_GARE_NON_AUTORIZZATO,
+  MESSAGGIO_UFFICIO_GARE_SOSPESO,
   MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA,
   RADICE_AREA,
 } from "@/lib/omnia-ai-account-calcoli";
@@ -59,5 +60,40 @@ export async function richiediTitolarePagina(): Promise<SessioneAccount | null> 
   }
   if (!sessione) redirect("/login");
   if (sessione.contesto.ruolo !== "titolare") redirect(RADICE_AREA);
+  return sessione;
+}
+
+// ───── il lavoro di gara: aperto al titolare e all'Ufficio Gare ─────
+//
+// Chi lavora sulle gare (gare, documenti, chat, analisi, relazione, download) può essere il titolare o il suo
+// Ufficio Gare. In entrambi i casi i dati sono del TITOLARE: da qui in poi il codice usa contesto.accountId
+// (mai user.id) per ogni dato dell'azienda. Un Ufficio Gare sospeso non lavora su nulla.
+
+// Per le azioni del lavoro di gara. L'errore è un testo da mostrare, mai un'eccezione.
+export async function richiediAccountAzione(): Promise<EsitoGuardiaAzione> {
+  let sessione: SessioneAccount | null;
+  try {
+    sessione = await leggiSessioneAccount();
+  } catch (e) {
+    if (e instanceof ErroreContestoAccount) return { ok: false, errore: MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA };
+    throw e;
+  }
+  if (!sessione) return { ok: false, errore: "Sessione scaduta, ricarica la pagina." };
+  if (sessione.contesto.sospeso) return { ok: false, errore: MESSAGGIO_UFFICIO_GARE_SOSPESO };
+  return { ok: true, user: sessione.user, contesto: sessione.contesto };
+}
+
+// Per le pagine del lavoro di gara: senza sessione porta al login; null se il ruolo non si riesce a verificare o
+// l'Ufficio Gare è sospeso (la pagina non mostra nulla: il riquadro che spiega il perché lo mette il layout).
+export async function richiediAccountPagina(): Promise<SessioneAccount | null> {
+  let sessione: SessioneAccount | null;
+  try {
+    sessione = await leggiSessioneAccount();
+  } catch (e) {
+    if (e instanceof ErroreContestoAccount) return null;
+    throw e;
+  }
+  if (!sessione) redirect("/login");
+  if (sessione.contesto.sospeso) return null;
   return sessione;
 }

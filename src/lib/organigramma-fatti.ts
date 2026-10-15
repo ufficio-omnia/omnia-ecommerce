@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { derivaTipoInterfaccia, type FattiOrganigramma } from "@/lib/organigramma-contesto";
 import { leggiVociProfilo } from "@/lib/organigramma-dati";
 
@@ -37,13 +38,15 @@ export async function leggiFattiOrganigramma(params: { supabase: SupabaseClient;
 
   // I campi del livello di direzione stanno nella migrazione 0071: senza di
   // essa si legge il profilo senza (la fascia di direzione resta omessa).
-  let profiloRes = await supabase
+  // Il profilo azienda è del TITOLARE (userId = account effettivo): chiave di servizio, perché l'Ufficio Gare non ha accesso diretto.
+  const profili = createAdminClient();
+  let profiloRes = await profili
     .from("companies")
     .select(`${COLONNE_PROFILO_BASE}, funzioni_direzione, uffici_gestione`)
     .eq("user_id", userId)
     .maybeSingle<RigaProfilo>();
   if (profiloRes.error) {
-    profiloRes = await supabase.from("companies").select(COLONNE_PROFILO_BASE).eq("user_id", userId).maybeSingle<RigaProfilo>();
+    profiloRes = await profili.from("companies").select(COLONNE_PROFILO_BASE).eq("user_id", userId).maybeSingle<RigaProfilo>();
   }
 
   const gara = garaRes.data;

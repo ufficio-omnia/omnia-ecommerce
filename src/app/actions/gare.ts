@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { indexGaraDocumento, isIndexableFile } from "@/lib/gara-indexing";
 import { sanitizeFileName } from "@/lib/document-text";
-import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
-import { verificaDirittoGara } from "@/lib/gara-diritto";
+import { richiediAccountAzione } from "@/lib/omnia-ai-account-guardie";
+import { accessoNegatoPerAccount, dirittoGaraPerAccount } from "@/lib/omnia-ai-account-lavoro";
 import { collectGaraFilePaths, removeGaraFiles } from "@/lib/gara-storage";
 
 export type GaraState = { error?: string; warning?: string; duplicato?: string };
@@ -26,13 +26,11 @@ export async function createGara(
   formData: FormData,
 ): Promise<GaraState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
-
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const titolo = String(formData.get("titolo") ?? "").trim();
@@ -63,7 +61,7 @@ export async function createGara(
 
   const { data: gara, error } = await supabase
     .from("gare")
-    .insert({ user_id: user.id, titolo })
+    .insert({ user_id: contesto.accountId, titolo })
     .select("id")
     .single<{ id: string }>();
 
@@ -81,11 +79,8 @@ export async function renameGara(
   formData: FormData,
 ): Promise<GaraState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
 
   const garaId = String(formData.get("garaId") ?? "");
   const titolo = String(formData.get("titolo") ?? "").trim();
@@ -114,17 +109,15 @@ export async function deleteGara(
   formData: FormData,
 ): Promise<GaraState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
   // In sola lettura una cancellazione è irreversibile senza alcun
   // vantaggio per il cliente, che in quei 30 giorni sta salvando
   // materiale che dopo non esisterà più — bloccata come le azioni che
   // generano contenuto, non solo quelle.
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
@@ -152,13 +145,11 @@ export async function uploadGaraDocumento(
   formData: FormData,
 ): Promise<GaraState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
-
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");
@@ -181,7 +172,7 @@ export async function uploadGaraDocumento(
   // Gare del piano, crediti o gare gratuite finite e questa gara non ha mai consumato una gara:
   // il documento non si carica e quindi non si indicizza (l'indicizzazione costa, e alimenta la
   // chat). Prima di toccare lo storage. L'interfaccia nasconde già il modulo di caricamento.
-  const diritto = await verificaDirittoGara({ garaId, userId: user.id });
+  const diritto = await dirittoGaraPerAccount({ contesto, user, garaId });
   if (!diritto.consentito) return { error: diritto.messaggio };
 
   // Il bucket "gare" accetta upload solo da admin via RLS storage: usiamo
@@ -203,7 +194,7 @@ export async function uploadGaraDocumento(
     .from("gara_documenti")
     .insert({
       gara_id: garaId,
-      user_id: user.id,
+      user_id: contesto.accountId,
       nome_file: file.name,
       file_path: filePath,
     })
@@ -221,7 +212,7 @@ export async function uploadGaraDocumento(
       await indexGaraDocumento({
         garaId,
         documentoId: nuovoDocumento.id,
-        userId: user.id,
+        userId: contesto.accountId,
         nomeFile: file.name,
         filePath,
       });
@@ -244,15 +235,13 @@ export async function removeGaraDocumento(
   formData: FormData,
 ): Promise<GaraState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
   // Stessa ragione di deleteGara: in sola lettura è irreversibile senza
   // alcun vantaggio per il cliente.
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const docId = String(formData.get("docId") ?? "");
@@ -299,13 +288,11 @@ export async function uploadGaraLogoCliente(
   formData: FormData,
 ): Promise<GaraState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
 
-  if (!user) return { error: "Sessione scaduta, ricarica la pagina." };
-
-  const accessoNegato = await requireOmniaAiWriteAccess(user.id, supabase);
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
   if (accessoNegato) return { error: accessoNegato };
 
   const garaId = String(formData.get("garaId") ?? "");

@@ -1,11 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { createStripeClient } from "@/lib/stripe";
 import { hasActiveSubscription } from "@/lib/subscription";
 import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
+import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 
 export type OmniaAiCreditsCheckoutState = { error?: string };
 
@@ -19,12 +19,12 @@ export async function startOmniaAiCreditsCheckout(
   _prevState: OmniaAiCreditsCheckoutState,
   formData: FormData,
 ): Promise<OmniaAiCreditsCheckoutState> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Solo il titolare: l'Ufficio Gare non compra crediti (la barra laterale nasconde la voce, il controllo vero è qui).
+  const guardia = await richiediTitolareAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user } = guardia;
 
-  if (!user || !user.email) return { error: "Devi accedere al tuo account per acquistare crediti." };
+  if (!user.email) return { error: "Devi accedere al tuo account per acquistare crediti." };
 
   const pacchettoSlug = String(formData.get("pacchetto") ?? "");
   if (!(pacchettoSlug in PACCHETTI_CREDITI)) return { error: "Pacchetto non valido." };

@@ -8,6 +8,7 @@ import { formatEuro } from "@/lib/omnia-ai-plans";
 import { REVISIONE, calcolaPrezzoRevisione, testoScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 import { leggiContestoRevisione, leggiRichiestaRevisione } from "@/lib/omnia-ai-revisione";
 import RevisioneForm from "./revisione-form";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 // Pagina di acquisto della revisione umana: spiega, calcola il prezzo con le regole del server, raccoglie il
 // referente e le accettazioni e porta al pagamento. Anche la pagina di ritorno da Stripe: dice com'è andata,
@@ -23,10 +24,11 @@ export default async function RevisionePage({
   const { richiesta: richiestaId } = await searchParams;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || !user.email) redirect("/login");
+  // Solo il titolare: l'Ufficio Gare non vede questa pagina (la barra laterale non la mostra, il controllo vero è qui).
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { user } = sessione;
+  if (!user.email) redirect("/login");
 
   const admin = createAdminClient();
   const contesto = await leggiContestoRevisione({ supabase, admin, userId: user.id, garaId: id });

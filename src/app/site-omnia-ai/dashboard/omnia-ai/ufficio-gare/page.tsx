@@ -80,7 +80,7 @@ export default async function UfficioGarePage() {
           </div>
         </div>
         <p className="omnia-riquadro-nota" style={{ marginTop: 16 }}>
-          Le gare e le relazioni sono dell&apos;azienda e consumano le gare e i crediti del tuo abbonamento. Quando finiscono, l&apos;Ufficio Gare vede un promemoria per te e tu ricevi un&apos;email (al massimo una al giorno).
+          Le gare e le relazioni sono dell&apos;azienda e consumano le gare e i crediti del tuo abbonamento. Quando finiscono, l&apos;Ufficio Gare vede un promemoria per te e tu ricevi un&apos;email.
         </p>
       </section>
 

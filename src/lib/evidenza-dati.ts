@@ -34,7 +34,8 @@ export async function caricaEvidenzaDati(params: {
       .eq("id", garaId)
       .eq("user_id", userId)
       .maybeSingle(),
-    supabase
+    // Il profilo azienda è del TITOLARE: chiave di servizio (l'Ufficio Gare, che lavora per suo conto, non ha accesso diretto).
+    (params.supabase ?? createAdminClient())
       .from("companies")
       .select("numero_dipendenti, fatturato_medio_annuo, certificazioni, referenze, settori_attivita, presentazione")
       .eq("user_id", userId)

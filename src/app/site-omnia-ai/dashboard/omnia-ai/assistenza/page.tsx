@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { richiediAccountPagina } from "@/lib/omnia-ai-account-guardie";
 import AssistenzaChat, { type AssistenzaMessaggio } from "./assistenza-chat";
 
 // Il server action di invio (sendAssistenzaMessage) può fare fino a 3 giri
@@ -16,13 +16,9 @@ export const maxDuration = 60;
 // sola lettura — solo sessione valida richiesta, come ogni altra pagina.
 export default async function AssistenzaPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  // Titolare o Ufficio Gare: la conversazione è di chi scrive (le regole di accesso la limitano alla sua).
+  const sessione = await richiediAccountPagina();
+  if (!sessione) return null;
 
   const { data: messaggi } = await supabase
     .from("assistenza_messaggi")

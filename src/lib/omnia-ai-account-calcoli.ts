@@ -152,6 +152,11 @@ export const MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA =
 export const MESSAGGIO_UFFICIO_GARE_NON_AUTORIZZATO =
   "Questa funzione è riservata all'amministratore dell'azienda.";
 
+// I dati di fatturazione dell'azienda (codice destinatario o PEC) mancano: il download dei documenti generati
+// resta chiuso finché il titolare non li completa. L'Ufficio Gare non vede il profilo: gli si dice a chi rivolgersi.
+export const MESSAGGIO_UFFICIO_GARE_FATTURAZIONE_INCOMPLETA =
+  "Per scaricare i documenti generati servono i dati di fatturazione dell'azienda (codice destinatario o PEC): ricorda al tuo amministratore di completarli nel profilo azienda.";
+
 export const MESSAGGIO_UFFICIO_GARE_REVISIONE =
   "La revisione umana la richiede e la paga l'amministratore dell'azienda: lo abbiamo avvisato, la troverà nella sua area riservata.";
 
@@ -184,4 +189,24 @@ export type MotivoQuotaFinita = "gare_finite" | "abbonamento_non_attivo";
 
 export function messaggioPerUfficioGare(motivo: MotivoQuotaFinita): string {
   return motivo === "abbonamento_non_attivo" ? MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO : MESSAGGIO_UFFICIO_GARE_GARE_FINITE;
+}
+
+// ───── quando avvisare il titolare ─────
+
+export type StatoAccessoPerAvviso = "attivo" | "prova" | "sola_lettura" | "cessato";
+export type MotivoDirittoPerAvviso = "gia_consumata" | "gia_analizzata" | "quota_disponibile" | "quota_esaurita" | "gratuite_esaurite" | "verifica_non_riuscita" | null;
+
+// Perché l'Ufficio Gare è fermo, se lo è davvero. Abbonamento non attivo (sola lettura o cessato): manca
+// l'abbonamento. Abbonamento attivo o prova ma senza più gare né crediti: le gare sono finite. Una verifica
+// che non è riuscita NON è «gare finite» (non si avvisa nessuno per un dato che non si ha); gli altri casi: nessun motivo.
+export function motivoAvvisoTitolare({ stato, diritto }: { stato: StatoAccessoPerAvviso; diritto: MotivoDirittoPerAvviso }): MotivoQuotaFinita | null {
+  if (stato === "sola_lettura" || stato === "cessato") return "abbonamento_non_attivo";
+  if (diritto === "quota_esaurita" || diritto === "gratuite_esaurite") return "gare_finite";
+  return null;
+}
+
+// Il testo che un'azione bloccata restituisce: all'Ufficio Gare mai i testi del titolare (che parlano di
+// acquistare crediti e di piani), solo il promemoria per l'amministratore.
+export function testoBloccoPerRuolo(ruolo: RuoloAccount, motivo: MotivoQuotaFinita, testoDelTitolare: string): string {
+  return ruolo === RUOLO_UFFICIO_GARE ? messaggioPerUfficioGare(motivo) : testoDelTitolare;
 }

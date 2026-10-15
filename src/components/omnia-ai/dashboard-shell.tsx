@@ -17,6 +17,7 @@ export default function DashboardShell({
   nomeAzienda,
   avvisi,
   voci,
+  ufficioGare = false,
   children,
 }: {
   nomeSaluto: string;
@@ -25,6 +26,8 @@ export default function DashboardShell({
   avvisi?: ReactNode;
   // voci della barra laterale (se mancano: quelle del titolare)
   voci?: VoceMenu[];
+  // vista dell'Ufficio Gare: niente campanella né menu del profilo
+  ufficioGare?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -35,7 +38,7 @@ export default function DashboardShell({
         <div className="omnia-content">
           {avvisi}
           <div className="omnia-content-interno">
-            <Topbar nomeSaluto={nomeSaluto} email={email} />
+            <Topbar nomeSaluto={nomeSaluto} email={email} ufficioGare={ufficioGare} />
             {children}
           </div>
         </div>

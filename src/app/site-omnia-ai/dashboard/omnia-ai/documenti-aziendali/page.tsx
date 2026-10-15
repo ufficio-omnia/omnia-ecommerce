@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { downloadGaraDocumento } from "@/app/actions/download";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 type DocumentoRow = {
   id: string;
@@ -17,13 +17,10 @@ type DocumentoRow = {
 // già, senza un secondo percorso di upload da tenere sincronizzato.
 export default async function DocumentiAziendaliPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  // Solo il titolare: l'Ufficio Gare non vede questa pagina (la barra laterale non la mostra, il controllo vero è qui).
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { user } = sessione;
 
   const { data: documenti } = await supabase
     .from("gara_documenti")

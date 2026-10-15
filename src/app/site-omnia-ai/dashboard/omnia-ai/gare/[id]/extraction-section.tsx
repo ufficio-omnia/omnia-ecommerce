@@ -37,6 +37,7 @@ export default function ExtractionSection({
   estrazione,
   pianoAttuale,
   inProva = false,
+  ufficioGare = false,
 }: {
   garaId: string;
   estrazione: Estrazione;
@@ -44,6 +45,8 @@ export default function ExtractionSection({
   // cliente con le sole gare gratuite: a gare finite non ci sono crediti né piani superiori da
   // confrontare, c'è solo da scegliere un abbonamento
   inProva?: boolean;
+  // l'Ufficio Gare non compra nulla: a gare finite vede solo il promemoria per l'amministratore, senza link né prezzi
+  ufficioGare?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     extractGaraData,
@@ -71,14 +74,14 @@ export default function ExtractionSection({
       {state.error && (
         <div className="omnia-messaggio-stato errore">
           <p style={{ margin: 0 }}>{state.error}</p>
-          {state.quotaEsaurita && inProva && (
+          {state.quotaEsaurita && !ufficioGare && inProva && (
             <p style={{ margin: "12px 0 0" }}>
               <Link href="/dashboard/omnia-ai/abbonamento" className="omnia-btn omnia-btn-p">
                 Scegli un abbonamento
               </Link>
             </p>
           )}
-          {state.quotaEsaurita && !inProva && <QuotaEsauritaConfronto pianoAttuale={pianoAttuale} />}
+          {state.quotaEsaurita && !ufficioGare && !inProva && <QuotaEsauritaConfronto pianoAttuale={pianoAttuale} />}
         </div>
       )}
 

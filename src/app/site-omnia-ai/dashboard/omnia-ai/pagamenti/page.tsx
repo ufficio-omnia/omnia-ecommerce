@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import PagamentiVista from "@/components/omnia-ai/pagamenti-vista";
 import { costruisciPagamenti, type AbbonamentoCliente, type AcquistoCrediti, type IncassoCliente, type RevisioneCliente } from "@/lib/omnia-ai-pagamenti";
 import GestisciPagamentoButton from "../abbonamento/gestisci-pagamento-button";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 export const metadata: Metadata = { title: "Pagamenti e fatture — OMNIA AI" };
 
@@ -22,11 +23,10 @@ const colonnaAssente = (e: Errore) => e?.code === "42703" || e?.code === "PGRST2
 // righe») gli restituisce soltanto i suoi pagamenti, e in più si filtra per il suo id.
 export default async function PagamentiPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
+  // Solo il titolare: l'Ufficio Gare non vede questa pagina (la barra laterale non la mostra, il controllo vero è qui).
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { user } = sessione;
 
   const leggiIncassi = (colonne: string) =>
     supabase.from("omnia_ai_incassi").select(colonne).eq("user_id", user.id).order("pagato_il", { ascending: false }).limit(500).returns<IncassoCliente[]>();

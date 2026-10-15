@@ -1,9 +1,10 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
-import { verificaDirittoGara } from "@/lib/gara-diritto";
+import { richiediAccountPagina } from "@/lib/omnia-ai-account-guardie";
+import { clientePerAccount, dirittoGaraPerAccount } from "@/lib/omnia-ai-account-lavoro";
 import { downloadGaraDocumento } from "@/app/actions/download";
 import { deleteGara, removeGaraDocumento } from "@/app/actions/gare";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
@@ -49,22 +50,22 @@ export default async function GaraPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  // Titolare o Ufficio Gare: la gara è dell'azienda (del titolare); le regole di accesso la mostrano a entrambi.
+  const sessione = await richiediAccountPagina();
+  if (!sessione) return null;
+  const { user, contesto } = sessione;
+  const ufficioGare = contesto.ruolo === "ufficio_gare";
+  // abbonamento e piano si leggono sul titolare (l'Ufficio Gare non ha accesso a quelle tabelle)
+  const clienteAbbonamento = clientePerAccount(contesto, supabase);
 
   // Serve solo per proporre il confronto "credito o piano superiore" nel
-  // messaggio di quota esaurita (ExtractionSection): il gate vero e
+  // messaggio di quota esaurita (ExtractionSection, solo per il titolare): il gate vero e
   // proprio resta in consumeGaraQuotaIfNeeded, invariato.
-  const statoAccesso = await getOmniaAiAccessState(user.id, supabase);
-  const { data: subscriptionAttiva } = await supabase
+  const statoAccesso = await getOmniaAiAccessState(contesto.accountId, clienteAbbonamento);
+  const { data: subscriptionAttiva } = await clienteAbbonamento
     .from("subscriptions")
     .select("plan")
-    .eq("user_id", user.id)
+    .eq("user_id", contesto.accountId)
     .eq("status", "attivo")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -149,10 +150,11 @@ export default async function GaraPage({
 
   // Gare del piano, crediti o gare gratuite finite e questa gara non ha mai consumato una gara:
   // chat e caricamento documenti restano spenti (il vero blocco è nelle azioni, qui solo la vista).
-  const diritto = await verificaDirittoGara({ garaId: gara.id, userId: user.id });
+  // (per l'Ufficio Gare, a gare finite: il promemoria per l'amministratore, e al titolare parte l'email)
+  const diritto = await dirittoGaraPerAccount({ contesto, user, garaId: gara.id });
 
   // «Richiedi revisione umana»: compare solo dopo la relazione tecnica FINALE, con il prezzo calcolato per questa gara.
-  const contestoRevisione = await leggiContestoRevisione({ supabase, admin: createAdminClient(), userId: user.id, garaId: gara.id });
+  const contestoRevisione = await leggiContestoRevisione({ supabase, admin: createAdminClient(), userId: contesto.accountId, garaId: gara.id });
   const esitoRevisione = contestoRevisione?.relazione
     ? calcolaPrezzoRevisione({
         scadenza: gara.scadenza,
@@ -202,6 +204,7 @@ export default async function GaraPage({
           messaggio={diritto.messaggio}
           motivo={diritto.motivo}
           pianoAttuale={subscriptionAttiva?.plan ?? null}
+          ufficioGare={ufficioGare}
         />
       )}
 
@@ -263,11 +266,11 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} />
+      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
 
-      {contestoRevisione?.relazione && esitoRevisione && <RevisionePanel garaId={gara.id} esito={esitoRevisione} pagata={contestoRevisione.pagata} />}
+      {contestoRevisione?.relazione && esitoRevisione && <RevisionePanel garaId={gara.id} esito={esitoRevisione} pagata={contestoRevisione.pagata} ufficioGare={ufficioGare} />}
     </div>
   );
 }
