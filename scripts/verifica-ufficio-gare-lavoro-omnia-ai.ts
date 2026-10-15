@@ -120,7 +120,19 @@ async function main() {
     const corpo = funzioniEsportate(leggi("src/app/actions/omnia-ai-revisione.ts")).find((f) => f.nome === "avvisaAmministratoreRevisione")?.corpo ?? "";
     atteso("avvisaAmministratoreRevisione: solo l'Ufficio Gare; il titolare compra dal suo flusso", corpo.includes('contesto.ruolo !== "ufficio_gare") return { error:'));
     atteso("avvisaAmministratoreRevisione: non apre mai un pagamento", !/stripe|checkout|redirect\(/i.test(corpo));
-    atteso("avvisaAmministratoreRevisione: controlla abbonamento, relazione finale, richiesta già pagata e fattibilità prima di avvisare", ["accessoNegatoPerAccount", "dati.relazione", "dati.pagata", "calcolaPrezzoRevisione"].every((s) => corpo.includes(s)) && corpo.indexOf("calcolaPrezzoRevisione") < corpo.indexOf("avvisaTitolareRevisione("));
+    atteso(
+      "avvisaAmministratoreRevisione: controlla abbonamento, relazione finale, richiesta già pagata e fattibilità prima di avvisare",
+      [
+        "if (accessoNegato) return { error: accessoNegato };",
+        "if (!dati.relazione) return { error:",
+        "if (dati.pagata) return { error:",
+        "if (!esito.ok) return { error: esito.messaggio };",
+        "if (!dati) return { error: \"Gara non trovata.\" };",
+      ].every((s) => corpo.includes(s)) &&
+        corpo.indexOf("if (!esito.ok) return") < corpo.indexOf("avvisaTitolareRevisione(") &&
+        corpo.indexOf("if (dati.pagata) return") < corpo.indexOf("avvisaTitolareRevisione("),
+    );
+    atteso("avvisaAmministratoreRevisione: gli errori dell'avviso non vengono presentati come successo", corpo.includes('if (avviso === "non_riuscito") return { error:'));
     atteso("avvisaAmministratoreRevisione: una email al giorno per gara (chiave = gara) e il testo di conferma per chi l'ha già fatto oggi", corpo.includes("garaId: dati.gara.id") && corpo.includes("MESSAGGIO_UFFICIO_GARE_REVISIONE_GIA_AVVISATO"));
   }
   {
@@ -201,6 +213,7 @@ async function main() {
     const tutteConChiave = letture.every((i) => /createAdminClient|profili\b/.test(sorgente.slice(Math.max(0, i - 220), i)));
     atteso(`${path.basename(file)}: ogni lettura del profilo azienda usa la chiave di servizio (${letture.length})`, letture.length > 0 && tutteConChiave);
   }
+  atteso("organigramma e figure: il profilo si legge dal client di servizio creato nella funzione, non da quello ricevuto", leggi("src/lib/organigramma-fatti.ts").includes("const profili = createAdminClient();") && leggi("src/lib/figure-fatti.ts").includes("const supabase = createAdminClient();") && !/params\.supabase|\{ supabase, userId \}/.test(leggi("src/lib/figure-fatti.ts")));
   atteso("nessuna libreria legge la sessione per conto suo (solo guardie, middleware e console)", elencoFile("src/lib", (n) => n.endsWith(".ts")).filter((f) => leggi(f).includes("auth.getUser()")).every((f) => ["src/lib/omnia-ai-account-guardie.ts", "src/lib/supabase/middleware.ts", "src/lib/console/accesso.ts"].includes(f)), elencoFile("src/lib", (n) => n.endsWith(".ts")).filter((f) => leggi(f).includes("auth.getUser()")).join(", "));
   atteso("il logo dell'organigramma è del titolare (identificativo passato dal chiamante)", leggi("src/lib/org-chart-loghi.ts").includes("recuperaLoghiOrganigramma(garaId: string, userId: string)") && (leggi("src/lib/relazione-tecnica.ts").match(/recuperaLoghiOrganigramma\(garaId, userId\)/g) ?? []).length === 2);
 
