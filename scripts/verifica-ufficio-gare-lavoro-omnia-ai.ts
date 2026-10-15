@@ -110,6 +110,8 @@ async function main() {
         // la conversazione col supporto è di CHI SCRIVE: user.id è voluto, ma solo per la riga propria; i costi e i dati dell'azienda sono del titolare
         const usi = [...corpo.matchAll(/^.*user\.id.*$/gm)].map((m) => m[0].trim()).filter((riga) => !riga.startsWith("//"));
         atteso(`${nomeFile} › ${nome}: user.id solo per la conversazione propria`, usi.every((r) => /user_id: user\.id|\.eq\("user_id", user\.id\)|userId: user\.id,/.test(r)), usi.join(" | "));
+        // la riga della conversazione è SEMPRE di chi scrive: mai del titolare (altrimenti i due vedrebbero la stessa chat)
+        atteso(`${nomeFile} › ${nome}: le righe della conversazione sono di chi scrive, non del titolare`, !/user_id: contesto\.accountId/.test(corpo) && (corpo.match(/user_id: user\.id/g) ?? []).length >= (nome === "sendAssistenzaMessage" ? 2 : 1));
         atteso(`${nomeFile} › ${nome}: i dati dell'azienda e i costi sono del titolare`, !/logAiUsage\(\{\s*userId: user\.id/.test(corpo) && (nome === "sendAssistenzaMessage" ? corpo.includes("userId: contesto.accountId,\n        garaId: null") : true) && (!corpo.includes("inviaEmailAssistenza(") || corpo.includes("titolareId: contesto.accountId")));
       } else {
         atteso(`${nomeFile} › ${nome}: i dati sono dell'account effettivo, mai dell'utente loggato`, !/\buser\.id\b/.test(corpo), (corpo.match(/^.*\buser\.id\b.*$/gm) ?? []).join(" | "));
@@ -133,6 +135,7 @@ async function main() {
         corpo.indexOf("if (dati.pagata) return") < corpo.indexOf("avvisaTitolareRevisione("),
     );
     atteso("avvisaAmministratoreRevisione: gli errori dell'avviso non vengono presentati come successo", corpo.includes('if (avviso === "non_riuscito") return { error:'));
+    atteso("avvisaAmministratoreRevisione: la gara e la relazione si leggono per l'account effettivo (il titolare)", corpo.includes("userId: contesto.accountId, garaId })") && !/contesto\.userId, garaId/.test(corpo));
     atteso("avvisaAmministratoreRevisione: una email al giorno per gara (chiave = gara) e il testo di conferma per chi l'ha già fatto oggi", corpo.includes("garaId: dati.gara.id") && corpo.includes("MESSAGGIO_UFFICIO_GARE_REVISIONE_GIA_AVVISATO"));
   }
   {
@@ -141,7 +144,7 @@ async function main() {
     const chat = leggi("src/app/actions/gara-chat.ts");
     atteso("gara-chat.ts: ogni scrittura e ogni costo hanno il titolare come proprietario", (chat.match(/contesto\.accountId/g) ?? []).length >= 12 && !/\buser\.(id|email)\b/.test(chat));
     const estrazione = leggi("src/app/actions/gara-extraction.ts");
-    atteso("gara-extraction.ts: a gare finite l'Ufficio Gare non riceve i testi di acquisto e il titolare riceve l'email", estrazione.includes('if (contesto.ruolo === "ufficio_gare") {') && estrazione.includes('messaggioPerUfficioGare("gare_finite")') && estrazione.indexOf("consumeGaraQuotaIfNeeded") < estrazione.indexOf("avvisaTitolareDopoLaRisposta"));
+    atteso("gara-extraction.ts: a gare finite l'Ufficio Gare non riceve i testi di acquisto e il titolare riceve l'email", estrazione.includes('if (contesto.ruolo === "ufficio_gare") {') && estrazione.includes('messaggioPerUfficioGare("gare_finite")') && estrazione.lastIndexOf("consumeGaraQuotaIfNeeded({") < estrazione.lastIndexOf('avvisaTitolareDopoLaRisposta({ contesto, emailUfficioGare: user.email, motivo: "gare_finite" });') && estrazione.includes('avvisaTitolareDopoLaRisposta({ contesto, emailUfficioGare: user.email, motivo: "gare_finite" });\n      return { error: messaggioPerUfficioGare("gare_finite"), quotaEsaurita: true };'));
     const download = leggi("src/app/actions/download.ts");
     atteso("download.ts: l'Ufficio Gare non vede il profilo azienda, riceve il promemoria", download.includes("MESSAGGIO_UFFICIO_GARE_FATTURAZIONE_INCOMPLETA") && /contesto\.ruolo === "ufficio_gare"\s*\?\s*MESSAGGIO_UFFICIO_GARE_FATTURAZIONE_INCOMPLETA/.test(download));
   }
@@ -220,7 +223,7 @@ async function main() {
   console.log("--- Aiuti per l'account effettivo ---");
   const lavoro = leggi("src/lib/omnia-ai-account-lavoro.ts");
   atteso("l'Ufficio Gare legge abbonamento e crediti con la chiave di servizio, il titolare con la propria sessione", /return contesto\.ruolo === "ufficio_gare" \? createAdminClient\(\) : supabase;/.test(lavoro));
-  atteso("abbonamento non attivo: l'Ufficio Gare riceve il promemoria e il titolare l'email", lavoro.includes("MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO") && lavoro.includes('motivo: "abbonamento_non_attivo"') && lavoro.includes("requireOmniaAiWriteAccess(contesto.accountId,"));
+  atteso("abbonamento non attivo: l'Ufficio Gare riceve il promemoria e il titolare l'email", lavoro.includes("MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO") && lavoro.includes('motivo: "abbonamento_non_attivo"') && lavoro.includes("requireOmniaAiWriteAccess(contesto.accountId,") && lavoro.includes("    return MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO;\n  }\n  return negato;"));
   atteso("gare finite: il diritto si verifica sul titolare, il promemoria sostituisce i testi di acquisto, una verifica non riuscita non avvisa nessuno", lavoro.includes("verificaDirittoGara({ garaId, userId: contesto.accountId })") && lavoro.includes('if (diritto.motivo === "verifica_non_riuscita") return diritto;') && lavoro.indexOf('verifica_non_riuscita") return diritto') < lavoro.lastIndexOf("avvisaTitolareDopoLaRisposta(") && lavoro.includes('messaggioPerUfficioGare("gare_finite")'));
   const quota = leggi("src/lib/omnia-ai-ufficio-gare-quota.ts");
   atteso("l'avviso dopo la risposta salta il titolare e l'Ufficio Gare sospeso, e non rompe mai la pagina", quota.includes('if (contesto.ruolo !== "ufficio_gare" || contesto.sospeso || !emailUfficioGare) return;') && quota.includes("after(async () => {") && /catch \(e\) \{\s*console\.error/.test(quota) && quota.includes("titolareId: contesto.accountId") && quota.includes("membroId: contesto.userId"));
