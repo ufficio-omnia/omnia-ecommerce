@@ -9,6 +9,8 @@
 import fs from "fs";
 import path from "path";
 import {
+  ETICHETTA_STATO_UFFICIO_GARE,
+  SECONDI_TRA_DUE_INVII,
   MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO,
   MESSAGGIO_UFFICIO_GARE_GARE_FINITE,
   RADICE_AREA,
@@ -20,9 +22,12 @@ import {
   messaggioPerUfficioGare,
   normalizzaEmail,
   percorsoConsentito,
+  rinvioLinkPermesso,
+  statoUfficioGare,
   validaInvitoUfficioGare,
   vociMenuPer,
 } from "../src/lib/omnia-ai-account-calcoli";
+import { leggiUfficioGare, mandaLinkPasswordUfficioGare } from "../src/lib/omnia-ai-ufficio-gare";
 import { ErroreContestoAccount, eUfficioGare, risolviContestoAccount } from "../src/lib/omnia-ai-account";
 import {
   URL_ABBONAMENTO,
@@ -255,6 +260,227 @@ async function main() {
   atteso("avvisi: unicità titolare+tipo+chiave+giorno (l'«una al giorno» sta nel database)", /unique \(titolare_id, tipo, chiave, giorno\)/.test(senzaCommenti) && /'Europe\/Rome'/.test(senzaCommenti));
   atteso("avvisi: solo i due tipi previsti", /check \(tipo in \('quota_esaurita', 'revisione_richiesta'\)\)/.test(senzaCommenti));
   atteso("nessuna cancellazione di dati (niente delete/truncate/drop table)", !/\b(delete from|truncate|drop table|drop column)\b/i.test(senzaCommenti));
+
+  console.log("--- Ufficio Gare visto dal titolare: stato e rinvio del link ---");
+  uguale("stato: sospeso vince su tutto", statoUfficioGare({ attivo: false, ultimoAccesso: "2026-10-01T10:00:00Z" }), "sospeso");
+  uguale("stato: mai entrato = in attesa", statoUfficioGare({ attivo: true, ultimoAccesso: null }), "in_attesa");
+  uguale("stato: entrato = attivo", statoUfficioGare({ attivo: true, ultimoAccesso: "2026-10-01T10:00:00Z" }), "attivo");
+  uguale("etichette dei tre stati", ETICHETTA_STATO_UFFICIO_GARE, { in_attesa: "In attesa del primo accesso", attivo: "Attivo", sospeso: "Sospeso" });
+  const adesso = new Date("2026-10-16T10:00:00Z");
+  const rinvio = (stato: Parameters<typeof rinvioLinkPermesso>[0]["stato"], invito: string | null) => rinvioLinkPermesso({ stato, invitoInviatoIl: invito, adesso });
+  atteso("rinvio: in attesa e ultimo invio di un'ora fa = permesso", rinvio("in_attesa", "2026-10-16T09:00:00Z").ok);
+  atteso("rinvio: in attesa senza data di invio = permesso", rinvio("in_attesa", null).ok);
+  atteso("rinvio: 30 secondi dopo l'ultimo = rifiutato", !rinvio("in_attesa", "2026-10-16T09:59:30Z").ok);
+  atteso("rinvio: 59 secondi dopo = rifiutato", !rinvio("in_attesa", "2026-10-16T09:59:01Z").ok);
+  atteso("rinvio: esattamente 60 secondi dopo = permesso", rinvio("in_attesa", "2026-10-16T09:59:00Z").ok);
+  atteso("rinvio: data di invio nel futuro (orologio sfasato) non blocca per sempre", rinvio("in_attesa", "2026-10-17T09:00:00Z").ok);
+  uguale("l'intervallo minimo è di 60 secondi", SECONDI_TRA_DUE_INVII, 60);
+  {
+    const attivo = rinvio("attivo", null);
+    atteso("rinvio: già entrato = rifiutato, con l'indicazione di «Password dimenticata»", !attivo.ok && /Password dimenticata/.test(attivo.ok ? "" : attivo.errore));
+    const sospeso = rinvio("sospeso", null);
+    atteso("rinvio: sospeso = rifiutato, con l'indicazione di riattivare", !sospeso.ok && /riattiva/i.test(sospeso.ok ? "" : sospeso.errore));
+  }
+
+  console.log("--- Lettura dell'Ufficio Gare ---");
+  type Membro = { membro_id: string; attivo: boolean; creato_il: string; invito_inviato_il: string };
+  type Opzioni = {
+    membro?: { data: Membro | null; error: { code?: string; message: string } | null };
+    utente?: { email: string } | null;
+    ultimoAccesso?: string | null;
+    link?: { token?: string | null; errore?: string };
+    azienda?: string | null;
+  };
+  function fintoAdmin(o: Opzioni) {
+    const chiamate: string[] = [];
+    const admin = {
+      from: (tabella: string) => {
+        const catena = {
+          select: (colonne: string) => {
+            chiamate.push(`${tabella}.select(${colonne})`);
+            return catena;
+          },
+          eq: (colonna: string, valore: string) => {
+            chiamate.push(`${tabella}.eq(${colonna}=${valore})`);
+            return catena;
+          },
+          maybeSingle: async () => {
+            if (tabella === "omnia_ai_membri") return o.membro ?? { data: null, error: null };
+            if (tabella === "users") return { data: o.utente ?? null, error: null };
+            if (tabella === "companies") return { data: o.azienda === undefined ? null : { ragione_sociale: o.azienda }, error: null };
+            throw new Error(`tabella inattesa: ${tabella}`);
+          },
+        };
+        return catena;
+      },
+      auth: {
+        admin: {
+          getUserById: async (id: string) => {
+            chiamate.push(`getUserById(${id})`);
+            return { data: { user: { last_sign_in_at: o.ultimoAccesso ?? null } }, error: null };
+          },
+          generateLink: async (argomenti: { type: string; email: string }) => {
+            chiamate.push(`generateLink(${argomenti.type},${argomenti.email})`);
+            if (o.link?.errore) return { data: null, error: { message: o.link.errore } };
+            return { data: { properties: { hashed_token: o.link?.token === undefined ? "tok/en+1" : o.link.token } }, error: null };
+          },
+        },
+      },
+    };
+    return { chiamate, admin: admin as unknown as Parameters<typeof leggiUfficioGare>[1] };
+  }
+  const riga: Membro = { membro_id: "M1", attivo: true, creato_il: "2026-10-10T08:00:00Z", invito_inviato_il: "2026-10-10T08:00:00Z" };
+  {
+    const { admin, chiamate } = fintoAdmin({ membro: { data: null, error: null } });
+    uguale("nessun Ufficio Gare: «assente»", await leggiUfficioGare("T1", admin), { esito: "assente" });
+    uguale(
+      "lo cerca per titolare e ruolo, nella tabella giusta",
+      chiamate,
+      ["omnia_ai_membri.select(membro_id, attivo, creato_il, invito_inviato_il)", "omnia_ai_membri.eq(titolare_id=T1)", "omnia_ai_membri.eq(ruolo=ufficio_gare)"],
+    );
+  }
+  {
+    const { admin, chiamate } = fintoAdmin({ membro: { data: riga, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: null });
+    const l = await leggiUfficioGare("T1", admin);
+    uguale("presente, mai entrato: in attesa", l.esito === "presente" ? [l.ufficio.membroId, l.ufficio.email, l.ufficio.stato, l.ufficio.ultimoAccesso] : l, ["M1", "gare@azienda.it", "in_attesa", null]);
+    atteso("legge l'email dalla riga dell'utente e l'ultimo accesso dall'autenticazione", chiamate.includes("users.eq(id=M1)") && chiamate.includes("getUserById(M1)"));
+  }
+  {
+    const { admin } = fintoAdmin({ membro: { data: riga, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: "2026-10-12T09:30:00Z" });
+    const l = await leggiUfficioGare("T1", admin);
+    uguale("presente, già entrato: attivo, con la data dell'ultimo accesso", l.esito === "presente" ? [l.ufficio.stato, l.ufficio.ultimoAccesso] : l, ["attivo", "2026-10-12T09:30:00Z"]);
+  }
+  {
+    const { admin } = fintoAdmin({ membro: { data: { ...riga, attivo: false }, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: "2026-10-12T09:30:00Z" });
+    const l = await leggiUfficioGare("T1", admin);
+    uguale("presente e sospeso: sospeso", l.esito === "presente" ? [l.ufficio.stato, l.ufficio.attivo] : l, ["sospeso", false]);
+  }
+  for (const codice of ["42P01", "PGRST205"]) {
+    const { admin } = fintoAdmin({ membro: { data: null, error: { code: codice, message: "assente" } } });
+    uguale(`tabella assente (${codice}): «schema_assente»`, await leggiUfficioGare("T1", admin), { esito: "schema_assente" });
+  }
+  {
+    const { admin } = fintoAdmin({ membro: { data: null, error: { code: "57014", message: "timeout" } } });
+    uguale("errore imprevisto: «errore», non «assente»", (await leggiUfficioGare("T1", admin)).esito, "errore");
+    const { admin: senzaUtente } = fintoAdmin({ membro: { data: riga, error: null }, utente: null });
+    uguale("riga dell'utente mancante: «errore»", (await leggiUfficioGare("T1", senzaUtente)).esito, "errore");
+  }
+
+  console.log("--- Invio del link per scegliere la password ---");
+  {
+    const vecchioFetch = globalThis.fetch;
+    const vecchiaChiave = process.env.RESEND_API_KEY;
+    const vecchioErrore = console.error;
+    const registrati: unknown[][] = [];
+    const inviati: { url: string; corpo: { from: string; to: string[]; subject: string; html: string } }[] = [];
+    let rispostaOk = true;
+    process.env.RESEND_API_KEY = "chiave-di-prova";
+    console.error = (...argomenti: unknown[]) => {
+      registrati.push(argomenti);
+    };
+    globalThis.fetch = (async (url: string, init: { body: string }) => {
+      inviati.push({ url: String(url), corpo: JSON.parse(init.body) });
+      return { ok: rispostaOk, text: async () => "risposta del servizio" };
+    }) as unknown as typeof fetch;
+    try {
+      const parametri = { emailUfficioGare: "gare@azienda.it", titolareId: "T1", emailTitolare: "titolare@azienda.it", origine: "https://omnia-ai.it" };
+
+      const { admin, chiamate } = fintoAdmin({ azienda: "Azienda <b>Srl</b>" });
+      const ok = await mandaLinkPasswordUfficioGare({ admin, ...parametri });
+      atteso("link generato e email partita: true", ok === true && inviati.length === 1);
+      const e = inviati[0];
+      atteso("l'email va al servizio di posta, all'Ufficio Gare, a nome di OMNIA AI", e?.url === "https://api.resend.com/emails" && JSON.stringify(e.corpo.to) === JSON.stringify(["gare@azienda.it"]) && /OMNIA AI/.test(e.corpo.from));
+      atteso("il link è quello dell'attivazione, con il token codificato e la pagina «imposta-password»", e?.corpo.html.includes("https://omnia-ai.it/attiva-account?token_hash=tok%2Fen%2B1&amp;type=magiclink&amp;next=%2Fimposta-password") || e?.corpo.html.includes("https://omnia-ai.it/attiva-account?token_hash=tok%2Fen%2B1&type=magiclink&next=%2Fimposta-password"), e?.corpo.html.slice(0, 400));
+      atteso("il token grezzo non compare mai nell'email", !e?.corpo.html.includes("tok/en+1"));
+      atteso("il nome dell'azienda nell'email è escapato", !e?.corpo.html.includes("<b>Srl</b>") && e?.corpo.html.includes("&lt;b&gt;Srl&lt;/b&gt;"));
+      atteso("genera un link «magiclink» per l'email dell'Ufficio Gare e legge l'azienda del titolare", chiamate.includes("generateLink(magiclink,gare@azienda.it)") && chiamate.includes("companies.eq(user_id=T1)"));
+      atteso("nessun errore registrato nel percorso riuscito", registrati.length === 0);
+
+      inviati.length = 0;
+      const errore = await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({ link: { errore: "boom" } }).admin, ...parametri });
+      atteso("generazione del link fallita: false e nessuna email", errore === false && inviati.length === 0);
+      const senzaToken = await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({ link: { token: null } }).admin, ...parametri });
+      atteso("link senza token: false e nessuna email", senzaToken === false && inviati.length === 0);
+
+      rispostaOk = false;
+      registrati.length = 0;
+      const rifiutata = await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({}).admin, ...parametri });
+      atteso("il servizio di posta rifiuta l'invio: false", rifiutata === false && inviati.length === 1);
+      atteso("il token del link non finisce mai nel registro degli errori", !JSON.stringify(registrati).includes("tok/en+1") && !JSON.stringify(registrati).includes("tok%2Fen"));
+
+      rispostaOk = true;
+      delete process.env.RESEND_API_KEY;
+      inviati.length = 0;
+      const senzaChiave = await mandaLinkPasswordUfficioGare({ admin: fintoAdmin({}).admin, ...parametri });
+      atteso("senza chiave del servizio di posta: false", senzaChiave === false && inviati.length === 0);
+    } finally {
+      globalThis.fetch = vecchioFetch;
+      console.error = vecchioErrore;
+      if (vecchiaChiave === undefined) delete process.env.RESEND_API_KEY;
+      else process.env.RESEND_API_KEY = vecchiaChiave;
+    }
+  }
+
+  console.log("--- Azioni e pagina del titolare ---");
+  const azioni = leggi("src/app/actions/omnia-ai-ufficio-gare.ts");
+  const funzioni = [...azioni.matchAll(/export async function (\w+)\(/g)].map((m) => ({ nome: m[1], inizio: m.index ?? 0 }));
+  uguale("le azioni esportate sono quelle previste", funzioni.map((f) => f.nome), ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"]);
+  const corpoDi = (nome: string) => {
+    const i = funzioni.findIndex((f) => f.nome === nome);
+    return azioni.slice(funzioni[i].inizio, i + 1 < funzioni.length ? funzioni[i + 1].inizio : azioni.length);
+  };
+  for (const f of funzioni) {
+    atteso(
+      `${f.nome}: la prima cosa è la guardia del titolare`,
+      /^export async function \w+\([^)]*\)[^{]*\{\n\s*const guardia = await richiediTitolareAzione\(\);\n\s*if \(!guardia\.ok\) return \{ error: guardia\.errore \};/.test(corpoDi(f.nome)),
+    );
+  }
+  atteso("il file dichiara «use server» in testa", azioni.startsWith('"use server";'));
+  atteso("nessuna azione legge l'Ufficio Gare da un dato della richiesta", !/formData\.get\("(membro|membroId|ufficio|userId|titolare)/i.test(azioni) && !/searchParams|headers\(\)\.get\("x-/.test(azioni));
+  atteso("tutte le chiamate a leggiUfficioGare partono dal titolare loggato", [...azioni.matchAll(/leggiUfficioGare\(([^,]+),/g)].length === 5 && [...azioni.matchAll(/leggiUfficioGare\(([^,]+),/g)].every((m) => m[1] === "contesto.accountId"));
+  {
+    const aggiornamenti = [...azioni.matchAll(/from\("omnia_ai_membri"\)\s*\.update\(/g)].length;
+    const conTitolare = [...azioni.matchAll(/from\("omnia_ai_membri"\)\s*\.update\([^;]*?\.eq\("titolare_id", contesto\.accountId\)/g)].length;
+    atteso("ogni aggiornamento dei membri è limitato al titolare loggato", aggiornamenti === 4 && conTitolare === aggiornamenti, `aggiornamenti ${aggiornamenti}, limitati ${conTitolare}`);
+    const eliminazioni = [...azioni.matchAll(/deleteUser\(([^)]*)\)/g)].map((m) => m[1]);
+    uguale("si elimina solo l'utente appena creato o l'Ufficio Gare letto dal database", eliminazioni.sort(), ["lettura.ufficio.membroId", "membroId"]);
+  }
+  {
+    const c = corpoDi("creaUfficioGare");
+    const pos = (testo: string) => c.indexOf(testo);
+    atteso("creazione: abbonamento controllato PRIMA di creare l'utente", pos("requireOmniaAiWriteAccess(contesto.accountId, admin)") !== -1 && pos("requireOmniaAiWriteAccess") < pos("createUser"));
+    atteso("creazione: Ufficio Gare già presente e indirizzo già usato controllati PRIMA di creare l'utente", pos("leggiUfficioGare") < pos("createUser") && pos('from("users")') < pos("createUser"));
+    atteso("creazione: il consenso è letto dalla casella e validato", c.includes('consenso: formData.get("consenso") === "on"') && c.includes("validaInvitoUfficioGare"));
+    atteso("creazione: il consenso registra IP e user agent", c.includes("consenso_ip: meta.ip") && c.includes("consenso_user_agent"));
+    atteso("creazione: il legame si scrive DOPO l'utente, con il titolare loggato e il ruolo fisso", pos("createUser") < pos('from("omnia_ai_membri").insert') && c.includes("titolare_id: contesto.accountId") && c.includes('ruolo: "ufficio_gare"'));
+    atteso("creazione: se il legame fallisce l'utente si annulla (mai un account a metà)", /if \(erroreLegame\) \{[\s\S]*return annulla\(/.test(c));
+    atteso("creazione: il link parte DOPO il legame", pos('from("omnia_ai_membri").insert') < pos("mandaLinkPasswordUfficioGare"));
+    atteso("creazione: la password iniziale è casuale e non viene mai mostrata né registrata", c.includes("randomBytes(32)") && !/console\.(log|error)\([^)]*casuale/.test(c));
+    atteso("creazione: l'errore per un indirizzo già usato non rivela se esiste un account", /MESSAGGIO_EMAIL_NON_UTILIZZABILE = "Questo indirizzo non può essere usato: scegline un altro\."/.test(azioni));
+  }
+  {
+    const c = corpoDi("rinviaLinkUfficioGare");
+    const pos = (testo: string) => c.indexOf(testo);
+    atteso("rinvio: permesso verificato prima di registrare e mandare", pos("rinvioLinkPermesso") !== -1 && pos("rinvioLinkPermesso") < pos("invito_inviato_il") && pos("invito_inviato_il") < pos("mandaLinkPasswordUfficioGare"));
+  }
+  {
+    const s = corpoDi("sospendiUfficioGare");
+    atteso("sospensione: prima il segno nel database, poi il blocco del login", s.indexOf("attivo: false") !== -1 && s.indexOf("attivo: false") < s.indexOf("ban_duration"));
+    const r = corpoDi("riattivaUfficioGare");
+    atteso("riattivazione: prima si toglie il blocco del login, poi si riapre l'accesso ai dati", r.indexOf('ban_duration: "none"') !== -1 && r.indexOf('ban_duration: "none"') < r.indexOf("attivo: true"));
+    const x = corpoDi("rimuoviUfficioGare");
+    atteso("rimozione: prima si chiude l'accesso ai dati, poi si elimina l'utente", x.indexOf("attivo: false") !== -1 && x.indexOf("attivo: false") < x.indexOf("deleteUser"));
+  }
+  const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/ufficio-gare/page.tsx");
+  atteso("la pagina parte dalla guardia del titolare e non legge la sessione per conto suo", pagina.includes("await richiediTitolarePagina()") && !pagina.includes("auth.getUser"));
+  atteso("la pagina mostra il motivo se non si può creare (abbonamento non attivo, migrazione mancante)", pagina.includes("Con l'abbonamento non attivo") && pagina.includes("schema_assente"));
+  const sidebar = leggi("src/components/omnia-ai/sidebar-nav.tsx");
+  atteso("la barra laterale usa le voci del ruolo (titolare di default)", sidebar.includes("VOCI_MENU_TITOLARE") && sidebar.includes("voci.map("));
+  atteso("la dashboard passa le voci alla barra laterale", leggi("src/components/omnia-ai/dashboard-shell.tsx").includes("<SidebarNav nomeAzienda={nomeAzienda} voci={voci} />"));
+  const guardie = leggi("src/lib/omnia-ai-account-guardie.ts");
+  atteso("guardia delle azioni: l'Ufficio Gare riceve il rifiuto e un errore di lettura non passa per titolare", guardie.includes('sessione.contesto.ruolo !== "titolare") return { ok: false') && guardie.includes("catch (e)") && guardie.includes("ErroreContestoAccount) return { ok: false"));
+  atteso("guardia delle pagine: l'Ufficio Gare torna alla dashboard, senza sessione al login, errore di lettura = nessun accesso", guardie.includes("redirect(RADICE_AREA)") && guardie.includes('redirect("/login")') && /ErroreContestoAccount\) return null/.test(guardie));
+  atteso("le guardie leggono il ruolo con la chiave di servizio e dalla sessione verificata", guardie.includes("risolviContestoAccount(user.id, createAdminClient())") && guardie.includes("auth.getUser()"));
 
   if (fallimenti.length > 0) {
     console.log(`\n${fallimenti.length} controlli falliti:\n- ${fallimenti.join("\n- ")}`);

@@ -99,6 +99,40 @@ export function validaInvitoUfficioGare({
 export const TESTO_CONSENSO_TITOLARE =
   "Confermo che questa persona è autorizzata a trattare, sotto la mia responsabilità, i dati della mia azienda in OMNIA AI (gare, documenti e relazioni).";
 
+// ───── stato dell'Ufficio Gare, visto dal titolare ─────
+
+export type StatoUfficioGare = "in_attesa" | "attivo" | "sospeso";
+
+// «In attesa»: l'accesso è stato creato ma la persona non è ancora mai entrata (non ha scelto la password).
+export function statoUfficioGare({ attivo, ultimoAccesso }: { attivo: boolean; ultimoAccesso: string | null }): StatoUfficioGare {
+  if (!attivo) return "sospeso";
+  return ultimoAccesso ? "attivo" : "in_attesa";
+}
+
+export const ETICHETTA_STATO_UFFICIO_GARE: Record<StatoUfficioGare, string> = {
+  in_attesa: "In attesa del primo accesso",
+  attivo: "Attivo",
+  sospeso: "Sospeso",
+};
+
+export const SECONDI_TRA_DUE_INVII = 60;
+
+export type EsitoPermesso = { ok: true } | { ok: false; errore: string };
+
+// Il link per scegliere la password si rinvia solo finché la persona non ha fatto il primo accesso (poi ha la
+// sua password e, se la dimentica, usa «Password dimenticata»), e non più di una volta al minuto.
+export function rinvioLinkPermesso({ stato, invitoInviatoIl, adesso }: { stato: StatoUfficioGare; invitoInviatoIl: string | null; adesso: Date }): EsitoPermesso {
+  if (stato === "sospeso") return { ok: false, errore: "L'accesso è sospeso: riattivalo prima di rinviare il link." };
+  if (stato === "attivo") {
+    return { ok: false, errore: "L'Ufficio Gare ha già scelto la password. Se l'ha dimenticata, può usare «Password dimenticata» dalla pagina di accesso." };
+  }
+  if (invitoInviatoIl) {
+    const passati = (adesso.getTime() - new Date(invitoInviatoIl).getTime()) / 1000;
+    if (passati >= 0 && passati < SECONDI_TRA_DUE_INVII) return { ok: false, errore: "Il link è già stato inviato da meno di un minuto: attendi un momento e riprova." };
+  }
+  return { ok: true };
+}
+
 // ───── testi mostrati all'Ufficio Gare ─────
 
 // Gare del piano, crediti e gare gratuite finite: l'Ufficio Gare non compra nulla, rimanda al titolare.
