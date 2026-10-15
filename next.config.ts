@@ -36,8 +36,28 @@ const nextConfig: NextConfig = {
   // qualcuno ne diffondesse un URL (robots.txt da solo non impedisce
   // l'indicizzazione di un URL già noto). Le altre tre limitano l'incorniciamento
   // in altre pagine, la fuga dell'URL nel Referer e lo sniffing dei tipi.
+  //
+  // Intestazioni di sicurezza anche per i due siti pubblici (omnia-ai.it e app.omniaitalia.com), in una
+  // regola per tutti gli host, messa PRIMA: se due regole impostano la stessa intestazione vince l'ultima
+  // (documentazione di Next, «Header Overriding Behavior»), quindi la console tiene le sue, più severe.
+  //   X-Frame-Options SAMEORIGIN: nessun altro sito può incorniciare le nostre pagine (clickjacking: pulsanti
+  //     nascosti sopra il login o il pagamento); SAMEORIGIN e non DENY perché le nostre pagine possono
+  //     incorniciarsi tra loro. Oggi l'app non usa iframe.
+  //   X-Content-Type-Options nosniff: il browser non «indovina» il tipo di un file.
+  //   Referrer-Policy strict-origin-when-cross-origin: verso altri siti esce solo il dominio, mai il percorso
+  //     (indirizzi di gare, account); dentro il sito non cambia nulla.
+  // HSTS lo aggiunge già Vercel. La Content-Security-Policy NON c'è di proposito: va tarata sul codice che il
+  // sito carica davvero (Stripe, Turnstile, font) e fatta male può bloccare un pagamento.
   async headers() {
     return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
       {
         source: "/:path*",
         has: [{ type: "host", value: "console.omniaitalia.com" }],

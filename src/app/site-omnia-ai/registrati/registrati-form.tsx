@@ -6,6 +6,7 @@ import {
   registerOmniaAi,
   type OmniaAiRegisterState,
 } from "@/app/actions/omnia-ai-auth";
+import TurnstileCampo from "@/components/turnstile-campo";
 
 const initialState: OmniaAiRegisterState = {};
 
@@ -32,6 +33,8 @@ export default function RegistratiForm() {
             autoComplete="email"
           />
         </div>
+
+        <TurnstileCampo resetKey={state} tema="dark" />
 
         {state.error && <p className="omnia-esito errore">{state.error}</p>}
 

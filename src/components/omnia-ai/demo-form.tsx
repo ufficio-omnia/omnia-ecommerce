@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { requestDemo, type DemoRequestState } from "@/app/actions/omnia-ai-demo";
+import TurnstileCampo from "@/components/turnstile-campo";
 
 const initialState: DemoRequestState = {};
 
@@ -82,6 +83,8 @@ export default function DemoForm() {
           placeholder="Ente, oggetto della gara, scadenza — quello che sai già."
         />
       </div>
+
+      <TurnstileCampo resetKey={state} tema="dark" />
 
       {state.error && <p className="omnia-esito errore">{state.error}</p>}
 

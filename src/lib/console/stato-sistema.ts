@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { statoTurnstile } from "@/lib/turnstile-calcoli";
 
 // Controlli di stato mostrati nella Panoramica. Nessun valore segreto esce da
 // qui: delle chiavi si legge solo se sono presenti e, per Stripe, il prefisso
@@ -91,6 +92,20 @@ export async function leggiStatoSistema(opzioni: { registroAccessiDisponibile: b
     process.env.RESEND_API_KEY
       ? { voce: "Email transazionali", esito: "ok", dettaglio: "Chiave Resend configurata" }
       : { voce: "Email transazionali", esito: "errore", dettaglio: "RESEND_API_KEY mancante: il link di accesso non può partire" },
+  );
+
+  // Verifica anti-bot dei moduli pubblici (Cloudflare Turnstile): attiva solo con entrambe le chiavi.
+  const antibot = statoTurnstile({ chiaveSito: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY, chiaveSegreta: process.env.TURNSTILE_SECRET_KEY });
+  voci.push(
+    antibot === "attiva"
+      ? { voce: "Verifica anti-bot (Turnstile)", esito: "ok", dettaglio: "Attiva su richiesta demo, registrazione, login e password dimenticata" }
+      : antibot === "incompleta"
+        ? { voce: "Verifica anti-bot (Turnstile)", esito: "avviso", dettaglio: "Manca una delle due chiavi (NEXT_PUBLIC_TURNSTILE_SITE_KEY o TURNSTILE_SECRET_KEY): la verifica resta spenta" }
+        : {
+            voce: "Verifica anti-bot (Turnstile)",
+            esito: "avviso",
+            dettaglio: ambiente === "produzione" ? "Spenta: chiavi non impostate, i moduli pubblici non hanno nessuna verifica anti-bot" : `Spenta in questo ambiente (${ambiente}): normale in locale`,
+          },
   );
 
   const ecommerce = modalitaStripe(process.env.STRIPE_SECRET_KEY);

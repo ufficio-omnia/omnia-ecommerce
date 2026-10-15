@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { segnaPasswordConsegnata } from "@/lib/omnia-ai-password-consegnata";
+import { verificaFormUmano } from "@/lib/turnstile";
 
 export type ActionState = { error?: string; success?: string };
 
@@ -15,6 +16,9 @@ export async function registerWithEmail(
   if (!email) {
     return { error: "Inserisci un indirizzo email." };
   }
+
+  const verifica = await verificaFormUmano(formData);
+  if (!verifica.ok) return { error: verifica.errore };
 
   const supabase = await createClient();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -47,6 +51,9 @@ export async function loginWithPassword(
     return { error: "Inserisci email e password." };
   }
 
+  const verifica = await verificaFormUmano(formData);
+  if (!verifica.ok) return { error: verifica.errore };
+
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -66,6 +73,9 @@ export async function requestPasswordReset(
   if (!email) {
     return { error: "Inserisci un indirizzo email." };
   }
+
+  const verifica = await verificaFormUmano(formData);
+  if (!verifica.ok) return { error: verifica.errore };
 
   const supabase = await createClient();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";

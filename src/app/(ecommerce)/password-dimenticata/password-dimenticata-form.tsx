@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { requestPasswordReset, type ActionState } from "@/app/actions/auth";
+import TurnstileCampo from "@/components/turnstile-campo";
 
 const initialState: ActionState = {};
 
@@ -40,6 +41,8 @@ export default function PasswordDimenticataForm() {
                 className="mt-1 w-full rounded-lg border border-border bg-cream px-3 py-2 text-sm text-ink focus:border-forest focus:outline-none"
               />
             </div>
+
+            <TurnstileCampo resetKey={state} tema="light" />
 
             {state.error && (
               <p className="text-sm text-red-700">{state.error}</p>

@@ -1,5 +1,6 @@
 "use server";
 
+import { verificaFormUmano } from "@/lib/turnstile";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { segnaPasswordConsegnata } from "@/lib/omnia-ai-password-consegnata";
@@ -20,6 +21,9 @@ export async function loginOmniaAi(
   if (!email || !password) {
     return { error: "Inserisci email e password." };
   }
+
+  const verifica = await verificaFormUmano(formData);
+  if (!verifica.ok) return { error: verifica.errore };
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -50,6 +54,9 @@ export async function registerOmniaAi(
   if (!email) {
     return { error: "Inserisci un indirizzo email." };
   }
+
+  const verifica = await verificaFormUmano(formData);
+  if (!verifica.ok) return { error: verifica.errore };
 
   const supabase = await createClient();
   const origin = await getOmniaAiRequestOrigin();
