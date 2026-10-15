@@ -7,9 +7,10 @@ import { CAMPO_TURNSTILE } from "@/lib/turnstile-calcoli";
 // «cf-turnstile-response», che il server legge con verificaFormUmano (lib/turnstile.ts). Senza la chiave pubblica
 // (NEXT_PUBLIC_TURNSTILE_SITE_KEY) non mostra e non carica nulla.
 //
-// Quasi sempre invisibile (appearance «interaction-only»): il riquadro compare solo se Cloudflare vuole una
-// conferma. Un gettone vale per UNA verifica: dopo ogni invio il modulo passa un nuovo «resetKey» (lo stato
-// dell'azione) e il riquadro ne chiede uno nuovo, così si può riprovare dopo un errore.
+// Sempre visibile (appearance «always», larghezza piena del modulo): mostra «Stiamo verificando…» e poi la
+// spunta «Operazione completata!». Scelta dell'ufficio: si vede che la protezione funziona. Un gettone vale per
+// UNA verifica: dopo ogni invio il modulo passa un nuovo «resetKey» (lo stato dell'azione) e il riquadro ne
+// chiede uno nuovo, così si può riprovare dopo un errore.
 
 type ApiTurnstile = {
   render: (elemento: HTMLElement, opzioni: Record<string, unknown>) => string;
@@ -62,7 +63,8 @@ export default function TurnstileCampo({ resetKey, tema = "auto" }: { resetKey?:
           sitekey: chiaveSito,
           theme: tema,
           language: "it",
-          appearance: "interaction-only",
+          appearance: "always",
+          size: "flexible",
           callback: (gettone: string) => {
             if (campo.current) campo.current.value = gettone;
           },

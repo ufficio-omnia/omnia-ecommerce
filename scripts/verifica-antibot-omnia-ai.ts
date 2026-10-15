@@ -177,7 +177,7 @@ async function main() {
   atteso("senza la chiave pubblica non mostra e non carica niente", /if \(!chiaveSito\) return;/.test(campo) && /if \(!chiaveSito\) return null;/.test(campo));
   atteso("il campo nascosto ha il nome standard e il server legge lo stesso", new RegExp(`name="\\$\\{?CAMPO_TURNSTILE\\}?"|name=\\{CAMPO_TURNSTILE\\}`).test(campo) && CAMPO_TURNSTILE === "cf-turnstile-response" && /formData\.get\(CAMPO_TURNSTILE\)/.test(leggi("src/lib/turnstile.ts")));
   atteso("lo script si carica solo dal dominio di Cloudflare, una volta sola per pagina, in modo esplicito", /https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?render=explicit/.test(campo) && /if \(window\.turnstile\) return Promise\.resolve\(\);/.test(campo) && /if \(!window\.__caricamentoTurnstile\)/.test(campo) && (campo.match(/https?:\/\//g) ?? []).length === 1);
-  atteso("quasi sempre invisibile, in italiano, con tema scelto dal modulo", /appearance: "interaction-only"/.test(campo) && /language: "it"/.test(campo) && /theme: tema/.test(campo));
+  atteso("sempre visibile (con la spunta «Operazione completata!»), a larghezza piena, in italiano, con tema scelto dal modulo", /appearance: "always"/.test(campo) && /size: "flexible"/.test(campo) && !/interaction-only/.test(campo.replace(/\/\/[^\n]*/g, "")) && /language: "it"/.test(campo) && /theme: tema/.test(campo));
   atteso("dopo ogni invio il gettone (già usato) si azzera e se ne chiede uno nuovo", /\[resetKey\]/.test(campo) && /window\.turnstile\.reset\(idRiquadro\.current\)/.test(campo) && /campo\.current\.value = ""/.test(campo));
   atteso("alla chiusura del modulo il riquadro si rimuove (nessun riquadro doppio)", /window\.turnstile\.remove\(idRiquadro\.current\)/.test(campo));
 

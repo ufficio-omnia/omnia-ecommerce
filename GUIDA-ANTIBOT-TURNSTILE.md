@@ -1,8 +1,9 @@
 # Verifica anti-bot (Cloudflare Turnstile) — guida passo passo
 
 Documento per l'ufficio. La verifica protegge i moduli pubblici dei due siti: **richiesta demo, registrazione, login e
-password dimenticata** (omnia-ai.it e app.omniaitalia.com). È gratuita e, nella grande maggioranza dei casi, **invisibile**
-per chi usa il sito: compare un riquadro «Stiamo verificando che tu non sia un robot» solo se Cloudflare ha un dubbio.
+password dimenticata** (omnia-ai.it e app.omniaitalia.com). È gratuita. Nei moduli compare un riquadro **sempre visibile**:
+mostra «Stiamo verificando che tu non sia un robot» e, appena Cloudflare è sicuro, la spunta verde «Operazione completata!».
+(Nei browser automatici resta su «Stiamo verificando»: è normale, Cloudflare diffida dei programmi.)
 
 Finché non fai questi passi il codice resta **spento**: non cambia nulla per nessuno.
 La verifica si accende solo quando su Vercel ci sono **entrambe** le chiavi.
