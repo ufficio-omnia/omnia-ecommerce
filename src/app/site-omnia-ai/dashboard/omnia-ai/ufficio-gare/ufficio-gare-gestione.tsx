@@ -24,50 +24,76 @@ export type DatiUfficioGare = {
   ultimoAccesso: string | null;
 };
 
-function Esito({ stato }: { stato: UfficioGareState }) {
-  return (
+const COLORE_STATO: Record<StatoUfficioGare, string> = { in_attesa: "ambra", attivo: "verde", sospeso: "rosso" };
+
+// Tutte le azioni passano da UN solo stato: si vede sempre e solo l'esito dell'ultima (un errore vecchio non resta
+// accanto a un successo nuovo). Il campo nascosto «azione» dice quale delle cinque eseguire; la scelta vera
+// dell'Ufficio Gare su cui agire resta sul server (mai dal modulo).
+async function esegui(precedente: UfficioGareState, formData: FormData): Promise<UfficioGareState> {
+  switch (String(formData.get("azione") ?? "")) {
+    case "crea":
+      return creaUfficioGare(precedente, formData);
+    case "rinvia":
+      return rinviaLinkUfficioGare();
+    case "sospendi":
+      return sospendiUfficioGare();
+    case "riattiva":
+      return riattivaUfficioGare();
+    case "rimuovi":
+      return rimuoviUfficioGare();
+    default:
+      return { error: "Operazione non valida." };
+  }
+}
+
+// Un solo componente per i due casi (nessun Ufficio Gare / Ufficio Gare presente). Lo stato sta QUI, che resta
+// montato quando la pagina si ricarica: dopo la creazione la pagina passa da sola dal modulo alla scheda, e
+// l'esito (compreso «l'email non è partita») deve restare visibile.
+export default function UfficioGareGestione({
+  ufficio,
+  puoCreare,
+  motivoBlocco,
+}: {
+  ufficio: DatiUfficioGare | null;
+  puoCreare: boolean;
+  motivoBlocco: string | null;
+}) {
+  const [stato, azione, inCorso] = useActionState(esegui, STATO_INIZIALE);
+
+  const esito = (
     <>
+      {inCorso && <p className="omnia-riquadro-nota">Operazione in corso…</p>}
       {stato.error && <p className="omnia-messaggio-stato errore">{stato.error}</p>}
       {stato.success && <p className="omnia-messaggio-stato successo">{stato.success}</p>}
       {stato.avviso && <p className="omnia-messaggio-stato avviso">{stato.avviso}</p>}
     </>
   );
-}
 
-const COLORE_STATO: Record<StatoUfficioGare, string> = { in_attesa: "ambra", attivo: "verde", sospeso: "rosso" };
-
-function ModuloInvito({ puoCreare, motivoBlocco }: { puoCreare: boolean; motivoBlocco: string | null }) {
-  const [stato, azione, inCorso] = useActionState(creaUfficioGare, STATO_INIZIALE);
-  return (
-    <section className="omnia-riquadro">
-      <span className="omnia-eyebrow">Crea l&apos;accesso</span>
-      <p className="omnia-riquadro-nota" style={{ marginTop: 10 }}>
-        Indica l&apos;email della persona (o della casella condivisa) dell&apos;ufficio gare: riceverà un link per scegliere la sua password.
-      </p>
-      {motivoBlocco && <p className="omnia-messaggio-stato avviso">{motivoBlocco}</p>}
-      <form action={azione} style={{ marginTop: 16 }}>
-        <div className="omnia-form-riga">
-          <input type="email" name="email" placeholder="ufficiogare@tuaazienda.it" required className="omnia-input" style={{ flex: 1, minWidth: 240 }} autoComplete="off" disabled={!puoCreare} />
-        </div>
-        <div className="omnia-check-riga">
-          <input id="consenso-ufficio-gare" name="consenso" type="checkbox" required disabled={!puoCreare} />
-          <label htmlFor="consenso-ufficio-gare">{TESTO_CONSENSO_TITOLARE}</label>
-        </div>
-        <button type="submit" disabled={!puoCreare || inCorso} className="omnia-btn omnia-btn-p" style={{ marginTop: 18 }}>
-          {inCorso ? "Creazione..." : "Crea l'accesso Ufficio Gare"}
-        </button>
-      </form>
-      <Esito stato={stato} />
-    </section>
-  );
-}
-
-function SchedaUfficioGare({ ufficio }: { ufficio: DatiUfficioGare }) {
-  const [statoRinvio, rinvia, rinvioInCorso] = useActionState(rinviaLinkUfficioGare, STATO_INIZIALE);
-  const [statoSospendi, sospendi, sospendiInCorso] = useActionState(sospendiUfficioGare, STATO_INIZIALE);
-  const [statoRiattiva, riattiva, riattivaInCorso] = useActionState(riattivaUfficioGare, STATO_INIZIALE);
-  const [statoRimuovi, rimuovi, rimuoviInCorso] = useActionState(rimuoviUfficioGare, STATO_INIZIALE);
-  const occupato = rinvioInCorso || sospendiInCorso || riattivaInCorso || rimuoviInCorso;
+  if (!ufficio) {
+    return (
+      <section className="omnia-riquadro">
+        <span className="omnia-eyebrow">Crea l&apos;accesso</span>
+        <p className="omnia-riquadro-nota" style={{ marginTop: 10 }}>
+          Indica l&apos;email della persona (o della casella condivisa) dell&apos;ufficio gare: riceverà un link per scegliere la sua password.
+        </p>
+        {motivoBlocco && <p className="omnia-messaggio-stato avviso">{motivoBlocco}</p>}
+        <form action={azione} style={{ marginTop: 16 }}>
+          <input type="hidden" name="azione" value="crea" />
+          <div className="omnia-form-riga">
+            <input type="email" name="email" placeholder="ufficiogare@tuaazienda.it" required className="omnia-input" style={{ flex: 1, minWidth: 240 }} autoComplete="off" disabled={!puoCreare} />
+          </div>
+          <div className="omnia-check-riga">
+            <input id="consenso-ufficio-gare" name="consenso" type="checkbox" required disabled={!puoCreare} />
+            <label htmlFor="consenso-ufficio-gare">{TESTO_CONSENSO_TITOLARE}</label>
+          </div>
+          <button type="submit" disabled={!puoCreare || inCorso} className="omnia-btn omnia-btn-p" style={{ marginTop: 18 }}>
+            {inCorso ? "Creazione..." : "Crea l'accesso Ufficio Gare"}
+          </button>
+        </form>
+        {esito}
+      </section>
+    );
+  }
 
   return (
     <section className="omnia-riquadro">
@@ -84,61 +110,48 @@ function SchedaUfficioGare({ ufficio }: { ufficio: DatiUfficioGare }) {
 
       <div className="omnia-form-riga" style={{ marginTop: 18 }}>
         {ufficio.stato === "in_attesa" && (
-          <form action={rinvia}>
-            <button type="submit" disabled={occupato} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
-              {rinvioInCorso ? "Invio..." : "Rinvia il link"}
+          <form action={azione}>
+            <input type="hidden" name="azione" value="rinvia" />
+            <button type="submit" disabled={inCorso} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
+              Rinvia il link
             </button>
           </form>
         )}
         {ufficio.stato !== "sospeso" && (
           <form
-            action={sospendi}
+            action={azione}
             onSubmit={(e) => {
               if (!window.confirm("Sospendere l'accesso? L'Ufficio Gare non potrà più entrare finché non lo riattivi.")) e.preventDefault();
             }}
           >
-            <button type="submit" disabled={occupato} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
-              {sospendiInCorso ? "Sospensione..." : "Sospendi l'accesso"}
+            <input type="hidden" name="azione" value="sospendi" />
+            <button type="submit" disabled={inCorso} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
+              Sospendi l&apos;accesso
             </button>
           </form>
         )}
         {ufficio.stato === "sospeso" && (
-          <form action={riattiva}>
-            <button type="submit" disabled={occupato} className="omnia-btn omnia-btn-p omnia-btn-piccolo">
-              {riattivaInCorso ? "Riattivazione..." : "Riattiva l'accesso"}
+          <form action={azione}>
+            <input type="hidden" name="azione" value="riattiva" />
+            <button type="submit" disabled={inCorso} className="omnia-btn omnia-btn-p omnia-btn-piccolo">
+              Riattiva l&apos;accesso
             </button>
           </form>
         )}
         <form
-          action={rimuovi}
+          action={azione}
           onSubmit={(e) => {
             if (!window.confirm("Rimuovere l'Ufficio Gare? L'utente viene eliminato. Le gare e i documenti restano della tua azienda. L'operazione non si può annullare.")) e.preventDefault();
           }}
         >
-          <button type="submit" disabled={occupato} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
-            {rimuoviInCorso ? "Rimozione..." : "Rimuovi"}
+          <input type="hidden" name="azione" value="rimuovi" />
+          <button type="submit" disabled={inCorso} className="omnia-btn omnia-btn-s omnia-btn-piccolo">
+            Rimuovi
           </button>
         </form>
       </div>
 
-      <Esito stato={statoRinvio} />
-      <Esito stato={statoSospendi} />
-      <Esito stato={statoRiattiva} />
-      <Esito stato={statoRimuovi} />
+      {esito}
     </section>
   );
-}
-
-// Un solo componente per i due casi (nessun Ufficio Gare / Ufficio Gare presente): dopo la creazione la pagina si
-// ricarica e passa da sola dall'invito alla scheda.
-export default function UfficioGareGestione({
-  ufficio,
-  puoCreare,
-  motivoBlocco,
-}: {
-  ufficio: DatiUfficioGare | null;
-  puoCreare: boolean;
-  motivoBlocco: string | null;
-}) {
-  return ufficio ? <SchedaUfficioGare ufficio={ufficio} /> : <ModuloInvito puoCreare={puoCreare} motivoBlocco={motivoBlocco} />;
 }
