@@ -129,6 +129,7 @@ export default function UtentiVista({
         <Tessera etichetta="Utenti" valore={formattaIntero(tutte.length)} dettaglio={`${formattaIntero(conteggi.admin)} amministratori`} />
         <Tessera etichetta="Con ordini" valore={formattaIntero(conteggi.ecommerce)} dettaglio="Clienti dell'e-commerce" />
         <Tessera etichetta="Con abbonamento AI" valore={formattaIntero(conteggi.omnia_ai)} dettaglio="Compresi quelli di prova e a mano" />
+        <Tessera etichetta="Uffici Gare" valore={formattaIntero(conteggi.ufficio_gare)} dettaglio="Utenti secondari delle aziende" />
         <Tessera
           etichetta="Da rispondere"
           valore={formattaIntero(conteggi.da_rispondere)}
@@ -190,7 +191,25 @@ export default function UtentiVista({
                       <td className="cn-cella-doppia">
                         <Link href={`/utenti/${r.id}`}>{r.email}</Link>
                         <small>
-                          {r.azienda ?? (r.anonimizzato ? "anonimizzato" : "senza profilo azienda")}
+                          {r.azienda ?? (r.anonimizzato ? "anonimizzato" : r.ufficioGareDi ? "Ufficio Gare" : "senza profilo azienda")}
+                          {r.ufficioGareDi && (
+                            <>
+                              {" "}
+                              <Badge tono="accento">Ufficio Gare</Badge> di <Link href={`/utenti/${r.ufficioGareDi.titolareId}`}>{r.ufficioGareDi.titolare}</Link>
+                              {!r.ufficioGareDi.attivo && (
+                                <>
+                                  {" "}
+                                  <Badge tono="errore">sospeso</Badge>
+                                </>
+                              )}
+                            </>
+                          )}
+                          {r.ufficioGare && (
+                            <>
+                              {" "}
+                              <Badge tono="neutro">ha un Ufficio Gare</Badge>
+                            </>
+                          )}
                           {r.ruolo === "admin" && (
                             <>
                               {" "}
@@ -241,6 +260,9 @@ export default function UtentiVista({
             </li>
             <li>
               <strong>Da rispondere:</strong> l&apos;ultimo messaggio della conversazione di assistenza è del cliente.
+            </li>
+            <li>
+              <strong>Ufficio Gare:</strong> è l&apos;utente secondario di un&apos;azienda cliente (il «titolare»): lavora solo sulle gare, non ha abbonamento, crediti né fatture propri, e viene eliminato insieme al titolare. Le operazioni commerciali si fanno sul titolare.
             </li>
             <li>
               <strong>Ultimo accesso:</strong> arriva da Supabase Auth e comprende gli accessi a entrambi i siti.

@@ -12,6 +12,7 @@ import { testoPerEmail } from "@/lib/html";
 import { aggiungiGiorni, mezzanotteRoma } from "@/lib/console/periodo";
 import { abbonamentiDaAnnullareSuStripe, eAnonimizzato, messaggioAbbonamentoDaAnnullare } from "@/lib/console/utenti-calcoli";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO, MESSAGGIO_E_UN_UFFICIO_GARE, leggiMembroDelTitolare, leggiTitolareDelMembro } from "@/lib/console/ufficio-gare";
 
 // Azioni sulla scheda cliente: rispondere, abbonamento a mano, eliminare e anonimizzare.
 // Ognuna parte da richiediAdminAzione(). Spostate dal vecchio pannello admin
@@ -93,6 +94,11 @@ export async function impostaAbbonamentoManuale(_stato: StatoAzioneUtente, formD
   const { data: utente } = await admin.from("users").select("id").eq("id", userId).maybeSingle();
   if (!utente) return { errore: "Utente non trovato." };
 
+  // Un Ufficio Gare non ha un abbonamento suo (lavora su quello del titolare): crearne uno a suo nome lo farebbe diventare un secondo cliente.
+  const titolareDelMembro = await leggiTitolareDelMembro(userId, admin);
+  if (titolareDelMembro === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+  if (titolareDelMembro) return { errore: MESSAGGIO_E_UN_UFFICIO_GARE };
+
   const { data: ultima } = await admin
     .from("subscriptions")
     .select("id, stripe_subscription_id")
@@ -173,6 +179,12 @@ export async function eliminaUtente(_stato: StatoAzioneUtente, formData: FormDat
   if (abbonamentoStripe) return { errore: abbonamentoStripe };
 
   const admin = createAdminClient();
+
+  // L'Ufficio Gare di questo cliente (se c'è) va eliminato insieme a lui: la cascata del database toglie il legame ma
+  // NON l'utente, che resterebbe in giro come un account orfano. Lo si cerca PRIMA (dopo, il legame non c'è più).
+  const membroDelTitolare = await leggiMembroDelTitolare(bersaglio.id, admin);
+  if (membroDelTitolare === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+
   const [ordiniPagati, incassiReali, creditiReali, revisioniReali] = await Promise.all([
     admin.from("orders").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).eq("status", "pagato"),
     admin.from("omnia_ai_incassi").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).eq("livemode", true),
@@ -202,6 +214,16 @@ export async function eliminaUtente(_stato: StatoAzioneUtente, formData: FormDat
 
   if (percorsi.length > 0) await admin.storage.from("invoices").remove(percorsi);
 
+  // Solo ora che il titolare è stato eliminato si toglie il suo Ufficio Gare (se il titolare non si fosse potuto eliminare, non si tocca nulla).
+  if (membroDelTitolare) {
+    const { error: erroreMembro } = await admin.auth.admin.deleteUser(membroDelTitolare);
+    if (erroreMembro) {
+      console.error("Console: eliminazione dell'Ufficio Gare del cliente eliminato fallita", membroDelTitolare, erroreMembro.message);
+      ricarica();
+      return { errore: `Il cliente è stato eliminato, ma il suo Ufficio Gare (id ${membroDelTitolare}) NO: eliminalo dall'elenco utenti.` };
+    }
+  }
+
   ricarica();
   redirect("/utenti?esito=eliminato");
 }
@@ -221,6 +243,11 @@ export async function anonimizzaUtente(_stato: StatoAzioneUtente, formData: Form
   if (abbonamentoStripe) return { errore: abbonamentoStripe };
 
   const admin = createAdminClient();
+
+  // Anche qui l'Ufficio Gare del cliente non deve restare con l'accesso ai dati di un account anonimizzato.
+  const membroDelTitolare = await leggiMembroDelTitolare(bersaglio.id, admin);
+  if (membroDelTitolare === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+
   const emailAnonima = `cliente-anonimizzato-${bersaglio.id.slice(0, 8)}@omniaitalia.invalid`;
 
   const { error: erroreAuth } = await admin.auth.admin.updateUserById(bersaglio.id, {
@@ -247,6 +274,15 @@ export async function anonimizzaUtente(_stato: StatoAzioneUtente, formData: Form
   if (erroreAzienda) {
     console.error("Console: rimozione dei dati di fatturazione fallita", erroreAzienda.message);
     return { errore: "Errore nella rimozione dei dati di fatturazione." };
+  }
+
+  if (membroDelTitolare) {
+    const { error: erroreMembro } = await admin.auth.admin.deleteUser(membroDelTitolare);
+    if (erroreMembro) {
+      console.error("Console: eliminazione dell'Ufficio Gare del cliente anonimizzato fallita", membroDelTitolare, erroreMembro.message);
+      ricarica();
+      return { errore: `Il cliente è stato anonimizzato, ma il suo Ufficio Gare (id ${membroDelTitolare}) NON è stato eliminato: eliminalo dall'elenco utenti.` };
+    }
   }
 
   ricarica();

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { statoAbbonamento, type StatoAbbonamento } from "./abbonamenti-calcoli";
 import { normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
+import { leggiLegameUfficioGare, type LegameUfficioGare } from "./ufficio-gare";
 import {
   costruisciRigheUtenti,
   statoProvaAbbonamento,
@@ -11,6 +12,7 @@ import {
   type AccessoUtente,
   type AccettazioneScheda,
   type AziendaUtenteDb,
+  type MembroDb,
   type MessaggioDb,
   type OrdineUtenteDb,
   type RigaUtente,
@@ -70,6 +72,11 @@ export async function leggiElencoUtenti(): Promise<ElencoUtentiLetto> {
   let abbonamentiQ: Risposta = await admin.from("subscriptions").select(`${baseAbbonamenti}, livemode`).limit(LIMITE);
   if (schemaAssente(abbonamentiQ.error)) abbonamentiQ = await admin.from("subscriptions").select(baseAbbonamenti).limit(LIMITE);
 
+  // Uffici Gare (migrazione 0092): se la tabella non c'è ancora, nessun utente è un Ufficio Gare.
+  const membriQ: Risposta = await admin.from("omnia_ai_membri").select("membro_id, titolare_id, attivo").limit(LIMITE);
+  const membriLetti = membriQ.error && !schemaAssente(membriQ.error) ? null : ((membriQ.data ?? []) as MembroDb[]);
+  if (membriLetti === null) console.error("Console: lettura degli Uffici Gare fallita", membriQ.error?.message);
+
   const [utentiQ, aziendeQ, ordiniQ, accOrdiniQ, accAbbQ, creditiQ, messaggiQ, accessi] = await Promise.all([
     admin.from("users").select("id, email, role, created_at").order("created_at", { ascending: false }).limit(LIMITE),
     admin.from("companies").select("user_id, ragione_sociale, partita_iva, codice_fiscale, buyer_type").limit(LIMITE),
@@ -99,6 +106,7 @@ export async function leggiElencoUtenti(): Promise<ElencoUtentiLetto> {
       crediti: ((creditiQ.data ?? []) as { user_id: string; balance: number }[]).map((c) => ({ user_id: c.user_id, balance: num(c.balance) })),
       messaggi: (messaggiQ.data ?? []) as MessaggioDb[],
       accessi: accessi.accessi,
+      membri: membriLetti ?? [],
     },
     new Date(),
   );
@@ -182,6 +190,10 @@ export type SchedaCliente =
       incassiDisponibili: boolean;
       // l'ultimo abbonamento è gestito da Stripe: il modulo manuale non vale
       abbonamentoGestitoDaStripe: boolean;
+      // Ufficio Gare (migrazione 0092): se questo utente è il titolare che ne ha uno, o è lui stesso un Ufficio Gare
+      legameUfficioGare: LegameUfficioGare | null;
+      // la lettura del legame non è riuscita (la scheda lo dice, senza far credere che non ce ne sia uno)
+      legameUfficioGareNonLetto: boolean;
     };
 
 type AccettazioneDb = {
@@ -338,6 +350,8 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
     };
   });
 
+  const legame = await leggiLegameUfficioGare(id);
+
   const auth = authUtente.data?.user;
   return {
     stato: "ok",
@@ -387,5 +401,7 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
     messaggi: ((messaggiQ.data ?? []) as { id: string; sender: "cliente" | "admin"; body: string; created_at: string }[]).map((m) => ({ id: m.id, mittente: m.sender, testo: m.body, creatoIl: m.created_at })),
     incassiDisponibili,
     abbonamentoGestitoDaStripe: subDb.length > 0 && Boolean(subDb[0].stripe_subscription_id),
+    legameUfficioGare: legame === "errore" ? null : legame,
+    legameUfficioGareNonLetto: legame === "errore",
   };
 }
