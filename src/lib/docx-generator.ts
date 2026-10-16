@@ -202,6 +202,37 @@ function estraiAllineamento(riga: string): { testo: string; alignment: (typeof A
   };
 }
 
+// Una o più sigle di allineamento di fila ("[G][C]", "[C] [G]"): l'AI a volte ne
+// scrive DUE nella stessa cella (osservato in una relazione reale, "[G][C]!!Addetto
+// Antincendio!! coordinato da !!Coordinatore dei Servizi!!"): ne veniva tolta una
+// sola e l'altra restava stampata nel Word come testo letterale.
+const SIGLE_ALLINEAMENTO_DI_FILA_REGEX = /^(?:\[(?:C|G)\]\s*)+/;
+// Una sigla in qualunque punto della cella: non è mai contenuto, solo sintassi.
+const SIGLA_ALLINEAMENTO_OVUNQUE_REGEX = /\[(?:C|G)\]\s*/g;
+
+// Toglie dalla cella TUTTE le sigle di allineamento, lasciando intatto il resto
+// (grassetto, colore "!!", icone): la prima come sempre (anche avvolta nel
+// grassetto, vedi ricomponiTestoDopoTag), poi quelle di fila, e per ultima una
+// rete di sicurezza su qualunque sigla rimasta altrove nella cella. Nelle celle
+// l'allineamento NON dipende dalle sigle (lo decide allineamentoCella): vanno
+// solo tolte. Per una cella con una sola sigla il risultato è identico a prima.
+function pulisciSigleAllineamentoCella(cellaGrezza: string): string {
+  let testo = normalizzaOrdineTagCella(cellaGrezza);
+  const primaSigla = testo.match(CELLA_ALLINEAMENTO_REGEX);
+  const avvoltaNelGrassetto = Boolean(primaSigla?.[1]);
+  if (primaSigla) testo = testo.slice(primaSigla[0].length);
+
+  // le altre sigle subito dopo la prima (anche con un'icona scritta in mezzo,
+  // che normalizzaOrdineTagCella rimette dopo la sigla); poche tornate bastano
+  for (let giro = 0; giro < 4; giro++) {
+    const senzaAltre = normalizzaOrdineTagCella(testo).replace(SIGLE_ALLINEAMENTO_DI_FILA_REGEX, "");
+    if (senzaAltre === testo) break;
+    testo = senzaAltre;
+  }
+
+  return ricomponiTestoDopoTag(testo, avvoltaNelGrassetto).replace(SIGLA_ALLINEAMENTO_OVUNQUE_REGEX, "");
+}
+
 // Se il tag di allineamento era avvolto nel grassetto insieme al testo
 // (vedi CELLA_ALLINEAMENTO_REGEX), rimuovendo solo il tag resta un "**"
 // di chiusura orfano a fine stringa: qui viene tolto e riapplicato a
@@ -668,8 +699,7 @@ const LARGHEZZA_UTILE_TWIP = LARGHEZZA_PAGINA_A4_TWIP - 2 * MARGINE_TWIP;
 // (non per il rendering): niente tag di allineamento/icona/evidenziazione,
 // che altrimenti gonfierebbero il peso di una colonna senza motivo.
 function testoCellaPerPeso(cella: string): string {
-  return normalizzaOrdineTagCella(togliMarcatoriEvidenziazione(cella))
-    .replace(CELLA_ALLINEAMENTO_REGEX, "")
+  return pulisciSigleAllineamentoCella(togliMarcatoriEvidenziazione(cella))
     .replace(/^\[ICONA:[a-zA-Z]+\]\s*/, "")
     .replace(/\*\*/g, "")
     .replace(/!!/g, "");
@@ -845,14 +875,11 @@ async function renderTextSegment(
               // tratta come etichetta di riga e non marca mai — il
               // default è comunque centrato, MAI sinistra: nessuna
               // colonna deve restare "spaiata" rispetto alle altre.
-              const celleGrezzaNormalizzata = normalizzaOrdineTagCella(celleGrezza);
-              const allineamentoMatch = celleGrezzaNormalizzata.match(CELLA_ALLINEAMENTO_REGEX);
               // Il tag va comunque tolto dal testo (contenuto già generato
               // con "[C]"/"[G]" in testa), ma non decide più l'allineamento
-              // — vedi allineamentoCella.
-              const cella = allineamentoMatch
-                ? ricomponiTestoDopoTag(celleGrezzaNormalizzata.slice(allineamentoMatch[0].length), Boolean(allineamentoMatch[1]))
-                : celleGrezzaNormalizzata;
+              // — vedi allineamentoCella. Si tolgono TUTTE le sigle della
+              // cella (anche due di fila): vedi pulisciSigleAllineamentoCella.
+              const cella = pulisciSigleAllineamentoCella(celleGrezza);
               const alignment = allineamentoCella(testoCellaPerPeso(celleGrezza), larghezzeColonne[indiceColonna], runProps.size);
 
               // Le icone e il testo colorato nel corpo tabella usano il
