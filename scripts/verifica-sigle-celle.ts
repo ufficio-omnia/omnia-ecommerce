@@ -64,6 +64,8 @@ async function main() {
     ["sigla dentro il colore", "!![C]testo colorato!! e altro", "[C]!!testo colorato!! e altro"],
     ["sigla dentro il grassetto interno", "**[C]testo della cella**", "[C]**testo della cella**"],
     ["sigla a metà cella", "[C]testo [G]della cella", "[C]testo della cella"],
+    ["sigla a metà cella con spazi attorno", "[C]testo [G] della cella", "[C]testo della cella"],
+    ["due sigle a metà cella", "[C]testo [G][C] della cella", "[C]testo della cella"],
     ["due sigle e un marcatore di riga", "[RIGA:SICUREZZA][G][C]testo della cella", "[RIGA:SICUREZZA][C]testo della cella"],
   ];
   for (const [nome, doppia, singola] of varianti) {
@@ -71,6 +73,8 @@ async function main() {
     const b = await documento(tabellaCon(singola));
     atteso(`${nome}: nessuna sigla nel documento`, trovaMarcatoriResidui(a.nodi).length === 0, trovaMarcatoriResidui(a.nodi).join(" / "));
     atteso(`${nome}: Word identico a quello della cella con una sola sigla`, a.xml === b.xml);
+    // l'icona deve restare: senza questo controllo una pulizia troppo larga la toglierebbe da entrambe le celle e le due sembrerebbero uguali
+    if (doppia.includes("[ICONA:")) atteso(`${nome}: l'icona resta nel documento`, a.xml.includes("<w:drawing>") && b.xml.includes("<w:drawing>"));
   }
 
   console.log("--- Il resto non cambia ---");
