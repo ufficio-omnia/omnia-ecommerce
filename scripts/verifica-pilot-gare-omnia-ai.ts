@@ -85,6 +85,7 @@ async function main() {
   uguale("abbonamento diverso da quello a cui l'offerta è stata applicata (si è riabbonato): quelle del piano", quota({}, { stripeSubscriptionId: "sub_BBB" }), 3);
   uguale("abbonamento senza identificativo Stripe: quelle del piano", quota({}, { stripeSubscriptionId: null }), 3);
   uguale("offerta senza abbonamento registrato: quelle del piano", quota({ stripeSubscriptionId: null }), 3);
+  uguale("né l'offerta né l'abbonamento hanno un identificativo (due «vuoti» non sono lo stesso abbonamento): quelle del piano", quota({ stripeSubscriptionId: null }, { stripeSubscriptionId: null }), 3);
   uguale("l'offerta può dare MENO gare del piano (2): vale 2", quota({ gareIncluse: 2 }), 2);
   atteso("un solo istante di differenza non scambia le gare del piano con quelle dedicate in senso opposto", quota({}, { adesso: new Date(Date.parse(offerta.scadeIl as string) - 1) }) === 4 && quota({}, { adesso: new Date(Date.parse(offerta.scadeIl as string) + 1) }) === 3);
 
