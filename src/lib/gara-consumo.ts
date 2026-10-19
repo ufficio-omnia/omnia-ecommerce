@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
+import { gareInclusePerAbbonamento } from "@/lib/omnia-ai-pilot";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { MESSAGGIO_GARE_GRATUITE_ESAURITE, calcolaGareGratuite } from "@/lib/omnia-ai-gare-gratuite";
 
@@ -79,7 +79,7 @@ export async function consumeGaraQuotaIfNeeded({
 
   const { data: subscription } = await admin
     .from("subscriptions")
-    .select("id, plan, current_period_start, current_period_end, created_at")
+    .select("id, plan, current_period_start, current_period_end, created_at, stripe_subscription_id")
     .eq("user_id", userId)
     .eq("status", "attivo")
     .order("created_at", { ascending: false })
@@ -90,6 +90,7 @@ export async function consumeGaraQuotaIfNeeded({
       current_period_start: string | null;
       current_period_end: string | null;
       created_at: string;
+      stripe_subscription_id: string | null;
     }>();
 
   const subscriptionAttiva =
@@ -97,13 +98,14 @@ export async function consumeGaraQuotaIfNeeded({
     (!subscription.current_period_end ||
       new Date(subscription.current_period_end).getTime() > Date.now());
 
-  // normalizzaPianoSlug tollera maiuscole/spazi in subscription.plan — bug
-  // osservato in pratica: un piano impostato da admin con un valore come
-  // "Enterprise" (form di testo libero, nessuna validazione) non veniva
-  // riconosciuto con un confronto diretto, azzerando le gare incluse di un
-  // abbonamento davvero attivo.
-  const pianoSlug = subscriptionAttiva ? normalizzaPianoSlug(subscription.plan) : null;
-  const gareIncluse = pianoSlug ? (PIANI[pianoSlug]?.gareIncluse ?? 0) : 0;
+  // Le gare incluse si decidono in un solo punto (gareInclusePerAbbonamento): quelle del piano, o quelle dedicate
+  // dall'offerta pilot finché il prezzo pilot è in corso. Il piano si riconosce tollerando maiuscole/spazi in
+  // subscription.plan — bug osservato in pratica: un piano impostato da admin con un valore come "Enterprise"
+  // (form di testo libero, nessuna validazione) non veniva riconosciuto con un confronto diretto, azzerando le gare
+  // incluse di un abbonamento davvero attivo.
+  const gareIncluse = subscriptionAttiva
+    ? await gareInclusePerAbbonamento({ userId, piano: subscription.plan, stripeSubscriptionId: subscription.stripe_subscription_id, admin })
+    : 0;
 
   if (subscriptionAttiva && gareIncluse > 0) {
     const inizioPeriodo = subscription.current_period_start ?? subscription.created_at;

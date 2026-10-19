@@ -48,9 +48,16 @@ export async function creaOffertaPilot(_stato: StatoOffertaPilotAzione, formData
   const catalogo = await getCatalogoPiani();
   const listini = Object.fromEntries(PIANI_ORDINE.map((p) => [p, catalogo[p].prezzoListinoCentesimi])) as Record<PianoSlug, number>;
 
-  const esito = validaNuovaOffertaPilot({ piano: String(formData.get("piano") ?? ""), prezzo: String(formData.get("prezzo") ?? ""), mesi: String(formData.get("mesi") ?? "") }, listini);
+  const esito = validaNuovaOffertaPilot({ piano: String(formData.get("piano") ?? ""), prezzo: String(formData.get("prezzo") ?? ""), mesi: String(formData.get("mesi") ?? ""), gare: String(formData.get("gare") ?? "") }, listini);
   if (!esito.ok) return { errore: esito.errore };
   const v = esito.valori;
+
+  // Con delle gare dedicate, prima di toccare qualunque cosa si controlla che la colonna (migrazione 0093) esista: così
+  // un errore non lascia revocata l'offerta precedente senza averne creata una nuova.
+  if (v.gareIncluse !== null) {
+    const { error: sonda } = await admin.from("omnia_ai_offerte_pilot").select("gare_incluse").limit(1);
+    if (sonda && schemaAssente(sonda)) return { errore: "Le gare dedicate richiedono la migrazione 0093, non ancora eseguita: nessuna offerta creata." };
+  }
 
   // Un'offerta aperta alla volta: la nuova sostituisce quella ancora non acquistata.
   const { error: erroreRevoca } = await admin.from("omnia_ai_offerte_pilot").update({ attiva: false }).eq("user_id", userId).eq("attiva", true).is("acquistata_il", null);
@@ -60,8 +67,13 @@ export async function creaOffertaPilot(_stato: StatoOffertaPilotAzione, formData
     return { errore: "Non sono riuscito a sostituire l'offerta precedente: nessuna offerta creata." };
   }
 
-  const { error } = await admin.from("omnia_ai_offerte_pilot").insert({ user_id: userId, piano: v.piano, prezzo_centesimi: v.prezzoCentesimi, mesi: v.mesi, attiva: true, creata_da_email: sessione.email });
+  // `gare_incluse` (migrazione 0093) si scrive solo se l'offerta dedica delle gare: un'offerta solo di prezzo
+  // continua a funzionare anche prima di quella migrazione.
+  const { error } = await admin
+    .from("omnia_ai_offerte_pilot")
+    .insert({ user_id: userId, piano: v.piano, prezzo_centesimi: v.prezzoCentesimi, mesi: v.mesi, attiva: true, creata_da_email: sessione.email, ...(v.gareIncluse !== null ? { gare_incluse: v.gareIncluse } : {}) });
   if (error) {
+    if (v.gareIncluse !== null && schemaAssente(error)) return { errore: "Le gare dedicate richiedono la migrazione 0093, non ancora eseguita: nessuna offerta creata." };
     console.error("Console: creazione dell'offerta pilot fallita", error.message);
     return { errore: "Creazione dell'offerta non riuscita." };
   }

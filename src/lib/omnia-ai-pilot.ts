@@ -4,10 +4,10 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { sendEmail } from "@/lib/email";
 import { escapeHtml } from "@/lib/html";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
-import { PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, normalizzaPianoSlug, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { formattaGiorno } from "@/lib/omnia-ai-catalogo-calcoli";
-import { GIORNI_PREAVVISO_PILOT, fineScontoStripe, promemoriaPilot, scadenzaPilot, testoPromemoriaPilot, type OffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
+import { GIORNI_PREAVVISO_PILOT, fineScontoStripe, gareIncluseEffettive, promemoriaPilot, scadenzaPilot, testoPromemoriaPilot, type OffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 
 // Offerta pilot (migrazione 0086): letture per l'area riservata e per la console, registrazione
 // dell'acquisto dal webhook Stripe e promemoria dei 15 giorni dal lavoro giornaliero. Si usa la
@@ -28,10 +28,12 @@ type RigaOfferta = {
   scade_il: string | null;
   prezzo_pieno_centesimi: number | null;
   promemoria_inviato_il: string | null;
+  gare_incluse: number | null;
+  stripe_subscription_id: string | null;
 };
 
 export const COLONNE_OFFERTA_PILOT =
-  "id, user_id, piano, prezzo_centesimi, mesi, attiva, creata_il, creata_da_email, acquistata_il, scade_il, prezzo_pieno_centesimi, promemoria_inviato_il";
+  "id, user_id, piano, prezzo_centesimi, mesi, attiva, creata_il, creata_da_email, acquistata_il, scade_il, prezzo_pieno_centesimi, promemoria_inviato_il, gare_incluse, stripe_subscription_id";
 
 export function offertaDaRiga(r: RigaOfferta): OffertaPilot | null {
   if (!PIANI_ORDINE.includes(r.piano as PianoSlug)) {
@@ -51,6 +53,8 @@ export function offertaDaRiga(r: RigaOfferta): OffertaPilot | null {
     scadeIl: r.scade_il,
     prezzoPienoCentesimi: r.prezzo_pieno_centesimi,
     promemoriaInviatoIl: r.promemoria_inviato_il,
+    gareIncluse: typeof r.gare_incluse === "number" ? r.gare_incluse : null,
+    stripeSubscriptionId: r.stripe_subscription_id ?? null,
   };
 }
 
@@ -75,9 +79,9 @@ export async function leggiOffertaPilotAperta(userId: string): Promise<OffertaPi
 }
 
 // L'ultima offerta pilot che il cliente ha acquistato, o null: serve a mostrargli fino a quando dura
-// il prezzo pilot e, negli ultimi 15 giorni, il promemoria.
-export async function leggiPilotAcquistato(userId: string): Promise<OffertaPilot | null> {
-  const { data, error } = await createAdminClient()
+// il prezzo pilot e, negli ultimi 15 giorni, il promemoria. `admin` solo per le prove (un finto database).
+export async function leggiPilotAcquistato(userId: string, admin: ReturnType<typeof createAdminClient> = createAdminClient()): Promise<OffertaPilot | null> {
+  const { data, error } = await admin
     .from("omnia_ai_offerte_pilot")
     .select(COLONNE_OFFERTA_PILOT)
     .eq("user_id", userId)
@@ -90,6 +94,28 @@ export async function leggiPilotAcquistato(userId: string): Promise<OffertaPilot
     return null;
   }
   return data ? offertaDaRiga(data) : null;
+}
+
+// ───── Gare incluse al mese di un abbonamento ─────
+
+// L'UNICO punto in cui si decide quante gare al mese ha un abbonamento attivo: le gare del piano, oppure quelle
+// dedicate dall'offerta pilot finché il prezzo pilot è in corso (regole in gareIncluseEffettive). Lo usano il
+// consumo di una gara, la verifica del diritto e il riepilogo del periodo: leggere il numero da PIANI nei singoli
+// punti farebbe divergere i tre. Un piano non riconosciuto vale 0 gare (come prima); se l'offerta non si legge
+// (tabella o colonna assenti, errore) valgono le gare del piano, mai un blocco.
+export async function gareInclusePerAbbonamento(params: {
+  userId: string;
+  piano: string | null | undefined;
+  stripeSubscriptionId: string | null | undefined;
+  adesso?: Date;
+  admin?: ReturnType<typeof createAdminClient>;
+}): Promise<number> {
+  const slug = normalizzaPianoSlug(params.piano);
+  if (!slug) return 0;
+  const gareDelPiano = PIANI[slug]?.gareIncluse ?? 0;
+  if (!params.stripeSubscriptionId) return gareDelPiano;
+  const offerta = await leggiPilotAcquistato(params.userId, params.admin);
+  return gareIncluseEffettive({ gareDelPiano, pianoAbbonamento: slug, stripeSubscriptionId: params.stripeSubscriptionId, offerta, adesso: params.adesso ?? new Date() });
 }
 
 // ───── Acquisto: dal webhook Stripe ─────
@@ -158,13 +184,22 @@ export async function inviaPromemoriaPilot(adesso: Date = new Date()): Promise<E
       if (!promemoria) continue;
 
       // il promemoria ha senso solo se il cliente è ancora abbonato
-      const { data: abbonamento } = await admin.from("subscriptions").select("status, cancel_at_period_end").eq("user_id", offerta.userId).eq("status", "attivo").limit(1).maybeSingle<{ status: string; cancel_at_period_end: boolean | null }>();
+      const { data: abbonamento } = await admin
+        .from("subscriptions")
+        .select("status, cancel_at_period_end, plan, stripe_subscription_id")
+        .eq("user_id", offerta.userId)
+        .eq("status", "attivo")
+        .limit(1)
+        .maybeSingle<{ status: string; cancel_at_period_end: boolean | null; plan: string; stripe_subscription_id: string | null }>();
       if (!abbonamento || abbonamento.cancel_at_period_end) continue;
 
       const { data: utente } = await admin.from("users").select("email").eq("id", offerta.userId).maybeSingle<{ email: string }>();
       const prezzoPieno = offerta.prezzoPienoCentesimi;
       if (prezzoPieno === null) continue;
-      const testo = testoPromemoriaPilot(promemoria, prezzoPieno);
+      // Se in questo momento il cliente ha delle gare dedicate, il promemoria dice anche a quante si torna.
+      const gareDelPiano = PIANI[offerta.piano].gareIncluse;
+      const gareDedicateOra = gareIncluseEffettive({ gareDelPiano, pianoAbbonamento: normalizzaPianoSlug(abbonamento.plan), stripeSubscriptionId: abbonamento.stripe_subscription_id, offerta, adesso }) !== gareDelPiano;
+      const testo = testoPromemoriaPilot(promemoria, prezzoPieno, gareDedicateOra ? gareDelPiano : undefined);
 
       await creaNotifica({ userId: offerta.userId, tipo: "pilot_in_scadenza", garaId: null, titolo: "Il tuo prezzo pilot sta per scadere", corpo: testo, chiaveDedup: `${offerta.userId}:pilot:${promemoria.scadeIlGiorno}` });
 

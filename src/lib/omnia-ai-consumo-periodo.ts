@@ -1,9 +1,11 @@
 import { PIANI, normalizzaPianoSlug, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { gareInclusePerAbbonamento } from "@/lib/omnia-ai-pilot";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SubscriptionAttivaRow = {
   id: string;
   plan: string;
+  stripe_subscription_id: string | null;
   current_period_start: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
@@ -35,7 +37,7 @@ export async function getConsumoPeriodoCorrente(
   const { data: subscription } = await supabase
     .from("subscriptions")
     .select(
-      "id, plan, current_period_start, current_period_end, cancel_at_period_end, created_at, piano_programmato, piano_programmato_da",
+      "id, plan, stripe_subscription_id, current_period_start, current_period_end, cancel_at_period_end, created_at, piano_programmato, piano_programmato_da",
     )
     .eq("user_id", userId)
     .eq("status", "attivo")
@@ -51,7 +53,9 @@ export async function getConsumoPeriodoCorrente(
   // diretto, mostrando "0/0 gare disponibili" a un abbonamento attivo).
   const pianoSlug = normalizzaPianoSlug(subscription.plan);
   const piano = pianoSlug ? PIANI[pianoSlug] : undefined;
-  const gareIncluse = piano?.gareIncluse ?? 0;
+  // Le gare incluse si decidono in un solo punto (gareInclusePerAbbonamento): quelle del piano, o quelle dedicate
+  // dall'offerta pilot finché il prezzo pilot è in corso. `piano.gareIncluse` resta quella del piano.
+  const gareIncluse = await gareInclusePerAbbonamento({ userId, piano: subscription.plan, stripeSubscriptionId: subscription.stripe_subscription_id });
   const inizioPeriodo = subscription.current_period_start ?? subscription.created_at;
 
   const { count: consumatePiano } = await supabase
