@@ -203,7 +203,7 @@ async function main() {
   for (const [nome, sorgente] of [["consumo di una gara", consumo], ["verifica del diritto", diritto], ["riepilogo del periodo", periodo]] as const) {
     atteso(`${nome}: usa il punto unico`, /gareInclusePerAbbonamento\(\{ userId, piano: subscription\.plan, stripeSubscriptionId: subscription\.stripe_subscription_id/.test(sorgente));
     atteso(`${nome}: non legge più le gare direttamente dal piano`, !/PIANI\[[a-zA-Z]+\]\??\.gareIncluse/.test(sorgente.replace(/\/\/.*$/gm, "")));
-    atteso(`${nome}: legge l'identificativo dell'abbonamento Stripe`, /stripe_subscription_id/.test(sorgente.slice(0, sorgente.indexOf("gareInclusePerAbbonamento("))) || /select\([\s\S]{0,200}stripe_subscription_id/.test(sorgente));
+    atteso(`${nome}: legge l'identificativo dell'abbonamento Stripe dalla tabella degli abbonamenti`, /from\("subscriptions"\)\s*\.select\(\s*"[^"]*\bstripe_subscription_id\b[^"]*"/.test(sorgente));
   }
   atteso("consumo e diritto calcolano le gare solo per un abbonamento ancora in corso (altrimenti 0)", /subscriptionAttiva\s*\?\s*await gareInclusePerAbbonamento/.test(consumo.replace(/\n\s*/g, " ")) && /abbonamentoAttivo\s*\?\s*await gareInclusePerAbbonamento/.test(diritto.replace(/\n\s*/g, " ")));
   atteso("consumo: il controllo «ne restano?» usa il numero effettivo", /\(count \?\? 0\) < gareIncluse/.test(consumo) && /subscriptionAttiva && gareIncluse > 0/.test(consumo));

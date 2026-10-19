@@ -183,8 +183,8 @@ async function main() {
     '.eq("status", "attivo")',
     '.eq("tipo", "piano")',
     '.gte("created_at", inizioPeriodo)',
-    "normalizzaPianoSlug(subscription.plan)",
-    "(PIANI[pianoSlug]?.gareIncluse ?? 0)",
+    // il piano si riconosce e le gare incluse si decidono (piano o offerta pilot) in un solo punto, usato da entrambi
+    "gareInclusePerAbbonamento({ userId, piano: subscription.plan, stripeSubscriptionId: subscription.stripe_subscription_id",
     'from("credits")',
     "(abbonamentiAvuti ?? 0) === 0",
     "subscription.current_period_start ?? subscription.created_at",
