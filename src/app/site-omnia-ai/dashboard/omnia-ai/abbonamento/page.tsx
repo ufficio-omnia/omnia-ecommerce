@@ -107,6 +107,9 @@ export default async function AbbonamentoPage() {
   // Prezzo pilot in corso: quanto dura e a quanto torna.
   const pilotAcquistato = await leggiPilotAcquistato(user.id);
   const pilotAttuale = pilotAcquistato && pilotInCorso(pilotAcquistato, new Date()) ? pilotAcquistato : null;
+  // Le gare dedicate dall'offerta sono in vigore solo se il numero effettivo (già deciso in
+  // getConsumoPeriodoCorrente) è diverso da quello del piano: se il cliente ha cambiato piano non lo sono più.
+  const gareDedicateInVigore = pilotAttuale && piano && gareIncluse !== piano.gareIncluse ? gareIncluse : null;
 
   const dataRinnovo = subscription.current_period_end
     ? new Date(subscription.current_period_end).toLocaleDateString("it-IT")
@@ -134,7 +137,7 @@ export default async function AbbonamentoPage() {
         <section className="omnia-riquadro" aria-label="Prezzo pilot">
           <span className="omnia-eyebrow">Il tuo prezzo</span>
           <p className="omnia-messaggio-stato" style={{ marginTop: 12 }}>
-            {testoPilotInCorso(pilotAttuale)}
+            {testoPilotInCorso({ ...pilotAttuale, gareIncluse: gareDedicateInVigore }, piano?.gareIncluse)}
           </p>
         </section>
       )}

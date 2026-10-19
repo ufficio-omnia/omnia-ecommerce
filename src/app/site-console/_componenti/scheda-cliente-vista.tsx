@@ -7,7 +7,7 @@ import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlC
 import { modificaGareGratuite, resetPasswordCliente } from "../azioni/utenti-console";
 import { creaOffertaPilot, revocaOffertaPilot } from "../azioni/pilot";
 import type { PilotCliente } from "@/lib/console/pilot";
-import { statoOffertaPilot, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
+import { GARE_PILOT_MAX, statoOffertaPilot, testoGareIncluse, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
 import { MESSAGGIO_E_UN_UFFICIO_GARE } from "@/lib/console/ufficio-gare";
 import type { ProvaCliente } from "@/lib/console/gare-gratuite";
@@ -773,7 +773,7 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
           <Pannello titolo="Offerta pilot">
             <div className="cn-pannello-corpo">
               {!pilot.disponibile ? (
-                <p className="cn-nota-inline">L&apos;offerta pilot non è disponibile (migrazione 0086 non ancora eseguita).</p>
+                <p className="cn-nota-inline">L&apos;offerta pilot non è disponibile (migrazione 0086 o 0093 non ancora eseguita).</p>
               ) : (
                 (() => {
                   const aperta = pilot.offerte.find((o) => statoOffertaPilot(o) === "aperta") ?? null;
@@ -782,13 +782,13 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
                   return (
                     <>
                       <p className="cn-nota-inline" style={{ marginTop: 0 }}>
-                        Un prezzo dedicato per un piano, per un numero di mesi (0 = sempre quel prezzo). Il cliente lo vede solo nella sua area riservata, che lo porta al pagamento su Stripe; dopo i mesi indicati il rinnovo torna al prezzo pieno da solo, e negli ultimi 15 giorni riceve un promemoria.
+                        Un prezzo dedicato per un piano, per un numero di mesi (0 = sempre quel prezzo), e se vuoi anche un numero di gare incluse al mese diverso da quello del piano. Il cliente lo vede solo nella sua area riservata, che lo porta al pagamento su Stripe; dopo i mesi indicati il rinnovo torna da solo al prezzo pieno e alle gare del piano, e negli ultimi 15 giorni riceve un promemoria.
                       </p>
 
                       {aperta && (
                         <div style={{ marginTop: 10 }}>
                           <p className="cn-nota-inline" style={{ marginTop: 0 }}>
-                            <Badge tono="accento">offerta aperta</Badge> {testoOffertaPilot(aperta, pilot.nomi[aperta.piano], pilot.listini[aperta.piano])} Creata il {formattaData(aperta.creataIl)} da {aperta.creataDa}: il cliente non l&apos;ha ancora acquistata.
+                            <Badge tono="accento">offerta aperta</Badge> {testoOffertaPilot(aperta, pilot.nomi[aperta.piano], pilot.listini[aperta.piano], PIANI[aperta.piano].gareIncluse)} Creata il {formattaData(aperta.creataIl)} da {aperta.creataDa}: il cliente non l&apos;ha ancora acquistata.
                           </p>
                           <PulsanteAzione
                             azione={revocaOffertaPilot}
@@ -803,10 +803,10 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
 
                       {acquistata && (
                         <p className="cn-nota-inline" style={{ marginTop: aperta ? 12 : 10 }}>
-                          <Badge tono="ok">acquistata</Badge> Piano {pilot.nomi[acquistata.piano]} a {formattaEuro(acquistata.prezzoCentesimi / 100)} al mese, acquistato il {formattaData(acquistata.acquistataIl ?? "")}.{" "}
+                          <Badge tono="ok">acquistata</Badge> Piano {pilot.nomi[acquistata.piano]} a {formattaEuro(acquistata.prezzoCentesimi / 100)} al mese{acquistata.gareIncluse !== null ? `, con ${testoGareIncluse(acquistata.gareIncluse)}` : ""}, acquistato il {formattaData(acquistata.acquistataIl ?? "")}.{" "}
                           {acquistata.mesi === 0 || !acquistata.scadeIl
                             ? "Il prezzo dedicato non ha scadenza."
-                            : `Il prezzo pilot dura fino al ${formattaData(acquistata.scadeIl)}${acquistata.prezzoPienoCentesimi ? `, poi il rinnovo è a ${formattaEuro(acquistata.prezzoPienoCentesimi / 100)} al mese` : ""}. ${acquistata.promemoriaInviatoIl ? `Promemoria dei 15 giorni inviato il ${formattaData(acquistata.promemoriaInviatoIl)}.` : "Il promemoria parte da solo 15 giorni prima della scadenza."}`}
+                            : `Il prezzo pilot dura fino al ${formattaData(acquistata.scadeIl)}${acquistata.prezzoPienoCentesimi ? `, poi il rinnovo è a ${formattaEuro(acquistata.prezzoPienoCentesimi / 100)} al mese` : ""}${acquistata.gareIncluse !== null ? ` e le gare tornano a ${PIANI[acquistata.piano].gareIncluse} al mese` : ""}. ${acquistata.promemoriaInviatoIl ? `Promemoria dei 15 giorni inviato il ${formattaData(acquistata.promemoriaInviatoIl)}.` : "Il promemoria parte da solo 15 giorni prima della scadenza."}`}
                         </p>
                       )}
 
@@ -841,6 +841,12 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
                                 Mesi di pilot (0 = sempre)
                               </label>
                               <input className="cn-input" id="pilot-mesi" name="mesi" type="number" min={0} max={60} step={1} defaultValue={6} style={{ maxWidth: 110 }} />
+                            </div>
+                            <div>
+                              <label className="cn-etichetta" htmlFor="pilot-gare">
+                                Gare incluse al mese (vuoto = quelle del piano)
+                              </label>
+                              <input className="cn-input" id="pilot-gare" name="gare" type="number" min={1} max={GARE_PILOT_MAX} step={1} placeholder={`es. ${PIANI.starter.gareIncluse + 1}`} style={{ maxWidth: 110 }} />
                             </div>
                           </ModuloAzione>
                         </div>

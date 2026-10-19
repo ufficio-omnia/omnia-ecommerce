@@ -7,7 +7,7 @@ import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 import { testoAvvisoProva, type GareGratuite } from "@/lib/omnia-ai-gare-gratuite";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
-import { PIANI_ORDINE } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import { leggiOffertaPilotAperta, leggiPilotAcquistato } from "@/lib/omnia-ai-pilot";
 import { applicaPilotAlCatalogo, promemoriaPilot, testoPromemoriaPilot, type PromemoriaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import DashboardShell from "@/components/omnia-ai/dashboard-shell";
@@ -83,10 +83,10 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
 // sapere, e il pulsante porta alla pagina Abbonamento, dove i piani sono spiegati.
 // Ultimi 15 giorni del prezzo pilot: quando scade e a quanto torna l'abbonamento. Non c'è se il pilot non ha
 // scadenza (mesi = 0) o non è nella finestra. Sta in cima a ogni pagina finché dura la finestra.
-function PilotAvviso({ promemoria, prezzoPieno }: { promemoria: PromemoriaPilot; prezzoPieno: number }) {
+function PilotAvviso({ promemoria, prezzoPieno, gareDopo }: { promemoria: PromemoriaPilot; prezzoPieno: number; gareDopo?: number }) {
   return (
     <div className="omnia-avviso-profilo">
-      {testoPromemoriaPilot(promemoria, prezzoPieno)} <Link href="/dashboard/omnia-ai/abbonamento">Vai all&apos;abbonamento →</Link>
+      {testoPromemoriaPilot(promemoria, prezzoPieno, gareDopo)} <Link href="/dashboard/omnia-ai/abbonamento">Vai all&apos;abbonamento →</Link>
     </div>
   );
 }
@@ -262,7 +262,7 @@ export default async function OmniaAiLayout({
       nomeAzienda={company?.ragione_sociale ?? null}
       avvisi={
         <>
-          {pilot && promemoriaDelPilot && pilot.prezzoPienoCentesimi !== null && <PilotAvviso promemoria={promemoriaDelPilot} prezzoPieno={pilot.prezzoPienoCentesimi} />}
+          {pilot && promemoriaDelPilot && pilot.prezzoPienoCentesimi !== null && <PilotAvviso promemoria={promemoriaDelPilot} prezzoPieno={pilot.prezzoPienoCentesimi} gareDopo={pilot.gareIncluse !== null ? PIANI[pilot.piano].gareIncluse : undefined} />}
           {stato.stato === "prova" && <ProvaAvviso gare={stato.gare} />}
           {stato.stato === "sola_lettura" && (
             <SolaLetturaAvviso dataCancellazione={stato.dataCancellazioneContenuti} />

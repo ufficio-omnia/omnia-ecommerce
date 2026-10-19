@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
+import { gareInclusePerAbbonamento } from "@/lib/omnia-ai-pilot";
 import { leggiGareGratuiteConEsito } from "@/lib/omnia-ai-gare-gratuite";
 import {
   MESSAGGIO_VERIFICA_GARE_NON_RIUSCITA,
@@ -16,7 +16,7 @@ import {
 export async function leggiFontiQuota(client: SupabaseClient, userId: string): Promise<FontiQuota | null> {
   const { data: subscription, error: erroreAbbonamento } = await client
     .from("subscriptions")
-    .select("id, plan, current_period_start, current_period_end, created_at")
+    .select("id, plan, current_period_start, current_period_end, created_at, stripe_subscription_id")
     .eq("user_id", userId)
     .eq("status", "attivo")
     .order("created_at", { ascending: false })
@@ -27,13 +27,16 @@ export async function leggiFontiQuota(client: SupabaseClient, userId: string): P
       current_period_start: string | null;
       current_period_end: string | null;
       created_at: string;
+      stripe_subscription_id: string | null;
     }>();
   if (erroreAbbonamento) return null;
 
   const abbonamentoAttivo =
     subscription && (!subscription.current_period_end || new Date(subscription.current_period_end).getTime() > Date.now());
-  const pianoSlug = abbonamentoAttivo ? normalizzaPianoSlug(subscription.plan) : null;
-  const gareIncluse = pianoSlug ? (PIANI[pianoSlug]?.gareIncluse ?? 0) : 0;
+  // Stesso punto unico del consumo (gara-consumo.ts): gare del piano o gare dedicate dall'offerta pilot.
+  const gareIncluse = abbonamentoAttivo
+    ? await gareInclusePerAbbonamento({ userId, piano: subscription.plan, stripeSubscriptionId: subscription.stripe_subscription_id })
+    : 0;
 
   let piano: FontiQuota["piano"] = null;
   if (abbonamentoAttivo && gareIncluse > 0) {
