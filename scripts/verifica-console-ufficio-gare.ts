@@ -69,7 +69,7 @@ async function main() {
   console.log("--- Filtri e conteggi ---");
   uguale("filtro «Uffici Gare»: solo gli Uffici Gare, non i titolari", filtraUtenti(righe, "ufficio_gare", "").map((r) => r.id), [M, M2]);
   uguale("«Senza attività» non comprende gli Uffici Gare (lavorano) ma comprende chi non fa nulla", filtraUtenti(righe, "senza_attivita", "").map((r) => r.id).sort(), [T, T2, V].sort());
-  uguale("conteggi per tipo", conteggiPerTipo(righe), { tutti: 5, ecommerce: 0, omnia_ai: 0, ufficio_gare: 2, da_rispondere: 0, senza_accettazioni: 0, senza_attivita: 3, admin: 0 });
+  uguale("conteggi per tipo", conteggiPerTipo(righe), { tutti: 5, online: 0, ecommerce: 0, omnia_ai: 0, ufficio_gare: 2, da_rispondere: 0, senza_accettazioni: 0, senza_attivita: 3, admin: 0 });
   uguale("la ricerca per azienda trova il titolare", filtraUtenti(righe, "tutti", "azienda srl").map((r) => r.id), [T]);
 
   console.log("--- Lettura del legame (scheda e controlli) ---");

@@ -4,6 +4,8 @@ import { TIPI_UTENTE, conteggiPerTipo, type OrdineUtenti, type RigaUtente, type 
 import { Badge, Pannello, Tessera } from "./elementi";
 import { formattaData, formattaDataOra, formattaEuro, formattaIntero } from "./formati";
 import { urlConParametri } from "./selettore-periodo";
+import { CellaPresenza } from "./presenza-vista";
+import RicaricaAutomatica from "./ricarica-automatica";
 
 // Vista pura della pagina Utenti: tutti gli account, con ordini, abbonamento AI,
 // crediti, messaggi e le accettazioni legali registrate. Riceve dati già letti.
@@ -12,6 +14,7 @@ const COLONNE: { ordine: OrdineUtenti | null; etichetta: string }[] = [
   { ordine: "email", etichetta: "Utente" },
   { ordine: "registrazione", etichetta: "Registrato" },
   { ordine: "accesso", etichetta: "Ultimo accesso" },
+  { ordine: null, etichetta: "Presenza" },
   { ordine: null, etichetta: "Ordini" },
   { ordine: null, etichetta: "Abbonamento OMNIA AI" },
   { ordine: null, etichetta: "Crediti" },
@@ -125,7 +128,16 @@ export default function UtentiVista({
         </p>
       )}
 
+      {/* La pagina si rilegge da sola ogni 30 secondi (chi è collegato cambia): niente moduli da compilare qui, solo filtri. */}
+      <RicaricaAutomatica secondi={30} />
+      {!elenco.presenzaDisponibile && (
+        <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
+          La presenza (chi è collegato) non è ancora attiva: va eseguita la migrazione 0094.
+        </p>
+      )}
+
       <div className="cn-tessere">
+        <Tessera etichetta="Online ora" valore={formattaIntero(conteggi.online)} tono={conteggi.online > 0 ? "ok" : "neutro"} dettaglio="Collegati all'area riservata (esclusi gli amministratori)" />
         <Tessera etichetta="Utenti" valore={formattaIntero(tutte.length)} dettaglio={`${formattaIntero(conteggi.admin)} amministratori`} />
         <Tessera etichetta="Con ordini" valore={formattaIntero(conteggi.ecommerce)} dettaglio="Clienti dell'e-commerce" />
         <Tessera etichetta="Con abbonamento AI" valore={formattaIntero(conteggi.omnia_ai)} dettaglio="Compresi quelli di prova e a mano" />
@@ -230,6 +242,9 @@ export default function UtentiVista({
                       <td className="mono" title={r.ultimoAccesso ? formattaDataOra(r.ultimoAccesso) : undefined}>
                         {r.ultimoAccesso ? formattaData(r.ultimoAccesso) : "mai"}
                       </td>
+                      <td>
+                        <CellaPresenza p={r.presenza} />
+                      </td>
                       <td className="cn-cella-doppia">
                         {r.ordini.totale === 0 ? "—" : `${r.ordini.pagati}/${r.ordini.totale} pagati`}
                         {r.ordini.pagatoLordo > 0 && <small>{formattaEuro(r.ordini.pagatoLordo)}</small>}
@@ -266,6 +281,9 @@ export default function UtentiVista({
             </li>
             <li>
               <strong>Ultimo accesso:</strong> arriva da Supabase Auth e comprende gli accessi a entrambi i siti.
+            </li>
+            <li>
+              <strong>Presenza:</strong> riguarda solo l&apos;area riservata di OMNIA AI. L&apos;area manda un segnale ogni 45 secondi circa finché la scheda è aperta e visibile: «online» = ultimo segnale di meno di 2 minuti e mezzo fa; «attivo» = in quel segnale l&apos;utente stava usando la pagina (mouse, tastiera, scorrimento o tocco nell&apos;ultimo minuto), «fermo» = scheda aperta ma ferma. Sotto il badge: la sezione (solo il nome, mai quale gara) oppure, se è offline, quando è uscito. L&apos;orario esatto c&apos;è solo se ha premuto «Esci»; se ha chiuso la scheda o il browser vale l&apos;ultimo segnale (al più 45 secondi prima). Il telefono sospende le schede in background: lì «offline» può arrivare prima. La pagina si aggiorna da sola ogni 30 secondi.
             </li>
           </ul>
         </details>

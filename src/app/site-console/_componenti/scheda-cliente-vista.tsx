@@ -15,6 +15,8 @@ import ModuloAzione from "./modulo-azione";
 import { eliminaOrdine, ottieniLinkFattura } from "../azioni/ordini";
 import AvvisoEsito, { type ParametriEsito } from "./avviso-esito";
 import { Badge, Pannello, Tessera } from "./elementi";
+import { CellaPresenza, PannelloPresenza } from "./presenza-vista";
+import type { PresenzaUtente } from "@/lib/console/presenza";
 import { formattaData, formattaDataOra, formattaEuro, formattaIntero } from "./formati";
 import FormAbbonamentoManuale from "./form-abbonamento-manuale";
 import FormRisposta from "./form-risposta";
@@ -115,6 +117,8 @@ export default function SchedaClienteVista({
   accessi,
   prova,
   pilot,
+  presenza,
+  presenzaUfficioGare,
 }: {
   scheda: SchedaCliente;
   // id dell'admin che sta guardando: non può eliminare né anonimizzare sé stesso
@@ -125,6 +129,9 @@ export default function SchedaClienteVista({
   prova: ProvaCliente;
   // offerte pilot del cliente (migrazione 0086)
   pilot: PilotCliente;
+  // presenza nell'area riservata (migrazione 0094): dell'utente, e dell'Ufficio Gare se questo cliente ne ha uno
+  presenza: PresenzaUtente;
+  presenzaUfficioGare: PresenzaUtente | null;
 }) {
   const indietro = (
     <Link href="/utenti" className="cn-indietro">
@@ -156,10 +163,10 @@ export default function SchedaClienteVista({
     );
   }
 
-  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} />;
+  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, presenza, presenzaUfficioGare }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente | null }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -204,6 +211,12 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
           Non sono riuscito a controllare se questo utente ha un Ufficio Gare o lo è: riprova tra qualche istante.
         </p>
+      )}
+      {/* Presenza nell'area riservata (migrazione 0094): per ogni utente che non sia un amministratore. */}
+      {s.utente.ruolo !== "admin" && (
+        <div className="cn-sezione">
+          <PannelloPresenza presenza={presenza} />
+        </div>
       )}
       {s.legameUfficioGare && (
         <div className="cn-sezione">
@@ -251,6 +264,10 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot }
                   <div>
                     <dt>Ultimo accesso</dt>
                     <dd>{s.legameUfficioGare.ufficioGare.ultimoAccesso ? formattaDataOra(s.legameUfficioGare.ufficioGare.ultimoAccesso) : "mai"}</dd>
+                  </div>
+                  <div>
+                    <dt>Presenza</dt>
+                    <dd>{presenzaUfficioGare?.disponibile ? <CellaPresenza p={presenzaUfficioGare.presenza} /> : "non ancora attiva"}</dd>
                   </div>
                 </dl>
               )}

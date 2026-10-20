@@ -11,6 +11,7 @@ import { PIANI, PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import { leggiOffertaPilotAperta, leggiPilotAcquistato } from "@/lib/omnia-ai-pilot";
 import { applicaPilotAlCatalogo, promemoriaPilot, testoPromemoriaPilot, type PromemoriaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import DashboardShell from "@/components/omnia-ai/dashboard-shell";
+import PresenzaBattito from "@/components/omnia-ai/presenza-battito";
 import ActivateSubscriptionForm from "./activate-subscription-form";
 import { ErroreContestoAccount, type ContestoAccount } from "@/lib/omnia-ai-account";
 import { leggiSessioneAccount } from "@/lib/omnia-ai-account-guardie";
@@ -160,7 +161,8 @@ async function VistaUfficioGare({ user, contesto, children }: { user: User; cont
   );
 }
 
-export default async function OmniaAiLayout({
+// Il layout vero e proprio (chi è, che schermata mostrare). Lo avvolge OmniaAiLayout, che aggiunge il segnale di presenza.
+async function LayoutInterno({
   children,
 }: {
   children: React.ReactNode;
@@ -274,5 +276,16 @@ export default async function OmniaAiLayout({
     >
       {children}
     </DashboardShell>
+  );
+}
+
+// Segnale di presenza (migrazione 0094): UN solo punto, per tutte le schermate dell'area riservata (titolare, Ufficio Gare,
+// schermata di attivazione, schermate «ferme»). Non mostra niente.
+export default function OmniaAiLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <PresenzaBattito />
+      <LayoutInterno>{children}</LayoutInterno>
+    </>
   );
 }

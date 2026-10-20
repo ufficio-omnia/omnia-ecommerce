@@ -1,4 +1,5 @@
 import { PIANI, normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
+import { eOnline, statoPresenza, type PresenzaCalcolata, type PresenzaDb } from "@/lib/omnia-ai-presenza-calcoli";
 import { statoAbbonamento, type StatoAbbonamento } from "./abbonamenti-calcoli";
 import type { AbbonamentoRiga } from "./costi-calcoli";
 
@@ -96,6 +97,8 @@ export type DatiElencoUtenti = {
   accessi: Map<string, AccessoUtente>;
   // Uffici Gare (migrazione 0092): se manca (tabella non ancora creata) nessun utente è un Ufficio Gare
   membri?: MembroDb[];
+  // Presenza nell'area riservata (migrazione 0094): se manca (tabella non ancora creata) nessuno risulta mai visto in linea
+  presenze?: Map<string, PresenzaDb>;
 };
 
 export type RigaUtente = {
@@ -129,6 +132,8 @@ export type RigaUtente = {
   ufficioGareDi: null | { titolareId: string; titolare: string; attivo: boolean };
   // questo utente (titolare) ha un Ufficio Gare
   ufficioGare: null | { id: string; email: string; attivo: boolean };
+  // collegato adesso? attivo o fermo, in quale sezione, quando è uscito (migrazione 0094)
+  presenza: PresenzaCalcolata;
 };
 
 export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): RigaUtente[] {
@@ -207,14 +212,16 @@ export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): Rig
         if (!legame) return null;
         return { id: legame.membro_id, email: utentePerId.get(legame.membro_id)?.email ?? legame.membro_id, attivo: legame.attivo };
       })(),
+      presenza: statoPresenza(dati.presenze?.get(u.id), adesso),
     };
   });
 }
 
-export type TipoUtente = "tutti" | "ecommerce" | "omnia_ai" | "ufficio_gare" | "da_rispondere" | "senza_accettazioni" | "admin" | "senza_attivita";
+export type TipoUtente = "tutti" | "online" | "ecommerce" | "omnia_ai" | "ufficio_gare" | "da_rispondere" | "senza_accettazioni" | "admin" | "senza_attivita";
 
 export const TIPI_UTENTE: { valore: TipoUtente; etichetta: string }[] = [
   { valore: "tutti", etichetta: "Tutti" },
+  { valore: "online", etichetta: "Online ora" },
   { valore: "ecommerce", etichetta: "Con ordini" },
   { valore: "omnia_ai", etichetta: "Con abbonamento AI" },
   { valore: "ufficio_gare", etichetta: "Uffici Gare" },
@@ -230,6 +237,8 @@ export function leggiTipoUtente(valore: string | undefined): TipoUtente {
 
 const corrisponde: Record<TipoUtente, (r: RigaUtente) => boolean> = {
   tutti: () => true,
+  // collegati adesso nell'area riservata (gli amministratori sono i nostri: non contano)
+  online: (r) => eOnline(r.presenza) && r.ruolo !== "admin",
   ecommerce: (r) => r.ordini.totale > 0,
   omnia_ai: (r) => r.abbonamento !== null,
   // gli Uffici Gare stessi (non i titolari che li hanno)
