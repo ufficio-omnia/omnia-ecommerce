@@ -53,7 +53,8 @@ atteso("titolo per chi usa uno screen reader, con la stessa cosa che dice il bad
 atteso("componente del server (nessuno script del sito in più)", !/^"use client"/m.test(componente));
 
 console.log("--- Dove compare ---");
-atteso("il piè di pagina lo mostra una volta, in una riga sua, dentro il footer", conta(piede, /<ClimateBadge\b/g) === 1 && /<div className="omnia-climate">\s*<ClimateBadge \/>\s*<\/div>\s*<\/footer>/.test(piede) && /import ClimateBadge from "\.\/climate-badge";/.test(piede));
+atteso("il piè di pagina lo mostra una volta, a destra del livello alto (dopo i collegamenti), sopra la riga legale", conta(piede, /<ClimateBadge\b/g) === 1 && /<div className="omnia-footer-alto">\s*<nav>[\s\S]*?<\/nav>\s*<div className="omnia-climate">\s*<ClimateBadge \/>\s*<\/div>\s*<\/div>\s*<p className="omnia-footer-basso">/.test(piede) && /import ClimateBadge from "\.\/climate-badge";/.test(piede));
+atteso("la riga legale (nome, prodotto di Omnia Consulting, partita IVA) c'è ed è l'ultima cosa del piè di pagina", /<p className="omnia-footer-basso">OMNIA AI — un prodotto di Omnia Consulting SRLS · P\.IVA 02957590819<\/p>\s*<\/footer>/.test(piede));
 atteso("il piè di pagina resta un componente del server, con i collegamenti di prima", !/^"use client"/m.test(piede) && ["omniaitalia.com", "/contatti", "/privacy", "/riservatezza", "condizioniUrl", "/cookie-policy", "CookiePreferencesButton"].every((v) => piede.includes(v)));
 atteso("la pagina dei piani NON ha il badge (c'è già nel piè di pagina sotto: non si duplica)", !/ClimateBadge|climate\.stripe\.com|<iframe/.test(piani));
 const sorgenti = fileSorgenti("src");
@@ -68,7 +69,10 @@ atteso("nessuna promessa più grande di quella di Stripe (né «neutrale», né 
 atteso("la frase è nella pagina dei piani, dopo le note sulle condizioni e sulla riservatezza (in fondo, non tra i prezzi)", piani.indexOf("Stripe Climate, per ridurre") > piani.indexOf("Riservatezza e trattamento dei dati") && piani.indexOf("Stripe Climate, per ridurre") > piani.indexOf("</div>\n\n        <RevisioneBanda"));
 
 console.log("--- Stili ---");
-atteso("il badge sta su una riga sua, sotto testo e collegamenti", /\.omnia-footer \.omnia-climate \{\s*flex-basis: 100%;\s*line-height: 0;\s*\}/.test(css));
+atteso("livello alto: collegamenti a sinistra e badge a destra, centrati tra loro; se non ci stanno insieme il badge va sotto", /\.omnia-footer \.omnia-footer-alto \{\s*display: flex;\s*justify-content: space-between;\s*align-items: center;\s*flex-wrap: wrap;/.test(css));
+atteso("i collegamenti vanno a capo da soli (non escono dallo schermo)", /\.omnia-footer nav \{\s*display: flex;\s*flex-wrap: wrap;/.test(css));
+atteso("riga legale sotto una linea sottile, più piccola e più spenta", /\.omnia-footer \.omnia-footer-basso \{[^}]*border-top: 1px solid var\(--bordo\);[^}]*font-size: 13px;/.test(css));
+atteso("il badge non è mai più largo dello schermo (un contenitore di 380px sul telefono usciva dal bordo e non veniva disegnato)", /\.omnia-footer \.omnia-climate \{\s*max-width: 100%;\s*line-height: 0;\s*\}/.test(css) && !/\.omnia-footer \.omnia-climate \{[^}]*flex-shrink: 0/.test(css));
 atteso("sfondo trasparente sul sito scuro (color-scheme del badge diverso da quello della pagina darebbe un riquadro bianco)", /\.omnia-climate-badge \{\s*color-scheme: light;\s*\}/.test(css));
 atteso("sugli schermi stretti l'altezza sale (il testo può andare su due righe)", /@media \(max-width: 480px\) \{\s*\.omnia-climate-badge \{\s*height: 64px;\s*\}\s*\}/.test(css));
 atteso("la pagina continua a dichiarare lo schema scuro (la regola sopra serve proprio per questo)", /color-scheme:\s*dark/.test(css));

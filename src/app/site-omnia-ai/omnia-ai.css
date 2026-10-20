@@ -606,22 +606,39 @@ li {
 /* Footer */
 .omnia-footer {
   border-top: 1px solid var(--bordo);
-  padding: 36px 0 64px;
+  padding: 40px 0 56px;
   display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 28px;
   font-size: 14px;
   color: var(--fioco);
 }
+/* Livello alto: collegamenti a sinistra, badge a destra, allineati al centro; se non ci stanno insieme il badge va sotto. */
+.omnia-footer .omnia-footer-alto {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+}
 .omnia-footer nav {
   display: flex;
-  gap: 22px;
+  flex-wrap: wrap;
+  gap: 10px 20px;
   font-size: 14px;
 }
-/* Badge di Stripe Climate: su una riga sua, sotto il testo e i collegamenti. */
+/* Riga legale: sotto una linea sottile, più piccola e più spenta dei collegamenti. */
+.omnia-footer .omnia-footer-basso {
+  margin: 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--bordo);
+  font-size: 13px;
+  opacity: 0.85;
+}
+/* Badge di Stripe Climate (a destra del livello alto). Mai più largo dello schermo: sul telefono un contenitore di 380px
+   usciva dal bordo e il badge non veniva disegnato. */
 .omnia-footer .omnia-climate {
-  flex-basis: 100%;
+  max-width: 100%;
   line-height: 0;
 }
 /* La pagina dichiara color-scheme: dark, il badge no: senza questa riga il browser dà all'iframe uno sfondo bianco opaco
