@@ -54,7 +54,7 @@ atteso("componente del server (nessuno script del sito in più)", !/^"use client
 
 console.log("--- Dove compare ---");
 atteso("il piè di pagina lo mostra una volta, a destra del livello alto (dopo i collegamenti), sopra la riga legale", conta(piede, /<ClimateBadge\b/g) === 1 && /<div className="omnia-footer-alto">\s*<nav>[\s\S]*?<\/nav>\s*<div className="omnia-climate">\s*<ClimateBadge \/>\s*<\/div>\s*<\/div>\s*<p className="omnia-footer-basso">/.test(piede) && /import ClimateBadge from "\.\/climate-badge";/.test(piede));
-atteso("la riga legale (nome, prodotto di Omnia Consulting, partita IVA) c'è ed è l'ultima cosa del piè di pagina", /<p className="omnia-footer-basso">OMNIA AI — un prodotto di Omnia Consulting SRLS · P\.IVA 02957590819<\/p>\s*<\/footer>/.test(piede));
+atteso("la riga legale (nome, prodotto di Omnia Consulting, partita IVA) c'è UNA volta ed è l'ultima cosa del piè di pagina", conta(piede, /omnia-footer-basso/g) === 1 && conta(piede, /P\.IVA/g) === 1 && /<p className="omnia-footer-basso">OMNIA AI — un prodotto di Omnia Consulting SRLS · P\.IVA 02957590819<\/p>\s*<\/footer>/.test(piede));
 atteso("il piè di pagina resta un componente del server, con i collegamenti di prima", !/^"use client"/m.test(piede) && ["omniaitalia.com", "/contatti", "/privacy", "/riservatezza", "condizioniUrl", "/cookie-policy", "CookiePreferencesButton"].every((v) => piede.includes(v)));
 atteso("la pagina dei piani NON ha il badge (c'è già nel piè di pagina sotto: non si duplica)", !/ClimateBadge|climate\.stripe\.com|<iframe/.test(piani));
 const sorgenti = fileSorgenti("src");
