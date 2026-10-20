@@ -84,6 +84,11 @@ export default function PianiVista({ catalogo, condizioniUrl, vendita }: { catal
           </Link>
           .
         </p>
+        {/* Programma «Climate Commitments» dell'account Stripe di OMNIA AI (il badge è nel piè di pagina). La frase
+            dice solo ciò che dice Stripe: se il programma si disattiva o cambia la percentuale, va aggiornata. */}
+        <p className="micro" style={{ marginTop: 8 }}>
+          Omnia Consulting destina l&apos;1% di ogni abbonamento a Stripe Climate, per ridurre la CO₂ nell&apos;atmosfera.
+        </p>
       </section>
     </PageShell>
   );

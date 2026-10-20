@@ -619,6 +619,23 @@ li {
   gap: 22px;
   font-size: 14px;
 }
+/* Badge di Stripe Climate: su una riga sua, sotto il testo e i collegamenti. */
+.omnia-footer .omnia-climate {
+  flex-basis: 100%;
+  line-height: 0;
+}
+/* La pagina dichiara color-scheme: dark, il badge no: senza questa riga il browser dà all'iframe uno sfondo bianco opaco
+   dove il badge non arriva. Con «light» (lo schema del contenuto) lo sfondo resta trasparente. */
+.omnia-climate-badge {
+  color-scheme: light;
+}
+/* Sugli schermi stretti il testo del badge può andare su due righe: l'altezza di 38px non basterebbe (comparirebbe una
+   barra di scorrimento). */
+@media (max-width: 480px) {
+  .omnia-climate-badge {
+    height: 64px;
+  }
+}
 
 @media (max-width: 900px) {
   .omnia-duo,
