@@ -31,20 +31,25 @@ function fileSorgenti(cartella: string): string[] {
 }
 
 const componente = leggi("src/components/omnia-ai/climate-badge.tsx");
+// Il codice del componente senza i commenti: gli attributi si controllano QUI, perché i commenti li citano e un attributo tolto resterebbe «presente».
+const codice = componente
+  .split("\n")
+  .filter((r) => !r.trim().startsWith("//"))
+  .join("\n");
 const piede = leggi("src/components/omnia-ai/site-footer.tsx");
 const piani = leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
 const css = leggi("src/app/site-omnia-ai/omnia-ai.css");
 
 console.log("--- L'iframe ---");
-atteso("l'indirizzo è quello fornito da Stripe, e solo quello", /export const URL_BADGE_CLIMATE = "https:\/\/climate\.stripe\.com\/badge\/mE76Pa";/.test(componente) && (componente.match(/https?:\/\/[^\s"'`)]+/g) ?? []).every((u) => u.startsWith("https://climate.stripe.com/badge/mE76Pa")));
-atteso("parametri: tema, dimensione piccola, lingua italiana", /src=\{`\$\{URL_BADGE_CLIMATE\}\?theme=\$\{tema\}&size=small&locale=it-IT`\}/.test(componente));
-atteso("il tema predefinito è «dark» (il sito è scuro) e sono ammessi solo i due temi di Stripe", /tema = "dark"\s*\}: \{ tema\?: "light" \| "dark" \}/.test(componente));
-atteso("dimensioni fornite da Stripe (380 × 38), bordo zero, mai più largo dello schermo", /width=\{380\}/.test(componente) && /height=\{38\}/.test(componente) && /border: 0/.test(componente) && /maxWidth: "100%"/.test(componente));
-atteso("sandbox senza alcun permesso (la pagina del badge è solo HTML e CSS)", /sandbox=""/.test(componente) && !/allow-/.test(componente));
-atteso("nessun permesso del browser concesso all'iframe (niente allow=, niente schermo intero)", !/\sallow=/.test(componente) && !/allowFullScreen|allowfullscreen/.test(componente));
-atteso("non si dice a Stripe da quale pagina arriva il visitatore", /referrerPolicy="no-referrer"/.test(componente));
-atteso("caricamento pigro: il piè di pagina sta in fondo, il badge si carica solo avvicinandosi", /loading="lazy"/.test(componente));
-atteso("titolo per chi usa uno screen reader, con la stessa cosa che dice il badge", /title="Stripe Climate: l'1% degli acquisti contribuisce alla rimozione di CO₂ dall'atmosfera"/.test(componente));
+atteso("l'indirizzo è quello fornito da Stripe, e solo quello", /export const URL_BADGE_CLIMATE = "https:\/\/climate\.stripe\.com\/badge\/mE76Pa";/.test(codice) && (codice.match(/https?:\/\/[^\s"'`)]+/g) ?? []).every((u) => u.startsWith("https://climate.stripe.com/badge/mE76Pa")));
+atteso("parametri: tema, dimensione piccola, lingua italiana", /src=\{`\$\{URL_BADGE_CLIMATE\}\?theme=\$\{tema\}&size=small&locale=it-IT`\}/.test(codice));
+atteso("il tema predefinito è «dark» (il sito è scuro) e sono ammessi solo i due temi di Stripe", /tema = "dark"\s*\}: \{ tema\?: "light" \| "dark" \}/.test(codice));
+atteso("dimensioni fornite da Stripe (380 × 38), bordo zero, mai più largo dello schermo", /width=\{380\}/.test(codice) && /height=\{38\}/.test(codice) && /border: 0/.test(codice) && /maxWidth: "100%"/.test(codice));
+atteso("sandbox senza alcun permesso (la pagina del badge è solo HTML e CSS)", /sandbox=""/.test(codice) && !/allow-/.test(codice));
+atteso("nessun permesso del browser concesso all'iframe (niente allow=, niente schermo intero)", !/\sallow=/.test(codice) && !/allowFullScreen|allowfullscreen/.test(codice));
+atteso("non si dice a Stripe da quale pagina arriva il visitatore", /referrerPolicy="no-referrer"/.test(codice));
+atteso("caricamento pigro: il piè di pagina sta in fondo, il badge si carica solo avvicinandosi", /loading="lazy"/.test(codice));
+atteso("titolo per chi usa uno screen reader, con la stessa cosa che dice il badge", /title="Stripe Climate: l'1% degli acquisti contribuisce alla rimozione di CO₂ dall'atmosfera"/.test(codice));
 atteso("componente del server (nessuno script del sito in più)", !/^"use client"/m.test(componente));
 
 console.log("--- Dove compare ---");
