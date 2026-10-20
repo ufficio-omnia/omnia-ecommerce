@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CookiePreferencesButton from "./cookie-preferences-button";
+import ClimateBadge from "./climate-badge";
 import { getCurrentOmniaAiCondizioniAbbonamentoUrl } from "@/lib/omnia-ai-legal";
 
 // Server Component (non più "use client"): il link "Condizioni" punta
@@ -22,6 +23,9 @@ export default async function SiteFooter() {
         <Link href="/cookie-policy">Cookie</Link>
         <CookiePreferencesButton />
       </nav>
+      <div className="omnia-climate">
+        <ClimateBadge />
+      </div>
     </footer>
   );
 }
