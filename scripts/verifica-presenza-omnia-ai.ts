@@ -70,6 +70,9 @@ const casi: [string, string][] = [
   ["/dashboard/omnia-aiX", "altro"],
   [`${R}/../admin`, "altro"],
   ["", "altro"],
+  // fuori dall'area, ma con una parola «buona» proprio dove si guarderebbe se il controllo del prefisso mancasse
+  [`/${"x".repeat(19)}abbonamento`, "altro"],
+  [`/${"x".repeat(19)}gare/123`, "altro"],
 ];
 for (const [percorso, atteseSezione] of casi) uguale(`«${percorso}» → ${atteseSezione}`, sezioneDaPercorso(percorso), atteseSezione);
 uguale("valori che non sono testo → altro", [sezioneDaPercorso(undefined), sezioneDaPercorso(null), sezioneDaPercorso(42), sezioneDaPercorso({}), sezioneDaPercorso(["a"])], ["altro", "altro", "altro", "altro", "altro"]);
@@ -195,7 +198,7 @@ const lib = leggi("src/lib/omnia-ai-presenza.ts");
 const codiceLib = senzaCommenti(lib);
 atteso("due sole operazioni: il segnale e l'uscita, tramite le due funzioni del database con parametri chiamati per nome", /rpc\("omnia_ai_presenza_segnale", \{ p_user: userId, p_attivo: segnale\.attivo, p_sezione: segnale\.sezione \}\)/.test(codiceLib) && /rpc\("omnia_ai_presenza_uscita", \{ p_user: userId \}\)/.test(codiceLib));
 atteso("mai un errore per chi lavora: ogni funzione ha try/catch e restituisce true/false", conta(codiceLib, /try \{/g) === 2 && conta(codiceLib, /catch \(e\)/g) === 2 && conta(codiceLib, /return false;/g) >= 4);
-atteso("prima della migrazione (funzione o tabella assenti) si ignora senza rumore", /PGRST202/.test(codiceLib) && /42883/.test(codiceLib) && /schemaAssente\(errore\)/.test(codiceLib) && /if \(!funzioneAssente\(error\)\) console\.error/.test(codiceLib));
+atteso("prima della migrazione (funzione o tabella assenti) si ignora senza rumore", /PGRST202/.test(codiceLib) && /42883/.test(codiceLib) && /schemaAssente\(errore\)/.test(codiceLib) && conta(codiceLib, /if \(!funzioneAssente\(error\)\) console\.error/g) === 2);
 atteso("la sezione registrata viene dal segnale già ridotto a parola dell'elenco (tipo SegnaleValido), mai da un testo libero", /import type \{ SegnaleValido \} from "@\/lib\/omnia-ai-presenza-calcoli"/.test(codiceLib));
 
 console.log("--- Il componente nel browser ---");
@@ -203,7 +206,7 @@ const comp = leggi("src/components/omnia-ai/presenza-battito.tsx");
 const codiceComp = senzaCommenti(comp);
 atteso("è un componente del browser che non mostra niente", /^"use client";/.test(comp) && /return null;/.test(codiceComp));
 atteso("manda il segnale con POST a /api/presenza, solo {attivo, percorso}, con la sessione del sito e senza cache", /fetch\("\/api\/presenza", \{\s*method: "POST"/.test(codiceComp) && /JSON\.stringify\(\{ attivo: adesso - ultimaAttivita < FINESTRA_ATTIVITA_MS, percorso: percorsoRef\.current \}\)/.test(codiceComp) && /credentials: "same-origin"/.test(codiceComp) && /cache: "no-store"/.test(codiceComp) && /keepalive: true/.test(codiceComp));
-atteso("ritmo e finestra vengono dalle costanti provate sopra (non numeri scritti due volte)", /INTERVALLO_SEGNALE_MS/.test(codiceComp) && /FINESTRA_ATTIVITA_MS/.test(codiceComp) && /from "@\/lib\/omnia-ai-presenza-calcoli"/.test(codiceComp));
+atteso("ritmo e finestra vengono dalle costanti provate sopra (non numeri scritti due volte)", /window\.setInterval\(\(\) => invia\(false\), INTERVALLO_SEGNALE_MS\)/.test(codiceComp) && /adesso - ultimaAttivita < FINESTRA_ATTIVITA_MS/.test(codiceComp) && /from "@\/lib\/omnia-ai-presenza-calcoli"/.test(codiceComp));
 atteso("nessun segnale se la scheda non è visibile; quando torna visibile ne parte uno subito", /document\.visibilityState !== "visible"\) return;/.test(codiceComp) && /addEventListener\("visibilitychange", alCambioDiVisibilita\)/.test(codiceComp) && /if \(document\.visibilityState === "visible"\) invia\(true\);/.test(codiceComp));
 atteso("l'attività si riconosce da mouse, tastiera, scorrimento e tocco", ["pointerdown", "pointermove", "keydown", "wheel", "touchstart", "scroll"].every((e) => codiceComp.includes(`"${e}"`)));
 atteso("con 401 (sessione finita) smette; ogni errore di rete si ignora", /risposta\.status === 401\) fermato = true/.test(codiceComp) && /\.catch\(\(\) => \{\}\)/.test(codiceComp));
