@@ -2,8 +2,11 @@ import Link from "next/link";
 import type { RiepilogoBonifici } from "@/lib/console/ordini";
 import type { EventoAccesso, SintesiRegistro } from "@/lib/console/registro-accessi";
 import type { StatoSistema } from "@/lib/console/stato-sistema";
+import type { OnlineAdesso } from "@/lib/console/presenza";
 import { Badge, BadgeScadenza, Pannello, Tessera, type Tono } from "./elementi";
 import { formattaData, formattaDataOra, formattaDurata, formattaEuro } from "./formati";
+import { BadgePresenza } from "./presenza-vista";
+import RicaricaAutomatica from "./ricarica-automatica";
 
 // Vista pura della Panoramica: riceve dati già letti, non accede a nulla. La
 // pagina (che richiede l'admin) legge i dati e la passa qui.
@@ -163,6 +166,7 @@ export default function PanoramicaVista({
   daFatturare,
   registro,
   sistema,
+  online,
 }: {
   scadeIl: Date;
   scadeTraMs: number;
@@ -170,6 +174,8 @@ export default function PanoramicaVista({
   daFatturare: { n: number; lordo: number } | null;
   registro: SintesiRegistro;
   sistema: StatoSistema;
+  // chi è collegato adesso all'area riservata di OMNIA AI (migrazione 0094)
+  online: OnlineAdesso;
 }) {
   const problemi = sistema.voci.filter((v) => v.esito === "errore").length;
 
@@ -182,10 +188,19 @@ export default function PanoramicaVista({
         </div>
       </div>
 
+      {/* La Panoramica si rilegge da sola ogni 30 secondi: «Online adesso» cambia continuamente. Nessun modulo qui. */}
+      <RicaricaAutomatica secondi={30} />
+
       <EvidenzaBonifici bonifici={bonifici} />
       <EvidenzaDaFatturare daFatturare={daFatturare} />
 
       <div className="cn-tessere" style={{ marginTop: 14 }}>
+        <Tessera
+          etichetta="Online adesso"
+          valore={online.disponibile ? online.utenti.length : "—"}
+          tono={online.utenti.length > 0 ? "ok" : "neutro"}
+          dettaglio={online.disponibile ? `${online.utenti.filter((u) => u.presenza.stato === "attivo").length} attivi · area riservata OMNIA AI` : "Presenza non ancora attiva"}
+        />
         <Tessera etichetta="Sessione" valore={formattaDurata(scadeTraMs)} dettaglio={`Scade il ${formattaDataOra(scadeIl)}`} />
         <Tessera
           etichetta="Accessi (24 h)"
@@ -211,6 +226,48 @@ export default function PanoramicaVista({
           tono={problemi === 0 ? "ok" : "errore"}
           dettaglio={sistema.pingMs !== null ? `Database in ${sistema.pingMs} ms` : "Database non raggiungibile"}
         />
+      </div>
+
+      <div className="cn-sezione">
+        <Pannello titolo={`Online adesso${online.disponibile ? ` (${online.utenti.length})` : ""}`}>
+          {!online.disponibile ? (
+            <p className="cn-vuoto">La presenza non è ancora attiva: eseguire la migrazione 0094.</p>
+          ) : online.utenti.length === 0 ? (
+            <p className="cn-vuoto">Nessun cliente è collegato in questo momento.</p>
+          ) : (
+            <div className="cn-scorri">
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Utente</th>
+                    <th>Ruolo</th>
+                    <th>Stato</th>
+                    <th>Dove si trova</th>
+                    <th>In linea da</th>
+                    <th>Ultima attività</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {online.utenti.map((u) => (
+                    <tr key={u.id}>
+                      <td className="cn-cella-doppia">
+                        <Link href={`/utenti/${u.id}`}>{u.email}</Link>
+                        {u.azienda && <small>{u.azienda}</small>}
+                      </td>
+                      <td>{u.ufficioGareDi ? <>Ufficio Gare di {u.ufficioGareDi}</> : "Titolare"}</td>
+                      <td>
+                        <BadgePresenza p={u.presenza} />
+                      </td>
+                      <td>{u.presenza.etichettaSezione ?? "—"}</td>
+                      <td className="mono">{u.presenza.inSessioneDa ? formattaDataOra(u.presenza.inSessioneDa) : "—"}</td>
+                      <td className="mono">{u.presenza.ultimaAttivita ? formattaDataOra(u.presenza.ultimaAttivita) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Pannello>
       </div>
 
       <div className="cn-colonne">

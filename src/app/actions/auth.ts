@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { segnaPasswordConsegnata } from "@/lib/omnia-ai-password-consegnata";
+import { registraUscita } from "@/lib/omnia-ai-presenza";
 import { verificaFormUmano } from "@/lib/turnstile";
 
 export type ActionState = { error?: string; success?: string };
@@ -122,6 +123,16 @@ export async function setInitialPassword(
 
 export async function signOut() {
   const supabase = await createClient();
+  // Presenza (migrazione 0094): si annota l'uscita con «Esci», PRIMA di chiudere la sessione (poi non si saprebbe più chi è).
+  // La presenza non deve mai impedire di uscire: qualunque errore si ignora.
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) await registraUscita(user.id);
+  } catch (e) {
+    console.error("Presenza: uscita non registrata", e instanceof Error ? e.message : e);
+  }
   await supabase.auth.signOut();
   redirect("/login");
 }

@@ -4,6 +4,7 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { statoAbbonamento, type StatoAbbonamento } from "./abbonamenti-calcoli";
 import { normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { leggiLegameUfficioGare, type LegameUfficioGare } from "./ufficio-gare";
+import { leggiPresenze } from "./presenza";
 import {
   costruisciRigheUtenti,
   statoProvaAbbonamento,
@@ -63,7 +64,7 @@ export async function leggiAccessiUtenti(): Promise<{ accessi: Map<string, Acces
 
 export type ElencoUtentiLetto =
   | { stato: "errore"; messaggio: string }
-  | { stato: "ok"; righe: RigaUtente[]; accessiDisponibili: boolean };
+  | { stato: "ok"; righe: RigaUtente[]; accessiDisponibili: boolean; presenzaDisponibile: boolean };
 
 export async function leggiElencoUtenti(): Promise<ElencoUtentiLetto> {
   const admin = createAdminClient();
@@ -77,7 +78,7 @@ export async function leggiElencoUtenti(): Promise<ElencoUtentiLetto> {
   const membriLetti = membriQ.error && !schemaAssente(membriQ.error) ? null : ((membriQ.data ?? []) as MembroDb[]);
   if (membriLetti === null) console.error("Console: lettura degli Uffici Gare fallita", membriQ.error?.message);
 
-  const [utentiQ, aziendeQ, ordiniQ, accOrdiniQ, accAbbQ, creditiQ, messaggiQ, accessi] = await Promise.all([
+  const [utentiQ, aziendeQ, ordiniQ, accOrdiniQ, accAbbQ, creditiQ, messaggiQ, accessi, presenze] = await Promise.all([
     admin.from("users").select("id, email, role, created_at").order("created_at", { ascending: false }).limit(LIMITE),
     admin.from("companies").select("user_id, ragione_sociale, partita_iva, codice_fiscale, buyer_type").limit(LIMITE),
     admin.from("orders").select("id, user_id, status, total_amount, created_at").limit(LIMITE),
@@ -86,6 +87,8 @@ export async function leggiElencoUtenti(): Promise<ElencoUtentiLetto> {
     admin.from("credits").select("user_id, balance").limit(LIMITE),
     admin.from("messages").select("user_id, sender, created_at").order("created_at", { ascending: false }).limit(20000),
     leggiAccessiUtenti(),
+    // Presenza (migrazione 0094): se la tabella non c'è, l'elenco funziona lo stesso e nessuno risulta mai visto in linea.
+    leggiPresenze(),
   ]);
 
   for (const [nome, q] of [["utenti", utentiQ], ["aziende", aziendeQ], ["ordini", ordiniQ], ["accettazioni degli ordini", accOrdiniQ], ["abbonamenti", abbonamentiQ], ["accettazioni degli abbonamenti", accAbbQ], ["crediti", creditiQ], ["messaggi", messaggiQ]] as const) {
@@ -107,11 +110,12 @@ export async function leggiElencoUtenti(): Promise<ElencoUtentiLetto> {
       messaggi: (messaggiQ.data ?? []) as MessaggioDb[],
       accessi: accessi.accessi,
       membri: membriLetti ?? [],
+      presenze: presenze.righe,
     },
     new Date(),
   );
 
-  return { stato: "ok", righe, accessiDisponibili: accessi.disponibili };
+  return { stato: "ok", righe, accessiDisponibili: accessi.disponibili, presenzaDisponibile: presenze.disponibile };
 }
 
 // Quante conversazioni aspettano una risposta (l'ultimo messaggio è del cliente):
