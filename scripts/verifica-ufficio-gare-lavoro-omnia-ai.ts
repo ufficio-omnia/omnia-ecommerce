@@ -174,7 +174,7 @@ async function main() {
 
   console.log("--- Layout dell'area riservata ---");
   const layout = leggi(`${base}/layout.tsx`);
-  const vista = layout.slice(layout.indexOf("async function VistaUfficioGare"), layout.indexOf("export default async function OmniaAiLayout"));
+  const vista = layout.slice(layout.indexOf("async function VistaUfficioGare"), layout.indexOf("async function LayoutInterno"));
   atteso("il layout capisce chi è e un errore nel capirlo NON è «titolare»", layout.includes("leggiSessioneAccount()") && /catch \(e\) \{\s*if \(e instanceof ErroreContestoAccount\) \{\s*return <SchermataFermo/.test(layout));
   atteso("il layout manda l'Ufficio Gare alla sua vista, prima di qualunque lettura da titolare", layout.indexOf('contesto.ruolo === "ufficio_gare"') !== -1 && layout.indexOf('contesto.ruolo === "ufficio_gare"') < layout.indexOf("getOmniaAiAccessState(user.id, supabase)"));
   atteso("vista Ufficio Gare: sospeso e cessato fermano con il perché, l'abbonamento si legge sul titolare", vista.includes("if (contesto.sospeso)") && vista.includes('stato.stato === "cessato"') && vista.includes("getOmniaAiAccessState(contesto.accountId, admin)") && vista.includes("MESSAGGIO_UFFICIO_GARE_SOSPESO"));
