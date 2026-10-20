@@ -13,19 +13,22 @@ export default async function SiteFooter() {
 
   return (
     <footer className="omnia-footer" id="contatti">
-      <span>OMNIA AI — un prodotto di Omnia Consulting SRLS · P.IVA 02957590819</span>
-      <nav>
-        <a href="https://omniaitalia.com">omniaitalia.com</a>
-        <Link href="/contatti">Contatti</Link>
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/riservatezza">Riservatezza</Link>
-        <Link href={condizioniUrl}>Condizioni</Link>
-        <Link href="/cookie-policy">Cookie</Link>
-        <CookiePreferencesButton />
-      </nav>
-      <div className="omnia-climate">
-        <ClimateBadge />
+      {/* In alto i collegamenti (a sinistra) e il badge di Stripe Climate (a destra); in basso, dopo una linea sottile, la riga legale. */}
+      <div className="omnia-footer-alto">
+        <nav>
+          <a href="https://omniaitalia.com">omniaitalia.com</a>
+          <Link href="/contatti">Contatti</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/riservatezza">Riservatezza</Link>
+          <Link href={condizioniUrl}>Condizioni</Link>
+          <Link href="/cookie-policy">Cookie</Link>
+          <CookiePreferencesButton />
+        </nav>
+        <div className="omnia-climate">
+          <ClimateBadge />
+        </div>
       </div>
+      <p className="omnia-footer-basso">OMNIA AI — un prodotto di Omnia Consulting SRLS · P.IVA 02957590819</p>
     </footer>
   );
 }
