@@ -26,6 +26,7 @@ import { caricaEvidenzaDati } from "@/lib/evidenza-dati";
 import { applicaGuardiaValori, indicizzaEvidenza, type EvidenzaDati, type ValoreDerivato, type ValoreMarcato } from "@/lib/valori-impresa";
 import type { AvvisoRiferimentoEconomico } from "@/lib/riferimenti-economici";
 import type { FunzioneCompressione } from "@/lib/compressione-mirata";
+import type { SezioneSalvata } from "@/lib/gara-bozze-contesto";
 
 
 const TITOLO_DEFAULT = "Relazione Tecnica";
@@ -53,11 +54,7 @@ const SOGLIA_RIDUZIONE = 1.1;
 
 type CriterioRiepilogo = { numero: string; titolo: string; punti_max: number };
 
-export type SezioneEsistente = {
-  ordine: number;
-  titolo_sezione: string;
-  paroleStimate: number;
-};
+export type SezioneEsistente = SezioneSalvata;
 
 // Elenco delle sezioni già elaborate per una gara, mostrato all'AI come
 // contesto informativo (per non trattare da capo un argomento già
@@ -70,16 +67,14 @@ export async function elencoSezioniEsistenti(garaId: string): Promise<SezioneEsi
   const supabase = await createClient();
   const { data } = await supabase
     .from("gara_relazione_sezioni")
-    .select("ordine, titolo_sezione, contenuto")
+    .select("ordine, titolo_sezione, contenuto, created_at")
     .eq("gara_id", garaId)
     .order("ordine", { ascending: true })
-    .returns<{ ordine: number; titolo_sezione: string; contenuto: string }[]>();
+    .returns<SezioneSalvata[]>();
 
-  return (data ?? []).map((s) => ({
-    ordine: s.ordine,
-    titolo_sezione: s.titolo_sezione,
-    paroleStimate: s.contenuto.split(/\s+/).filter(Boolean).length,
-  }));
+  // Il testo intero (non solo titolo e parole): la chat ne ricava l'elenco per criterio e lo strumento di lettura
+  // (vedi gara-bozze-contesto.ts).
+  return data ?? [];
 }
 
 type FormattazioneGara = {

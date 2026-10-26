@@ -36,9 +36,24 @@ import {
   buildGeneraBozzaTool,
   budgetSottoCriteriDiGara,
   formattaDatiGaraStrutturati,
+  LEGGI_BOZZA_TOOL,
   type GaraContesto,
   type CompanyContesto,
 } from "@/lib/gara-chat-prompt";
+import {
+  arricchisciQueryRicerca,
+  avvisoOrganigrammaInAltroCriterio,
+  confrontaConBozzaBase,
+  controllaLetturaPrimaDiGenerare,
+  memoriaRichiesteCliente,
+  presentaBozzaAlModello,
+  raggruppaSezioni,
+  testoConfrontoPerModello,
+  testoElencoBozze,
+  testoGenerazioneRifiutata,
+  totaleUltimeVersioni,
+  type SezioneSalvata,
+} from "@/lib/gara-bozze-contesto";
 
 export type { GaraContesto, CompanyContesto };
 
@@ -61,9 +76,14 @@ function testoAvvisiFigure(avvisi: string[]): string {
 
 const MODEL = "claude-sonnet-5";
 const MAX_HISTORY = 12;
+// Quanti messaggi si leggono per ricordare le richieste del cliente PRIMA degli ultimi MAX_HISTORY (che il modello vede per
+// intero): vedi memoriaRichiesteCliente. Sono solo testi brevi del cliente, riassunti in poche righe nel prompt.
+const MAX_MESSAGGI_PER_MEMORIA = 200;
 const MAX_CHUNKS = 8;
 const MAX_KB_CHUNKS = 6;
-const MAX_TOOL_ROUNDS = 4;
+// Con la lettura della bozza prima di riscriverla servono più passaggi: leggi → genera → risposta (e, se la generazione viene
+// rifiutata perché la bozza non era stata letta: genera → leggi → genera → risposta).
+const MAX_TOOL_ROUNDS = 6;
 // Oltre questo tempo dall'inizio della richiesta l'espansione dei
 // sotto-criteri non parte: restano da fare verifica dati e garanzie, e la
 // funzione ha un tetto (maxDuration della pagina).
@@ -163,13 +183,17 @@ export async function sendGaraMessage(
 
   const { data: storicoRaw } = await supabase
     .from("gara_messaggi")
-    .select("ruolo, contenuto")
+    .select("ruolo, contenuto, created_at")
     .eq("gara_id", garaId)
     .order("created_at", { ascending: false })
-    .limit(MAX_HISTORY)
-    .returns<{ ruolo: string; contenuto: string }[]>();
+    .limit(MAX_MESSAGGI_PER_MEMORIA)
+    .returns<{ ruolo: string; contenuto: string; created_at: string }[]>();
 
-  const storico = (storicoRaw ?? []).slice().reverse();
+  const storicoCompleto = (storicoRaw ?? []).slice().reverse();
+  // Il modello vede per intero solo gli ultimi MAX_HISTORY messaggi; le richieste più vecchie del cliente restano nel prompt
+  // come promemoria (vedi memoriaRichiesteCliente): senza, le istruzioni date prima sparivano.
+  const storico = storicoCompleto.slice(-MAX_HISTORY);
+  const memoriaRichieste = memoriaRichiesteCliente(storicoCompleto, MAX_HISTORY);
 
   const { data: messaggioInserito, error: insertUserError } = await supabase
     .from("gara_messaggi")
@@ -258,7 +282,9 @@ export async function sendGaraMessage(
   let fileGenerato: { nomeFile: string; filePath: string; pagineStimate: number; avvisiEconomici: AvvisoRiferimentoEconomico[]; valoriImpresa: EsitoValoriImpresa; finale: boolean } | null = null;
 
   try {
-    const queryEmbedding = await embedQuery(messaggio, {
+    // La ricerca degli estratti parte dal messaggio, ancorato al criterio di cui parla («amplia il 2.2»): una richiesta
+    // breve cercava a caso e portava estratti di un altro criterio (vedi arricchisciQueryRicerca).
+    const queryEmbedding = await embedQuery(arricchisciQueryRicerca(messaggio, gara), {
       userId: contesto.accountId,
       garaId,
       operazione: "chat_gara_ricerca",
@@ -338,19 +364,19 @@ export async function sendGaraMessage(
       .map((d, i) => `[Struttura progetto ${i + 1}]\n${d.struttura_titoli}`)
       .join("\n\n");
 
-    const listaSezioniEsistenti = await elencoSezioniEsistenti(garaId);
+    // Le bozze già salvate, per intero (testo compreso: lo strumento leggi_bozza_sezione le legge da qui), raggruppate per criterio.
+    const sezioniSalvate: SezioneSalvata[] = await elencoSezioniEsistenti(garaId);
+    const gruppiSezioni = raggruppaSezioni(sezioniSalvate);
     // Stima grezza (non un conteggio pagine Word reale) solo per dare
     // all'AI un'idea di quanto del limite di pagine totale del
     // disciplinare è già stato "consumato" dalle bozze precedenti,
     // quando decide quanto spazio dedicare alla prossima sezione.
-    const PAROLE_PER_PAGINA_STIMATE = 450;
-    const paroleTotaliEsistenti = listaSezioniEsistenti.reduce((tot, s) => tot + s.paroleStimate, 0);
-    const paginaStimataEsistenti = Math.round(paroleTotaliEsistenti / PAROLE_PER_PAGINA_STIMATE);
-    const sezioniEsistenti = listaSezioniEsistenti
-      .map((s) => `[ordine ${s.ordine}] ${s.titolo_sezione} (~${Math.round(s.paroleStimate / PAROLE_PER_PAGINA_STIMATE)} pagine stimate)`)
-      .join("\n");
+    // Si conta UNA volta sola l'ultima versione di ogni criterio: sommare tutte le versioni (14 del solo criterio 2.1 in un
+    // giorno, per un cliente reale) gonfiava il totale e spingeva il modello ad accorciare le sezioni nuove.
+    const totaleScritto = totaleUltimeVersioni(gruppiSezioni);
+    const sezioniEsistenti = testoElencoBozze(gruppiSezioni);
     const sezioniEsistentiConTotale = sezioniEsistenti
-      ? `${sezioniEsistenti}\n\nTotale stimato già scritto per questa gara: ~${paginaStimataEsistenti} pagine (su ${PAROLE_PER_PAGINA_STIMATE} parole/pagina, stima approssimativa — non un conteggio Word reale). Sottrai questo dal limite massimo di pagine del disciplinare per capire quante ne restano per i criteri non ancora trattati.`
+      ? `${sezioniEsistenti}\n\nTotale stimato già scritto per questa gara (l'ultima versione di ogni criterio, contata una volta sola): ~${totaleScritto.pagine} pagine (su 450 parole/pagina, stima approssimativa — non un conteggio Word reale). Sottrai questo dal limite massimo di pagine del disciplinare, se esiste, per capire quante ne restano per i criteri non ancora trattati.`
       : "";
 
     // Piattaforma gestionale e sue funzioni dal profilo (resiliente se la
@@ -366,6 +392,7 @@ export async function sendGaraMessage(
       struttureKnowledgeBase,
       sezioniEsistentiConTotale,
       fattiFigure,
+      memoriaRichieste,
     );
     const anthropic = createAnthropicClient();
 
@@ -386,7 +413,14 @@ export async function sendGaraMessage(
     // questa richiesta: l'istruzione nel prompt ("al massimo una volta")
     // non è una garanzia, questo lo è, ed evita anche round aggiuntivi
     // inutili (più lenti e più costosi).
-    let strumentiDisponibili: Anthropic.Tool[] = [buildGeneraBozzaTool(gara), COMPONI_RELAZIONE_TOOL];
+    let strumentiDisponibili: Anthropic.Tool[] = [
+      ...(sezioniSalvate.length > 0 ? [LEGGI_BOZZA_TOOL] : []),
+      buildGeneraBozzaTool(gara),
+      COMPONI_RELAZIONE_TOOL,
+    ];
+    // Le bozze che il modello ha LETTO nei passaggi precedenti di questa richiesta (ordine → bozza). Una lettura conta solo dal
+    // passaggio dopo: se legge e genera nella stessa risposta, la nuova bozza è stata scritta senza vedere il testo.
+    const bozzeLette = new Map<number, SezioneSalvata>();
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       // max_tokens era 16000: troppo poco per una sezione densa di più
@@ -448,7 +482,7 @@ export async function sendGaraMessage(
       const toolUses = response.content.filter(
         (block) =>
           block.type === "tool_use" &&
-          (block.name === "genera_bozza_sezione" || block.name === "componi_relazione_finale"),
+          (block.name === "genera_bozza_sezione" || block.name === "componi_relazione_finale" || block.name === "leggi_bozza_sezione"),
       );
 
       if (response.stop_reason !== "tool_use" || toolUses.length === 0) {
@@ -458,8 +492,27 @@ export async function sendGaraMessage(
       messages.push({ role: "assistant", content: response.content });
 
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      // Bozze lette in QUESTO passaggio: contano per la generazione solo dal passaggio successivo (vedi bozzeLette).
+      const lettureDiQuestoPassaggio: SezioneSalvata[] = [];
       for (const toolUse of toolUses) {
         if (toolUse.type !== "tool_use") continue;
+
+        if (toolUse.name === "leggi_bozza_sezione") {
+          const ordineRichiesto = Number((toolUse.input as { ordine?: unknown } | null)?.ordine);
+          const sezione = Number.isInteger(ordineRichiesto) ? sezioniSalvate.find((s) => s.ordine === ordineRichiesto) : undefined;
+          if (!sezione) {
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: toolUse.id,
+              content: `Non esiste una bozza con questo numero d'ordine. Ordini disponibili: ${sezioniSalvate.map((s) => s.ordine).join(", ") || "nessuno"}. Usa uno dei numeri dell'elenco «Bozze di sezione già generate».`,
+              is_error: true,
+            });
+          } else {
+            lettureDiQuestoPassaggio.push(sezione);
+            toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: presentaBozzaAlModello(sezione).testo });
+          }
+          continue;
+        }
 
         if (toolUse.name === "componi_relazione_finale") {
           try {
@@ -513,6 +566,21 @@ export async function sendGaraMessage(
           organigramma?: unknown;
           figure?: unknown;
         };
+
+        // Garanzia (non una richiesta al modello): se per questo criterio esiste già una bozza, la nuova deve partire dal suo
+        // TESTO. Senza averla letta il modello la riscrive da zero e dimentica quanto già scritto (difetto reale di un
+        // cliente: 14 versioni diverse dello stesso criterio in un giorno). La generazione viene rifiutata e il modello la
+        // rilegge subito, al passaggio dopo.
+        const controlloLettura = controllaLetturaPrimaDiGenerare(input.titolo_sezione ?? "", gruppiSezioni, new Set(bozzeLette.keys()));
+        if (!controlloLettura.ok) {
+          console.log(`sendGaraMessage [${garaId}]: generazione rifiutata, bozza esistente non letta (criterio ${controlloLettura.chiave}, ordine ${controlloLettura.ordineUltima})`);
+          toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, is_error: true, content: testoGenerazioneRifiutata(controlloLettura) });
+          continue;
+        }
+        const chiaveNuova = controlloLettura.chiave;
+        // La bozza di partenza è la versione più recente tra quelle lette per questo criterio.
+        const bozzaBase: SezioneSalvata | undefined = controlloLettura.ordineBase !== null ? bozzeLette.get(controlloLettura.ordineBase) : undefined;
+
         try {
           // Sostituzione deterministica dei sub-criteri tabellari: la
           // sola istruzione nel prompt (anche ripetuta con l'elenco
@@ -648,10 +716,15 @@ export async function sendGaraMessage(
                 : ` La lunghezza è controllata per sotto-criterio, con un tetto in proporzione ai punti già rispettato in fase di scrittura: NON proporre di ampliare per raggiungere un numero di pagine. Scrivi solo 1-2 frasi su cosa contiene questa sezione.`
               : ` Se questo numero è sensibilmente sotto l'obiettivo (tuo o del cliente), dillo chiaramente nella risposta invece di dichiarare il target raggiunto, e proponi di ampliarla — non limitarti a descrivere quanto hai scritto "in astratto". Se invece è sensibilmente sopra un target di pagine noto per questo criterio, ricorda che viene rifinito in automatico solo componendo la relazione finale: non serve intervenire ora, basta segnalarlo in una frase. Altrimenti scrivi solo 1-2 frasi su cosa contiene questa sezione.`;
 
+          // Cosa manca rispetto alla bozza da cui si è partiti (misurato dal codice), e se l'organigramma di commessa è già in
+          // un altro criterio: il modello lo dice al cliente invece di dichiarare di aver mantenuto tutto.
+          const testoConfrontoBase = bozzaBase ? testoConfrontoPerModello(confrontaConBozzaBase(bozzaBase.contenuto, contenutoFinale), bozzaBase.ordine) : "";
+          const testoOrganigrammaAltroCriterio = avvisoOrganigrammaInAltroCriterio(contenutoFinale, sezioniSalvate, gruppiSezioni, chiaveNuova);
+
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUse.id,
-            content: `${testoAvvisiOrganigramma(avvisiOrganigramma)}${testoAvvisiFigure(avvisiFigure)}${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
+            content: `${testoConfrontoBase}${testoOrganigrammaAltroCriterio}${testoAvvisiOrganigramma(avvisiOrganigramma)}${testoAvvisiFigure(avvisiFigure)}${testoAvvisoEconomico(avvisiEconomici)}${testoValoriPerModello(valoriImpresa.marcati, valoriImpresa.derivati, valoriImpresa.nonMarcabili)}Bozza "${nomeFile}" generata con successo — occupa REALMENTE circa ${pagineReali.toFixed(1)} pagine A4 (conteggio effettivo che tiene conto di tabelle/immagini, non una tua stima).${infoTarget} Il cliente la vede già come allegato scaricabile in cima al messaggio: NON ripetere il nome del file nella tua risposta.${istruzioneLunghezza}`,
           });
         } catch (err) {
           console.error("Errore generazione bozza sezione:", err);
@@ -663,6 +736,9 @@ export async function sendGaraMessage(
           });
         }
       }
+
+      // Le bozze lette in questo passaggio valgono per la generazione dal passaggio successivo.
+      for (const letta of lettureDiQuestoPassaggio) bozzeLette.set(letta.ordine, letta);
 
       messages.push({ role: "user", content: toolResults });
     }
