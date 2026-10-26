@@ -574,12 +574,20 @@ async function costruisciRunConIcona(
 // quindi un'icona messa dall'AI in un'intestazione (osservato in
 // pratica, non raro) restava testo letterale "[ICONA:nome]" invece di
 // diventare un'icona.
+//
+// Stesso difetto per le sigle "[C]"/"[G]": l'AI le scrive a volte anche nelle celle di
+// intestazione ("[G]Componente", "[C]Ore/giorno") e finivano stampate nel Word. Nelle
+// intestazioni l'allineamento è sempre centrato (non lo decide la sigla): vanno solo
+// tolte, con la stessa pulizia del corpo (pulisciSigleAllineamentoCella). Un'intestazione
+// senza sigle esce identica a prima. Le larghezze delle colonne si calcolano già senza
+// sigle (testoCellaPerPeso): stampate, la riga era più lunga del previsto e Word
+// sillabava le parole ("Inci-denza", "Ore/gio-rno").
 async function costruisciRunIntestazione(
   testoGrezzo: string,
   runProps: { font?: string; size?: number },
 ): Promise<(TextRun | ImageRun)[]> {
   const testoBase = { bold: true, color: "FFFFFF", ...runProps };
-  const testo = rimuoviGrassettoRidondante(testoGrezzo);
+  const testo = rimuoviGrassettoRidondante(pulisciSigleAllineamentoCella(testoGrezzo));
   const estratto = estraiTagIcona(testo);
 
   if (!estratto || !NOMI_ICONE.includes(estratto.nome.toLowerCase())) {
