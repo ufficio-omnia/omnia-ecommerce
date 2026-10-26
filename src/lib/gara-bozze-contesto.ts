@@ -168,6 +168,28 @@ export function presentaBozzaAlModello(sezione: SezioneSalvata): BozzaPerModello
   return { testo: `${intestazione}${note}\n-----\n${testo}\n-----${troncata ? "\n(Testo troncato: la bozza è più lunga di quanto si possa mostrare.)" : ""}`, figure, organigrammi };
 }
 
+export const MAX_BOZZE_PER_LETTURA = 4;
+
+// Cosa risponde lo strumento di lettura: i testi delle bozze richieste (fino a 4) e, per i numeri che non esistono, quali sono
+// quelli disponibili. Accetta anche il vecchio campo singolo `ordine`. `trovate` sono le bozze davvero lette.
+export function leggiBozzeRichieste(input: { ordini?: unknown; ordine?: unknown }, sezioni: SezioneSalvata[]): { testo: string; trovate: SezioneSalvata[]; inesistenti: number[] } {
+  const grezzi = Array.isArray(input.ordini) ? input.ordini : input.ordine !== undefined ? [input.ordine] : [];
+  // Solo numeri o testi numerici: un valore vuoto (null, "") non è la bozza numero 0.
+  const richiesti = [...new Set(grezzi.filter((o) => typeof o === "number" || (typeof o === "string" && o.trim() !== "")).map((o) => Number(o)).filter((o) => Number.isInteger(o)))].slice(0, MAX_BOZZE_PER_LETTURA);
+  const trovate: SezioneSalvata[] = [];
+  const inesistenti: number[] = [];
+  for (const o of richiesti) {
+    const s = sezioni.find((x) => x.ordine === o);
+    if (s) trovate.push(s);
+    else inesistenti.push(o);
+  }
+  const parti = trovate.map((s) => presentaBozzaAlModello(s).testo);
+  const disponibili = sezioni.map((s) => s.ordine);
+  if (richiesti.length === 0) parti.push(`Nessun numero d'ordine valido. Passa «ordini» con i numeri dell'elenco delle bozze (ordini disponibili: ${disponibili.join(", ") || "nessuno"}).`);
+  else if (inesistenti.length > 0) parti.push(`Non esistono bozze con ordine ${inesistenti.join(", ")}. Ordini disponibili: ${disponibili.join(", ") || "nessuno"}: usa solo i numeri dell'elenco.`);
+  return { testo: parti.join("\n\n=====\n\n"), trovate, inesistenti };
+}
+
 // ─── Confronto tra la bozza di partenza e la nuova ───
 
 export type EsitoConfronto = {

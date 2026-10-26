@@ -235,13 +235,19 @@ const CONTENUTO_SEZIONE_DESCRIZIONE_BASE =
 export const LEGGI_BOZZA_TOOL: Anthropic.Tool = {
   name: "leggi_bozza_sezione",
   description:
-    "Legge il testo completo di una bozza già generata per questa gara, indicata dal suo numero d'ordine (il numero dopo «ordine» nell'elenco «Bozze di sezione già generate»). Va chiamato PRIMA di riscrivere, ampliare, correggere o assemblare un criterio già trattato: la nuova bozza deve partire da questo testo. Si può chiamare più volte nella stessa richiesta, una per ogni versione da leggere. Non genera nessun file.",
+    "Legge il testo completo di una o più bozze già generate per questa gara, indicate dal loro numero d'ordine (il numero dopo «ordine» nell'elenco «Bozze di sezione già generate»: usa SOLO quei numeri). Va chiamato PRIMA di riscrivere, ampliare, correggere o assemblare un criterio già trattato: la nuova bozza deve partire da questo testo. Per leggere più versioni passa tutti i numeri in UNA sola chiamata (fino a 4): più chiamate di seguito fanno perdere tempo. Non genera nessun file.",
   input_schema: {
     type: "object",
     properties: {
-      ordine: { type: "integer", description: "Numero d'ordine della bozza da leggere, come nell'elenco delle bozze già generate." },
+      ordini: {
+        type: "array",
+        items: { type: "integer" },
+        minItems: 1,
+        maxItems: 4,
+        description: "Numeri d'ordine delle bozze da leggere, come nell'elenco delle bozze già generate (da 1 a 4, tutti in questa chiamata).",
+      },
     },
-    required: ["ordine"],
+    required: ["ordini"],
   },
 };
 
@@ -373,7 +379,7 @@ Bozze di sezione già generate per questa gara (per ogni criterio: l'ULTIMA vers
 ${sezioniEsistenti || "Nessuna bozza ancora generata: questa sarebbe la prima."}
 
 REGOLA PERMANENTE — RISCRIVERE, AMPLIARE, CORREGGERE O ASSEMBLARE UN CRITERIO GIÀ TRATTATO (massima priorità, vale ogni volta):
-1. PRIMA di chiamare genera_bozza_sezione per un criterio che ha già una bozza nell'elenco, chiama leggi_bozza_sezione con l'ordine dell'ULTIMA versione di quel criterio (e, se il cliente chiede di assemblare o confrontare versioni, anche delle altre che cita). Il sistema RIFIUTA la generazione se non hai letto la bozza.
+1. PRIMA di chiamare genera_bozza_sezione per un criterio che ha già una bozza nell'elenco, chiama leggi_bozza_sezione con l'ordine dell'ULTIMA versione di quel criterio (e, se il cliente chiede di assemblare o confrontare versioni o di recuperare cose «delle bozze precedenti», anche delle altre versioni che servono: fino a 4 numeri in UNA sola chiamata, scelti tra quelli dell'elenco). Il sistema RIFIUTA la generazione se non hai letto la bozza.
 2. Poi scrivi la nuova bozza PARTENDO dal testo che hai letto: riprendi per intero (stessi titoli, stesse tabelle, stessi dati, numeri, nomi e riferimenti agli articoli) tutto ciò che il cliente non ha chiesto di cambiare, e applica soltanto le modifiche e le aggiunte richieste. Non accorciare, non togliere sezioni, non cambiare la struttura di tua iniziativa. Se il cliente dice «lascia invariata l'ultima» o «mantieni X», quelle parti restano identiche.
 3. Se il cliente chiede di ampliare, aggiungi contenuto NUOVO senza sostituire quello esistente con testo più breve.
 4. Ogni bozza è un file a sé che contiene tutto il criterio: se il cliente chiede di «assemblare» due versioni, usa il testo di ENTRAMBE (leggile). Non dire mai di aver assemblato, mantenuto o aggiornato contenuti che non hai letto.

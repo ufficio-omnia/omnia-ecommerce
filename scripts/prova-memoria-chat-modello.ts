@@ -22,7 +22,7 @@ import {
   confrontaConBozzaBase,
   controllaLetturaPrimaDiGenerare,
   memoriaRichiesteCliente,
-  presentaBozzaAlModello,
+  leggiBozzeRichieste,
   raggruppaSezioni,
   testoConfrontoPerModello,
   testoElencoBozze,
@@ -102,6 +102,8 @@ async function main() {
   let baseUsata: SezioneSalvata | undefined;
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheCreazione = 0;
+  let cacheLettura = 0;
   let rispostaFinale = "";
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -110,13 +112,15 @@ async function main() {
       max_tokens: 64000,
       thinking: { type: "adaptive" },
       output_config: { effort: "high" },
-      system: sistema,
+      system: [{ type: "text", text: sistema, cache_control: { type: "ephemeral" } }],
       tools: strumenti,
       messages: messaggi,
     });
     const risposta = await stream.finalMessage();
     inputTokens += risposta.usage.input_tokens;
     outputTokens += risposta.usage.output_tokens;
+    cacheCreazione += risposta.usage.cache_creation_input_tokens ?? 0;
+    cacheLettura += risposta.usage.cache_read_input_tokens ?? 0;
     const testo = risposta.content.map((b) => (b.type === "text" ? b.text : "")).join("\n").trim();
     if (testo) rispostaFinale = rispostaFinale ? `${rispostaFinale}\n${testo}` : testo;
 
@@ -129,15 +133,11 @@ async function main() {
     for (const uso of usi) {
       if (uso.type !== "tool_use") continue;
       if (uso.name === "leggi_bozza_sezione") {
-        const ordine = Number((uso.input as { ordine?: unknown }).ordine);
-        const sezione = sezioni.find((s) => s.ordine === ordine);
-        sequenza.push(`leggi(${Number.isInteger(ordine) ? ordine : "?"})${sezione ? "" : " [inesistente]"}`);
-        if (!sezione) {
-          risultati.push({ type: "tool_result", tool_use_id: uso.id, is_error: true, content: "Non esiste una bozza con questo numero d'ordine." });
-        } else {
-          lettureDelPassaggio.push(sezione);
-          risultati.push({ type: "tool_result", tool_use_id: uso.id, content: presentaBozzaAlModello(sezione).testo });
-        }
+        // come nel codice vero: fino a 4 bozze in una chiamata
+        const lettura = leggiBozzeRichieste((uso.input as { ordini?: unknown; ordine?: unknown } | null) ?? {}, sezioni);
+        sequenza.push(`leggi(${lettura.trovate.map((s) => s.ordine).join("+") || "nessuna"}${lettura.inesistenti.length ? ` [inesistenti: ${lettura.inesistenti.join(",")}]` : ""})`);
+        for (const s of lettura.trovate) lettureDelPassaggio.push(s);
+        risultati.push({ type: "tool_result", tool_use_id: uso.id, content: lettura.testo, ...(lettura.trovate.length === 0 ? { is_error: true } : {}) });
         continue;
       }
       if (uso.name === "genera_bozza_sezione") {
@@ -163,10 +163,31 @@ async function main() {
     messaggi.push({ role: "user", content: risultati });
   }
 
-  const costo = calcolaCostoStimato(MODEL, inputTokens, outputTokens, { creazione: null, lettura: null });
+  // Come nel codice vero: se il ciclo finisce con i risultati degli strumenti e senza una risposta del modello (passaggi esauriti),
+  // una chiusura senza strumenti scrive la risposta al cliente.
+  let chiusura = false;
+  if (messaggi[messaggi.length - 1]?.role === "user" && Array.isArray(messaggi[messaggi.length - 1].content)) {
+    chiusura = true;
+    const c = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 3000,
+      system: [{ type: "text", text: sistema, cache_control: { type: "ephemeral" } }],
+      tool_choice: { type: "none" },
+      messages: messaggi,
+    });
+    inputTokens += c.usage.input_tokens;
+    outputTokens += c.usage.output_tokens;
+    cacheCreazione += c.usage.cache_creation_input_tokens ?? 0;
+    cacheLettura += c.usage.cache_read_input_tokens ?? 0;
+    const testoChiusura = c.content.map((b) => (b.type === "text" ? b.text : "")).join("\n").trim();
+    rispostaFinale = rispostaFinale.trim() && testoChiusura ? `${rispostaFinale}\n${testoChiusura}` : testoChiusura || rispostaFinale;
+  }
+
+  const costo = calcolaCostoStimato(MODEL, inputTokens, outputTokens,{ creazione: cacheCreazione, lettura: cacheLettura });
   console.log(`\nSequenza degli strumenti: ${sequenza.join(" → ") || "(nessuno)"}`);
   console.log(`Generazioni rifiutate perché la bozza non era stata letta: ${rifiuti}`);
-  console.log(`Token: ${inputTokens} in / ${outputTokens} out — costo stimato USD ${costo === null ? "?" : costo.toFixed(2)}`);
+  if (chiusura) console.log("(il ciclo è finito con strumenti da chiudere: risposta scritta dalla chiusura finale)");
+  console.log(`Token: ${inputTokens} in (+ ${cacheCreazione} scritti in cache, ${cacheLettura} letti dalla cache) / ${outputTokens} out — costo stimato USD ${costo === null ? "?" : costo.toFixed(2)}`);
 
   if (contenutoGenerato === null) {
     console.log("\nIl modello NON ha generato nessuna bozza. Risposta:\n" + rispostaFinale.slice(0, 800));

@@ -25,6 +25,8 @@ import {
   controllaLetturaPrimaDiGenerare,
   criteriCitati,
   haPerdutoContenuto,
+  leggiBozzeRichieste,
+  MAX_BOZZE_PER_LETTURA,
   memoriaRichiesteCliente,
   presentaBozzaAlModello,
   raggruppaSezioni,
@@ -197,6 +199,26 @@ async function main() {
     atteso("«CRITERIO 1 - …» è lo stesso criterio di «1» e di «Coordinamento dei Servizi in Appalto»", !titoloNumerato.ok && titoloNumerato.ordineUltima === 3);
   }
 
+  console.log("--- Lo strumento di lettura (più bozze in una chiamata) ---");
+  {
+    const a = leggiBozzeRichieste({ ordini: [23, 22] }, tutte);
+    atteso("due bozze in una chiamata: entrambi i testi, separati", a.trovate.map((s) => s.ordine).join() === "23,22" && a.testo.includes("[ordine 23]") && a.testo.includes("[ordine 22]") && a.testo.includes("====="), a.testo.slice(0, 120));
+    const b = leggiBozzeRichieste({ ordini: [23, 999] }, tutte);
+    atteso("un numero inesistente non impedisce di leggere gli altri e dice quali esistono", b.trovate.length === 1 && b.inesistenti.join() === "999" && b.testo.includes("Non esistono bozze con ordine 999") && b.testo.includes("Ordini disponibili:"), b.testo.slice(-200));
+    const c = leggiBozzeRichieste({ ordini: [998, 999] }, tutte);
+    atteso("tutti inesistenti: nessuna bozza letta (il chiamante risponde con errore)", c.trovate.length === 0 && c.inesistenti.length === 2);
+    const d = leggiBozzeRichieste({ ordine: 3 }, tutte);
+    atteso("accetta anche il vecchio campo singolo «ordine»", d.trovate.length === 1 && d.trovate[0].ordine === 3);
+    const e = leggiBozzeRichieste({ ordini: [10, 11, 12, 13, 14, 15] }, tutte);
+    atteso("oltre 4 bozze per chiamata se ne leggono solo 4", e.trovate.length === 4 && e.trovate.map((s) => s.ordine).join() === "10,11,12,13");
+    const rip = leggiBozzeRichieste({ ordini: [23, 23, 23] }, tutte);
+    atteso("lo stesso numero ripetuto si legge una volta sola", rip.trovate.length === 1);
+    const g = leggiBozzeRichieste({ ordini: ["abc", null, 2.5] }, tutte);
+    atteso("valori non validi: nessuna lettura e il messaggio dice cosa passare", g.trovate.length === 0 && g.testo.includes("Nessun numero d'ordine valido"));
+    atteso("senza il campo: messaggio chiaro", leggiBozzeRichieste({}, tutte).testo.includes("Nessun numero d'ordine valido"));
+    atteso("i numeri arrivati come testo («22») sono accettati", leggiBozzeRichieste({ ordini: ["22"] }, tutte).trovate.length === 1);
+  }
+
   console.log("--- L'organigramma già in un altro criterio ---");
   {
     const avviso = avvisoOrganigrammaInAltroCriterio(`## 2.1\n\nTesto\n\n[ORGANIGRAMMA][/ORGANIGRAMMA]`, tutte, gruppi, "2.1");
@@ -270,7 +292,9 @@ async function main() {
     atteso("senza richieste precedenti non compare il blocco del promemoria", !senza.includes("RICHIESTE E ISTRUZIONI CHE IL CLIENTE HA DATO PRIMA"));
     atteso("con richieste precedenti il blocco compare con le richieste e la regola «vale la più recente»", con.includes("RICHIESTE E ISTRUZIONI CHE IL CLIENTE HA DATO PRIMA") && con.includes("tieni conto dell'Articolo 6") && con.includes("vale la più recente"));
     atteso("il prompt elenca lo strumento di lettura tra gli strumenti", /- Leggi bozza sezione \(leggi_bozza_sezione\)/.test(senza));
-    atteso("lo strumento di lettura chiede un numero d'ordine intero", LEGGI_BOZZA_TOOL.name === "leggi_bozza_sezione" && (LEGGI_BOZZA_TOOL.input_schema as { required?: string[] }).required?.join() === "ordine");
+    const schemaLettura = LEGGI_BOZZA_TOOL.input_schema as { required?: string[]; properties?: { ordini?: { type?: string; items?: { type?: string }; minItems?: number; maxItems?: number } } };
+    atteso("lo strumento di lettura chiede da 1 a 4 numeri d'ordine interi in una sola chiamata", LEGGI_BOZZA_TOOL.name === "leggi_bozza_sezione" && schemaLettura.required?.join() === "ordini" && schemaLettura.properties?.ordini?.type === "array" && schemaLettura.properties.ordini.items?.type === "integer" && schemaLettura.properties.ordini.minItems === 1 && schemaLettura.properties.ordini.maxItems === MAX_BOZZE_PER_LETTURA && MAX_BOZZE_PER_LETTURA === 4);
+    atteso("lo strumento di lettura dice di passare tutte le versioni in UNA chiamata", (LEGGI_BOZZA_TOOL.description ?? "").includes("UNA sola chiamata") && senza.includes("fino a 4 numeri in UNA sola chiamata"));
     atteso("lo strumento di generazione dice di leggere prima l'ultima bozza", (buildGeneraBozzaTool(gara).description ?? "").includes("PRIMA leggi l'ultima bozza con 'leggi_bozza_sezione'"));
   }
 
@@ -279,10 +303,10 @@ async function main() {
     const chat = leggi("src/app/actions/gara-chat.ts");
     atteso("lo strumento di lettura è offerto solo se ci sono bozze da leggere", /\.\.\.\(sezioniSalvate\.length > 0 \? \[LEGGI_BOZZA_TOOL\] : \[\]\)/.test(chat));
     atteso("il ciclo riconosce leggi_bozza_sezione tra gli strumenti da eseguire", /block\.name === "leggi_bozza_sezione"/.test(chat));
-    atteso("la lettura risponde con il testo presentato al modello e non toglie gli strumenti", /presentaBozzaAlModello\(sezione\)\.testo/.test(chat) && !/leggi_bozza_sezione[\s\S]{0,900}strumentiDisponibili = \[\]/.test(chat.slice(chat.indexOf('toolUse.name === "leggi_bozza_sezione"'), chat.indexOf('toolUse.name === "componi_relazione_finale"'))));
+    atteso("la lettura risponde con i testi richiesti (fino a 4) e non toglie gli strumenti", /leggiBozzeRichieste\(\(toolUse\.input as/.test(chat) && /content: lettura\.testo/.test(chat) && !/leggi_bozza_sezione[\s\S]{0,900}strumentiDisponibili = \[\]/.test(chat.slice(chat.indexOf('toolUse.name === "leggi_bozza_sezione"'), chat.indexOf('toolUse.name === "componi_relazione_finale"'))));
     const gestoreLettura = chat.slice(chat.indexOf('toolUse.name === "leggi_bozza_sezione"'), chat.indexOf('toolUse.name === "componi_relazione_finale"'));
-    atteso("il gestore della lettura non registra la bozza come letta subito (leggere e generare nella stessa risposta non vale)", gestoreLettura.length > 100 && !gestoreLettura.includes("bozzeLette.set") && gestoreLettura.includes("lettureDiQuestoPassaggio.push(sezione)"));
-    atteso("la lettura vale per la generazione solo dal passaggio successivo (registrata a fine ciclo)", chat.includes("for (const letta of lettureDiQuestoPassaggio) bozzeLette.set(letta.ordine, letta);") && chat.indexOf("lettureDiQuestoPassaggio.push(sezione)") < chat.indexOf("for (const letta of lettureDiQuestoPassaggio)"));
+    atteso("il gestore della lettura non registra la bozza come letta subito (leggere e generare nella stessa risposta non vale)", gestoreLettura.length > 100 && !gestoreLettura.includes("bozzeLette.set") && /for \(const s of lettura\.trovate\) lettureDiQuestoPassaggio\.push\(s\);/.test(gestoreLettura));
+    atteso("la lettura vale per la generazione solo dal passaggio successivo (registrata a fine ciclo)", chat.includes("for (const letta of lettureDiQuestoPassaggio) bozzeLette.set(letta.ordine, letta);") && chat.indexOf("lettureDiQuestoPassaggio.push(s)") < chat.indexOf("for (const letta of lettureDiQuestoPassaggio)"));
     atteso("la generazione è rifiutata (e il ciclo continua) se la bozza esistente non è stata letta", /controllaLetturaPrimaDiGenerare\(input\.titolo_sezione \?\? "", gruppiSezioni, new Set\(bozzeLette\.keys\(\)\)\)/.test(chat) && /if \(!controlloLettura\.ok\) \{[\s\S]{0,400}is_error: true, content: testoGenerazioneRifiutata\(controlloLettura\) \}\);\s*continue;/.test(chat));
     atteso("il rifiuto avviene PRIMA di qualunque elaborazione della bozza (correzioni, modello, file)", chat.indexOf("controllaLetturaPrimaDiGenerare(input.titolo_sezione") < chat.indexOf("applicaSostituzioniAnonimizzazione(input.contenuto") && chat.indexOf("controllaLetturaPrimaDiGenerare(input.titolo_sezione") < chat.indexOf("await generaBozzaSezione("));
     atteso("dopo la generazione il modello riceve il confronto con la bozza di partenza e l'avviso sull'organigramma", /testoConfrontoPerModello\(confrontaConBozzaBase\(bozzaBase\.contenuto, contenutoFinale\), bozzaBase\.ordine\)/.test(chat) && /avvisoOrganigrammaInAltroCriterio\(contenutoFinale, sezioniSalvate, gruppiSezioni, chiaveNuova\)/.test(chat) && /content: `\$\{testoConfrontoBase\}\$\{testoOrganigrammaAltroCriterio\}/.test(chat));
@@ -291,6 +315,28 @@ async function main() {
     atteso("la memoria delle richieste è letta dalla cronologia e passata al prompt", /storicoCompleto\.slice\(-MAX_HISTORY\)/.test(chat) && /memoriaRichiesteCliente\(storicoCompleto, MAX_HISTORY\)/.test(chat) && /fattiFigure,\s*memoriaRichieste,\s*\);/.test(chat));
     atteso("la conversazione vista per intero dal modello resta di 12 messaggi", /const MAX_HISTORY = 12;/.test(chat));
     atteso("il totale «già scritto» non somma più tutte le versioni", chat.includes("totaleUltimeVersioni(gruppiSezioni)") && !chat.includes("paroleStimate"));
+    // Il prompt di sistema (~45.000 token) è rimandato a ogni passaggio del ciclo: in cache costa un decimo.
+    atteso(
+      "il prompt di sistema va al modello come blocco con cache (ciclo e chiusura)",
+      /const sistemaPerModello: Anthropic\.TextBlockParam\[\] = \[\{ type: "text", text: systemPrompt, cache_control: \{ type: "ephemeral" \} \}\];/.test(chat) &&
+        /system: sistemaPerModello,\s*tools: \[WEB_SEARCH_TOOL/.test(chat) &&
+        /max_tokens: 3000,\s*system: sistemaPerModello,/.test(chat) &&
+        !/system: systemPrompt,/.test(chat),
+    );
+    atteso(
+      "i token di cache entrano nel registro dei costi (ciclo e chiusura), altrimenti il costo risulterebbe sottostimato",
+      (chat.match(/cacheCreationTokens: (?:response|wrapUp)\.usage\.cache_creation_input_tokens \?\? null,\s*cacheReadTokens: (?:response|wrapUp)\.usage\.cache_read_input_tokens \?\? null,/g) ?? []).length === 2,
+    );
+    // Il ciclo può finire con i risultati degli strumenti e nessuna risposta (passaggi esauriti): serve la chiusura anche se c'è già del testo.
+    atteso(
+      "il ciclo segna quando finisce con strumenti ancora da chiudere",
+      /let chiusoDaStrumenti = false;\s*for \(let round = 0; round < MAX_TOOL_ROUNDS; round\+\+\) \{\s*chiusoDaStrumenti = false;/.test(chat) &&
+        /messages\.push\(\{ role: "user", content: toolResults \}\);\s*chiusoDaStrumenti = true;/.test(chat),
+    );
+    atteso(
+      "la chiusura con risposta finale parte anche quando c'è già del testo dei passaggi precedenti",
+      chat.includes("if (!rispostaFinale.trim() || chiusoDaStrumenti) {") && chat.includes("rispostaFinale = rispostaFinale.trim() && testoChiusura ?"),
+    );
   }
 
   if (fallimenti.length > 0) {

@@ -45,8 +45,8 @@ import {
   avvisoOrganigrammaInAltroCriterio,
   confrontaConBozzaBase,
   controllaLetturaPrimaDiGenerare,
+  leggiBozzeRichieste,
   memoriaRichiesteCliente,
-  presentaBozzaAlModello,
   raggruppaSezioni,
   testoConfrontoPerModello,
   testoElencoBozze,
@@ -395,6 +395,10 @@ export async function sendGaraMessage(
       memoriaRichieste,
     );
     const anthropic = createAnthropicClient();
+    // Il prompt di sistema è lungo (~45.000 token) e a ogni passaggio del ciclo (leggi → genera → risposta) viene rimandato
+    // identico: con la cache dal secondo passaggio costa un decimo. Cambia a ogni messaggio (estratti diversi), quindi la cache
+    // serve dentro la stessa richiesta, non tra richieste.
+    const sistemaPerModello: Anthropic.TextBlockParam[] = [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }];
 
     const contenutoUltimoMessaggio: Anthropic.ContentBlockParam[] = [
       ...blocchiAllegati,
@@ -422,7 +426,11 @@ export async function sendGaraMessage(
     // passaggio dopo: se legge e genera nella stessa risposta, la nuova bozza è stata scritta senza vedere il testo.
     const bozzeLette = new Map<number, SezioneSalvata>();
 
+    // Vero se l'ultimo passaggio ha eseguito strumenti e il ciclo è finito perché i passaggi sono esauriti: nell'ultimo messaggio ci
+    // sono i risultati degli strumenti e nessuna risposta del modello (vedi la chiusura sotto).
+    let chiusoDaStrumenti = false;
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      chiusoDaStrumenti = false;
       // max_tokens era 16000: troppo poco per una sezione densa di più
       // decine di pagine (bug osservato in pratica — il cliente chiedeva
       // ~27 pagine e otteneva sistematicamente 8-10, nonostante l'AI
@@ -443,7 +451,7 @@ export async function sendGaraMessage(
         // superficiali su richieste complesse.
         thinking: { type: "adaptive" },
         output_config: { effort: "high" },
-        system: systemPrompt,
+        system: sistemaPerModello,
         tools: [WEB_SEARCH_TOOL, ...strumentiDisponibili],
         messages,
       });
@@ -457,6 +465,8 @@ export async function sendGaraMessage(
         model: MODEL,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
+        cacheCreationTokens: response.usage.cache_creation_input_tokens ?? null,
+        cacheReadTokens: response.usage.cache_read_input_tokens ?? null,
       });
 
       if (response.stop_reason === "max_tokens") {
@@ -498,19 +508,11 @@ export async function sendGaraMessage(
         if (toolUse.type !== "tool_use") continue;
 
         if (toolUse.name === "leggi_bozza_sezione") {
-          const ordineRichiesto = Number((toolUse.input as { ordine?: unknown } | null)?.ordine);
-          const sezione = Number.isInteger(ordineRichiesto) ? sezioniSalvate.find((s) => s.ordine === ordineRichiesto) : undefined;
-          if (!sezione) {
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: toolUse.id,
-              content: `Non esiste una bozza con questo numero d'ordine. Ordini disponibili: ${sezioniSalvate.map((s) => s.ordine).join(", ") || "nessuno"}. Usa uno dei numeri dell'elenco «Bozze di sezione già generate».`,
-              is_error: true,
-            });
-          } else {
-            lettureDiQuestoPassaggio.push(sezione);
-            toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: presentaBozzaAlModello(sezione).testo });
-          }
+          // Fino a 4 bozze in una chiamata sola: più chiamate di seguito consumano i passaggi del ciclo (e il prompt di sistema,
+          // molto lungo, viene rimandato a ogni passaggio).
+          const lettura = leggiBozzeRichieste((toolUse.input as { ordini?: unknown; ordine?: unknown } | null) ?? {}, sezioniSalvate);
+          for (const s of lettura.trovate) lettureDiQuestoPassaggio.push(s);
+          toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: lettura.testo, ...(lettura.trovate.length === 0 ? { is_error: true } : {}) });
           continue;
         }
 
@@ -741,19 +743,22 @@ export async function sendGaraMessage(
       for (const letta of lettureDiQuestoPassaggio) bozzeLette.set(letta.ordine, letta);
 
       messages.push({ role: "user", content: toolResults });
+      chiusoDaStrumenti = true;
     }
 
     // Se dopo tutti i round non è stato accumulato testo (es. l'AI ha
     // incatenato solo ricerche/strumenti senza mai scrivere una risposta,
     // o abbiamo raggiunto il tetto di round), forziamo una risposta
     // testuale finale invece di mostrare un errore generico.
-    if (!rispostaFinale.trim()) {
+    // Anche con del testo già scritto nei passaggi precedenti («ora leggo le bozze…»): se l'ultimo passaggio ha lasciato strumenti
+    // senza risposta, quel testo è a metà e il cliente non avrebbe la risposta vera (difetto visto in una prova col modello).
+    if (!rispostaFinale.trim() || chiusoDaStrumenti) {
       const lastMessage = messages[messages.length - 1];
       if (lastMessage?.role === "user") {
         const wrapUp = await anthropic.messages.create({
           model: MODEL,
           max_tokens: 3000,
-          system: systemPrompt,
+          system: sistemaPerModello,
           tool_choice: { type: "none" },
           messages,
         });
@@ -766,12 +771,16 @@ export async function sendGaraMessage(
           model: MODEL,
           inputTokens: wrapUp.usage.input_tokens,
           outputTokens: wrapUp.usage.output_tokens,
+          cacheCreationTokens: wrapUp.usage.cache_creation_input_tokens ?? null,
+          cacheReadTokens: wrapUp.usage.cache_read_input_tokens ?? null,
         });
 
-        rispostaFinale = wrapUp.content
+        const testoChiusura = wrapUp.content
           .map((block) => (block.type === "text" ? block.text : ""))
           .join("\n")
           .trim();
+        // Con del testo già scritto nei passaggi precedenti la chiusura si aggiunge in fondo; altrimenti è la risposta.
+        rispostaFinale = rispostaFinale.trim() && testoChiusura ? `${rispostaFinale}\n${testoChiusura}` : testoChiusura || rispostaFinale;
       }
     }
   } catch (err) {
