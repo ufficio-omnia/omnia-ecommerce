@@ -104,12 +104,69 @@ async function main() {
     const par = (testo: string) => prosa.xml.split("<w:p>").filter((p) => p.includes(testo))[0] ?? "";
     atteso("un paragrafo con [C] resta centrato e uno con [G] giustificato, senza sigle", /<w:jc w:val="center"\/>/.test(par("Paragrafo centrato")) && /<w:jc w:val="both"\/>/.test(par("Paragrafo giustificato")) && trovaMarcatoriResidui(prosa.nodi).length === 0);
     atteso(
-      "la pulizia delle celle è usata solo per le celle (corpo tabella e peso delle colonne), mai per il testo fuori tabella o per l'intestazione",
-      (sorgente.match(/pulisciSigleAllineamentoCella\(/g) ?? []).length === 3 &&
+      "la pulizia delle celle è usata solo per le celle (corpo tabella, intestazione e peso delle colonne), mai per il testo fuori tabella",
+      (sorgente.match(/pulisciSigleAllineamentoCella\(/g) ?? []).length === 4 &&
         sorgente.includes("function pulisciSigleAllineamentoCella(cellaGrezza: string): string {") &&
         sorgente.includes("const cella = pulisciSigleAllineamentoCella(celleGrezza);") &&
-        sorgente.includes("return pulisciSigleAllineamentoCella(togliMarcatoriEvidenziazione(cella))"),
+        sorgente.includes("return pulisciSigleAllineamentoCella(togliMarcatoriEvidenziazione(cella))") &&
+        sorgente.includes("const testo = rimuoviGrassettoRidondante(pulisciSigleAllineamentoCella(testoGrezzo));"),
     );
+  }
+
+  console.log("--- Le celle di INTESTAZIONE ---");
+  // Caso reale (screenshot dell'utente): "[G]Componente", "[C]Ore/giorno", "[C]Incidenza" stampati con le sigle e, per la riga più
+  // lunga del previsto, parole sillabate da Word ("Inci-denza", "Ore/gio-rno"). Qui si controlla che nessuna sigla resti in
+  // intestazione, che il resto dell'intestazione (grassetto bianco, centrata, sfondo, icona) NON cambi e che il corpo non sia toccato.
+  {
+    const conIntestazione = (a: string, b: string, c: string) => `# Prova\n\n| ${a} | ${b} | ${c} |\n|---|---|---|\n| [C]**Incendio** | Profilo uno | [C]**≤5 minuti** * |\n| [C]**Sanitaria** | [C]Altro profilo | [C]Immediata |\n`;
+    const cellaIntestazione = (xml: string, parola: string) => xml.split("<w:tc>").filter((c) => c.includes(parola))[0] ?? "";
+
+    const reale = await documento(conIntestazione("[G]Componente", "[C]Ore/giorno", "[C]Incidenza"));
+    atteso("il caso reale: nessuna sigla nel documento", trovaMarcatoriResidui(reale.nodi).length === 0, trovaMarcatoriResidui(reale.nodi).join(" / "));
+    atteso("il caso reale: le tre intestazioni hanno il testo esatto, senza sigle", ["Componente", "Ore/giorno", "Incidenza"].every((t) => reale.nodi.includes(t)), JSON.stringify(reale.nodi.slice(0, 8)));
+    const pulita = await documento(conIntestazione("Componente", "Ore/giorno", "Incidenza"));
+    atteso("il caso reale: Word identico a quello della stessa tabella con le intestazioni senza sigle", reale.xml === pulita.xml);
+    const cellaReale = cellaIntestazione(reale.xml, "Componente");
+    atteso(
+      "l'intestazione resta in grassetto bianco, centrata e sul colore della tabella",
+      /<w:b\/>/.test(cellaReale) && /<w:color w:val="FFFFFF"\/>/.test(cellaReale) && /<w:jc w:val="center"\/>/.test(cellaReale) && /<w:shd [^>]*w:fill="[0-9A-Fa-f]{6}"/.test(cellaReale),
+      cellaReale.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "),
+    );
+    atteso("l'intestazione resta la prima riga e si ripete a ogni pagina (tableHeader)", /<w:tblHeader\/>/.test(reale.xml));
+    atteso("il corpo tabella resta com'era (centrato, grassetto della prima colonna, asterisco finale)", reale.nodi.includes("Incendio") && reale.nodi.some((n) => n.includes("≤5 minuti")) && /<w:jc w:val="center"\/>/.test(cellaIntestazione(reale.xml, "Incendio")));
+
+    const varianti: [string, string, string][] = [
+      ["[G][C] di fila", "[G][C]Componente", "Componente"],
+      ["[C][G] di fila", "[C][G]Componente", "Componente"],
+      ["[C] [G] con lo spazio in mezzo", "[C] [G] Componente", "Componente"],
+      ["tre sigle", "[G][C][G]Componente", "Componente"],
+      ["sigla dentro il grassetto", "**[C]Componente**", "Componente"],
+      ["sigla davanti al grassetto", "[C]**Componente**", "Componente"],
+      ["sigla a metà intestazione", "Componente [G]tecnico", "Componente tecnico"],
+      ["due sigle a metà intestazione", "Componente [G][C] tecnico", "Componente tecnico"],
+    ];
+    for (const [nome, daProvare, atteaCome] of varianti) {
+      const a = await documento(conIntestazione(daProvare, "Ore/giorno", "Incidenza"));
+      const b = await documento(conIntestazione(atteaCome, "Ore/giorno", "Incidenza"));
+      atteso(`intestazione, ${nome}: nessuna sigla nel documento`, trovaMarcatoriResidui(a.nodi).length === 0, trovaMarcatoriResidui(a.nodi).join(" / "));
+      atteso(`intestazione, ${nome}: Word identico a quello dell'intestazione senza sigle`, a.xml === b.xml);
+    }
+
+    // l'icona in intestazione resta, in qualunque ordine siano scritte sigla e icona
+    const conIcona = ["[ICONA:sicurezza][C]Componente", "[C][ICONA:sicurezza]Componente", "[G][C][ICONA:sicurezza]Componente", "[ICONA:sicurezza]Componente"];
+    const riferimentoIcona = await documento(conIntestazione("[ICONA:sicurezza]Componente", "Ore/giorno", "Incidenza"));
+    atteso("intestazione: l'icona viene disegnata (non resta il testo [ICONA:...])", riferimentoIcona.xml.includes("<w:drawing>") && trovaMarcatoriResidui(riferimentoIcona.nodi).length === 0);
+    for (const cella of conIcona) {
+      const d = await documento(conIntestazione(cella, "Ore/giorno", "Incidenza"));
+      atteso(`intestazione con icona e sigle (${cella}): nessuna sigla, icona presente, Word identico a quello senza sigle`, trovaMarcatoriResidui(d.nodi).length === 0 && d.xml.includes("<w:drawing>") && d.xml === riferimentoIcona.xml);
+    }
+
+    // un'intestazione già pulita, una vuota e una con l'asterisco restano com'erano
+    const senzaSigle = await documento(conIntestazione("Componente", "Ore/giorno", "Incidenza *"));
+    atteso("un'intestazione senza sigle con asterisco resta com'è", senzaSigle.nodi.includes("Incidenza *"));
+    // le sigle in intestazione e nel corpo insieme (come nei documenti reali)
+    const insieme = await documento(`# Prova\n\n| [G][C]Componente | [C]Ore/giorno | [G]Incidenza |\n|---|---|---|\n| [G][C]**Incendio** | [C]3 | [G][C]Alta |\n`);
+    atteso("intestazione e corpo con sigle (anche doppie): nessuna sigla in tutto il documento", trovaMarcatoriResidui(insieme.nodi).length === 0, trovaMarcatoriResidui(insieme.nodi).join(" / "));
   }
 
   if (fallimenti.length > 0) {
