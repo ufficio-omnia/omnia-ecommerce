@@ -118,7 +118,7 @@ async function main() {
     const testoOriginale = `## 2.1 Titolo\n\nParagrafo con **dati** e numeri 10.950 ore.\n\n| A | B |\n|---|---|\n| x | y |\n\n${FIGURA}\n\n${ORGANIGRAMMA}\n\n## Piano di lavoro per sede\n\nAltro testo.`;
     const p = presentaBozzaAlModello(sez(7, "2.1 Servizio", testoOriginale, "10:20"));
     atteso("contiene tutto il testo della bozza (titoli, paragrafi, tabella, numeri)", ["## 2.1 Titolo", "Paragrafo con **dati** e numeri 10.950 ore.", "| A | B |", "|---|---|", "## Piano di lavoro per sede", "Altro testo."].every((t) => p.testo.includes(t)), p.testo);
-    atteso("dice quale bozza è (ordine e titolo) e che è già del cliente", p.testo.includes("[ordine 7]") && p.testo.includes("«2.1 Servizio»") && /GIÀ/.test(p.testo));
+    atteso("dice quale bozza è (ordine e titolo) e che è già del cliente", p.testo.includes("[ordine 7]") && p.testo.includes("«2.1 Servizio»") && p.testo.includes("Questo è il testo che il cliente ha GIÀ."), p.testo.slice(0, 200));
     atteso("i dati strutturati di figure e organigramma NON arrivano al modello come JSON", !p.testo.includes('"archetipo"') && !p.testo.includes('"coordinamento"') && !p.testo.includes('"v":') && !/\[FIGURA\]\s*\{/.test(p.testo) && !/\[ORGANIGRAMMA\]\s*\{/.test(p.testo), p.testo);
     atteso("al loro posto c'è una riga che dice cosa c'era (figura con didascalia, organigramma)", p.testo.includes("«Flusso operativo del turno»") && p.testo.includes("[ORGANIGRAMMA GIÀ PRESENTE"), p.testo);
     atteso("conta una figura e un organigramma", p.figure === 1 && p.organigrammi === 1);
@@ -153,6 +153,21 @@ async function main() {
     atteso("stessi titoli ma testo riscritto da zero: poche parole conservate, lo segnala", riscritta.titoliMancanti.length === 0 && riscritta.paroleConservate < 0.7 && haPerdutoContenuto(riscritta) && /delle parole di prima è ancora presente/.test(testoConfrontoPerModello(riscritta, 7)), String(riscritta.paroleConservate));
     const ampliataLunga = confrontaConBozzaBase(baseLunga, `${baseLunga}\n\n## Prodotti Ecolabel\n\n${corpo("ecolabel", 150)}`);
     atteso("una bozza lunga ampliata conserva il 100% delle parole di prima", ampliataLunga.paroleConservate === 1 && !haPerdutoContenuto(ampliataLunga), String(ampliataLunga.paroleConservate));
+
+    // Ogni tipo di perdita, da solo, basta a segnalare la bozza: gli altri indicatori restano a posto.
+    const soloFiguraTolta = confrontaConBozzaBase(baseLunga, baseLunga.replace(FIGURA, ""));
+    atteso("solo la figura tolta: è una perdita (titoli, tabelle e parole invariati)", soloFiguraTolta.titoliMancanti.length === 0 && soloFiguraTolta.tabelle.prima === soloFiguraTolta.tabelle.dopo && soloFiguraTolta.paroleConservate === 1 && soloFiguraTolta.figure.prima === 1 && soloFiguraTolta.figure.dopo === 0 && haPerdutoContenuto(soloFiguraTolta));
+    const soloTabellaTolta = confrontaConBozzaBase(baseLunga, baseLunga.replace("| A | B |\n|---|---|\n| x | y |\n", "x y"));
+    atteso("solo la tabella tolta: è una perdita (titoli, figure e parole quasi invariati)", soloTabellaTolta.titoliMancanti.length === 0 && soloTabellaTolta.figure.prima === soloTabellaTolta.figure.dopo && soloTabellaTolta.tabelle.prima === 1 && soloTabellaTolta.tabelle.dopo === 0 && soloTabellaTolta.paroleConservate > 0.9 && haPerdutoContenuto(soloTabellaTolta), JSON.stringify(soloTabellaTolta.tabelle));
+    const soloTitoloTolto = confrontaConBozzaBase(baseLunga, baseLunga.replace("## Logistica di cantiere\n\n", ""));
+    atteso("solo un titolo tolto: è una perdita", soloTitoloTolto.titoliMancanti.length === 1 && soloTitoloTolto.figure.prima === soloTitoloTolto.figure.dopo && soloTitoloTolto.tabelle.prima === soloTitoloTolto.tabelle.dopo && haPerdutoContenuto(soloTitoloTolto), JSON.stringify(soloTitoloTolto.titoliMancanti));
+    // parole conservate: a metà è una perdita, all'85% no (la soglia è il 70%)
+    const corpoBase = Array.from({ length: 400 }, (_, i) => `termine${i}`);
+    const conCorpo = (parole_: string[]) => `## A titolo uno\n\n${parole_.join(" ")}\n\n## B titolo due\n\ntesto breve`;
+    const meta = confrontaConBozzaBase(conCorpo(corpoBase), conCorpo(corpoBase.map((p, i) => (i % 2 === 0 ? p : `nuovo${i}`))));
+    atteso("metà delle parole sostituite (≈50% conservate): è una perdita", meta.paroleConservate > 0.45 && meta.paroleConservate < 0.6 && meta.titoliMancanti.length === 0 && haPerdutoContenuto(meta), String(meta.paroleConservate));
+    const quasi = confrontaConBozzaBase(conCorpo(corpoBase), conCorpo(corpoBase.map((p, i) => (i % 7 === 0 ? `nuovo${i}` : p))));
+    atteso("circa l'85% delle parole conservate: NON è una perdita", quasi.paroleConservate > 0.8 && quasi.paroleConservate < 0.9 && !haPerdutoContenuto(quasi), String(quasi.paroleConservate));
 
     const conSegnaposto = confrontaConBozzaBase(base, base.replace(FIGURA, "[FIGURA:1]"));
     atteso("il testo scritto dal modello (con [FIGURA:1]) conta come figura presente", conSegnaposto.figure.dopo === 1 && !haPerdutoContenuto(conSegnaposto));
@@ -249,7 +264,7 @@ async function main() {
     const senza = buildSystemPrompt(gara, null, "", "", "", "", elenco);
     const con = buildSystemPrompt(gara, null, "", "", "", "", elenco, null, "- 26/10, 08:54: Nei criteri 2.1 - 2.3 tieni conto dell'Articolo 6");
     atteso("il prompt contiene la regola «leggi prima di riscrivere» con lo strumento", senza.includes("REGOLA PERMANENTE — RISCRIVERE, AMPLIARE, CORREGGERE O ASSEMBLARE") && senza.includes("leggi_bozza_sezione") && senza.includes("RIFIUTA la generazione"));
-    atteso("il prompt non dice più «non tentare di modificare quella vecchia» (il modello deve partire da quella)", !senza.includes("non tentare di modificare quella vecchia"));
+    atteso("il prompt non dice più «non tentare di modificare quella vecchia» (il modello deve partire da quella)", !/non tentare di modificare quella vecchia/i.test(senza) && !/non tentare di modificare quella vecchia/i.test(leggi("src/lib/gara-chat-prompt.ts")));
     atteso("il prompt contiene la separazione dei criteri (organigramma e coordinamento restano nel loro criterio)", senza.includes("SEPARAZIONE DEI CRITERI") && /organigramma di commessa/.test(senza));
     atteso("il prompt mostra l'elenco con l'ULTIMA versione", senza.includes("ULTIMA versione: [ordine 23]"));
     atteso("senza richieste precedenti non compare il blocco del promemoria", !senza.includes("RICHIESTE E ISTRUZIONI CHE IL CLIENTE HA DATO PRIMA"));
@@ -265,6 +280,8 @@ async function main() {
     atteso("lo strumento di lettura è offerto solo se ci sono bozze da leggere", /\.\.\.\(sezioniSalvate\.length > 0 \? \[LEGGI_BOZZA_TOOL\] : \[\]\)/.test(chat));
     atteso("il ciclo riconosce leggi_bozza_sezione tra gli strumenti da eseguire", /block\.name === "leggi_bozza_sezione"/.test(chat));
     atteso("la lettura risponde con il testo presentato al modello e non toglie gli strumenti", /presentaBozzaAlModello\(sezione\)\.testo/.test(chat) && !/leggi_bozza_sezione[\s\S]{0,900}strumentiDisponibili = \[\]/.test(chat.slice(chat.indexOf('toolUse.name === "leggi_bozza_sezione"'), chat.indexOf('toolUse.name === "componi_relazione_finale"'))));
+    const gestoreLettura = chat.slice(chat.indexOf('toolUse.name === "leggi_bozza_sezione"'), chat.indexOf('toolUse.name === "componi_relazione_finale"'));
+    atteso("il gestore della lettura non registra la bozza come letta subito (leggere e generare nella stessa risposta non vale)", gestoreLettura.length > 100 && !gestoreLettura.includes("bozzeLette.set") && gestoreLettura.includes("lettureDiQuestoPassaggio.push(sezione)"));
     atteso("la lettura vale per la generazione solo dal passaggio successivo (registrata a fine ciclo)", chat.includes("for (const letta of lettureDiQuestoPassaggio) bozzeLette.set(letta.ordine, letta);") && chat.indexOf("lettureDiQuestoPassaggio.push(sezione)") < chat.indexOf("for (const letta of lettureDiQuestoPassaggio)"));
     atteso("la generazione è rifiutata (e il ciclo continua) se la bozza esistente non è stata letta", /controllaLetturaPrimaDiGenerare\(input\.titolo_sezione \?\? "", gruppiSezioni, new Set\(bozzeLette\.keys\(\)\)\)/.test(chat) && /if \(!controlloLettura\.ok\) \{[\s\S]{0,400}is_error: true, content: testoGenerazioneRifiutata\(controlloLettura\) \}\);\s*continue;/.test(chat));
     atteso("il rifiuto avviene PRIMA di qualunque elaborazione della bozza (correzioni, modello, file)", chat.indexOf("controllaLetturaPrimaDiGenerare(input.titolo_sezione") < chat.indexOf("applicaSostituzioniAnonimizzazione(input.contenuto") && chat.indexOf("controllaLetturaPrimaDiGenerare(input.titolo_sezione") < chat.indexOf("await generaBozzaSezione("));
