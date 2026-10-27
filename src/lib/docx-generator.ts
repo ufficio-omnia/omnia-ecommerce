@@ -506,6 +506,30 @@ function estraiTagIcona(testo: string): { nome: string; resto: string; grassetto
   return { nome, resto: resto.replace(/^\s+/, ""), grassettoEtichetta };
 }
 
+// estraiTagIcona riconosce il tag SOLO in testa: quando il modello lo scrive dopo l'etichetta («!!Caposquadra!!:
+// [ICONA:comunicazione] concorda…») o a metà frase, il tag non veniva riconosciuto e restava stampato nel Word,
+// senza icona (relazione reale, 27/10/2026: 15 tag su 662, tutti negli elenchi puntati). L'icona va in testa, come
+// nelle altre righe e come dice il prompt; i tag in più nella stessa riga, e quelli con un nome che non esiste, si
+// tolgono invece di restare stampati. Il testo non cambia: si sposta (o si toglie) solo il tag. Una riga che non ha
+// tag fuori posto torna IDENTICA: tag in testa, nessun tag e testi che non sono un tag («[ICONA]», «[ICONA:qualità]»)
+// restano com'erano (lo prova scripts/verifica-icone-fuori-posto.ts con le impronte del Word di prima).
+const TAG_ICONA_REGEX_GLOBALE = /\s*\[ICONA:([a-zA-Z]+)\]/g;
+const TAG_ICONA_IN_TESTA_REGEX = /^(?:\*\*)?\[ICONA:[a-zA-Z]+\]/;
+
+function portaIconaInTesta(testo: string): string {
+  const inTesta = testo.match(TAG_ICONA_IN_TESTA_REGEX);
+  const coda = inTesta ? testo.slice(inTesta[0].length) : testo;
+  const nomi = [...coda.matchAll(TAG_ICONA_REGEX_GLOBALE)].map((m) => m[1]);
+  if (nomi.length === 0) return testo;
+
+  const codaSenzaTag = coda.replace(TAG_ICONA_REGEX_GLOBALE, "");
+  // già in testa: resta com'è, si tolgono solo gli altri tag della riga
+  if (inTesta) return `${inTesta[0]}${codaSenzaTag}`;
+
+  const nomeValido = nomi.find((n) => NOMI_ICONE.includes(n.toLowerCase()));
+  return nomeValido ? `[ICONA:${nomeValido}] ${codaSenzaTag.replace(/^\s+/, "")}` : codaSenzaTag;
+}
+
 // Ogni immagine del documento dichiara nel proprio testo alternativo (name
 // + description in <wp:docPr>) che cos'è — "organigramma" oppure
 // "icona:<nome>" — così un'anomalia sul numero/tipo di immagini si
@@ -539,7 +563,7 @@ async function costruisciRunConIcona(
   colore: string,
   runProps: { font?: string; size?: number; color?: string; bold?: boolean },
 ): Promise<(TextRun | ImageRun)[]> {
-  const testo = rimuoviGrassettoRidondante(testoGrezzo);
+  const testo = rimuoviGrassettoRidondante(portaIconaInTesta(testoGrezzo));
   if (eMarcatoreTabellare(testo)) {
     return [new TextRun({ text: MARCATORE_TABELLARE, bold: true, ...runProps, color: COLORE_SEGNALE_TABELLARE })];
   }
@@ -587,7 +611,7 @@ async function costruisciRunIntestazione(
   runProps: { font?: string; size?: number },
 ): Promise<(TextRun | ImageRun)[]> {
   const testoBase = { bold: true, color: "FFFFFF", ...runProps };
-  const testo = rimuoviGrassettoRidondante(pulisciSigleAllineamentoCella(testoGrezzo));
+  const testo = rimuoviGrassettoRidondante(portaIconaInTesta(pulisciSigleAllineamentoCella(testoGrezzo)));
   const estratto = estraiTagIcona(testo);
 
   if (!estratto || !NOMI_ICONE.includes(estratto.nome.toLowerCase())) {
@@ -709,6 +733,9 @@ const LARGHEZZA_UTILE_TWIP = LARGHEZZA_PAGINA_A4_TWIP - 2 * MARGINE_TWIP;
 function testoCellaPerPeso(cella: string): string {
   return pulisciSigleAllineamentoCella(togliMarcatoriEvidenziazione(cella))
     .replace(/^\[ICONA:[a-zA-Z]+\]\s*/, "")
+    // un tag fuori posto non è testo (vedi portaIconaInTesta): non deve far crescere la colonna né cambiare l'allineamento.
+    // Un tag in testa (anche avvolto nel grassetto) si conta come sempre: il peso dei documenti corretti non cambia.
+    .replace(/^((?:\*\*)?\[ICONA:[a-zA-Z]+\])?([\s\S]*)$/, (_m, testa: string | undefined, resto: string) => `${testa ?? ""}${resto.replace(TAG_ICONA_REGEX_GLOBALE, "")}`)
     .replace(/\*\*/g, "")
     .replace(/!!/g, "");
 }
