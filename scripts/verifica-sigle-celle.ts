@@ -109,7 +109,7 @@ async function main() {
         sorgente.includes("function pulisciSigleAllineamentoCella(cellaGrezza: string): string {") &&
         sorgente.includes("const cella = pulisciSigleAllineamentoCella(celleGrezza);") &&
         sorgente.includes("return pulisciSigleAllineamentoCella(togliMarcatoriEvidenziazione(cella))") &&
-        sorgente.includes("const testo = rimuoviGrassettoRidondante(pulisciSigleAllineamentoCella(testoGrezzo));"),
+        sorgente.includes("const testo = rimuoviGrassettoRidondante(portaIconaInTesta(pulisciSigleAllineamentoCella(testoGrezzo)));"),
     );
   }
 
