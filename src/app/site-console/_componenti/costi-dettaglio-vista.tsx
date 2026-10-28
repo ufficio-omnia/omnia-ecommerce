@@ -107,7 +107,7 @@ export default function CostiDettaglioVista({
         <Tessera etichetta="Costo dei modelli" valore={cambio === null ? formattaUsd(costoTotaleUsd) : formattaEuro(costoTotaleUsd * cambio)} dettaglio={`${formattaUsd(costoTotaleUsd, 4)} · ${formattaIntero(operazioni.reduce((s, o) => s + o.chiamate, 0))} chiamate`} />
         {!piattaforma && riga && (
           <>
-            <Tessera etichetta="Gare consumate" valore={formattaIntero(riga.gare)} dettaglio={`${riga.gareDaPiano} dal piano · ${riga.gareDaCredito} con crediti`} />
+            <Tessera etichetta="Gare consumate" valore={formattaIntero(riga.gare)} dettaglio={`${riga.gareDaPiano} dal piano · ${riga.gareDaCredito} con crediti${gare.some((g) => g.tipo === "gratuita") ? ` · ${gare.filter((g) => g.tipo === "gratuita").length} gratuita` : ""}`} />
             <Tessera etichetta="Costo per gara" valore={riga.costoPerGaraEur === null ? "—" : formattaEuro(riga.costoPerGaraEur)} dettaglio={riga.gare === 0 && riga.costoUsd > 0 ? "Costo senza gare consumate nel periodo" : "Costo del periodo ÷ gare del periodo"} />
             <Tessera etichetta={dettaglio.fonteRicavo === "incassi" ? "Ricavo netto incassato" : "Ricavo netto da listino"} valore={formattaEuro(riga.ricavoNetto)} dettaglio={`Lordo ${formattaEuro(riga.ricavoLordo)}, IVA ${parametri.aliquotaIva.toLocaleString("it-IT")} % scorporata`} />
             <Tessera
@@ -178,7 +178,7 @@ export default function CostiDettaglioVista({
                       <tr key={`${g.creatoIl}-${i}`}>
                         <td>{g.titolo ?? "(gara cancellata)"}</td>
                         <td>
-                          <Badge tono={g.tipo === "credito" ? "avviso" : "neutro"}>{g.tipo === "credito" ? "credito" : "piano"}</Badge>
+                          <Badge tono={g.tipo === "piano" ? "neutro" : "avviso"}>{g.tipo === "credito" ? "credito" : g.tipo === "gratuita" ? "gara gratuita" : "piano"}</Badge>
                         </td>
                         <td className="mono">{formattaData(g.creatoIl)}</td>
                       </tr>

@@ -155,6 +155,10 @@ async function main() {
     atteso("se la lettura è stata troncata lo dice", vista.includes("dettaglio.perGara.troncato"));
     atteso("spiega che anche il lavoro dell'Ufficio Gare è sotto il titolare e che le gare cancellate finiscono nell'ultima riga", vista.includes("Ufficio Gare") && vista.includes("Le gare cancellate non hanno più il legame"));
     atteso("l'etichetta «nessun consumo registrato» non è un errore (badge neutro)", vista.includes('tono={g.consumo === "piano" || g.consumo === null ? "neutro" : "avviso"}'));
+    // Il vecchio pannello «Gare consumate» mostrava «piano» anche per la gara gratuita (e contraddiceva quello nuovo).
+    atteso("il pannello «Gare consumate» chiama «gara gratuita» una gara gratuita (non «piano»)", vista.includes('g.tipo === "gratuita" ? "gara gratuita" : "piano"') && vista.includes('tono={g.tipo === "piano" ? "neutro" : "avviso"}'));
+    atteso("la tessera «Gare consumate» nomina anche le gratuite (il conteggio del piano non le include)", vista.includes('g.tipo === "gratuita"') && vista.includes("gratuita` : \"\"}`"));
+    atteso("il tipo di gara consumata include «gratuita»", leggi("src/lib/console/costi.ts").includes('tipo: "piano" | "credito" | "gratuita"; creatoIl: string'));
     const pagina = leggi("src/app/site-console/(app)/costi/[utente]/page.tsx");
     atteso("la pagina è riservata agli admin e li verifica prima di leggere i dati", pagina.indexOf("await richiediAdminPagina()") > -1 && pagina.indexOf("await richiediAdminPagina()") < pagina.indexOf("await leggiDettaglioCliente("));
   }

@@ -258,7 +258,8 @@ export type OperazioneCosto = {
   costoUsd: number;
 };
 
-export type GaraConsumata = { titolo: string | null; tipo: "piano" | "credito"; creatoIl: string };
+// «gratuita»: la gara di prova assegnata dalla console. Il conteggio per piano/crediti (console_gare_consumate) non la include.
+export type GaraConsumata = { titolo: string | null; tipo: "piano" | "credito" | "gratuita"; creatoIl: string };
 
 // Costo per gara del cliente (vedi costi-per-gara-calcoli.ts). `troncato`: il cliente ha più operazioni di quante se ne leggano.
 export type PerGaraLetto = { costi: CostiPerGara; troncato: boolean };
@@ -379,7 +380,7 @@ export async function leggiDettaglioCliente(userId: string | null, periodo: Peri
       outputToken: num(r.output_token),
       costoUsd: num(r.costo_usd),
     })),
-    gare: ((gareQ.data ?? []) as { gara_titolo: string | null; tipo: "piano" | "credito"; created_at: string }[]).map((g) => ({
+    gare: ((gareQ.data ?? []) as { gara_titolo: string | null; tipo: "piano" | "credito" | "gratuita"; created_at: string }[]).map((g) => ({
       titolo: g.gara_titolo,
       tipo: g.tipo,
       creatoIl: g.created_at,
