@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { DettaglioCliente } from "@/lib/console/costi";
+import { etichettaConsumo, quadraConIlTotale } from "@/lib/console/costi-per-gara-calcoli";
 import type { Periodo } from "@/lib/console/periodo";
 import { Badge, Pannello, Tessera } from "./elementi";
 import { formattaData, formattaEuro, formattaIntero, formattaPercentuale, formattaUsd } from "./formati";
@@ -185,6 +186,84 @@ export default function CostiDettaglioVista({
                   </tbody>
                 </table>
               </div>
+            )}
+          </Pannello>
+        </div>
+      )}
+
+      {!piattaforma && (
+        <div className="cn-sezione">
+          <Pannello titolo="Costo per gara">
+            {dettaglio.perGaraErrore || !dettaglio.perGara ? (
+              <p className="cn-esito avviso">Non sono riuscito a leggere il costo per gara: ricarica la pagina. Il resto della scheda non è interessato.</p>
+            ) : dettaglio.perGara.costi.righe.length === 0 ? (
+              <p className="cn-vuoto">Nessuna chiamata a modelli registrata per questo cliente.</p>
+            ) : (
+              <>
+                <div className="cn-scorri">
+                  <table className="cn-tab">
+                    <thead>
+                      <tr>
+                        <th>Gara</th>
+                        <th>Pagata con</th>
+                        <th className="num">Operazioni nel periodo</th>
+                        <th className="num">Costo nel periodo</th>
+                        <th className="num">Costo totale dall&apos;inizio</th>
+                        <th>Ultima attività</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dettaglio.perGara.costi.righe.map((g) => (
+                        <tr key={g.garaId ?? "senza-gara"}>
+                          <td className="cn-cella-doppia">
+                            <span>{g.titolo}</span>
+                            {g.creataIl && <small>creata il {formattaData(g.creataIl)}</small>}
+                          </td>
+                          <td>{g.garaId ? <Badge tono={g.consumo === "piano" || g.consumo === null ? "neutro" : "avviso"}>{etichettaConsumo(g.consumo)}</Badge> : "—"}</td>
+                          <td className="num">
+                            {formattaIntero(g.operazioniPeriodo)}
+                            {g.senzaCostoPeriodo > 0 && <small style={{ display: "block", color: "var(--cn-avviso)" }}>{g.senzaCostoPeriodo} senza costo</small>}
+                          </td>
+                          <td className="num cn-cella-doppia">
+                            <span>{euro(g.costoPeriodoUsd)}</span>
+                            <small>{formattaUsd(g.costoPeriodoUsd, 2)}</small>
+                          </td>
+                          <td className="num cn-cella-doppia">
+                            <span>{euro(g.costoTotaleUsd)}</span>
+                            <small>{formattaUsd(g.costoTotaleUsd, 2)} · {formattaIntero(g.operazioniTotali)} operazioni</small>
+                          </td>
+                          <td className="mono">{g.ultimaAttivita ? formattaData(g.ultimaAttivita) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>Totale</td>
+                        <td></td>
+                        <td className="num">{formattaIntero(dettaglio.perGara.costi.righe.reduce((s, g) => s + g.operazioniPeriodo, 0))}</td>
+                        <td className="num">{euro(dettaglio.perGara.costi.totalePeriodoUsd)}</td>
+                        <td className="num">{euro(dettaglio.perGara.costi.totaleUsd)}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <p style={{ marginTop: 10, color: "var(--cn-fioco)", fontSize: 12 }}>
+                  «Costo nel periodo» conta solo le chiamate del periodo scelto; «Costo totale» tutte quelle fatte su quella gara dall&apos;inizio. Anche il lavoro dell&apos;Ufficio Gare
+                  del cliente è registrato qui, sotto il titolare. Le gare cancellate non hanno più il legame con i costi e finiscono nell&apos;ultima riga.
+                </p>
+                {!quadraConIlTotale(dettaglio.perGara.costi.totalePeriodoUsd, costoTotaleUsd) && (
+                  <p className="cn-esito avviso" role="status" style={{ marginTop: 10 }}>
+                    La somma per gara del periodo ({formattaUsd(dettaglio.perGara.costi.totalePeriodoUsd, 4)}) non coincide con il costo dei modelli del periodo ({formattaUsd(costoTotaleUsd, 4)}):
+                    differenza da verificare.
+                  </p>
+                )}
+                {dettaglio.perGara.troncato && (
+                  <p className="cn-esito avviso" role="status" style={{ marginTop: 10 }}>
+                    Il cliente ha moltissime operazioni: ne ho lette solo le prime 20.000, il costo per gara può essere incompleto.
+                  </p>
+                )}
+              </>
             )}
           </Pannello>
         </div>

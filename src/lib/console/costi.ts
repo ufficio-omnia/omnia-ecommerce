@@ -12,6 +12,7 @@ import {
   type RigaCliente,
   type TotaliCosti,
 } from "./costi-calcoli";
+import { aggregaCostiPerGara, type CostiPerGara, type GaraInfo, type OperazioneGrezza } from "./costi-per-gara-calcoli";
 import type { Periodo } from "./periodo";
 
 // Lettura dei dati per la pagina Costi. Le somme le fanno le funzioni SQL della
@@ -259,6 +260,9 @@ export type OperazioneCosto = {
 
 export type GaraConsumata = { titolo: string | null; tipo: "piano" | "credito"; creatoIl: string };
 
+// Costo per gara del cliente (vedi costi-per-gara-calcoli.ts). `troncato`: il cliente ha più operazioni di quante se ne leggano.
+export type PerGaraLetto = { costi: CostiPerGara; troncato: boolean };
+
 export type DettaglioCliente =
   | { stato: "funzioni_mancanti" }
   | { stato: "errore"; messaggio: string }
@@ -269,9 +273,54 @@ export type DettaglioCliente =
       riga: RigaCliente | null;
       operazioni: OperazioneCosto[];
       gare: GaraConsumata[];
+      // null per i costi senza cliente, o se la lettura è fallita (perGaraErrore): il resto della pagina funziona comunque
+      perGara: PerGaraLetto | null;
+      perGaraErrore: boolean;
       fonteRicavo: "incassi" | "listino";
       includiProva: boolean;
     };
+
+const OPERAZIONI_PER_PAGINA = 1000;
+// Un cliente reale ha qualche centinaio di operazioni al mese: questo tetto è molto oltre e protegge la pagina da una lettura infinita.
+const MAX_OPERAZIONI_LETTE = 20_000;
+
+async function leggiOperazioniCliente(userId: string): Promise<{ righe: OperazioneGrezza[]; troncato: boolean }> {
+  const admin = createAdminClient();
+  const righe: OperazioneGrezza[] = [];
+  for (let da = 0; da < MAX_OPERAZIONI_LETTE; da += OPERAZIONI_PER_PAGINA) {
+    const { data, error } = await admin
+      .from("ai_operazioni")
+      .select("gara_id, operazione, costo_stimato, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(da, da + OPERAZIONI_PER_PAGINA - 1);
+    if (error) throw new Error(error.message);
+    const blocco = (data ?? []) as { gara_id: string | null; operazione: string; costo_stimato: number | string | null; created_at: string }[];
+    for (const r of blocco) {
+      righe.push({ gara_id: r.gara_id ?? null, operazione: String(r.operazione), costo_stimato: r.costo_stimato === null ? null : num(r.costo_stimato), created_at: String(r.created_at) });
+    }
+    if (blocco.length < OPERAZIONI_PER_PAGINA) return { righe, troncato: false };
+  }
+  return { righe, troncato: true };
+}
+
+// Costo dei modelli per gara di UN cliente: le sue operazioni (da sempre, per il costo totale; quelle del periodo, per il costo
+// del periodo), i titoli delle sue gare e come ognuna è stata pagata. Da chiamare solo dopo richiediAdminPagina().
+export async function leggiCostiPerGaraCliente(userId: string, periodo: Periodo): Promise<PerGaraLetto> {
+  const admin = createAdminClient();
+  const { righe, troncato } = await leggiOperazioniCliente(userId);
+  const idGare = [...new Set(righe.map((r) => r.gara_id).filter((g): g is string => Boolean(g)))];
+  const [gare, consumi] = await Promise.all([
+    inBlocchi<GaraInfo>(idGare, (b) => admin.from("gare").select("id, titolo, created_at").in("id", b)),
+    admin.from("gara_consumi").select("gara_id, tipo, created_at").eq("user_id", userId).limit(2000),
+  ]);
+  if (consumi.error) throw new Error(consumi.error.message);
+  return {
+    costi: aggregaCostiPerGara(righe, gare, (consumi.data ?? []) as { gara_id: string | null; tipo: string; created_at: string }[], periodo),
+    troncato,
+  };
+}
 
 // userId nullo = costi senza cliente (piattaforma e non attribuiti).
 export async function leggiDettaglioCliente(userId: string | null, periodo: Periodo, opzioni: { includiProva?: boolean } = {}): Promise<DettaglioCliente> {
@@ -299,9 +348,23 @@ export async function leggiDettaglioCliente(userId: string | null, periodo: Peri
     return { stato: "errore", messaggio: "Lettura del dettaglio non riuscita." };
   }
 
+  // Il costo per gara non deve mai rompere la scheda: se la lettura fallisce, il resto della pagina resta com'era e si avvisa.
+  let perGara: PerGaraLetto | null = null;
+  let perGaraErrore = false;
+  if (userId) {
+    try {
+      perGara = await leggiCostiPerGaraCliente(userId, periodo);
+    } catch (e) {
+      console.error("Console: lettura del costo per gara fallita", e);
+      perGaraErrore = true;
+    }
+  }
+
   return {
     stato: "ok",
     parametri: costi.parametri,
+    perGara,
+    perGaraErrore,
     identita: (userId ? identita.get(userId) : undefined) ?? { email: null, ragioneSociale: null },
     riga: userId ? (costi.righe.find((r) => r.userId === userId) ?? null) : null,
     fonteRicavo: costi.fonteRicavo,
