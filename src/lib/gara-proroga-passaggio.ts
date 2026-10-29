@@ -30,7 +30,7 @@ export function sembraUnAtto(nomeFile: string): boolean {
 // Per cercare: niente maiuscole, trattini di sillabazione a fine riga uniti («pro-\nroga» → «proroga»), spazi e a capo ridotti a uno.
 export function normalizzaTestoRicerca(testo: string): string {
   return testo
-    .replace(/­/g, "")
+    .replace(/\u00ad/g, "")
     .replace(/(\p{L})-[ \t]*\r?\n[ \t]*(\p{L})/gu, "$1$2")
     .toLowerCase()
     .replace(/\s+/g, " ")
