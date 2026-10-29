@@ -574,11 +574,14 @@ async function main() {
 
   console.log("--- Ora di scadenza: estrazione, lettura, visualizzazione ---");
   const estrazione = leggi("src/app/actions/gara-extraction.ts");
-  const requisitiAlto = corpo(estrazione, "scadenza_ora: {", "importo: {");
+  // Lo schema della scadenza (e dell'ora) sta in src/lib/gara-proroga.ts da quando la proroga dei termini è stata aggiunta; l'estrazione lo include.
+  const proroga = leggi("src/lib/gara-proroga.ts");
+  const requisitiAlto = corpo(proroga, "scadenza_ora: {", "proroga_termini: {");
+  atteso("lo schema dell'estrazione include le voci di scadenza e ora (spread nello strumento)", /\.\.\.PROPRIETA_SCADENZA_ESTRAZIONE/.test(estrazione));
   atteso("lo schema dell'estrazione chiede l'ora (HH:MM) solo se il bando la indica, senza dedurla né scrivere 23:59", /type: "string"/.test(requisitiAlto) && /formato HH:MM/.test(requisitiAlto) && /SOLO se i documenti la indicano/.test(requisitiAlto) && /non scrivere 23:59/.test(requisitiAlto));
   atteso("l'ora non è tra i campi obbligatori dell'estrazione", !/required: \[[^\]]*scadenza_ora/.test(estrazione));
-  atteso("l'ora si normalizza prima di salvarla e senza data di scadenza non si salva nessuna ora", /result\.scadenza \? normalizzaOraScadenza\(result\.scadenza_ora\) : null/.test(estrazione));
-  atteso("l'ora si salva in un aggiornamento a parte, dopo i dati estratti: senza la colonna (0091) non si perde nulla", primaDi(estrazione, "Errore nel salvataggio dei dati estratti.", "update({ scadenza_ora: oraScadenza })") && /erroreOraScadenza && !schemaAssente\(erroreOraScadenza\)/.test(estrazione));
+  atteso("l'ora si normalizza prima di salvarla e senza data di scadenza non si salva nessuna ora", /scadenza \? normalizzaOraScadenza\(typeof risultato\.scadenza_ora === "string" \? risultato\.scadenza_ora : null\) : null/.test(proroga) && /scadenza_ora: decisioneScadenza\.scadenza_ora/.test(estrazione));
+  atteso("l'ora si salva in un aggiornamento a parte, dopo i dati estratti: senza la colonna (0091) non si perde nulla", primaDi(estrazione, "Errore nel salvataggio dei dati estratti.", "update({ scadenza_ora: decisioneScadenza.scadenza_ora })") && /erroreOraScadenza && !schemaAssente\(erroreOraScadenza\)/.test(estrazione));
   const caricamento = leggi("src/lib/omnia-ai-revisione.ts");
   atteso("la gara si legge come sempre e l'ora a parte (senza la colonna la lettura non si rompe), poi si normalizza", /Omit<GaraRevisione, "scadenza_ora">/.test(caricamento) && /select\("scadenza_ora"\)/.test(caricamento) && /scadenza_ora: normalizzaOraScadenza\(oraRiga\?\.scadenza_ora\)/.test(caricamento));
   const sezione = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/extraction-section.tsx");

@@ -147,4 +147,4 @@ export function validaScadenzaManuale(input: { data: unknown; ora: unknown }, ad
 // Testi della scheda della gara (tenuti qui perché i test li controllano).
 export const TESTO_PROROGA_CON_DATA = "I documenti indicano una proroga dei termini: la scadenza mostrata è quella della proroga.";
 export const TESTO_PROROGA_SENZA_DATA =
-  "I documenti indicano una proroga dei termini di presentazione ma non riportano la nuova data (per esempio rimandano al portale della stazione appaltante). La data qui sopra è quella del bando: se la nuova scadenza è diversa, inseriscila tu.";
+  "I documenti indicano una proroga dei termini di presentazione ma non riportano la nuova data (per esempio rimandano al portale della stazione appaltante). Se conosci la nuova scadenza, inseriscila tu.";
