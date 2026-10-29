@@ -15,6 +15,8 @@ import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { nessunIntervento, ripulisciPersonaleUscente } from "@/lib/personale-anonimo";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { ordinaPerCaricamento, testoElencoCronologicoPerEstrazione } from "@/lib/gara-documenti-elenco";
+import { unisciEsitiProroga } from "@/lib/gara-proroga-passaggio";
+import { secondoPassaggioProroga } from "@/lib/gara-proroga-secondo-passaggio";
 import {
   MESSAGGIO_MODIFICA_NON_CONSENTITA,
   PROPRIETA_SCADENZA_ESTRAZIONE,
@@ -314,6 +316,12 @@ export async function extractGaraData(
 
     const anthropic = createAnthropicClient();
 
+    // Secondo passaggio, mirato, sulla proroga dei termini: cerca nel testo dei PDF le pagine che ne parlano (anche dentro una
+    // determina o una rettifica) e le fa valutare al modello. Parte SUBITO, in parallelo alla chiamata principale (non allunga
+    // l'analisi), non scrive sulla gara e non lancia mai errori: se non riesce, vale l'analisi generale da sola. Il risultato si
+    // unisce a quello generale più sotto (unisciEsitiProroga).
+    const secondoPassaggio = secondoPassaggioProroga({ anthropic, admin, documenti: pdfDocs, accountId: contesto.accountId, garaId });
+
     const response = await anthropic.messages.create({
       model: MODEL,
       // criteri_valutazione richiede la struttura COMPLETA e letterale
@@ -432,7 +440,8 @@ export async function extractGaraData(
       erroreScadenzaEsistente || !scadenzaEsistenteRiga
         ? null
         : { scadenza: scadenzaEsistenteRiga.scadenza, scadenza_ora: scadenzaEsistenteRiga.scadenza_ora, scadenza_manuale: Boolean(scadenzaEsistenteRiga.scadenza_manuale) };
-    const decisioneScadenza = decidiScadenza(result, scadenzaEsistente);
+    const esitoMirato = await secondoPassaggio;
+    const decisioneScadenza = decidiScadenza(unisciEsitiProroga(result, esitoMirato), scadenzaEsistente);
 
     // Personale uscente: l'istruzione nello schema chiede al modello di non riportare
     // nominativi, codici fiscali e matricole, ma non è una garanzia. Questo filtro lo è:
