@@ -217,6 +217,7 @@ function main() {
   atteso("pagina gara: ogni documento mostra «Caricato il …»", /Caricato il \{testoDataCaricamento\(d\.created_at\)\}/.test(pagina));
   atteso("pagina gara: l'elenco mostrato è quello ordinato (non quello grezzo)", /documentiOrdinati\.map\(\(d\) =>/.test(pagina) && !/documenti\.map\(\(d\) =>/.test(pagina));
   atteso("pagina gara: avviso per i documenti caricati dopo l'ultima analisi", /documentiDopoUltimaAnalisi\(documentiOrdinati/.test(pagina) && /Rianalizza documenti/.test(pagina));
+  atteso("pagina gara: l'avviso c'è solo se l'ultima analisi è completata (altrimenti il pulsante non è «Rianalizza»)", /documentiDopoUltimaAnalisi\(documentiOrdinati, gara\.estrazione_stato === "completata" \? gara\.estrazione_aggiornata_il : null\)/.test(pagina));
   atteso("pagina gara: lo stato della proroga si legge tollerando le colonne mancanti e arriva alla sezione", /\.select\("proroga_stato, scadenza_originaria, scadenza_manuale"\)/.test(pagina) && /proroga=\{prorogaRaw \?\? null\}/.test(pagina));
 
   const modulo = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/scadenza-proroga-form.tsx");
