@@ -11,6 +11,7 @@ function etichettaOperazione(nome: string): string {
   if (nome.startsWith("bozza_")) return "Bozza di una sezione della relazione";
   const note: Record<string, string> = {
     estrazione_gara: "Analisi del bando",
+    estrazione_gara_proroga: "Analisi del bando: controllo della proroga dei termini",
     chat_gara: "Chat della gara",
     chat_gara_ricerca: "Ricerca nei documenti (chat)",
     chat_gara_wrapup: "Riepilogo di fine elaborazione",

@@ -191,7 +191,7 @@ function main() {
   atteso("lo strumento di estrazione usa le voci della proroga", /\.\.\.PROPRIETA_SCADENZA_ESTRAZIONE/.test(estrazione));
   atteso("i documenti si ordinano per caricamento PRIMA di scegliere i PDF", /const pdfDocs = ordinaPerCaricamento\(documenti \?\? \[\]\)\.filter\(/.test(estrazione));
   atteso("i PDF vanno al modello nell'ordine dell'elenco (map sull'array ordinato) e l'elenco è nel testo", /pdfDocs\.map\(async/.test(estrazione) && /testoElencoCronologicoPerEstrazione\(pdfDocs\)/.test(estrazione));
-  atteso("la scadenza salvata è quella decisa da decidiScadenza", /const decisioneScadenza = decidiScadenza\(result, scadenzaEsistente\)/.test(estrazione) && /scadenza: decisioneScadenza\.scadenza,/.test(estrazione));
+  atteso("la scadenza salvata è quella decisa da decidiScadenza", /const decisioneScadenza = decidiScadenza\(unisciEsitiProroga\(result, esitoMirato\), scadenzaEsistente\)/.test(estrazione) && /scadenza: decisioneScadenza\.scadenza,/.test(estrazione));
   const principale = estrazione.slice(estrazione.indexOf(".update({\n        stazione_appaltante"), estrazione.indexOf("estrazione_aggiornata_il: estrazioneAggiornataIl,"));
   atteso("le colonne nuove NON stanno nell'aggiornamento principale (senza migrazione l'analisi funziona come prima)", principale.length > 100 && !/proroga_stato|scadenza_originaria|scadenza_manuale/.test(principale));
   atteso("proroga e data a mano si salvano a parte e tollerano la colonna mancante", /\.update\(\{ proroga_stato: decisioneScadenza\.proroga_stato, scadenza_originaria: decisioneScadenza\.scadenza_originaria, scadenza_manuale: decisioneScadenza\.scadenza_manuale \}\)[\s\S]{0,200}schemaAssente\(erroreProroga\)/.test(estrazione));
