@@ -7,8 +7,17 @@ import {
   type ExtractionState,
 } from "@/app/actions/gara-extraction";
 import QuotaEsauritaConfronto from "./quota-esaurita-confronto";
+import ScadenzaProrogaForm from "./scadenza-proroga-form";
+import { TESTO_PROROGA_CON_DATA, normalizzaProroga, puoModificareScadenza } from "@/lib/gara-proroga";
 
 const initialState: ExtractionState = {};
+
+// Esito dell'analisi sulla proroga dei termini di presentazione (migrazione 0095); null/assente = gara non ancora analizzata con la proroga.
+export type ProrogaGara = {
+  proroga_stato: string | null;
+  scadenza_originaria: string | null;
+  scadenza_manuale: boolean | null;
+};
 
 type CriterioRiepilogo = { numero: string; titolo: string; punti_max: number };
 
@@ -35,12 +44,14 @@ export type Estrazione = {
 export default function ExtractionSection({
   garaId,
   estrazione,
+  proroga = null,
   pianoAttuale,
   inProva = false,
   ufficioGare = false,
 }: {
   garaId: string;
   estrazione: Estrazione;
+  proroga?: ProrogaGara | null;
   pianoAttuale: string | null;
   // cliente con le sole gare gratuite: a gare finite non ci sono crediti né piani superiori da
   // confrontare, c'è solo da scegliere un abbonamento
@@ -106,6 +117,16 @@ export default function ExtractionSection({
                   ora non indicata: si intendono le 23:59
                 </div>
               )}
+              {normalizzaProroga(proroga?.proroga_stato) === "con_nuova_data" && (
+                <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                  prorogata{proroga?.scadenza_originaria ? ` (scadenza originaria ${new Date(proroga.scadenza_originaria).toLocaleDateString("it-IT")})` : ""}
+                </div>
+              )}
+              {puoModificareScadenza(proroga?.proroga_stato) && proroga?.scadenza_manuale && (
+                <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                  inserita da te
+                </div>
+              )}
             </div>
             <div className="omnia-dato">
               <div className="omnia-dato-etichetta">Importo</div>
@@ -139,6 +160,16 @@ export default function ExtractionSection({
               </div>
             </div>
           </div>
+
+          {normalizzaProroga(proroga?.proroga_stato) === "con_nuova_data" && (
+            <p className="omnia-riquadro-nota" style={{ marginTop: 12 }}>
+              {TESTO_PROROGA_CON_DATA}
+            </p>
+          )}
+
+          {puoModificareScadenza(proroga?.proroga_stato) && (
+            <ScadenzaProrogaForm garaId={garaId} scadenza={estrazione.scadenza} ora={estrazione.scadenza_ora ?? null} manuale={Boolean(proroga?.scadenza_manuale)} />
+          )}
 
           {estrazione.criteri_riepilogo && estrazione.criteri_riepilogo.length > 0 && (
             <div style={{ marginTop: 24 }}>

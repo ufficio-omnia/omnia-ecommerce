@@ -14,7 +14,15 @@ import { messaggioPerUfficioGare } from "@/lib/omnia-ai-account-calcoli";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { nessunIntervento, ripulisciPersonaleUscente } from "@/lib/personale-anonimo";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { normalizzaOraScadenza } from "@/lib/omnia-ai-revisione-calcoli";
+import { ordinaPerCaricamento, testoElencoCronologicoPerEstrazione } from "@/lib/gara-documenti-elenco";
+import {
+  MESSAGGIO_MODIFICA_NON_CONSENTITA,
+  PROPRIETA_SCADENZA_ESTRAZIONE,
+  decidiScadenza,
+  puoModificareScadenza,
+  validaScadenzaManuale,
+  type ScadenzaEsistente,
+} from "@/lib/gara-proroga";
 
 export type ExtractionState = { error?: string; quotaEsaurita?: boolean };
 
@@ -42,16 +50,9 @@ const EXTRACTION_TOOL = {
         description:
           "Codice Identificativo Gara (CIG) così come riportato nel bando/disciplinare: 10 caratteri alfanumerici (es. '8123456AB1'), senza la dicitura 'CIG' né spazi. Ometti il campo se non è indicato nei documenti; se ne compaiono più di uno (es. uno per lotto) riporta solo quello della gara principale, mai un valore dedotto.",
       },
-      scadenza: {
-        type: "string",
-        description:
-          "Data di scadenza per la presentazione dell'offerta, formato YYYY-MM-DD. Ometti il campo se non è indicata nei documenti.",
-      },
-      scadenza_ora: {
-        type: "string",
-        description:
-          "Ora di scadenza per la presentazione dell'offerta, formato HH:MM (24 ore, ora italiana), SOLO se i documenti la indicano insieme alla data (es. 'entro le ore 12:00' → '12:00'). Ometti il campo se non è indicata un'ora: non dedurla e non scrivere 23:59 al posto di un'ora mancante.",
-      },
+      // scadenza, scadenza_ora, proroga_termini e scadenza_originaria: le regole della proroga dei termini di presentazione
+      // stanno in src/lib/gara-proroga.ts (testo e decisione sono provati dai test).
+      ...PROPRIETA_SCADENZA_ESTRAZIONE,
       importo: {
         type: "number",
         description:
@@ -227,11 +228,13 @@ export async function extractGaraData(
 
   const { data: documenti } = await supabase
     .from("gara_documenti")
-    .select("nome_file, file_path")
+    .select("id, nome_file, file_path, created_at")
     .eq("gara_id", garaId)
-    .returns<{ nome_file: string; file_path: string }[]>();
+    .returns<{ id: string; nome_file: string; file_path: string; created_at: string }[]>();
 
-  const pdfDocs = (documenti ?? []).filter((d) =>
+  // In ordine cronologico di caricamento (dal più vecchio): i PDF vanno al modello in questo ordine, con il loro elenco (vedi
+  // sotto), così può capire quale documento viene dopo l'altro — per esempio un avviso di proroga dei termini rispetto al bando.
+  const pdfDocs = ordinaPerCaricamento(documenti ?? []).filter((d) =>
     d.nome_file.toLowerCase().endsWith(".pdf"),
   );
 
@@ -334,7 +337,7 @@ export async function extractGaraData(
             ...documentBlocks,
             {
               type: "text",
-              text: "Questi sono i documenti di una gara d'appalto per servizi di pulizia. Estrai i dati richiesti usando lo strumento fornito.",
+              text: `Questi sono i documenti di una gara d'appalto per servizi di pulizia. Estrai i dati richiesti usando lo strumento fornito.\n\n${testoElencoCronologicoPerEstrazione(pdfDocs)}`,
             },
           ],
         },
@@ -367,6 +370,8 @@ export async function extractGaraData(
       cig?: string;
       scadenza?: string;
       scadenza_ora?: string;
+      proroga_termini?: string;
+      scadenza_originaria?: string;
       importo?: number;
       criteri_valutazione: string;
       requisiti: string;
@@ -415,6 +420,20 @@ export async function extractGaraData(
 
     const estrazioneAggiornataIl = new Date().toISOString();
 
+    // Scadenza: quella della PROROGA dei termini se i documenti ne indicano una con la nuova data; una data inserita a mano dal
+    // cliente (possibile solo quando la proroga non riporta la data) si conserva finché la proroga resta senza data. Le colonne
+    // della proroga e della data a mano (migrazione 0095) possono non esserci ancora: in quel caso nessuna data a mano.
+    const { data: scadenzaEsistenteRiga, error: erroreScadenzaEsistente } = await supabase
+      .from("gare")
+      .select("scadenza, scadenza_ora, scadenza_manuale")
+      .eq("id", garaId)
+      .maybeSingle<{ scadenza: string | null; scadenza_ora: string | null; scadenza_manuale: boolean | null }>();
+    const scadenzaEsistente: ScadenzaEsistente | null =
+      erroreScadenzaEsistente || !scadenzaEsistenteRiga
+        ? null
+        : { scadenza: scadenzaEsistenteRiga.scadenza, scadenza_ora: scadenzaEsistenteRiga.scadenza_ora, scadenza_manuale: Boolean(scadenzaEsistenteRiga.scadenza_manuale) };
+    const decisioneScadenza = decidiScadenza(result, scadenzaEsistente);
+
     // Personale uscente: l'istruzione nello schema chiede al modello di non riportare
     // nominativi, codici fiscali e matricole, ma non è una garanzia. Questo filtro lo è:
     // tiene solo i cinque campi previsti e toglie i codici fiscali e i dati identificativi
@@ -433,7 +452,7 @@ export async function extractGaraData(
         stazione_appaltante: result.stazione_appaltante || null,
         amministrazione_committente: result.amministrazione_committente || null,
         cig: result.cig?.replace(/\s+/g, "").toUpperCase() || null,
-        scadenza: result.scadenza || null,
+        scadenza: decisioneScadenza.scadenza,
         importo: result.importo ?? null,
         criteri_valutazione: result.criteri_valutazione,
         requisiti: result.requisiti,
@@ -462,9 +481,16 @@ export async function extractGaraData(
 
     // Ora di scadenza (colonna della migrazione 0091), in un aggiornamento a parte: se la colonna non c'è
     // ancora i dati estratti qui sopra sono già al sicuro e non si perdono. Senza una data non c'è ora.
-    const oraScadenza = result.scadenza ? normalizzaOraScadenza(result.scadenza_ora) : null;
-    const { error: erroreOraScadenza } = await supabase.from("gare").update({ scadenza_ora: oraScadenza }).eq("id", garaId);
+    const { error: erroreOraScadenza } = await supabase.from("gare").update({ scadenza_ora: decisioneScadenza.scadenza_ora }).eq("id", garaId);
     if (erroreOraScadenza && !schemaAssente(erroreOraScadenza)) console.error("Errore salvataggio ora di scadenza:", erroreOraScadenza.message);
+
+    // Esito sulla proroga, scadenza originaria e «data a mano» (colonne della migrazione 0095), in un aggiornamento a parte per la
+    // stessa ragione: se non ci sono ancora, tutto il resto è già salvato.
+    const { error: erroreProroga } = await supabase
+      .from("gare")
+      .update({ proroga_stato: decisioneScadenza.proroga_stato, scadenza_originaria: decisioneScadenza.scadenza_originaria, scadenza_manuale: decisioneScadenza.scadenza_manuale })
+      .eq("id", garaId);
+    if (erroreProroga && !schemaAssente(erroreProroga)) console.error("Errore salvataggio della proroga dei termini:", erroreProroga.message);
 
     // Chiave di dedup sul timestamp appena scritto: una rianalisi
     // successiva (nuovo estrazione_aggiornata_il) genera di nuovo una
@@ -493,4 +519,59 @@ export async function extractGaraData(
 
   revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
   return {};
+}
+
+export type ScadenzaState = { error?: string; ok?: boolean };
+
+// Il cliente cambia a mano la scadenza della gara. SOLO quando i documenti indicano una proroga dei termini senza riportare la
+// nuova data (puoModificareScadenza): lo stato si rilegge dal database, non lo dice il browser. Vale per il titolare e per
+// l'Ufficio Gare (è lavoro di gara). La data resta finché una nuova analisi non trova la data nei documenti.
+export async function impostaScadenzaGara(
+  _prevState: ScadenzaState,
+  formData: FormData,
+): Promise<ScadenzaState> {
+  const supabase = await createClient();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
+
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
+  if (accessoNegato) return { error: accessoNegato };
+
+  const garaId = String(formData.get("garaId") ?? "");
+  if (!garaId) return { error: "Gara non valida." };
+
+  // La RLS ("gare_all_own") garantisce che questa select restituisca la gara solo se è dell'account.
+  const { data: gara, error: erroreLettura } = await supabase
+    .from("gare")
+    .select("id, proroga_stato")
+    .eq("id", garaId)
+    .maybeSingle<{ id: string; proroga_stato: string | null }>();
+  if (erroreLettura) {
+    if (schemaAssente(erroreLettura)) return { error: "Questa funzione non è ancora attiva. Riprova più tardi." };
+    console.error("Errore lettura della gara per la scadenza:", erroreLettura.message);
+    return { error: "Non sono riuscito a leggere la gara. Riprova." };
+  }
+  if (!gara) return { error: "Gara non trovata." };
+  if (!puoModificareScadenza(gara.proroga_stato)) return { error: MESSAGGIO_MODIFICA_NON_CONSENTITA };
+
+  const esito = validaScadenzaManuale({ data: formData.get("scadenza"), ora: formData.get("ora") }, new Date());
+  if (!esito.ok) return { error: esito.errore };
+
+  const { error: erroreScrittura } = await supabase
+    .from("gare")
+    .update({ scadenza: esito.scadenza, scadenza_manuale: true })
+    .eq("id", garaId);
+  if (erroreScrittura) {
+    console.error("Errore salvataggio della scadenza a mano:", erroreScrittura.message);
+    return { error: "Non sono riuscito a salvare la scadenza. Riprova." };
+  }
+  // L'ora in un aggiornamento a parte, come in extractGaraData (la colonna è della migrazione 0091); senza ora si intendono le 23:59.
+  const { error: erroreOra } = await supabase.from("gare").update({ scadenza_ora: esito.ora }).eq("id", garaId);
+  if (erroreOra && !schemaAssente(erroreOra)) console.error("Errore salvataggio dell'ora di scadenza a mano:", erroreOra.message);
+
+  revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
+  revalidatePath("/dashboard/omnia-ai/gare");
+  revalidatePath("/dashboard/omnia-ai");
+  return { ok: true };
 }

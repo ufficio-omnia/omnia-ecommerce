@@ -12,7 +12,8 @@ import DeleteButton from "@/components/delete-button";
 import UploadDocumentoForm from "./upload-documento-form";
 import LogoClienteForm from "./logo-cliente-form";
 import GaraTitolo from "./gara-titolo";
-import ExtractionSection, { type Estrazione } from "./extraction-section";
+import ExtractionSection, { type Estrazione, type ProrogaGara } from "./extraction-section";
+import { documentiDopoUltimaAnalisi, ordinaPerCaricamento, testoDataCaricamento } from "@/lib/gara-documenti-elenco";
 import GaraBloccataAvviso from "./gara-bloccata-avviso";
 import RevisionePanel from "./revisione-panel";
 import { leggiContestoRevisione } from "@/lib/omnia-ai-revisione";
@@ -102,7 +103,7 @@ export default async function GaraPage({
         .from("gara_documenti")
         .select("id, nome_file, created_at")
         .eq("gara_id", id)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: true })
         .returns<Documento[]>(),
       supabase
         .from("gara_messaggi")
@@ -122,6 +123,18 @@ export default async function GaraPage({
         .order("created_at", { ascending: true })
         .returns<{ id: string; messaggio_id: string; nome_file: string }[]>(),
     ]);
+
+  // Documenti in ordine cronologico di caricamento (dal più vecchio), ciascuno con la data di caricamento; quelli già caricati in
+  // passato hanno la loro data (gara_documenti.created_at c'è da sempre).
+  const documentiOrdinati = ordinaPerCaricamento(documenti ?? []);
+  const documentiNuovi = documentiDopoUltimaAnalisi(documentiOrdinati, gara.estrazione_stato === "completata" ? gara.estrazione_aggiornata_il : null);
+
+  // Proroga dei termini di presentazione (migrazione 0095): colonne non ancora create → nessun dato, la scheda funziona come prima.
+  const { data: prorogaRaw } = await supabase
+    .from("gare")
+    .select("proroga_stato, scadenza_originaria, scadenza_manuale")
+    .eq("id", id)
+    .maybeSingle<ProrogaGara>();
 
   // Colonna avvisi_economici non ancora creata (migrazione 0070): senza
   // questo ripiego la query intera fallirebbe e la chat apparirebbe vuota.
@@ -214,19 +227,22 @@ export default async function GaraPage({
           Carica bando, disciplinare, capitolato e ogni altro documento collegato a questa gara.
         </p>
 
-        {documenti?.length ? (
+        {documentiOrdinati.length ? (
           <div style={{ marginTop: 16 }}>
-            {documenti.map((d) => {
+            {documentiOrdinati.map((d) => {
               const n = chunkCountPerDocumento.get(d.id) ?? 0;
               return (
                 <div key={d.id} className="omnia-doc">
-                  <span style={{ display: "flex", minWidth: 0, alignItems: "center", gap: 10 }}>
-                    <span className="nome">{d.nome_file}</span>
-                    {n > 0 ? (
-                      <span className="omnia-badge verde">Indicizzato ({n})</span>
-                    ) : (
-                      <span className="omnia-badge ambra">Non indicizzato</span>
-                    )}
+                  <span style={{ display: "flex", minWidth: 0, flexDirection: "column", gap: 2 }}>
+                    <span style={{ display: "flex", minWidth: 0, alignItems: "center", gap: 10 }}>
+                      <span className="nome">{d.nome_file}</span>
+                      {n > 0 ? (
+                        <span className="omnia-badge verde">Indicizzato ({n})</span>
+                      ) : (
+                        <span className="omnia-badge ambra">Non indicizzato</span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: "var(--fioco)" }}>Caricato il {testoDataCaricamento(d.created_at)}</span>
                   </span>
                   <div className="omnia-doc-azioni">
                     <OpenInNewTabButton
@@ -253,6 +269,13 @@ export default async function GaraPage({
           </p>
         )}
 
+        {documentiNuovi.length > 0 && (
+          <p className="omnia-riquadro-nota" style={{ marginTop: 12 }}>
+            Dopo l&apos;ultima analisi hai caricato {documentiNuovi.length === 1 ? "1 documento" : `${documentiNuovi.length} documenti`}: premi «Rianalizza documenti» qui sotto per includer{documentiNuovi.length === 1 ? "lo" : "li"} nei dati
+            estratti, comprese un&apos;eventuale proroga dei termini e la nuova scadenza.
+          </p>
+        )}
+
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--bordo)" }}>
           {diritto.consentito ? (
             <UploadDocumentoForm garaId={gara.id} />
@@ -266,7 +289,7 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
+      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} proroga={prorogaRaw ?? null} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
 

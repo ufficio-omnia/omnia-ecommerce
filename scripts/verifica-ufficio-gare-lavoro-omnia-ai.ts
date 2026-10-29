@@ -56,7 +56,7 @@ async function main() {
   };
   const LAVORO: Record<string, string[]> = {
     "gare.ts": ["createGara", "renameGara", "deleteGara", "uploadGaraDocumento", "removeGaraDocumento", "uploadGaraLogoCliente"],
-    "gara-extraction.ts": ["extractGaraData"],
+    "gara-extraction.ts": ["extractGaraData", "impostaScadenzaGara"],
     "gara-chat.ts": ["sendGaraMessage"],
     "download.ts": ["downloadGaraDocumento", "downloadGaraMessaggioFile", "downloadAllegatoMessaggio"],
     "assistenza-chat.ts": ["sendAssistenzaMessage", "richiediEscalationAssistenza"],
