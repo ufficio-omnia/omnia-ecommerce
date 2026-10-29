@@ -82,6 +82,16 @@ function main() {
     "Errata corrige.pdf",
     "Verbale seduta.pdf",
     "Provvedimento.PDF",
+    "Rettifica del bando.pdf",
+    "Ordinanza 3.pdf",
+    "Comunicato ai concorrenti.pdf",
+    "Proroga termini.pdf",
+    "Differimento.pdf",
+    "Slittamento.pdf",
+    "Variazione.pdf",
+    "Integrazione documentazione.pdf",
+    "FAQ gara.pdf",
+    "Nota prot. 12.pdf",
   ];
   const NON_ATTI = [
     "1._Bando_di_gara.pdf",
@@ -118,6 +128,7 @@ function main() {
   atteso("la «proroga tecnica» del contratto, senza termine di presentazione, non scatta", !r("Il contratto in essere è prorogato in via tecnica per il tempo strettamente necessario alla conclusione della procedura, ai sensi dell'art. 106 comma 11.").trovato);
   const lontano = `Si dispone la proroga. ${"Testo di riempimento senza importanza. ".repeat(20)} Il termine per la presentazione delle offerte è indicato nel bando.`;
   atteso("proroga e termine di presentazione troppo lontani tra loro: non scatta", !r(lontano).trovato);
+  atteso("proroga di un altro termine (esecuzione dei lavori) o di un'offerta già presentata, senza «termine» e «presentazione» insieme: non scatta", !r("Si dispone la proroga del termine di esecuzione dei lavori di manutenzione.").trovato && !r("Si accetta la proroga dell'offerta migliorativa già presentata dal concorrente.").trovato);
   atteso("la clausola generale sul malfunzionamento SCATTA la ricerca (sta al modello escluderla, vedi le istruzioni)", r(PAROLE_MALFUNZIONAMENTO).trovato);
   atteso("una pagina dispositivo pesa più di una che nomina solo la proroga", r(PAROLE_DETERMINA).forza > r("La proroga del termine di presentazione delle offerte è un'ipotesi possibile.").forza);
 
@@ -137,10 +148,19 @@ function main() {
   atteso("senza passaggi pertinenti la selezione è vuota (nessuna chiamata al modello, nessun costo)", selezioneVuota(nulla));
 
   // una determina tra tantissime pagine che nominano la proroga: deve restare
-  const rumorosa = doc(3, "Disciplinare_lungo.pdf", Array.from({ length: 40 }, (_, i) => pag(i + 1, PAROLE_MALFUNZIONAMENTO)));
+  // (le pagine rumorose hanno la stessa forza della determina: a decidere è il «sembra un atto» del nome)
+  const rumorosa = doc(3, "Disciplinare_lungo.pdf", Array.from({ length: 40 }, (_, i) => pag(i + 1, `${PAROLE_MALFUNZIONAMENTO} Si dispone quanto sopra.`)));
   const sel2 = selezionaPassaggi([bando, rumorosa, determina]);
-  atteso("anche con 40 pagine rumorose la determina è nella selezione (punteggio più alto)", sel2.passaggi.some((p) => p.indice === 7 && p.pagina === 3));
-  atteso(`tetto sulle pagine scelte (${MAX_PAGINE_SCELTE}) e sul totale con il contesto (${MAX_PAGINE_TOTALI})`, sel2.passaggi.length <= MAX_PAGINE_TOTALI && sel2.passaggi.filter((p) => p.indice === 3).length <= MAX_PAGINE_TOTALI - 2, String(sel2.passaggi.length));
+  atteso("anche con 40 pagine rumorose la determina è nella selezione (il nome da atto conta)", sel2.passaggi.some((p) => p.indice === 7 && p.pagina === 3));
+  atteso(`tetto sulle pagine scelte (${MAX_PAGINE_SCELTE}): 16 pagine + la pagina dopo di ciascuna, mai le 40`, sel2.passaggi.length <= MAX_PAGINE_SCELTE + 2, String(sel2.passaggi.length));
+  const sedici = Array.from({ length: 20 }, (_, i) => doc(i + 1, `Avviso_${i + 1}.pdf`, [pag(1, PAROLE_DETERMINA), pag(2, PAROLE_NEUTRE)]));
+  atteso(`tetto sul totale con il contesto (${MAX_PAGINE_TOTALI}): 16 pagine scelte + 16 di contesto = 32 → 30`, selezionaPassaggi(sedici).passaggi.length === MAX_PAGINE_TOTALI, String(selezionaPassaggi(sedici).passaggi.length));
+  const piuVecchio = (indice: number, quando: string) => doc(indice, `Disciplinare_${indice}.pdf`, Array.from({ length: MAX_PAGINE_SCELTE }, (_, i) => pag(i + 1, PAROLE_MALFUNZIONAMENTO)), { caricatoIl: quando });
+  const spareggio = selezionaPassaggi([piuVecchio(1, "2026-10-20T08:00:00Z"), piuVecchio(2, "2026-10-01T08:00:00Z")]);
+  atteso("a parità di punteggio tra documenti diversi vince il più vecchio per caricamento (non il numero d'ordine)", spareggio.passaggi.filter((p) => p.indice === 2).length >= MAX_PAGINE_SCELTE && spareggio.passaggi.filter((p) => p.indice === 1).length <= 1, JSON.stringify(spareggio.passaggi.map((p) => p.indice)));
+  const disordine = selezionaPassaggi([doc(1, "Disciplinare.pdf", Array.from({ length: 12 }, (_, i) => pag(i + 1, i + 1 === 10 ? PAROLE_DETERMINA : i + 1 === 3 ? "Riapertura dei termini per la presentazione delle offerte." : PAROLE_NEUTRE)))]);
+  atteso("le pagine scelte escono in ordine di pagina anche se la più importante è più avanti", uguali(disordine.passaggi.map((p) => p.pagina), [3, 4, 10, 11]), JSON.stringify(disordine.passaggi.map((p) => p.pagina)));
+  atteso("selezione non vuota quando ci sono solo passaggi", !selezioneVuota(sel1));
   const pari = selezionaPassaggi([doc(1, "A.pdf", Array.from({ length: 20 }, (_, i) => pag(i + 1, PAROLE_MALFUNZIONAMENTO)))]);
   atteso("a parità di punteggio: le prime pagine in ordine (selezione stabile)", pari.passaggi.length > 0 && pari.passaggi[0].pagina === 1 && uguali(pari.passaggi.map((p) => p.pagina), [...pari.passaggi.map((p) => p.pagina)].sort((a, b) => a - b)));
   const lunga = doc(1, "Determina.pdf", [pag(1, `${PAROLE_DETERMINA} ${"x".repeat(MAX_CARATTERI_PAGINA * 2)}`)]);
@@ -156,6 +176,7 @@ function main() {
   atteso(`al massimo ${MAX_PDF_INTERI} PDF interi`, molte.pdfInteri.length === MAX_PDF_INTERO_ATTESO());
   function MAX_PDF_INTERO_ATTESO() { return MAX_PDF_INTERI; }
   atteso("con soli atti in scansione la selezione non è vuota", !selezioneVuota(selS));
+  atteso("i limiti esatti sono ammessi (12 pagine, 8 MB)", uguali(selezionaPassaggi([scansione(10, "Avviso_limite.pdf", { totalePagine: MAX_PAGINE_PDF_INTERO, byte: MAX_BYTE_PDF_INTERO })]).pdfInteri, [10]));
 
   // il caso reale: 44 documenti, uno solo è la determina
   const tutti: DocumentoPerPassaggio[] = [];
@@ -177,6 +198,7 @@ function main() {
   const testo = testoSecondoPassaggio(sel1, elenco, testoDataCaricamento);
   atteso("contiene le istruzioni, le intestazioni dei documenti con la data di caricamento e il numero di pagina", testo.startsWith(ISTRUZIONI_SECONDO_PASSAGGIO) && testo.includes("=== Documento 7: 5382_DeterminaDirigenziale_Originale_471_2026.pdf — caricato il 17/10/2026") && testo.includes("[pagina 3]"), testo.slice(ISTRUZIONI_SECONDO_PASSAGGIO.length, ISTRUZIONI_SECONDO_PASSAGGIO.length + 200));
   atteso("i documenti compaiono in ordine e il testo della determina c'è", testo.indexOf("Documento 2:") < testo.indexOf("Documento 7:") && testo.includes("si dispone la proroga del termine"));
+  atteso("l'intestazione di un documento compare una volta sola, anche con più pagine", (testo.match(/=== Documento 7:/g) ?? []).length === 1 && (testo.match(/=== Documento 2:/g) ?? []).length === 1);
   const conScansione = testoSecondoPassaggio(selS, [{ indice: 4, nome: "Determina_scansione.pdf", caricatoIl: "2026-10-14T08:00:00Z" }], testoDataCaricamento);
   atteso("gli atti interi sono elencati", /Atti interi allegati come PDF[^]*Documento 4: Determina_scansione\.pdf/.test(conScansione));
   const I = ISTRUZIONI_SECONDO_PASSAGGIO;
@@ -221,6 +243,7 @@ function main() {
   giusto("generale «nessuna» + mirato «con data» → la data della proroga, con la data di prima come originaria", unisciEsitiProroga(g0, { proroga_termini: "con_nuova_data", scadenza: "2026-11-24", scadenza_ora: "10:00" }), { proroga_termini: "con_nuova_data", scadenza: "2026-11-24", scadenza_ora: "10:00", scadenza_originaria: "2026-10-30" });
   giusto("… senza ora nel mirato: resta l'ora del bando", unisciEsitiProroga(g0, { proroga_termini: "con_nuova_data", scadenza: "2026-11-24" }), { scadenza: "2026-11-24", scadenza_ora: "18:00" });
   giusto("… ora «9:30» del mirato si normalizza", unisciEsitiProroga(g0, { proroga_termini: "con_nuova_data", scadenza: "2026-11-24", scadenza_ora: "9:30" }), { scadenza_ora: "09:30" });
+  giusto("generale «nessuna» con una data più avanti di quella del mirato: il mirato «con data» vale lo stesso (la regola del «più lontano» è solo tra due proroghe)", unisciEsitiProroga(gen({ proroga_termini: "nessuna", scadenza: "2026-12-01" }), { proroga_termini: "con_nuova_data", scadenza: "2026-11-24" }), { proroga_termini: "con_nuova_data", scadenza: "2026-11-24", scadenza_originaria: "2026-12-01" });
   giusto("generale «senza data» + mirato «con data» → la data trovata, originaria = data del bando", unisciEsitiProroga(gen({ proroga_termini: "senza_nuova_data" }), { proroga_termini: "con_nuova_data", scadenza: "2026-11-24" }), { proroga_termini: "con_nuova_data", scadenza: "2026-11-24", scadenza_originaria: "2026-10-30" });
   giusto("la data originaria scritta dal mirato vale più di quella dedotta", unisciEsitiProroga(g0, { proroga_termini: "con_nuova_data", scadenza: "2026-11-24", scadenza_originaria: "2026-10-28" }), { scadenza_originaria: "2026-10-28" });
 
