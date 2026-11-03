@@ -51,6 +51,7 @@ function main() {
   atteso("vale anche per la voce «Demo» del menu (senza classe né stile)", htmlVoce.includes(">Demo</a>") && htmlVoce.includes('aria-label="Demo (si apre in una nuova scheda)"') && !htmlVoce.includes("class="), htmlVoce);
   const sorgenteComponente = leggi("src/components/omnia-ai/link-demo.tsx");
   atteso("il componente prende il link dall'unica fonte", /import \{ LINK_PRENOTA_DEMO \} from "@\/lib\/omnia-ai-demo-link";/.test(sorgenteComponente) && /href=\{LINK_PRENOTA_DEMO\}/.test(sorgenteComponente));
+  atteso("il componente passa il clic al link (serve al menu mobile, che si chiude)", /onClick=\{onClick\}/.test(sorgenteComponente) && /onClick\?: \(\) => void;/.test(sorgenteComponente));
 
   console.log("\n--- Dove si usa ---");
   const home = leggi("src/app/site-omnia-ai/page.tsx");
