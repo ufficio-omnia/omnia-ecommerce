@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useMarchioStato } from "./marchio-stato-context";
+import LinkDemo from "./link-demo";
 
 // Porting diretto (stessi tempi, stesse parole, stessa fisica) dello
 // script del mockup di riferimento: campo di parole fluttuanti che
@@ -283,9 +284,7 @@ export default function HeroDemo() {
             <span style={{ whiteSpace: "nowrap" }}>facility.</span>
           </p>
           <div className="omnia-azioni">
-            <Link className="omnia-btn omnia-btn-p" href="/demo">
-              Richiedi la demo
-            </Link>
+            <LinkDemo className="omnia-btn omnia-btn-p" testo="Richiedi la demo" />
             <Link className="omnia-btn omnia-btn-s" href="/come-funziona">
               Come funziona
             </Link>

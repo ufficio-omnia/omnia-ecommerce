@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import LinkDemo from "@/components/omnia-ai/link-demo";
 import { MarchioStatoProvider } from "@/components/omnia-ai/marchio-stato-context";
 import SiteHeader from "@/components/omnia-ai/site-header";
 import HeroDemo from "@/components/omnia-ai/hero-demo";
@@ -211,9 +211,7 @@ export default function OmniaAiHomePage() {
             davvero.
           </p>
           <div className="omnia-azioni">
-            <Link className="omnia-btn omnia-btn-p" href="/demo">
-              Richiedi la demo
-            </Link>
+            <LinkDemo className="omnia-btn omnia-btn-p" testo="Richiedi la demo" />
           </div>
         </section>
 
