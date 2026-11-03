@@ -4,18 +4,14 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import BrandMark from "./brand-mark";
 import { useMarchioStato } from "./marchio-stato-context";
-import LinkDemo from "./link-demo";
 
 // Unica fonte delle voci: la navigazione desktop e il menu mobile le
 // leggono da qui, così non possono divergere. "Accedi" è a parte perché
-// ha una veste diversa in entrambe. «Demo» non è una pagina del sito: porta
-// direttamente al calendario per prenotare (vedi link-demo.tsx), per questo
-// è marcata `demo` e si disegna con LinkDemo invece che con Link.
-type Voce = { label: string } & ({ href: string; demo?: false } | { demo: true });
-const VOCI: Voce[] = [
+// ha una veste diversa in entrambe.
+const VOCI = [
   { href: "/come-funziona", label: "Come funziona" },
   { href: "/piani", label: "Piani" },
-  { label: "Demo", demo: true },
+  { href: "/demo", label: "Demo" },
   { href: "/contatti", label: "Contatti" },
 ];
 
@@ -100,15 +96,11 @@ export default function SiteHeader() {
             OMNIA AI
           </Link>
           <nav className="omnia-nav omnia-principale">
-            {VOCI.map((v) =>
-              v.demo ? (
-                <LinkDemo key={v.label} testo={v.label} />
-              ) : (
-                <Link key={v.href} href={v.href}>
-                  {v.label}
-                </Link>
-              ),
-            )}
+            {VOCI.map((v) => (
+              <Link key={v.href} href={v.href}>
+                {v.label}
+              </Link>
+            ))}
             <Link href="/login" className="omnia-accedi">
               Accedi
             </Link>
@@ -138,15 +130,11 @@ export default function SiteHeader() {
           schermo), non display:none, per poter animare l'apertura. */}
       <div id={idMenu} ref={menuRef} className="omnia-menu-mobile" data-aperto={aperto}>
         <nav aria-label="Menu principale">
-          {VOCI.map((v) =>
-            v.demo ? (
-              <LinkDemo key={v.label} testo={v.label} className="omnia-menu-voce" onClick={() => chiudi()} />
-            ) : (
-              <Link key={v.href} href={v.href} className="omnia-menu-voce" onClick={() => chiudi()}>
-                {v.label}
-              </Link>
-            ),
-          )}
+          {VOCI.map((v) => (
+            <Link key={v.href} href={v.href} className="omnia-menu-voce" onClick={() => chiudi()}>
+              {v.label}
+            </Link>
+          ))}
           <Link
             href="/login"
             className="omnia-btn omnia-btn-p omnia-menu-accedi"
