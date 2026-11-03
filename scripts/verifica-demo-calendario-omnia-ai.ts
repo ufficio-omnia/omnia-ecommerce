@@ -1,11 +1,13 @@
-// Autotest di «Richiedi la demo → calendario» su omnia-ai.it (richiesta dell'utente, 03/11/2026): i pulsanti «Richiedi la demo» e
-// la voce «Demo» del menu portano direttamente al calendario Google dove il visitatore prenota da sé la demo, in una nuova scheda.
+// Autotest di «Richiedi la demo → calendario» su omnia-ai.it (richiesta dell'utente, 03/11/2026, corretta lo stesso giorno): i
+// pulsanti «Richiedi la demo» di home e piani portano direttamente al calendario Google dove il visitatore prenota da sé la demo,
+// in una nuova scheda. La voce «Demo» del menu invece porta alla pagina /demo, con il suo modulo di contatto com'era, e DENTRO
+// quella pagina c'è il pulsante «Prenota direttamente la demo» verso il calendario.
 // Si controlla (nessuna rete, nessun database) che:
 //   - il link sia uno solo, quello giusto, e stia in un solo posto del codice;
 //   - il componente lo disegni con i soli attributi sicuri (nuova scheda, noopener noreferrer, etichetta per gli screen reader);
-//   - i quattro punti dell'interfaccia (home in alto, home in fondo, piani, menu desktop e mobile) lo usino e nessuno punti più
-//     alla pagina /demo;
-//   - la pagina /demo (il modulo) e l'invio dell'email restino com'erano, raggiungibili da chi ha il vecchio indirizzo.
+//   - i pulsanti di home (in alto e in fondo) e di piani lo usino, e nessuno di essi punti alla pagina /demo;
+//   - il menu (desktop e mobile) colleghi «Demo» alla pagina /demo come prima della modifica;
+//   - la pagina /demo conservi testo, modulo ed email all'ufficio e abbia il pulsante di prenotazione PRIMA del modulo.
 import fs from "fs";
 import path from "path";
 import { createElement } from "react";
@@ -47,11 +49,11 @@ function main() {
   atteso("si apre in una nuova scheda, senza dare accesso alla pagina di partenza", html.includes('target="_blank"') && html.includes('rel="noopener noreferrer"'), html);
   atteso("mostra il testo e porta la classe e lo stile del pulsante", html.includes(">Richiedi la demo</a>") && html.includes('class="omnia-btn omnia-btn-p"') && html.includes("margin-top:10px"), html);
   atteso("per gli screen reader dice che si apre in una nuova scheda (e contiene il testo visibile)", html.includes('aria-label="Richiedi la demo (si apre in una nuova scheda)"'), html);
-  const htmlVoce = renderToStaticMarkup(createElement(LinkDemo, { testo: "Demo" }));
-  atteso("vale anche per la voce «Demo» del menu (senza classe né stile)", htmlVoce.includes(">Demo</a>") && htmlVoce.includes('aria-label="Demo (si apre in una nuova scheda)"') && !htmlVoce.includes("class="), htmlVoce);
+  const htmlSemplice = renderToStaticMarkup(createElement(LinkDemo, { testo: "Prenota direttamente la demo" }));
+  atteso("senza classe né stile resta un link semplice con la stessa etichetta accessibile", htmlSemplice.includes(">Prenota direttamente la demo</a>") && htmlSemplice.includes('aria-label="Prenota direttamente la demo (si apre in una nuova scheda)"') && !htmlSemplice.includes("class="), htmlSemplice);
   const sorgenteComponente = leggi("src/components/omnia-ai/link-demo.tsx");
   atteso("il componente prende il link dall'unica fonte", /import \{ LINK_PRENOTA_DEMO \} from "@\/lib\/omnia-ai-demo-link";/.test(sorgenteComponente) && /href=\{LINK_PRENOTA_DEMO\}/.test(sorgenteComponente));
-  atteso("il componente passa il clic al link (serve al menu mobile, che si chiude)", /onClick=\{onClick\}/.test(sorgenteComponente) && /onClick\?: \(\) => void;/.test(sorgenteComponente));
+  atteso("il componente passa il clic al link, se chi lo usa ne dà uno", /onClick=\{onClick\}/.test(sorgenteComponente) && /onClick\?: \(\) => void;/.test(sorgenteComponente));
 
   console.log("\n--- Dove si usa ---");
   const home = leggi("src/app/site-omnia-ai/page.tsx");
@@ -61,17 +63,25 @@ function main() {
   const piani = leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
   atteso("piani: «Richiedi la demo» è il link al calendario, con lo stesso stile di prima", /<LinkDemo\s+className=\{`omnia-btn \$\{!vendita && p\.inEvidenza \? "omnia-btn-p" : "omnia-btn-s"\}`\}\s+testo="Richiedi la demo"\s+style=\{vendita \? \{ marginTop: 10 \} : undefined\}\s*\/>/.test(piani));
   atteso("piani: «Abbonati» resta un link del sito", /<Link className="omnia-btn omnia-btn-p" href=\{`\/abbonati\/\$\{p\.slug\}`\}>/.test(piani));
+  console.log("\n--- Il menu: «Demo» porta alla pagina /demo, come prima ---");
   const header = leggi("src/components/omnia-ai/site-header.tsx");
-  atteso("menu: la voce «Demo» è segnata come link al calendario e le altre restano pagine del sito", /\{ label: "Demo", demo: true \}/.test(header) && /href: "\/come-funziona"/.test(header) && /href: "\/piani"/.test(header) && /href: "\/contatti"/.test(header));
-  atteso("menu desktop: la voce «Demo» usa LinkDemo, le altre Link", /<nav className="omnia-nav omnia-principale">[\s\S]*?v\.demo \? \(\s*<LinkDemo key=\{v\.label\} testo=\{v\.label\} \/>\s*\) : \(\s*<Link key=\{v\.href\} href=\{v\.href\}>/.test(header));
-  atteso("menu mobile: la voce «Demo» usa LinkDemo, chiude il menu al clic e ha lo stile delle altre voci", /<LinkDemo key=\{v\.label\} testo=\{v\.label\} className="omnia-menu-voce" onClick=\{\(\) => chiudi\(\)\} \/>/.test(header));
+  atteso("la voce «Demo» è un link alla pagina /demo del sito, e le altre voci sono quelle di prima", /\{ href: "\/demo", label: "Demo" \}/.test(header) && /href: "\/come-funziona"/.test(header) && /href: "\/piani"/.test(header) && /href: "\/contatti"/.test(header));
+  atteso("il menu non porta direttamente al calendario (nessun LinkDemo, nessun indirizzo del calendario)", !/LinkDemo|calendar|target="_blank"/.test(header));
+  atteso("menu desktop e mobile: tutte le voci sono link del sito, quello mobile chiude il menu al clic", /<Link key=\{v\.href\} href=\{v\.href\}>/.test(header) && /<Link key=\{v\.href\} href=\{v\.href\} className="omnia-menu-voce" onClick=\{\(\) => chiudi\(\)\}>/.test(header));
 
-  const SENZA_DEMO = tutti.filter((f) => !/^src\/app\/site-omnia-ai\/demo\//.test(f) && f !== "src/app/sitemap.ts");
+  const CON_DEMO_AMMESSI = new Set(["src/components/omnia-ai/site-header.tsx", "src/app/sitemap.ts"]);
+  const SENZA_DEMO = tutti.filter((f) => !/^src\/app\/site-omnia-ai\/demo\//.test(f) && !CON_DEMO_AMMESSI.has(f));
   const ancoraVersoDemo = SENZA_DEMO.filter((f) => /href=["'{`]*\/demo\b|href: "\/demo"|"\/demo"/.test(leggi(f)));
-  atteso("nessun pulsante o voce del sito punta più alla pagina /demo", ancoraVersoDemo.length === 0, ancoraVersoDemo.join(", "));
+  atteso("i pulsanti «Richiedi la demo» di home e piani non puntano alla pagina /demo: la collega solo il menu (e la mappa del sito)", ancoraVersoDemo.length === 0, ancoraVersoDemo.join(", "));
 
-  console.log("\n--- La pagina /demo e l'invio dell'email restano ---");
-  atteso("la pagina /demo esiste ancora con il suo modulo", fs.existsSync(path.join(radice, "src/app/site-omnia-ai/demo/page.tsx")) && /<DemoForm \/>/.test(leggi("src/app/site-omnia-ai/demo/page.tsx")));
+  console.log("\n--- La pagina /demo: testo e modulo com'erano, più il pulsante di prenotazione ---");
+  const paginaDemo = leggi("src/app/site-omnia-ai/demo/page.tsx");
+  atteso("il testo della pagina è quello di sempre (titolo, frase, «Rispondiamo entro 24 ore»)", paginaDemo.includes("OMNIA AI: portaci una gara vera. Ti mostriamo cosa esce.") && paginaDemo.includes("Nessuna presentazione preconfezionata: lavoriamo su un bando che ti interessa davvero.") && paginaDemo.includes("Rispondiamo entro 24 ore.") && paginaDemo.includes('title: "Richiedi la demo — OMNIA AI"'));
+  atteso("il modulo di contatto è nella pagina (una volta sola)", (paginaDemo.match(/<DemoForm \/>/g) ?? []).length === 1 && /import DemoForm from "@\/components\/omnia-ai\/demo-form";/.test(paginaDemo));
+  atteso("il pulsante «Prenota direttamente la demo» è nella pagina, con lo stile dei pulsanti principali, ed è il link al calendario", /<LinkDemo className="omnia-btn omnia-btn-p" testo="Prenota direttamente la demo" \/>/.test(paginaDemo) && /import LinkDemo from "@\/components\/omnia-ai\/link-demo";/.test(paginaDemo));
+  atteso("il pulsante sta PRIMA del modulo, e una frase dice che in alternativa si può compilare il modulo", paginaDemo.indexOf("<LinkDemo") > 0 && paginaDemo.indexOf("<LinkDemo") < paginaDemo.indexOf("<DemoForm />") && /Oppure compila il modulo qui sotto\./.test(paginaDemo));
+  const modulo = leggi("src/components/omnia-ai/demo-form.tsx");
+  atteso("il modulo ha ancora i suoi campi, il controllo anti-bot e il pulsante di invio", ["nome", "azienda", "email", "telefono", "settore", "bando"].every((c) => modulo.includes(`name="${c}"`)) && /<TurnstileCampo /.test(modulo) && /useActionState\(requestDemo, initialState\)/.test(modulo) && /Richiedi la demo/.test(modulo));
   atteso("l'azione che invia la richiesta all'ufficio c'è ancora, con il controllo anti-bot", /export async function requestDemo\(/.test(leggi("src/app/actions/omnia-ai-demo.ts")) && /verificaFormUmano\(formData\)/.test(leggi("src/app/actions/omnia-ai-demo.ts")));
   atteso("la pagina /demo è ancora nella mappa del sito (nessun cambio per i motori di ricerca)", /path: "\/demo"/.test(leggi("src/app/sitemap.ts")));
 
