@@ -7,6 +7,10 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import DemoVista from "../src/app/site-console/_componenti/demo-vista";
+import { calcolaPeriodo } from "../src/lib/console/periodo";
 import { FintoDatabase, type Riga } from "./demo-finto-supabase";
 import {
   ETICHETTA_MOTIVO_CASO,
@@ -165,6 +169,14 @@ async function main() {
     const dbMolte = new FintoDatabase({ demo_leads: Array.from({ length: 503 }, (_, i) => lead(`m${String(i).padStart(3, "0")}`, { created_at: `2026-11-05T09:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000Z` })) });
     const rm = await leggiDemo(periodo, dbMolte.comeClient(), {});
     atteso("oltre 500 richieste nel periodo: se ne mostrano 500 e la pagina avvisa che l'elenco è troncato", rm.stato === "ok" && rm.dati.richieste.length === 500 && rm.dati.troncato === true);
+
+    // la vista si disegna davvero (un errore di rendering qui passerebbe inosservato fino alla produzione)
+    const periodoVista = calcolaPeriodo({}, new Date("2026-11-10T10:00:00.000Z"));
+    const adessoVista = Date.parse("2026-11-10T10:00:00.000Z");
+    const disegna = (risultato: Parameters<typeof DemoVista>[0]["risultato"]) => renderToStaticMarkup(createElement(DemoVista, { periodo: periodoVista, risultato, adessoMs: adessoVista }));
+    const htmlDati = disegna(r);
+    atteso("la vista si disegna con i dati veri della lettura: tessere, casi, prenotazioni, richieste e il pulsante della verifica in sola validazione; nessun valore segreto", htmlDati.length > 3000 && /Richieste ricevute/.test(htmlDati) && /Casi da verificare \(1\)/.test(htmlDati) && /Prenotazioni confermate sul calendario \(1\)/.test(htmlDati) && /Verifica Google Ads \(solo validazione\)/.test(htmlDati) && !/GCLID_secret_12345|SEGRETO-TOKEN/.test(htmlDati));
+    atteso("la vista si disegna anche con le tabelle assenti (messaggio sulla migrazione 0098) e con un errore di lettura", /migrazione 0098/.test(disegna({ stato: "tabella_assente" })) && /Lettura non riuscita/.test(disegna({ stato: "errore", messaggio: "Lettura non riuscita." })));
   }
 
   console.log("\n--- Pagina: solo admin, sola lettura ---");
@@ -173,8 +185,9 @@ async function main() {
     atteso("la pagina controlla l'admin come PRIMA operazione asincrona", pagina.indexOf("await richiediAdminPagina()") > 0 && pagina.indexOf("await richiediAdminPagina()") < pagina.indexOf("await searchParams") && pagina.indexOf("await richiediAdminPagina()") < pagina.indexOf("await leggiDemo("));
     const vista = leggi("src/app/site-console/_componenti/demo-vista.tsx");
     const lettura = leggi("src/lib/console/demo.ts");
-    atteso("SOLA LETTURA: nessuna azione del server, nessun modulo che invii dati, nessuna chiamata di scrittura al database", !/"use server"|"use client"/.test(vista) && !/<form|<button|ModuloAzione|PulsanteAzione/.test(vista) && !/\.(insert|update|upsert|delete)\(/.test(lettura));
-    atteso("nessuna azione della console sulla DEMO (nessun file in azioni/ che tocchi le tabelle demo)", !fs.readdirSync(path.join(radice, "src/app/site-console/azioni")).some((f) => /demo_|demo-/.test(leggi(`src/app/site-console/azioni/${f}`))));
+    atteso("SOLA LETTURA sui dati: la vista non ha azioni del server né moduli (il solo pulsante è un componente a parte, vedi la verifica della Data Manager), la lettura non scrive nessuna riga", !/"use server"|"use client"/.test(vista) && !/<form|<button|ModuloAzione|PulsanteAzione/.test(vista) && !/\.(insert|update|upsert|delete)\(/.test(lettura));
+    const fileAzioni = fs.readdirSync(path.join(radice, "src/app/site-console/azioni")).map((f) => [f, leggi(`src/app/site-console/azioni/${f}`)] as const);
+    atteso("nessuna azione della console tocca le tabelle DEMO (nessuna lettura, nessuna scrittura): l'unica azione sulla DEMO è la verifica della Data Manager in sola validazione, che non usa il database", !fileAzioni.some(([, t]) => /from\("demo_|demo_leads|demo_contatti|demo_prenotazioni|demo_consensi|demo_calendar_casi|demo_sync_stato/.test(t)) && fileAzioni.some(([f]) => f === "demo-ads.ts") && !/supabase|createAdminClient/.test(fileAzioni.find(([f]) => f === "demo-ads.ts")?.[1] ?? "supabase"));
     atteso("la vista non nomina né mostra identificativi di clic o il token di sincronizzazione (gclid, gbraid, wbraid, sync_token)", !/gclid|gbraid|wbraid|sync_token/.test(vista));
     atteso("la lettura non seleziona mai il sync_token né le chiavi (solo stato e date della sincronizzazione)", !/sync_token/.test(lettura.replace(/\/\/.*$/gm, "")) && /last_run_at, last_success_at, last_error, lock_until/.test(lettura));
     atteso("la voce «DEMO e Google Ads» è nella barra laterale e la pagina esiste", /href: "\/demo", etichetta: "DEMO e Google Ads", pronto: true/.test(leggi("src/app/site-console/_componenti/navigazione.ts")) && fs.existsSync(path.join(radice, "src/app/site-console/(app)/demo/page.tsx")));
