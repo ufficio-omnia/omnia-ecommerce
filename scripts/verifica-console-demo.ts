@@ -7,6 +7,10 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import DemoVista from "../src/app/site-console/_componenti/demo-vista";
+import { calcolaPeriodo } from "../src/lib/console/periodo";
 import { FintoDatabase, type Riga } from "./demo-finto-supabase";
 import {
   ETICHETTA_MOTIVO_CASO,
@@ -165,6 +169,14 @@ async function main() {
     const dbMolte = new FintoDatabase({ demo_leads: Array.from({ length: 503 }, (_, i) => lead(`m${String(i).padStart(3, "0")}`, { created_at: `2026-11-05T09:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000Z` })) });
     const rm = await leggiDemo(periodo, dbMolte.comeClient(), {});
     atteso("oltre 500 richieste nel periodo: se ne mostrano 500 e la pagina avvisa che l'elenco è troncato", rm.stato === "ok" && rm.dati.richieste.length === 500 && rm.dati.troncato === true);
+
+    // la vista si disegna davvero (un errore di rendering qui passerebbe inosservato fino alla produzione)
+    const periodoVista = calcolaPeriodo({}, new Date("2026-11-10T10:00:00.000Z"));
+    const adessoVista = Date.parse("2026-11-10T10:00:00.000Z");
+    const disegna = (risultato: Parameters<typeof DemoVista>[0]["risultato"]) => renderToStaticMarkup(createElement(DemoVista, { periodo: periodoVista, risultato, adessoMs: adessoVista }));
+    const htmlDati = disegna(r);
+    atteso("la vista si disegna con i dati veri della lettura: tessere, casi, prenotazioni, richieste e il pulsante della verifica in sola validazione; nessun valore segreto", htmlDati.length > 3000 && /Richieste ricevute/.test(htmlDati) && /Casi da verificare \(1\)/.test(htmlDati) && /Prenotazioni confermate sul calendario \(1\)/.test(htmlDati) && /Verifica Google Ads \(solo validazione\)/.test(htmlDati) && !/GCLID_secret_12345|SEGRETO-TOKEN/.test(htmlDati));
+    atteso("la vista si disegna anche con le tabelle assenti (messaggio sulla migrazione 0098) e con un errore di lettura", /migrazione 0098/.test(disegna({ stato: "tabella_assente" })) && /Lettura non riuscita/.test(disegna({ stato: "errore", messaggio: "Lettura non riuscita." })));
   }
 
   console.log("\n--- Pagina: solo admin, sola lettura ---");
