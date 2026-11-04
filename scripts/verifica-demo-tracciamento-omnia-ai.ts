@@ -589,6 +589,19 @@ async function main() {
     atteso("se la prenotazione non si salva la richiesta NON passa a «confirmed» (niente conferma senza prenotazione)", rl.errori === 1 && leadDi(dbL).booking_status === "pending" && dbL.da("demo_prenotazioni").length === 0);
   }
 
+  {
+    // due prenotazioni valide per la stessa richiesta: se ne annulla una, l'altra la tiene «confermata»
+    const db = dbCon({ leads: [confermata({ id: "lead1" })], prenotazioni: [prenotazione({ id: "pa", calendar_event_id: "evt1" }), prenotazione({ id: "pb", calendar_event_id: "evt2" })] });
+    const rs = await sincronizzaCalendario(db.comeClient(), envCal, ADESSO, ambienteCalendario(() => ({ status: 200, json: { items: [ev({ id: "evt1", status: "cancelled" })], nextSyncToken: "T" } })).fetch);
+    atteso("se una richiesta ha due prenotazioni valide e se ne annulla una, l'altra la tiene «confermata» (e la conversione resta pronta)", rs.cancellati === 1 && pren(db, "evt1").stato === "cancelled" && pren(db, "evt2").stato === "confirmed" && leadDi(db).booking_status === "confirmed" && leadDi(db).ads_import_status === "ready");
+  }
+  {
+    // un caso rimasto aperto si chiude da solo quando la prenotazione viene poi abbinata
+    const db = dbCon({ leads: [richiesta({ id: "lead1" })], casi: [{ calendar_event_id: "evt1", calendar_id: CALENDARIO, motivo: "nessun_lead", risolto: false, created_at: "2026-11-10T09:31:00.000Z" }] });
+    await sincronizzaCalendario(db.comeClient(), envCal, ADESSO, ambienteCalendario(() => ({ status: 200, json: { items: [ev()], nextSyncToken: "T" } })).fetch);
+    atteso("un caso aperto per lo stesso evento si chiude da solo quando la prenotazione viene abbinata", db.da("demo_calendar_casi")[0].risolto === true && leadDi(db).booking_status === "confirmed");
+  }
+
   // 7e. abbinamento incerto: verifica manuale, nessuna conversione
   {
     const db = dbCon({ leads: [richiesta({ id: "lead1" })] });
