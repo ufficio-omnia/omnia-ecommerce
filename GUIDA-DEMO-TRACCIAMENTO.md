@@ -294,13 +294,22 @@ Google. Cookie policy: citare il salvataggio locale `omnia-ai-attribuzione` (90 
 
 ## 12. Cosa è stato verificato
 
-- `npx tsc --noEmit` pulito; test automatici `scripts/verifica-demo-tracciamento-omnia-ai.ts` (quasi 300 controlli: modulo, attribuzione, consensi e firme, abbinamento e calendario,
-  conversioni, salvataggio con idempotenza, limiti e guasti, sincronizzazione con annullamenti/rifiuti/spostamenti/interruzioni, blocco, GA4, Ads, conservazione, codice, guida) e
-  `scripts/verifica-console-demo.ts` (sezione della console); entrambi nella catena `verifica:livello1`, che si esegue a ogni build.
-- Prove di mutazione: ogni controllo importante è stato verificato introducendo un difetto nel codice e controllando che un test fallisca.
-- Prova nel browser vero del modulo (errori di campo, invio, scheda del calendario, errore recuperabile, versione vecchia dei testi, mobile) con Google bloccato e dati di prova.
+- `npx tsc --noEmit` ed eslint puliti; **`npm run build` riuscita** (compilazione, TypeScript e tutta la catena `verifica:livello1`, oltre 4.300 controlli in totale); test automatici
+  `scripts/verifica-demo-tracciamento-omnia-ai.ts` (circa 300 controlli: modulo, attribuzione, consensi e firme, abbinamento e calendario, conversioni, salvataggio con idempotenza, limiti e
+  guasti, sincronizzazione con annullamenti/rifiuti/spostamenti/interruzioni, blocco, GA4, Ads, conservazione, codice, guida) e `scripts/verifica-console-demo.ts` (sezione della console);
+  entrambi nella catena `verifica:livello1`, che si esegue a ogni build. Il database finto (`scripts/demo-finto-supabase.ts`) imita i vincoli della migrazione (indici unici, chiavi esterne con
+  cascata, controlli sugli stati, divieto di modificare i consensi).
+- **Prove di mutazione**: 258 difetti introdotti uno alla volta nel codice (consensi, firme, abbinamento, annullamenti, blocco, limiti, GA4, Ads, migrazione, modulo, console), controllando che un
+  test fallisca. 256 scoperti. I 6 sopravvissuti alla prima passata (tra cui: avviso all'ufficio mancante nell'errore recuperabile, calendario aperto anche con un errore, un invio ripetuto
+  contato contro il limite) hanno portato a test nuovi e ora sono scoperti. Restano **2 difetti non scopribili perché il codice ha una difesa doppia** (il clic non si invia senza il cookie
+  pubblicitario anche se lo stato Ads già lo vieta; il tetto dei tentativi è nel filtro di lettura e nel ciclo: toglierne uno solo non cambia il comportamento; toglierli entrambi viene scoperto).
+- **Prova nel browser vero** (server locale, invio email disattivato, Google non caricato, database reale intatto): a sistema attivo con le tabelle assenti il modulo mostra l'errore recuperabile,
+  chiude la scheda e **non apre il calendario**; il secondo tentativo riusa la stessa chiave di idempotenza; con la versione dei testi cambiata mostra «Abbiamo aggiornato questa pagina» e il
+  pulsante «Ricarica la pagina»; a sistema spento (come prima) apre il calendario con `opener` nullo e mostra la conferma. Senza consenso ai cookie nel modulo non partono attribuzione né
+  identificativi di Analytics. Nei log del server nessun dato personale (solo, come prima, il titolo dell'email quando manca la chiave di Resend in locale). **Non provata nel browser** la pagina
+  della console (richiede l'accesso admin con link magico): è coperta dai test sul database finto e da un controllo statico sul codice.
 - Regressioni: non toccati banner cookie e tracciamento Analytics esistenti, pagamenti Stripe, abbonamenti, autenticazione, generazione delle offerte, `proxy.ts`, `zone.ts`
-  (un test lo controlla).
+  (un test lo controlla); il lavoro non salvato sul piano di lavoro Excel nella cartella principale non è stato toccato.
 
 ## 13. Problemi ancora aperti
 
