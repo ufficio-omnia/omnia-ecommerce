@@ -151,7 +151,7 @@ async function main() {
   }
   atteso("ogni azione che accede, registra o rimanda la password con il client pubblico verifica l'anti-bot PRIMA di chiamare Supabase", scoperte.length === 0 && protette === 5, `protette ${protette}, scoperte: ${scoperte.join(", ")}`);
   const demo = leggi("src/app/actions/omnia-ai-demo.ts");
-  atteso("la richiesta demo verifica l'anti-bot dopo i controlli sui campi e PRIMA di mandare l'email", primaDi(demo, "Inserisci un indirizzo email valido", "await verificaFormUmano(formData)") && primaDi(demo, "await verificaFormUmano(formData)", "await sendEmail(") && /if \(!verifica\.ok\) return \{ error: verifica\.errore \};/.test(demo));
+  atteso("la richiesta demo verifica l'anti-bot dopo i controlli sui campi e PRIMA di salvare il lead e di mandare l'email", primaDi(demo, "validaModuloDemo(grezzo)", "await verificaFormUmano(formData)") && primaDi(demo, "await verificaFormUmano(formData)", "await registraLead(") && primaDi(demo, "await verificaFormUmano(formData)", "await avvisaUfficio(") && /if \(!verifica\.ok\) return \{ ok: false, errore: verifica\.errore \};/.test(demo));
   for (const [file, funzione] of [["src/app/actions/auth.ts", "registerWithEmail"], ["src/app/actions/auth.ts", "loginWithPassword"], ["src/app/actions/auth.ts", "requestPasswordReset"], ["src/app/actions/omnia-ai-auth.ts", "loginOmniaAi"], ["src/app/actions/omnia-ai-auth.ts", "registerOmniaAi"]] as const) {
     const sorgente = leggi(file);
     const pezzo = sorgente.slice(sorgente.indexOf(`export async function ${funzione}`)).split(/\nexport async function /)[0];
@@ -169,7 +169,7 @@ async function main() {
   ];
   for (const [file, tema] of moduli) {
     const s = leggi(file);
-    atteso(`${file.replace("src/app/", "").replace("src/", "")}: ha il riquadro anti-bot dentro il modulo, riparte dopo ogni invio, prima del pulsante`, /import TurnstileCampo from "@\/components\/turnstile-campo";/.test(s) && new RegExp(`<TurnstileCampo resetKey=\\{state\\} tema="${tema}" />`).test(s) && primaDi(s, "<TurnstileCampo", 'type="submit"') && primaDi(s, "<form", "<TurnstileCampo"));
+    atteso(`${file.replace("src/app/", "").replace("src/", "")}: ha il riquadro anti-bot dentro il modulo, riparte dopo ogni invio, prima del pulsante`, /import TurnstileCampo from "@\/components\/turnstile-campo";/.test(s) && new RegExp(`<TurnstileCampo resetKey=\\{${file.endsWith("omnia-ai/demo-form.tsx") ? "chiaveVerifica" : "state"}\\} tema="${tema}" />`).test(s) && primaDi(s, "<TurnstileCampo", 'type="submit"') && primaDi(s, "<form", "<TurnstileCampo"));
   }
 
   console.log("--- Riquadro nel browser ---");
