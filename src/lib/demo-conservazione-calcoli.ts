@@ -1,8 +1,10 @@
 // Conservazione dei dati delle richieste di demo (regole PURE; le applica il cron «omnia-ai-demo-purge»):
-//   - lead «pending» (non hanno mai prenotato): 90 giorni dall'invio del modulo;
-//   - lead confermati o cancellati: 24 mesi;
-//   - casi del calendario da verificare: 12 mesi se aperti, 6 mesi se risolti.
-// Lo stesso schema è scritto nel commento della migrazione 0098 e nella guida.
+//   - richieste «pending» o «superseded» (nessuna prenotazione): 90 giorni dall'invio del modulo;
+//   - richieste confermate o cancellate: 24 mesi;
+//   - casi del calendario da verificare: 12 mesi se aperti, 6 mesi se risolti;
+//   - un contatto (la persona) senza più nessuna richiesta si cancella.
+// Prenotazioni e consensi seguono la richiesta (ON DELETE CASCADE). Lo stesso schema è scritto nel commento della migrazione 0098 e
+// nella guida.
 
 export const GIORNI_CONSERVAZIONE_PENDING = 90;
 export const MESI_CONSERVAZIONE_LEAD = 24;
@@ -30,4 +32,10 @@ export function limitiConservazione(adesso: Date): LimitiConservazione {
     casiApertiPrimaDi: menoMesi(adesso, MESI_CONSERVAZIONE_CASI_APERTI).toISOString(),
     casiRisoltiPrimaDi: menoMesi(adesso, MESI_CONSERVAZIONE_CASI_RISOLTI).toISOString(),
   };
+}
+
+// Tra i contatti candidati, quelli che non hanno più nessuna richiesta (e quindi si possono cancellare).
+export function contattiOrfani(candidati: string[], contattiConRichieste: string[]): string[] {
+  const conRichieste = new Set(contattiConRichieste);
+  return candidati.filter((id) => !conRichieste.has(id));
 }

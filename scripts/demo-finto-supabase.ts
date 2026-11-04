@@ -2,6 +2,10 @@
 // dal tracciamento della demo (select / insert / update / upsert / delete con eq, neq, in, is, not, lt, lte, gt, gte, limit, count,
 // maybeSingle) e un «fetch» finto che registra le chiamate. Serve a provare, senza rete e senza toccare il database vero, che il
 // salvataggio, la sincronizzazione del calendario, gli invii a GA4 e a Google Ads e la conservazione facciano ciò che devono.
+//
+// Imita anche i vincoli della migrazione 0098 che contano per la logica: indici unici (contatto per email, richiesta per chiave di
+// idempotenza, prenotazione per evento, caso per evento), chiavi esterne con cancellazione a cascata, controlli sugli stati, il
+// divieto di modificare il registro dei consensi (UPDATE) e la riga unica dello stato di sincronizzazione.
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -12,6 +16,7 @@ type Risultato = { data: unknown; error: Errore; count: number | null };
 type IndiceUnico = { tabella: string; colonne: string[]; dove?: (r: Riga) => boolean };
 
 const PREDEFINITI: Record<string, (ora: string) => Riga> = {
+  demo_contatti: (ora) => ({ id: randomUUID(), created_at: ora, updated_at: ora, phone: null, ultima_richiesta_il: ora }),
   demo_leads: (ora) => ({
     id: randomUUID(),
     created_at: ora,
@@ -20,29 +25,71 @@ const PREDEFINITI: Record<string, (ora: string) => Riga> = {
     gclid: null, gbraid: null, wbraid: null, utm_source: null, utm_medium: null, utm_campaign: null, utm_content: null, utm_term: null,
     landing_path: null, ga_client_id: null, ga_session_id: null, attribution_consent: false,
     ads_measurement_consent: false, ads_measurement_consent_at: null, ip_hash: null,
-    booking_status: "pending", calendar_event_id: null, calendar_id: null, booked_at: null, booking_starts_at: null, booking_match_note: null,
+    booking_status: "pending", superseded_by: null, prima_prenotazione_il: null,
     ga4_sent_at: null, ga4_attempts: 0,
     ads_import_status: "not_ready", ads_transaction_id: null, ads_request_id: null, ads_sent_at: null, ads_attempts: 0, ads_next_attempt_at: null, ads_last_error: null,
   }),
+  demo_prenotazioni: (ora) => ({ id: randomUUID(), created_at: ora, updated_at: ora, stato: "confirmed", starts_at: null, starts_at_originale: null, riprogrammata_il: null, cancelled_at: null, match_note: null }),
+  demo_consensi: (ora) => ({ id: randomUUID(), registrato_il: ora, dichiarato_dal_browser: false, ip_hash: null, firma: null }),
   demo_calendar_casi: (ora) => ({ id: randomUUID(), created_at: ora, risolto: false, attendee_email_norm: null, event_created_at: null, event_starts_at: null, note: null }),
+  demo_sync_stato: () => ({ sync_token: null, last_run_at: null, last_success_at: null, last_error: null, lock_until: null }),
 };
 
 const INDICI_UNICI: IndiceUnico[] = [
-  { tabella: "demo_leads", colonne: ["calendar_event_id"], dove: (r) => r.calendar_event_id != null },
-  { tabella: "demo_leads", colonne: ["email_norm"], dove: (r) => r.booking_status === "pending" },
+  { tabella: "demo_contatti", colonne: ["email_norm"] },
+  { tabella: "demo_leads", colonne: ["idempotency_key"] },
+  { tabella: "demo_prenotazioni", colonne: ["calendar_id", "calendar_event_id"] },
   { tabella: "demo_calendar_casi", colonne: ["calendar_event_id"] },
+  { tabella: "demo_sync_stato", colonne: ["id"] },
 ];
+
+// chiave esterna: la colonna `colonna` di `tabella` punta all'id di `verso`; «cascata» = si cancella con la riga a cui punta,
+// «azzera» = diventa null
+const CHIAVI_ESTERNE: { tabella: string; colonna: string; verso: string; alla: "cascata" | "azzera" }[] = [
+  { tabella: "demo_leads", colonna: "contatto_id", verso: "demo_contatti", alla: "cascata" },
+  { tabella: "demo_prenotazioni", colonna: "lead_id", verso: "demo_leads", alla: "cascata" },
+  { tabella: "demo_consensi", colonna: "lead_id", verso: "demo_leads", alla: "cascata" },
+  { tabella: "demo_leads", colonna: "superseded_by", verso: "demo_leads", alla: "azzera" },
+];
+
+const STATI_RICHIESTA = ["pending", "confirmed", "cancelled", "superseded"];
+const STATI_ADS = ["not_ready", "ready", "validated", "sent", "accepted", "failed", "skipped_no_consent", "skipped_no_identifier", "skipped_cancelled"];
+
+// controlli (CHECK) della migrazione: restituiscono il motivo della violazione, o null
+const CONTROLLI: Record<string, (r: Riga) => string | null> = {
+  demo_leads: (r) => {
+    if (!STATI_RICHIESTA.includes(r.booking_status as string)) return "booking_status";
+    if (!STATI_ADS.includes(r.ads_import_status as string)) return "ads_import_status";
+    if (r.booking_status === "confirmed" && r.prima_prenotazione_il == null) return "demo_leads_confermata_ha_data";
+    const chiave = r.idempotency_key;
+    if (typeof chiave !== "string" || chiave.length < 16 || chiave.length > 80) return "idempotency_key";
+    return null;
+  },
+  demo_prenotazioni: (r) => (["confirmed", "cancelled"].includes(r.stato as string) ? null : "stato"),
+  demo_consensi: (r) => {
+    if (!["informativa_privacy", "misurazione_pubblicitaria", "cookie_pubblicitari"].includes(r.tipo as string)) return "tipo";
+    if (!["granted", "denied"].includes(r.valore as string)) return "valore";
+    if (typeof r.testo_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(r.testo_sha256)) return "testo_sha256";
+    if (r.firma != null && !/^[0-9a-f]{64}$/.test(String(r.firma))) return "firma";
+    return null;
+  },
+};
 
 export class FintoDatabase {
   tabelle: Record<string, Riga[]> = {};
   // errore da restituire per OGNI operazione su una tabella (per provare «tabella non creata» o «database fuori uso»)
   errori: Record<string, { code: string; message: string }> = {};
+  // guasto mirato: riceve tabella, tipo di operazione e dati; se restituisce un errore l'operazione fallisce (per provare «il secondo
+  // salvataggio non riesce» e simili)
+  guasto: ((tabella: string, tipo: string, dati: Riga | Riga[] | null) => Errore) | null = null;
   operazioni: { tabella: string; tipo: string }[] = [];
   // l'ora che il «database» assegna alle righe nuove (created_at): nei test si imposta alla data di prova
   ora: () => string = () => new Date().toISOString();
 
   constructor(iniziale: Record<string, Riga[]> = {}) {
     this.tabelle = Object.fromEntries(Object.entries(iniziale).map(([k, v]) => [k, v.map((r) => ({ ...r }))]));
+    // la migrazione inserisce la riga unica dello stato di sincronizzazione
+    if (!this.tabelle.demo_sync_stato) this.tabelle.demo_sync_stato = [{ id: 1, ...PREDEFINITI.demo_sync_stato("") }];
   }
   da(tabella: string): Riga[] {
     return (this.tabelle[tabella] ??= []);
@@ -60,18 +107,34 @@ export class FintoDatabase {
       return this.da(tabella).some((altra) => altra !== escludi && (!indice.dove || indice.dove(altra)) && indice.colonne.every((c) => altra[c] === riga[c]));
     });
   }
+  // chiave esterna violata: la colonna punta a una riga che non esiste
+  violaChiaveEsterna(tabella: string, riga: Riga): boolean {
+    return CHIAVI_ESTERNE.filter((f) => f.tabella === tabella).some((f) => riga[f.colonna] != null && !this.da(f.verso).some((r) => r.id === riga[f.colonna]));
+  }
+  // cancella le righe indicate e ciò che dipende da loro (cascata) o le azzera
+  cancella(tabella: string, daTogliere: Riga[]): void {
+    if (daTogliere.length === 0) return;
+    const ids = new Set(daTogliere.map((r) => r.id));
+    this.tabelle[tabella] = this.da(tabella).filter((r) => !daTogliere.includes(r));
+    for (const f of CHIAVI_ESTERNE.filter((x) => x.verso === tabella)) {
+      const figli = this.da(f.tabella).filter((r) => ids.has(r[f.colonna]));
+      if (f.alla === "cascata") this.cancella(f.tabella, figli);
+      else for (const r of figli) r[f.colonna] = null;
+    }
+  }
 }
 
 class Interrogazione implements PromiseLike<Risultato> {
   private filtri: ((r: Riga) => boolean)[] = [];
   private tipo: "select" | "insert" | "update" | "delete" | "upsert" = "select";
-  private dati: Riga | null = null;
+  private dati: Riga | Riga[] | null = null;
   private restituisce = false;
   private conteggio = false;
   private soloConteggio = false;
   private limite: number | null = null;
   private singolo = false;
   private suColonna: string | null = null;
+  private ordine: { colonna: string; crescente: boolean }[] = [];
 
   constructor(private db: FintoDatabase, private tabella: string) {}
 
@@ -82,7 +145,7 @@ class Interrogazione implements PromiseLike<Risultato> {
     } else this.restituisce = true;
     return this;
   }
-  insert(dati: Riga) { this.tipo = "insert"; this.dati = dati; return this; }
+  insert(dati: Riga | Riga[]) { this.tipo = "insert"; this.dati = dati; return this; }
   update(dati: Riga) { this.tipo = "update"; this.dati = dati; return this; }
   upsert(dati: Riga, opzioni?: { onConflict?: string }) { this.tipo = "upsert"; this.dati = dati; this.suColonna = opzioni?.onConflict ?? null; return this; }
   delete(opzioni?: { count?: string }) { this.tipo = "delete"; this.conteggio = opzioni?.count === "exact"; return this; }
@@ -99,17 +162,42 @@ class Interrogazione implements PromiseLike<Risultato> {
   gt(c: string, v: unknown) { this.filtri.push((r) => r[c] != null && (r[c] as string | number) > (v as string | number)); return this; }
   gte(c: string, v: unknown) { this.filtri.push((r) => r[c] != null && (r[c] as string | number) >= (v as string | number)); return this; }
   limit(n: number) { this.limite = n; return this; }
+  order(colonna: string, opzioni?: { ascending?: boolean }) { this.ordine.push({ colonna, crescente: opzioni?.ascending !== false }); return this; }
+  returns<T = unknown>(): this & { __tipo?: T } { return this; }
   maybeSingle<T = unknown>(): PromiseLike<{ data: T | null; error: Errore; count: number | null }> {
     this.singolo = true;
     return this as unknown as PromiseLike<{ data: T | null; error: Errore; count: number | null }>;
+  }
+
+  private errorePerRiga(nuova: Riga): Errore {
+    const controllo = CONTROLLI[this.tabella]?.(nuova);
+    if (controllo) return { code: "23514", message: `check violation: ${controllo}` };
+    if (this.db.violaChiaveEsterna(this.tabella, nuova)) return { code: "23503", message: "foreign key violation" };
+    return null;
   }
 
   private esegui(): Risultato {
     this.db.operazioni.push({ tabella: this.tabella, tipo: this.tipo });
     const errore = this.db.errori[this.tabella];
     if (errore) return { data: null, error: errore, count: null };
+    const guasto = this.db.guasto?.(this.tabella, this.tipo, this.dati);
+    if (guasto) return { data: null, error: guasto, count: null };
     const righe = this.db.da(this.tabella);
-    const corrispondenti = () => righe.filter((r) => this.filtri.every((f) => f(r)));
+    const corrispondenti = () => {
+      const trovate = righe.filter((r) => this.filtri.every((f) => f(r)));
+      if (this.ordine.length === 0) return trovate;
+      return [...trovate].sort((a, b) => {
+        for (const o of this.ordine) {
+          const x = a[o.colonna] as string | number | null;
+          const y = b[o.colonna] as string | number | null;
+          if (x === y) continue;
+          if (x == null) return o.crescente ? 1 : -1;
+          if (y == null) return o.crescente ? -1 : 1;
+          return (x < y ? -1 : 1) * (o.crescente ? 1 : -1);
+        }
+        return 0;
+      });
+    };
     const uscita = (insieme: Riga[]): Risultato => {
       const limitate = this.limite === null ? insieme : insieme.slice(0, this.limite);
       return { data: this.singolo ? (limitate[0] ? { ...limitate[0] } : null) : limitate.map((r) => ({ ...r })), error: null, count: this.conteggio ? insieme.length : null };
@@ -121,15 +209,27 @@ class Interrogazione implements PromiseLike<Risultato> {
       return uscita(trovate);
     }
     if (this.tipo === "insert") {
-      const nuova = { ...(PREDEFINITI[this.tabella]?.(this.db.ora()) ?? {}), ...(this.dati as Riga) };
-      if (this.db.violaUnicita(this.tabella, nuova)) return { data: null, error: { code: "23505", message: "duplicate key" }, count: null };
-      righe.push(nuova);
-      return this.restituisce ? uscita([nuova]) : { data: null, error: null, count: null };
+      const daInserire = (Array.isArray(this.dati) ? this.dati : [this.dati as Riga]).map((d) => ({ ...(PREDEFINITI[this.tabella]?.(this.db.ora()) ?? {}), ...d }));
+      // tutto o niente: si controlla ogni riga (anche rispetto a quelle inserite prima nello stesso comando)
+      const inserite: Riga[] = [];
+      for (const nuova of daInserire) {
+        const e = this.errorePerRiga(nuova);
+        if (e) return { data: null, error: e, count: null };
+        if (this.db.violaUnicita(this.tabella, nuova) || inserite.some((i) => INDICI_UNICI.filter((x) => x.tabella === this.tabella).some((x) => x.colonne.every((c) => i[c] === nuova[c])))) {
+          return { data: null, error: { code: "23505", message: "duplicate key" }, count: null };
+        }
+        inserite.push(nuova);
+      }
+      righe.push(...inserite);
+      return this.restituisce ? uscita(inserite) : { data: null, error: null, count: null };
     }
     if (this.tipo === "update") {
+      if (this.tabella === "demo_consensi") return { data: null, error: { code: "P0001", message: "demo_consensi si aggiunge soltanto" }, count: null };
       const trovate = corrispondenti();
       for (const r of trovate) {
         const aggiornata = { ...r, ...(this.dati as Riga) };
+        const e = this.errorePerRiga(aggiornata);
+        if (e) return { data: null, error: e, count: null };
         if (this.db.violaUnicita(this.tabella, aggiornata, r)) return { data: null, error: { code: "23505", message: "duplicate key" }, count: null };
         Object.assign(r, this.dati);
       }
@@ -144,7 +244,7 @@ class Interrogazione implements PromiseLike<Risultato> {
     }
     // delete
     const daTogliere = corrispondenti();
-    this.db.tabelle[this.tabella] = righe.filter((r) => !daTogliere.includes(r));
+    this.db.cancella(this.tabella, daTogliere);
     return { data: null, error: null, count: this.conteggio ? daTogliere.length : null };
   }
 

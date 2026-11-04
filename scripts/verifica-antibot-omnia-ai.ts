@@ -151,7 +151,7 @@ async function main() {
   }
   atteso("ogni azione che accede, registra o rimanda la password con il client pubblico verifica l'anti-bot PRIMA di chiamare Supabase", scoperte.length === 0 && protette === 5, `protette ${protette}, scoperte: ${scoperte.join(", ")}`);
   const demo = leggi("src/app/actions/omnia-ai-demo.ts");
-  atteso("la richiesta demo verifica l'anti-bot dopo i controlli sui campi e PRIMA di salvare il lead e di mandare l'email", primaDi(demo, "validaModuloDemo(grezzo)", "await verificaFormUmano(formData)") && primaDi(demo, "await verificaFormUmano(formData)", "await registraLead(") && primaDi(demo, "await verificaFormUmano(formData)", "await sendEmail(") && /if \(!verifica\.ok\) return \{ ok: false, errore: verifica\.errore \};/.test(demo));
+  atteso("la richiesta demo verifica l'anti-bot dopo i controlli sui campi e PRIMA di salvare il lead e di mandare l'email", primaDi(demo, "validaModuloDemo(grezzo)", "await verificaFormUmano(formData)") && primaDi(demo, "await verificaFormUmano(formData)", "await registraLead(") && primaDi(demo, "await verificaFormUmano(formData)", "await avvisaUfficio(") && /if \(!verifica\.ok\) return \{ ok: false, errore: verifica\.errore \};/.test(demo));
   for (const [file, funzione] of [["src/app/actions/auth.ts", "registerWithEmail"], ["src/app/actions/auth.ts", "loginWithPassword"], ["src/app/actions/auth.ts", "requestPasswordReset"], ["src/app/actions/omnia-ai-auth.ts", "loginOmniaAi"], ["src/app/actions/omnia-ai-auth.ts", "registerOmniaAi"]] as const) {
     const sorgente = leggi(file);
     const pezzo = sorgente.slice(sorgente.indexOf(`export async function ${funzione}`)).split(/\nexport async function /)[0];

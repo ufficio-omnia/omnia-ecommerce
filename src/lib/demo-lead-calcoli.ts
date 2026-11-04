@@ -23,6 +23,34 @@ export const CHIAVE_CONSENSO_COOKIE = "omnia-ai-cookie-consent";
 export const CHIAVE_ATTRIBUZIONE = "omnia-ai-attribuzione";
 export const GIORNI_VALIDITA_ATTRIBUZIONE = 90;
 export const NOME_CAMPO_TRAPPOLA = "sito_web";
+export const NOME_CAMPO_CHIAVE = "idempotency_key";
+export const NOME_CAMPO_VERSIONE_CONSENSI = "consensi_versione";
+
+// Chiave di idempotenza di UN invio del modulo (la sceglie il browser, è un UUID): lo stesso invio ripetuto (doppio clic, nuovo tentativo
+// dopo un errore) non crea due richieste. Solo lettere, cifre e trattini, da 16 a 80 caratteri.
+export function chiaveIdempotenzaValida(valore: unknown): string | null {
+  if (typeof valore !== "string") return null;
+  const v = valore.trim();
+  return /^[A-Za-z0-9-]{16,80}$/.test(v) ? v : null;
+}
+
+// ── Cosa fare dopo il salvataggio ────────────────────────────────────────────────────────────────────────────────────────
+
+export type EsitoSalvataggio = "creato" | "gia_registrato" | "troppe_richieste" | "non_salvato";
+export type DecisioneDopoSalvataggio = "prosegui" | "errore_recuperabile" | "troppe_richieste";
+
+// Se la richiesta non si è salvata: PRIMA dell'attivazione del sistema (DEMO_LEADS_ATTIVO diverso da «1») il modulo funziona come
+// sempre, la richiesta arriva per email e il calendario si apre; DOPO l'attivazione NON si prosegue in silenzio: il visitatore vede
+// un errore da cui può riprovare e il calendario non si apre (una prenotazione senza richiesta salvata non sarebbe mai misurabile).
+export function decisioneDopoSalvataggio(esito: EsitoSalvataggio, sistemaAttivo: boolean): DecisioneDopoSalvataggio {
+  if (esito === "troppe_richieste") return "troppe_richieste";
+  if (esito === "non_salvato") return sistemaAttivo ? "errore_recuperabile" : "prosegui";
+  return "prosegui";
+}
+
+export const TESTO_ERRORE_RECUPERABILE =
+  "Non siamo riusciti a registrare la tua richiesta, per questo non abbiamo aperto il calendario. I dati che hai scritto sono ancora qui: premi di nuovo il pulsante tra un istante. Se il problema continua scrivici a info@omniaitalia.com e ti ricontattiamo noi.";
+export const TESTO_ERRORE_PAGINA_VECCHIA = "Abbiamo aggiornato questa pagina mentre la compilavi. Ricaricala e invia di nuovo il modulo.";
 
 // ── Modulo ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 

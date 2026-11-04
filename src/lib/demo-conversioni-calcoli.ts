@@ -1,33 +1,17 @@
 import { emailPerGoogle } from "@/lib/demo-lead-calcoli";
+import type { ConsensiVerificati } from "@/lib/demo-consensi-calcoli";
 
 // Conversioni della DEMO PRENOTATA (GA4 e Google Ads): regole PURE (nessuna rete, nessun database, nessuna chiave) per decidere se
 // e cosa inviare. L'invio vero sta in src/lib/demo-ga4.ts e src/lib/demo-ads-data-manager.ts; i test in
 // scripts/verifica-demo-tracciamento-omnia-ai.ts.
 //
-// Una conversione nasce SOLO da una prenotazione confermata sul calendario e abbinata al lead con certezza. La sola visita, il clic,
-// l'apertura del calendario e l'invio del modulo non sono mai conversioni.
+// Una conversione nasce SOLO da una prenotazione confermata sul calendario e abbinata con certezza alla richiesta. La sola visita, il
+// clic, l'apertura del calendario e l'invio del modulo non sono mai conversioni. UNA conversione per RICHIESTA (demo_leads.id): se la
+// stessa richiesta ha più prenotazioni (annullata e rifatta, spostata) l'identificativo di transazione è lo stesso e Google tiene il
+// primo evento. Il consenso si legge dal REGISTRO verificabile (demo_consensi), non dalle colonne riassuntive.
 //
 // Documentazione di riferimento (letta il 04/11/2026): Google Data Manager API (events:ingest, requestStatus:retrieve) e GA4
 // Measurement Protocol (eventi retrodatabili fino a 72 ore).
-
-export type LeadPerConversione = {
-  id: string;
-  email: string;
-  booking_status: "pending" | "confirmed" | "cancelled";
-  booked_at: string | null;
-  created_at: string;
-  sector: string;
-  gclid: string | null;
-  gbraid: string | null;
-  wbraid: string | null;
-  attribution_consent: boolean;
-  ads_measurement_consent: boolean;
-  ga_client_id: string | null;
-  ga_session_id: string | null;
-  ga4_sent_at: string | null;
-  ads_import_status: StatoAds;
-  ads_attempts: number;
-};
 
 export type StatoAds =
   | "not_ready"
@@ -40,6 +24,24 @@ export type StatoAds =
   | "skipped_no_identifier"
   | "skipped_cancelled";
 
+export type LeadPerConversione = {
+  id: string; // identificativo della RICHIESTA (non della persona né della prenotazione)
+  email: string;
+  booking_status: "pending" | "confirmed" | "cancelled" | "superseded";
+  // quando è stata fatta la PRIMA prenotazione confermata: è l'ora della conversione (si scrive una volta sola)
+  prima_prenotazione_il: string | null;
+  created_at: string;
+  sector: string;
+  gclid: string | null;
+  gbraid: string | null;
+  wbraid: string | null;
+  ga_client_id: string | null;
+  ga_session_id: string | null;
+  ga4_sent_at: string | null;
+  ads_import_status: StatoAds;
+  ads_attempts: number;
+};
+
 export const GIORNI_MASSIMI_CLIC = 90;
 
 export function identificativoClic(lead: Pick<LeadPerConversione, "gclid" | "gbraid" | "wbraid">): { campo: "gclid" | "gbraid" | "wbraid"; valore: string } | null {
@@ -49,17 +51,18 @@ export function identificativoClic(lead: Pick<LeadPerConversione, "gclid" | "gbr
   return null;
 }
 
-// Lo stato Google Ads di un lead appena CONFERMATO. Serve il consenso ai cookie pubblicitari (data prima del salvataggio
-// dell'attribuzione) e un identificativo di clic; l'email cifrata si aggiunge solo con il consenso facoltativo del modulo. Senza
-// identificativo di clic: niente invio, salvo che sia abilitato l'invio «solo email» (conversioni avanzate per i lead) E il
-// visitatore abbia dato anche il consenso del modulo.
+// Lo stato Google Ads di una richiesta appena CONFERMATA. Serve l'informativa accettata e, per mandare il clic, i cookie pubblicitari
+// accettati; l'email cifrata solo con il consenso facoltativo del modulo. Senza identificativo di clic: niente invio, salvo che sia
+// abilitato l'invio «solo email» (conversioni avanzate per i lead) E ci sia il consenso del modulo.
 export function statoAdsPerConferma(
-  lead: Pick<LeadPerConversione, "gclid" | "gbraid" | "wbraid" | "attribution_consent" | "ads_measurement_consent">,
+  lead: Pick<LeadPerConversione, "gclid" | "gbraid" | "wbraid">,
+  consensi: ConsensiVerificati,
   opzioni: { consentiSoloEmail: boolean },
 ): StatoAds {
-  if (!lead.attribution_consent && !lead.ads_measurement_consent) return "skipped_no_consent";
-  if (identificativoClic(lead)) return lead.attribution_consent ? "ready" : "skipped_no_consent";
-  if (opzioni.consentiSoloEmail && lead.ads_measurement_consent) return "ready";
+  if (!consensi.privacy) return "skipped_no_consent";
+  if (!consensi.cookie && !consensi.misurazione) return "skipped_no_consent";
+  if (identificativoClic(lead)) return consensi.cookie ? "ready" : "skipped_no_consent";
+  if (opzioni.consentiSoloEmail && consensi.misurazione) return "ready";
   return "skipped_no_identifier";
 }
 
@@ -68,8 +71,8 @@ export function statoAdsPerConferma(
 export const NOME_EVENTO_GA4_PRENOTATA = "demo_booking_confirmed";
 export const FINESTRA_RETRODATA_GA4_MS = 72 * 3_600_000;
 
-export function deveInviareGa4(lead: LeadPerConversione): boolean {
-  return lead.booking_status === "confirmed" && !!lead.booked_at && lead.ga4_sent_at === null && lead.attribution_consent && !!lead.ga_client_id;
+export function deveInviareGa4(lead: LeadPerConversione, consensi: ConsensiVerificati): boolean {
+  return lead.booking_status === "confirmed" && !!lead.prima_prenotazione_il && lead.ga4_sent_at === null && consensi.privacy && consensi.cookie && !!lead.ga_client_id;
 }
 
 export type CorpoGa4 = {
@@ -79,24 +82,24 @@ export type CorpoGa4 = {
   events: { name: string; params: Record<string, string | number> }[];
 };
 
-// Un solo evento per lead, senza dati personali (niente email, nome, telefono): il settore e l'identificativo della richiesta.
+// Un solo evento per richiesta, senza dati personali (niente email, nome, telefono): il settore e l'identificativo della richiesta.
 // timestamp_micros = quando è stata fatta la prenotazione, se è dentro le 72 ore che GA4 accetta; altrimenti «adesso».
-export function costruisciCorpoGa4(lead: LeadPerConversione, adessoMs: number): CorpoGa4 | null {
-  if (!deveInviareGa4(lead) || !lead.ga_client_id || !lead.booked_at) return null;
-  const prenotata = Date.parse(lead.booked_at);
+export function costruisciCorpoGa4(lead: LeadPerConversione, adessoMs: number, consensi: ConsensiVerificati): CorpoGa4 | null {
+  if (!deveInviareGa4(lead, consensi) || !lead.ga_client_id || !lead.prima_prenotazione_il) return null;
+  const prenotata = Date.parse(lead.prima_prenotazione_il);
   const dentroFinestra = Number.isFinite(prenotata) && adessoMs - prenotata >= 0 && adessoMs - prenotata <= FINESTRA_RETRODATA_GA4_MS;
   const params: Record<string, string | number> = {
     engagement_time_msec: 1,
     demo_sector: lead.sector.slice(0, 100),
-    transaction_id: `omnia-demo-${lead.id}`,
+    transaction_id: idTransazioneAds(lead.id),
   };
   if (lead.ga_session_id && /^\d+$/.test(lead.ga_session_id)) params.session_id = Number(lead.ga_session_id);
   return {
     client_id: lead.ga_client_id,
     timestamp_micros: (dentroFinestra ? prenotata : adessoMs) * 1000,
     consent: {
-      ad_user_data: lead.attribution_consent ? "GRANTED" : "DENIED",
-      ad_personalization: lead.attribution_consent && lead.ads_measurement_consent ? "GRANTED" : "DENIED",
+      ad_user_data: "GRANTED",
+      ad_personalization: consensi.misurazione ? "GRANTED" : "DENIED",
     },
     events: [{ name: NOME_EVENTO_GA4_PRENOTATA, params }],
   };
@@ -115,6 +118,7 @@ export type ConfigurazioneAds = {
   soloVerifica: boolean; // true = validateOnly: Google controlla la richiesta ma non registra niente
 };
 
+// L'identificativo di transazione della conversione: UNO per richiesta (stabile, mai casuale). Google lo usa per non contare due volte.
 export function idTransazioneAds(leadId: string): string {
   return `omnia-demo-${leadId}`;
 }
@@ -146,33 +150,34 @@ export type RichiestaAds = {
 
 export type MotivoNonInviabile = "non_confermata" | "senza_data" | "senza_identificativo" | "troppo_vecchia" | "senza_consenso";
 
-// Una richiesta con UN evento (un lead per richiesta: l'esito di Google si legge per richiesta, così si sa esattamente quale lead è
-// stato accettato). `hash` calcola lo SHA-256 esadecimale (sta nel file del server: qui non si importa crypto).
+// Una richiesta con UN evento (una richiesta per volta: l'esito di Google si legge per richiesta, così si sa esattamente quale è stata
+// accettata). `hash` calcola lo SHA-256 esadecimale (sta nel file del server: qui non si importa crypto).
 export function costruisciRichiestaAds(
   lead: LeadPerConversione,
   config: ConfigurazioneAds,
   adessoMs: number,
   hash: (testo: string) => string,
   opzioni: { consentiSoloEmail: boolean },
+  consensi: ConsensiVerificati,
 ): { ok: true; richiesta: RichiestaAds } | { ok: false; motivo: MotivoNonInviabile } {
   if (lead.booking_status !== "confirmed") return { ok: false, motivo: "non_confermata" };
-  if (!lead.booked_at || !Number.isFinite(Date.parse(lead.booked_at))) return { ok: false, motivo: "senza_data" };
-  const prenotata = Date.parse(lead.booked_at);
+  if (!lead.prima_prenotazione_il || !Number.isFinite(Date.parse(lead.prima_prenotazione_il))) return { ok: false, motivo: "senza_data" };
+  const prenotata = Date.parse(lead.prima_prenotazione_il);
   if (adessoMs - prenotata > GIORNI_MASSIMI_CLIC * 86_400_000) return { ok: false, motivo: "troppo_vecchia" };
 
-  const stato = statoAdsPerConferma(lead, opzioni);
+  const stato = statoAdsPerConferma(lead, consensi, opzioni);
   if (stato === "skipped_no_consent") return { ok: false, motivo: "senza_consenso" };
   if (stato === "skipped_no_identifier") return { ok: false, motivo: "senza_identificativo" };
 
   const clic = identificativoClic(lead);
-  const conEmail = lead.ads_measurement_consent;
+  const conEmail = consensi.misurazione;
   const evento: RichiestaAds["events"][number] = {
     // RFC 3339 in UTC: l'ora della prenotazione, senza fusi orari locali
     eventTimestamp: new Date(Math.min(prenotata, adessoMs)).toISOString(),
     eventSource: "WEB",
     transactionId: idTransazioneAds(lead.id),
   };
-  if (clic && lead.attribution_consent) evento.adIdentifiers = { [clic.campo]: clic.valore };
+  if (clic && consensi.cookie) evento.adIdentifiers = { [clic.campo]: clic.valore };
   if (conEmail) evento.userData = { userIdentifiers: [{ emailAddress: hash(emailPerGoogle(lead.email)) }] };
 
   return {
@@ -187,8 +192,8 @@ export function costruisciRichiestaAds(
       ],
       encoding: "HEX",
       consent: {
-        adUserData: lead.attribution_consent || conEmail ? "CONSENT_GRANTED" : "CONSENT_DENIED",
-        adPersonalization: lead.attribution_consent && conEmail ? "CONSENT_GRANTED" : "CONSENT_DENIED",
+        adUserData: "CONSENT_GRANTED",
+        adPersonalization: consensi.cookie && conEmail ? "CONSENT_GRANTED" : "CONSENT_DENIED",
       },
       events: [evento],
       validateOnly: config.soloVerifica,
