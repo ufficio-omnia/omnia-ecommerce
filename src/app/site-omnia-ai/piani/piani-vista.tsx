@@ -1,6 +1,5 @@
 import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
-import LinkDemo from "@/components/omnia-ai/link-demo";
 import { PIANI_ORDINE, formatEuroCifra } from "@/lib/omnia-ai-plans";
 import { testoOfferta, type Catalogo as CatalogoTipo } from "@/lib/omnia-ai-catalogo-calcoli";
 import RevisioneBanda from "./revisione-banda";
@@ -52,11 +51,13 @@ export default function PianiVista({ catalogo, condizioniUrl, vendita }: { catal
                     Abbonati
                   </Link>
                 )}
-                <LinkDemo
+                <Link
                   className={`omnia-btn ${!vendita && p.inEvidenza ? "omnia-btn-p" : "omnia-btn-s"}`}
-                  testo="Richiedi la demo"
+                  href="/demo"
                   style={vendita ? { marginTop: 10 } : undefined}
-                />
+                >
+                  Richiedi la demo
+                </Link>
               </div>
             );
           })}
