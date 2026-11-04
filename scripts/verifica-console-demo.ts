@@ -151,6 +151,9 @@ async function main() {
     const dbMancante = new FintoDatabase();
     dbMancante.errori.demo_leads = { code: "42P01", message: "x" };
     atteso("migrazione non eseguita: «tabella_assente» (la pagina lo spiega), non un errore", (await leggiDemo(periodo, dbMancante.comeClient(), {})).stato === "tabella_assente");
+    const dbPrenMancante = new FintoDatabase();
+    dbPrenMancante.errori.demo_prenotazioni = { code: "PGRST205", message: "x" };
+    atteso("anche se manca solo un'altra tabella (es. le prenotazioni) la pagina dice «tabella_assente», non mostra dati a metà", (await leggiDemo(periodo, dbPrenMancante.comeClient(), {})).stato === "tabella_assente");
     const dbGuasto = new FintoDatabase();
     dbGuasto.errori.demo_calendar_casi = { code: "XX000", message: "Mario Rossi boom" };
     const registrati: string[] = [];
