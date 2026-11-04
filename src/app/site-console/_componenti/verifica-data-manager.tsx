@@ -19,13 +19,13 @@ const CONTROLLI: { chiave: keyof Riepilogo; titolo: string; testo: (v: string) =
     chiave: "account",
     titolo: "Account Google Ads",
     testo: (v) =>
-      v === "riconosciuto" ? { tono: "ok", testo: "riconosciuto (un account sbagliato viene rifiutato)" } : v === "non_riconosciuto" ? { tono: "errore", testo: "NON riconosciuto" } : v === "non_distinguibile" ? { tono: "avviso", testo: "non provato: la validazione non lo distingue" } : { tono: "neutro", testo: "non provato" },
+      v === "riconosciuto" ? { tono: "ok", testo: "riconosciuto (un account sbagliato viene rifiutato)" } : v === "non_riconosciuto" ? { tono: "errore", testo: "NON riconosciuto (Google contesta il campo)" } : v === "inconcludente" ? { tono: "avviso", testo: "INCONCLUDENTE: i controlli sbagliati non sono distinguibili con certezza" } : { tono: "neutro", testo: "non provato" },
   },
   {
     chiave: "azione",
     titolo: "Azione di conversione",
     testo: (v) =>
-      v === "riconosciuta" ? { tono: "ok", testo: "riconosciuta (un'azione sbagliata viene rifiutata)" } : v === "non_riconosciuta" ? { tono: "errore", testo: "NON riconosciuta" } : v === "non_distinguibile" ? { tono: "avviso", testo: "non provata: la validazione non la distingue" } : { tono: "neutro", testo: "non provata" },
+      v === "riconosciuta" ? { tono: "ok", testo: "riconosciuta (un'azione sbagliata viene rifiutata)" } : v === "non_riconosciuta" ? { tono: "errore", testo: "NON riconosciuta (Google contesta il campo)" } : v === "inconcludente" ? { tono: "avviso", testo: "INCONCLUDENTE: i controlli sbagliati non sono distinguibili con certezza" } : { tono: "neutro", testo: "non provata" },
   },
   { chiave: "schema", titolo: "Schema della richiesta", testo: (v) => (v === "valido" ? { tono: "ok", testo: "valido" } : v === "non_valido" ? { tono: "errore", testo: "NON valido" } : { tono: "neutro", testo: "non provato" }) },
   { chiave: "conversioniRegistrate", titolo: "Conversioni effettivamente registrate", testo: () => ({ tono: "ok", testo: "nessuna (solo validazione)" }) },
@@ -39,11 +39,16 @@ function esitoProva(p: ProvaVerifica): { tono: Tono; testo: string } {
 export default function VerificaDataManager() {
   const [esito, setEsito] = useState<EsitoVerificaDataManager | null>(null);
   const [inCorso, avvia] = useTransition();
+  // dopo ogni verifica il pulsante resta spento per un minuto (la stessa pausa che impone il server)
+  const [inPausa, setInPausa] = useState(false);
 
   function lancia() {
+    if (inPausa) return;
     setEsito(null);
     avvia(async () => {
       setEsito(await eseguiVerificaDataManager());
+      setInPausa(true);
+      setTimeout(() => setInPausa(false), 60_000);
     });
   }
 
@@ -52,8 +57,8 @@ export default function VerificaDataManager() {
       <p className="cn-nota-inline" style={{ marginTop: 0 }}>
         Manda a Google quattro richieste di <strong>sola validazione</strong> con dati inventati (nessun lead, nessun identificativo di clic vero, nessuna riga nel database): serve a controllare credenziali, account, azione di conversione e formato <strong>senza registrare nessuna conversione</strong>.
       </p>
-      <button type="button" className="cn-btn primario" onClick={lancia} disabled={inCorso}>
-        {inCorso ? "Verifica in corso…" : "Verifica Google Ads (solo validazione)"}
+      <button type="button" className="cn-btn primario" onClick={lancia} disabled={inCorso || inPausa}>
+        {inCorso ? "Verifica in corso…" : inPausa ? "Attendi un minuto prima di ripetere…" : "Verifica Google Ads (solo validazione)"}
       </button>
 
       {esito && !esito.ok && (

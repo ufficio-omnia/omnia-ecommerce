@@ -173,7 +173,7 @@ e ne legge l'esito con `GET https://datamanager.googleapis.com/v1/requestStatus:
 Per controllare Google **prima** di accendere la modalità reale c'è una verifica a parte, che manda a Google **quattro richieste con `validateOnly: true` e dati inventati** (email del dominio `.invalid`,
 identificativo di clic marcato `TEST_`): **non legge né scrive nessun lead né nessuna tabella** e non registra nessuna conversione. Si lancia in due modi, con la stessa funzione (`src/lib/demo-ads-verifica.ts`):
 
-- **Dalla console** (consigliato: i segreti restano su Vercel e non passano mai da nessuna parte): pagina **DEMO e Google Ads** → riquadro **«Verifica Google Ads (solo validazione)»** → pulsante. Solo l'admin; pausa di 20 secondi tra una verifica e l'altra.
+- **Dalla console** (consigliato: i segreti restano su Vercel e non passano mai da nessuna parte): pagina **DEMO e Google Ads** → riquadro **«Verifica Google Ads (solo validazione)»** → pulsante. **Solo l'amministratore** (il controllo è sul server, non solo nella pagina). Protezioni contro le esecuzioni ripetute, **per istanza del server** (un'altra istanza ha i suoi contatori; contare tra istanze richiederebbe una tabella, che per scelta non si usa): una verifica alla volta, **un minuto di pausa** tra una e l'altra (il pulsante resta spento un minuto), **al massimo 10 all'ora**.
 - **Da riga di comando**, con le variabili Google in `.env.local`: `npx tsx --env-file=.env.local scripts/verifica-data-manager.ts`.
 
 Cosa controlla e come si legge l'esito:
@@ -182,14 +182,13 @@ Cosa controlla e come si legge l'esito:
 |---|---|
 | 1. Autenticazione OAuth e ambito | Si chiede il token di accesso col refresh token; si controlla che l'ambito `datamanager` sia nel token. Se fallisce si legge il solo codice di OAuth (es. `invalid_grant` = token scaduto o revocato) e **non parte nessuna richiesta**. |
 | 2. Permessi | La richiesta vera non deve dare 401/403 (`UNAUTHENTICATED` / `PERMISSION_DENIED`). |
-| 3. Account Google Ads | La richiesta vera è accettata **e** il controllo con un account sbagliato è rifiutato. Se anche il controllo viene accettato l'esito è «non distinguibile»: la validazione non controlla l'account e il punto **non è provato**. |
-| 4. Azione di conversione | Come sopra, con un'azione sbagliata. |
+| 3. Account Google Ads | **Riconosciuto** solo se la richiesta vera è accettata **e** il controllo con un account sbagliato è rifiutato in modo **chiaro** (400/403/404 con `INVALID_ARGUMENT`, `PERMISSION_DENIED`, `NOT_FOUND` o `FAILED_PRECONDITION`). **«Non riconosciuto»** solo se è Google stesso a indicare il campo dell'account che non torna. In ogni altro caso — controllo accettato, rete caduta, quota 429, errore del server 5xx, credenziali 401, rifiuto senza indicare il campo — l'esito è **INCONCLUDENTE** e il punto **non è provato**. |
+| 4. Azione di conversione | Come sopra, con un'azione sbagliata: riconosciuta, «non riconosciuta» (se Google indica `productDestinationId`) oppure **INCONCLUDENTE**. |
 | 5. Schema | La richiesta vera è accettata; se Google contesta un campo, si riporta il **percorso del campo** (mai il valore). |
 | 6. Errori e `requestStatus` | Per ogni richiesta: stato HTTP, codice di Google, motivi, campi. Poi si legge una volta il `requestStatus` della richiesta di validazione e lo si riporta com'è (per una sola validazione può non esistere: non è un errore). |
 | 7. Conversioni registrate | Sempre **nessuna**: la funzione che invia **rifiuta** qualunque richiesta senza `validateOnly = true` (anche se in produzione `DEMO_ADS_VALIDATE_ONLY=0`). |
 
-Ci sono anche una richiesta «solo email cifrata» (informativa: dice se Google la accetta, utile solo per `DEMO_ADS_ALLOW_EMAIL_ONLY`) e due **controlli negativi** (azione e account sbagliati) che servono a distinguere
-«Google ha validato davvero» da «la validazione non controlla questo punto».
+Ci sono anche una richiesta «solo email cifrata» (informativa: dice se Google la accetta, utile solo per `DEMO_ADS_ALLOW_EMAIL_ONLY`) e due **controlli negativi** (azione e account sbagliati) che servono **solo** a verificare come si gestiscono le risposte di Google: distinguono «Google ha validato davvero» da «la validazione non controlla questo punto»; se non sono distinguibili con certezza, l'esito è **inconcludente**.
 
 **Validazione riuscita non è attribuzione pubblicitaria.** Una validazione riuscita dice che Google ha accettato credenziali, account, azione e formato; non registra niente e non collega nessuna conversione a una campagna.
 L'attribuzione vera esiste solo con l'invio **reale** di un `gclid` vero arrivato da un annuncio, entro la finestra di conversione: si vedrà in Google Ads → Obiettivi → Conversioni → «OMNIA AI - DEMO prenotata», anche dopo alcune ore.

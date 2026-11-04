@@ -33,8 +33,8 @@ export type StatoRichiestaVerifica = { httpStato: number | null; esito: string; 
 export type Riepilogo = {
   autenticazione: "ok" | "fallita";
   permessi: "ok" | "negati" | "non_verificabile";
-  account: "riconosciuto" | "non_riconosciuto" | "non_distinguibile" | "non_provato";
-  azione: "riconosciuta" | "non_riconosciuta" | "non_distinguibile" | "non_provata";
+  account: "riconosciuto" | "non_riconosciuto" | "inconcludente" | "non_provato";
+  azione: "riconosciuta" | "non_riconosciuta" | "inconcludente" | "non_provata";
   schema: "valido" | "non_valido" | "non_provato";
   // sempre «nessuna»: ogni richiesta della verifica ha validateOnly = true (si rifiuta di inviare altro)
   conversioniRegistrate: "nessuna";
@@ -122,21 +122,28 @@ export function costruisciRiepilogo(oauth: RisultatoVerifica["oauth"], prove: Pr
   if (p1.accettata) schema = "valido";
   else if (classe.altri || (p1.codiceGoogle === "INVALID_ARGUMENT" && !classe.account && !classe.azione && p1.campi.length === 0)) schema = "non_valido";
 
+  // Account e azione: «riconosciuto» solo se la richiesta vera è accettata E il controllo sbagliato è rifiutato CHIARAMENTE; «non
+  // riconosciuto» solo se Google indica esso stesso il campo (percorso) che non torna. In ogni altro caso l'esito è INCONCLUDENTE: mai
+  // una conclusione che non si regge su una risposta chiara di Google.
   let account: Riepilogo["account"] = "non_provato";
-  if (p1.accettata) {
-    if (ctrlAccount?.inviata) account = ctrlAccount.accettata ? "non_distinguibile" : "riconosciuto";
-  } else if (classe.account || (p1.codiceGoogle === "PERMISSION_DENIED" && !classe.azione)) {
-    account = "non_riconosciuto";
-  }
-
   let azione: Riepilogo["azione"] = "non_provata";
   if (p1.accettata) {
-    if (ctrlAzione?.inviata) azione = ctrlAzione.accettata ? "non_distinguibile" : "riconosciuta";
-  } else if (classe.azione) {
-    azione = "non_riconosciuta";
+    if (ctrlAccount?.inviata) account = rifiutoChiaro(ctrlAccount) ? "riconosciuto" : "inconcludente";
+    if (ctrlAzione?.inviata) azione = rifiutoChiaro(ctrlAzione) ? "riconosciuta" : "inconcludente";
+  } else {
+    account = classe.account ? "non_riconosciuto" : "inconcludente";
+    azione = classe.azione ? "non_riconosciuta" : "inconcludente";
   }
 
   return { ...base, permessi, schema, account, azione };
+}
+
+// Un controllo negativo (azione o account sbagliati) dimostra qualcosa SOLO se Google lo rifiuta con un errore di richiesta chiaro: 400,
+// 403 o 404 con un codice che parla di argomenti, permessi o risorsa non trovata. Un rifiuto per rete caduta, quota (429), errore del
+// server (5xx) o credenziali (401), o un controllo ACCETTATO, non distinguono nulla: l'esito è inconcludente.
+const CODICI_RIFIUTO_CHIARO = ["INVALID_ARGUMENT", "PERMISSION_DENIED", "NOT_FOUND", "FAILED_PRECONDITION"];
+export function rifiutoChiaro(p: ProvaVerifica): boolean {
+  return p.inviata && !p.accettata && p.httpStato !== null && [400, 403, 404].includes(p.httpStato) && CODICI_RIFIUTO_CHIARO.includes(p.codiceGoogle);
 }
 
 // Le spiegazioni da mostrare accanto ai numeri: cosa significa questo esito e cosa NON significa.
@@ -147,8 +154,8 @@ export function costruisciNote(ambiente: AmbienteVerifica, prove: ProvaVerifica[
   if (!ambiente.importazioneAccesa) note.push("In questa installazione DEMO_ADS_IMPORT_ENABLED non è «1»: il cron non invia nulla a Google. La verifica è indipendente e funziona lo stesso.");
   if (ambiente.modalitaConfigurata === "reale") note.push("ATTENZIONE: in questa installazione DEMO_ADS_VALIDATE_ONLY=0, cioè l'importazione REALE è accesa. Questa verifica resta comunque in sola validazione; per tornare in sicurezza imposta DEMO_ADS_VALIDATE_ONLY=1 (o toglila) e rilancia il deploy.");
   else note.push("In questa installazione la modalità configurata è «solo verifica» (DEMO_ADS_VALIDATE_ONLY diverso da «0»).");
-  if (riepilogo?.account === "non_distinguibile") note.push("Il controllo con un account sbagliato è stato ACCETTATO da Google: la validazione non controlla l'account, quindi il riconoscimento dell'account NON è provato da questa verifica.");
-  if (riepilogo?.azione === "non_distinguibile") note.push("Il controllo con un'azione di conversione sbagliata è stato ACCETTATO da Google: la validazione non controlla l'azione, quindi il riconoscimento dell'azione NON è provato da questa verifica (si vedrà solo con il primo invio reale).");
+  if (riepilogo?.account === "inconcludente") note.push("Esito INCONCLUDENTE sull'account: il controllo con un account sbagliato non è stato rifiutato in modo chiaro da Google (accettato, oppure fallito per un motivo non legato all'account: rete, quota, errore del server, credenziali). Il riconoscimento dell'account NON è provato da questa verifica.");
+  if (riepilogo?.azione === "inconcludente") note.push("Esito INCONCLUDENTE sull'azione di conversione: il controllo con un'azione sbagliata non è stato rifiutato in modo chiaro da Google (accettato, oppure fallito per un motivo non legato all'azione). Il riconoscimento dell'azione NON è provato da questa verifica (si vedrà solo con il primo invio reale).");
   const email = prove.find((p) => p.id === "email");
   if (email?.inviata) {
     note.push(email.accettata ? "Google accetta anche l'invio con la sola email cifrata (serve solo se accendi DEMO_ADS_ALLOW_EMAIL_ONLY)." : `L'invio con la sola email cifrata è stato rifiutato${email.codiceGoogle ? ` (${email.codiceGoogle})` : ""}: lascia spento DEMO_ADS_ALLOW_EMAIL_ONLY.`);
