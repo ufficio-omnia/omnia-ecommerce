@@ -168,13 +168,44 @@ e ne legge l'esito con `GET https://datamanager.googleapis.com/v1/requestStatus:
 - L'identificativo di transazione **non è una garanzia assoluta di deduplicazione**: per questo, oltre a usarlo, lo stato nel database impedisce di rimandare ciò che è `sent` o `accepted`.
 - Le **conversioni reali restano spente** finché non fai i test autorizzati (sezione 10).
 
+### 8.1 Verifica della Data Manager API in sola validazione (senza registrare conversioni)
+
+Per controllare Google **prima** di accendere la modalità reale c'è una verifica a parte, che manda a Google **quattro richieste con `validateOnly: true` e dati inventati** (email del dominio `.invalid`,
+identificativo di clic marcato `TEST_`): **non legge né scrive nessun lead né nessuna tabella** e non registra nessuna conversione. Si lancia in due modi, con la stessa funzione (`src/lib/demo-ads-verifica.ts`):
+
+- **Dalla console** (consigliato: i segreti restano su Vercel e non passano mai da nessuna parte): pagina **DEMO e Google Ads** → riquadro **«Verifica Google Ads (solo validazione)»** → pulsante. Solo l'admin; pausa di 20 secondi tra una verifica e l'altra.
+- **Da riga di comando**, con le variabili Google in `.env.local`: `npx tsx --env-file=.env.local scripts/verifica-data-manager.ts`.
+
+Cosa controlla e come si legge l'esito:
+
+| Punto | Come si prova |
+|---|---|
+| 1. Autenticazione OAuth e ambito | Si chiede il token di accesso col refresh token; si controlla che l'ambito `datamanager` sia nel token. Se fallisce si legge il solo codice di OAuth (es. `invalid_grant` = token scaduto o revocato) e **non parte nessuna richiesta**. |
+| 2. Permessi | La richiesta vera non deve dare 401/403 (`UNAUTHENTICATED` / `PERMISSION_DENIED`). |
+| 3. Account Google Ads | La richiesta vera è accettata **e** il controllo con un account sbagliato è rifiutato. Se anche il controllo viene accettato l'esito è «non distinguibile»: la validazione non controlla l'account e il punto **non è provato**. |
+| 4. Azione di conversione | Come sopra, con un'azione sbagliata. |
+| 5. Schema | La richiesta vera è accettata; se Google contesta un campo, si riporta il **percorso del campo** (mai il valore). |
+| 6. Errori e `requestStatus` | Per ogni richiesta: stato HTTP, codice di Google, motivi, campi. Poi si legge una volta il `requestStatus` della richiesta di validazione e lo si riporta com'è (per una sola validazione può non esistere: non è un errore). |
+| 7. Conversioni registrate | Sempre **nessuna**: la funzione che invia **rifiuta** qualunque richiesta senza `validateOnly = true` (anche se in produzione `DEMO_ADS_VALIDATE_ONLY=0`). |
+
+Ci sono anche una richiesta «solo email cifrata» (informativa: dice se Google la accetta, utile solo per `DEMO_ADS_ALLOW_EMAIL_ONLY`) e due **controlli negativi** (azione e account sbagliati) che servono a distinguere
+«Google ha validato davvero» da «la validazione non controlla questo punto».
+
+**Validazione riuscita non è attribuzione pubblicitaria.** Una validazione riuscita dice che Google ha accettato credenziali, account, azione e formato; non registra niente e non collega nessuna conversione a una campagna.
+L'attribuzione vera esiste solo con l'invio **reale** di un `gclid` vero arrivato da un annuncio, entro la finestra di conversione: si vedrà in Google Ads → Obiettivi → Conversioni → «OMNIA AI - DEMO prenotata», anche dopo alcune ore.
+Nulla in questa verifica può dimostrarla.
+
+Nel risultato non compaiono mai token, refresh token, client secret, email, identificativi di clic: account e azione sono **mascherati** (ultime tre cifre) e dagli errori di Google si leggono solo codici e percorsi dei campi.
+**Variabili su Vercel**: una variabile nuova o cambiata vale solo dal **deploy successivo**; il riquadro «Sistema» della pagina DEMO e il rapporto della verifica mostrano quello che il deployment in corso ha davvero (importazione accesa/spenta, modalità, configurazione completa, credenziali presenti).
+
 ## 9. Sezione «DEMO e Google Ads» nella console
 
-Voce **«DEMO e Google Ads»** nella barra della console (gruppo «Numeri»), con selettore del periodo. **Sola lettura**: nessun pulsante invia conversioni o modifica dati.
+Voce **«DEMO e Google Ads»** nella barra della console (gruppo «Numeri»), con selettore del periodo. **Sola lettura sui dati**: nessun pulsante invia conversioni o modifica dati; l'unico pulsante è la verifica in sola validazione della sezione 8.1.
 
 - **Tessere**: richieste ricevute (e persone distinte), demo prenotate e tasso di conferma (le richieste `superseded` non contano), in attesa, annullate, casi da verificare, importazioni Ads in errore.
 - **Sistema**: registrazione delle richieste, sincronizzazione del calendario (in funzione / ferma da oltre 30 minuti / con errore), GA4, Google Ads (solo verifica / reale): solo sì/no e modalità, **mai un valore segreto**.
 - **Google Ads e GA4**: conteggio per stato della conversione su tutte le richieste confermate; eventi GA4 inviati, in attesa, non inviabili.
+- **Verifica Google Ads (solo validazione)**: l'unico pulsante della pagina, descritto nella sezione 8.1; non scrive nulla.
 - **Casi da verificare**: motivo, email del partecipante, date, e cosa significa. Si chiudono a mano (sezione 10.6, query utili).
 - **Prenotazioni** del periodo (con spostamenti e annullamenti), **importazioni in errore** (solo il codice di Google), **richieste ricevute**.
 - Prima della migrazione la pagina lo dice (`tabella_assente`) invece di dare un errore.
@@ -332,7 +363,7 @@ Google. Cookie policy: citare il salvataggio locale `omnia-ai-attribuzione` (90 
 
 Creati: `supabase/migrations/0098_demo_leads.sql`; `src/lib/demo-lead-calcoli.ts`, `demo-calendario-calcoli.ts`, `demo-conversioni-calcoli.ts`, `demo-conservazione-calcoli.ts`,
 `demo-consensi-calcoli.ts` (regole pure); `src/lib/demo-hash.ts`, `demo-leads.ts`, `demo-consensi.ts`, `demo-blocco.ts`, `demo-ciclo.ts`, `demo-calendario-sync.ts`, `demo-ga4.ts`,
-`demo-ads-data-manager.ts`, `google-oauth.ts`, `cron-autorizzato.ts`; `src/lib/console/demo-calcoli.ts`, `src/lib/console/demo.ts`; `src/app/site-console/(app)/demo/page.tsx`,
+`demo-ads-data-manager.ts`, `demo-ads-verifica.ts`, `demo-ads-verifica-calcoli.ts`, `google-oauth.ts`, `cron-autorizzato.ts`; `src/lib/console/demo-calcoli.ts`, `src/lib/console/demo.ts`; `src/app/site-console/(app)/demo/page.tsx`,
 `src/app/site-console/_componenti/demo-vista.tsx`; `src/app/api/cron/omnia-ai-demo-sync/route.ts`, `src/app/api/cron/omnia-ai-demo-purge/route.ts`;
 `src/components/omnia-ai/attribuzione-demo.tsx`; test `scripts/verifica-demo-tracciamento-omnia-ai.ts`, `scripts/verifica-console-demo.ts`, `scripts/demo-finto-supabase.ts`; questa guida.
 

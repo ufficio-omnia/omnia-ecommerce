@@ -13,10 +13,12 @@ import {
 import { Badge, Pannello, Tessera } from "./elementi";
 import { formattaDataOra, formattaIntero, formattaPercentuale } from "./formati";
 import SelettorePeriodo from "./selettore-periodo";
+import VerificaDataManager from "./verifica-data-manager";
 
 // Sezione «DEMO e Google Ads»: le richieste arrivate dal modulo, le prenotazioni confermate sul calendario, i casi da verificare, lo
-// stato delle importazioni verso GA4 e Google Ads e gli errori. SOLA LETTURA: non c'è nessun pulsante che invii conversioni o modifichi
-// dati. Riceve dati già letti; nessun valore segreto passa di qui (lo stato delle integrazioni è fatto di «sì/no» e di modalità).
+// stato delle importazioni verso GA4 e Google Ads e gli errori. SOLA LETTURA sui dati: l'unico pulsante è la verifica della Data Manager
+// API in SOLA VALIDAZIONE con dati inventati (non scrive nulla e non registra conversioni). Riceve dati già letti; nessun valore
+// segreto passa di qui (lo stato delle integrazioni è fatto di «sì/no» e di modalità).
 
 const ETICHETTA_STATO: Record<StatoRichiesta, string> = {
   pending: "in attesa di prenotazione",
@@ -164,6 +166,12 @@ export default function DemoVista({ periodo, risultato, adessoMs }: { periodo: P
               GA4: {formattaIntero(d.ga4.inviati)} eventi inviati · {formattaIntero(d.ga4.inAttesa)} in attesa · {formattaIntero(d.ga4.nonInviabili)} non inviabili (senza consenso ai cookie o tentativi esauriti). Su {formattaIntero(d.confermateTotali)} richieste confermate in tutto.
             </p>
           </div>
+        </Pannello>
+      </div>
+
+      <div className="cn-sezione">
+        <Pannello titolo="Verifica Google Ads (solo validazione)">
+          <VerificaDataManager />
         </Pannello>
       </div>
 
