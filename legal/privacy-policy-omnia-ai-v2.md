@@ -29,7 +29,6 @@ OMNIA AI è un servizio in abbonamento che analizza documentazione di gara e ass
 | Dati della richiesta di demo (nome, azienda, email, telefono, settore) e prenotazione sul calendario | Quando compili il modulo di richiesta demo | Organizzare la demo e ricontattarti | Misure precontrattuali su tua richiesta |
 | Dati tecnici di navigazione (log del server, es. indirizzo IP) | Automaticamente | Sicurezza del servizio, prevenzione di abusi | Legittimo interesse |
 | Dati di uso del sito e delle campagne pubblicitarie, raccolti con Google Analytics 4 e Google Ads (vedi sotto) | Solo se premi "Accetta" sul banner | Capire come viene usato il sito e quali annunci portano contatti utili | Consenso |
-| Segnale tecnico senza cookie verso Google Ads (vedi sotto) | Automaticamente, sulle pagine di presentazione, prima della tua scelta e dopo un rifiuto | Rendere riconoscibile e verificabile il servizio di misurazione pubblicitaria e stimare in forma aggregata le conversioni | [Base giuridica da confermare con il legale] |
 
 I dati della carta non transitano mai dai nostri sistemi e non vengono da noi memorizzati: sono trattati direttamente da Stripe.
 
@@ -63,7 +62,7 @@ Per capire come viene usato il sito e quali annunci portano contatti utili usiam
 - **Se rifiuti, o se ignori il banner**: non salviamo nessun cookie di Google e Google Analytics resta spento. Il servizio di Google Ads resta caricato e, quando apri il sito direttamente su una delle pagine di presentazione (Home, Come funziona, Piani, Demo, Contatti, Riservatezza), riceve un segnale tecnico senza cookie: l'orario, l'indirizzo della pagina e di quella di provenienza senza parametri né frammenti (quindi senza identificativi di campagna e senza eventuali dati personali presenti nell'indirizzo), l'indicazione che il consenso è negato e un numero casuale valido solo per quella pagina. Su tutte le altre pagine non parte nessun segnale. Come in ogni richiesta web, Google riceve comunque l'indirizzo IP, il tipo di browser e la lingua. Il dettaglio è nella Cookie policy.
 - **Come cambiare idea**: dal collegamento "Preferenze cookie" nel piè di pagina puoi revocare il consenso in qualsiasi momento. Spegniamo subito Google Analytics e togliamo dal browser i cookie di Google già salvati.
 
-I dati trattati con Google Analytics sono conservati per [periodo impostato nella proprietà Google Analytics: 2 o 14 mesi — da confermare]; i cookie hanno le durate indicate nella Cookie policy.
+I cookie hanno le durate indicate nella Cookie policy.
 
 ## Fornitori che trattano i dati per nostro conto
 
@@ -76,7 +75,7 @@ I dati trattati con Google Analytics sono conservati per [periodo impostato nell
 - **Google** — Google Analytics 4 e Google Ads (misurazione e pubblicità, descritte sopra) e Google Calendar (prenotazione della demo)
 - **Studio commercialista** — adempimenti fiscali
 
-Alcuni fornitori hanno sede negli Stati Uniti: il trasferimento avviene sulla base delle clausole contrattuali standard approvate dalla Commissione Europea e, ove applicabile, dell'adesione al Data Privacy Framework UE-USA. [Garanzie specifiche adottate da Google per i trasferimenti: da confermare con il legale.] Puoi chiederci copia delle garanzie adottate.
+Alcuni fornitori hanno sede negli Stati Uniti: il trasferimento avviene sulla base delle clausole contrattuali standard approvate dalla Commissione Europea e, ove applicabile, dell'adesione al Data Privacy Framework UE-USA. Puoi chiederci copia delle garanzie adottate.
 
 Non vendiamo i tuoi dati e non li cediamo a terzi per finalità di marketing altrui.
 
