@@ -26,6 +26,14 @@ export const DOCUMENTI_MARKDOWN: Record<string, Record<string, DocumentoMarkdown
   "allegato-a": {
     "1": { file: "allegato-a-nomina-responsabile-v1.md", titolo: "Allegato A — Atto di nomina a responsabile del trattamento", tipoDb: "omnia_ai_allegato_a", versioneNelTesto: true },
   },
+  // v2 di Privacy e Cookie policy (Google tag con Consent Mode avanzato). Entrano in vigore con la migrazione 0100, da eseguire subito dopo
+  // il deploy; fino ad allora le pagine /privacy e /cookie-policy mostrano la v1 (vedi le pagine: seguono la versione in legal_documents).
+  "privacy-policy": {
+    "2": { file: "privacy-policy-omnia-ai-v2.md", titolo: "Privacy policy", tipoDb: "omnia_ai_privacy_policy", versioneNelTesto: false },
+  },
+  "cookie-policy": {
+    "2": { file: "cookie-policy-omnia-ai-v2.md", titolo: "Cookie policy", tipoDb: "omnia_ai_cookie_policy", versioneNelTesto: false },
+  },
 };
 
 // Slug dell'indirizzo ↔ tipo nel database, per tutti i documenti di OMNIA AI

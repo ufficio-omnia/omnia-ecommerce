@@ -6,13 +6,20 @@ import { VERSIONE_CONSENSI_DEMO } from "@/lib/demo-lead-calcoli";
 // Il registro si AGGIUNGE soltanto; il consenso valido è l'ultima riga per richiesta e tipo (una revoca è una riga nuova «denied»);
 // ogni riga ha una firma HMAC del server (vedi demo-hash.ts), per accorgersi di una riga alterata.
 
-// Versione della Privacy policy in vigore sul sito quando il consenso è dato (src/components/omnia-ai/legal/privacy-policy-v1.tsx).
-// Quando si pubblica la v2 si cambia QUI (un test confronta con il testo della pagina) e si cambia anche VERSIONE_CONSENSI_DEMO.
-export const VERSIONE_INFORMATIVA_PRIVACY = "1";
+// Versione della Privacy policy in vigore sul sito quando il consenso è dato (legal/privacy-policy-omnia-ai-v2.md, v1 in
+// src/components/omnia-ai/legal/privacy-policy-v1.tsx). La v2 entra in vigore quando si esegue la migrazione 0100 (riga in legal_documents):
+// questa costante va in produzione con lo stesso rilascio, quindi la migrazione si esegue SUBITO dopo il deploy (vedi la guida del Google tag).
+// Cambia solo il valore registrato nei consensi: il testo del modulo (VERSIONE_CONSENSI_DEMO) non è cambiato.
+export const VERSIONE_INFORMATIVA_PRIVACY = "2";
 
-// Versione del banner dei cookie di omnia-ai.it (testo in src/components/omnia-ai/cookie-consent.tsx, che NON si tocca da qui).
-export const VERSIONE_BANNER_COOKIE = "banner-2026-09";
-export const TESTO_BANNER_COOKIE = "Usiamo un cookie tecnico-pubblicitario solo se acconsenti, per capire quali annunci portano contatti utili. Nessun dato viene venduto a terzi.";
+// Versione e testo del banner dei cookie di omnia-ai.it. Il banner mostra ESATTAMENTE questo testo (src/components/omnia-ai/cookie-consent.tsx lo
+// importa da qui: una sola fonte). Il testo contiene una volta sola le parole «Cookie policy», che nel banner diventano il collegamento.
+// Cambiare il testo vuol dire cambiare la versione: la scelta del visitatore si salva con la versione che ha visto, e una scelta fatta con
+// una versione precedente non vale più (il banner si ripropone). «banner-2026-09» era: «Usiamo un cookie tecnico-pubblicitario solo se
+// acconsenti, per capire quali annunci portano contatti utili. Nessun dato viene venduto a terzi.» (i consensi già registrati restano così).
+export const VERSIONE_BANNER_COOKIE = "banner-2026-11";
+export const TESTO_BANNER_COOKIE =
+  "Usiamo Google Analytics e Google Ads per capire quali annunci portano contatti utili. Se accetti, salviamo cookie di misurazione e pubblicitari; non li usiamo per annunci personalizzati. Se rifiuti, non salviamo cookie e Google Analytics resta spento; sulle pagine di presentazione Google Ads riceve comunque un segnale tecnico senza cookie (la pagina visitata, senza parametri dell'indirizzo). Nessun dato viene venduto a terzi. Dettagli nella Cookie policy.";
 
 export const TESTI_MODULO_DEMO = {
   informativaPrima:
