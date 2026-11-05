@@ -15,11 +15,13 @@ import { formattaDataOra, formattaIntero, formattaPercentuale } from "./formati"
 import SelettorePeriodo from "./selettore-periodo";
 import VerificaDataManager from "./verifica-data-manager";
 import DiagnosiCalendario from "./diagnosi-calendario";
+import ProvaGa4Reale from "./prova-ga4-reale";
 
 // Sezione «DEMO e Google Ads»: le richieste arrivate dal modulo, le prenotazioni confermate sul calendario, i casi da verificare, lo
-// stato delle importazioni verso GA4 e Google Ads e gli errori. SOLA LETTURA sui dati: l'unico pulsante è la verifica della Data Manager
-// API in SOLA VALIDAZIONE con dati inventati (non scrive nulla e non registra conversioni). Riceve dati già letti; nessun valore
-// segreto passa di qui (lo stato delle integrazioni è fatto di «sì/no» e di modalità).
+// stato delle importazioni verso GA4 e Google Ads e gli errori. SOLA LETTURA sui dati, con due eccezioni volute: la verifica della Data
+// Manager API in SOLA VALIDAZIONE con dati inventati (non scrive nulla e non registra conversioni) e la «Prova reale GA4», che manda UN
+// evento reale solo dopo una frase digitata (vedi prova-ga4-reale.tsx). Riceve dati già letti; nessun valore segreto passa di qui (lo
+// stato delle integrazioni è fatto di «sì/no» e di modalità).
 
 const ETICHETTA_STATO: Record<StatoRichiesta, string> = {
   pending: "in attesa di prenotazione",
@@ -164,7 +166,8 @@ export default function DemoVista({ periodo, risultato, adessoMs }: { periodo: P
               </tbody>
             </table>
             <p className="cn-nota-inline" style={{ marginTop: 10 }}>
-              GA4: {formattaIntero(d.ga4.inviati)} eventi inviati · {formattaIntero(d.ga4.inAttesa)} in attesa · {formattaIntero(d.ga4.nonInviabili)} non inviabili (senza consenso ai cookie o tentativi esauriti). Su {formattaIntero(d.confermateTotali)} richieste confermate in tutto.
+              GA4: {formattaIntero(d.ga4.inviati)} eventi inviati · {formattaIntero(d.ga4.inAttesa)} in attesa · {formattaIntero(d.ga4.nonInviabili)} non inviabili (senza consenso ai cookie o tentativi esauriti)
+              {d.ga4.riservateProva > 0 ? ` · ${formattaIntero(d.ga4.riservateProva)} riservate alla prova reale (il cron non le riprende, vedi la sezione sotto)` : ""}. Su {formattaIntero(d.confermateTotali)} richieste confermate in tutto.
             </p>
           </div>
         </Pannello>
@@ -173,6 +176,12 @@ export default function DemoVista({ periodo, risultato, adessoMs }: { periodo: P
       <div className="cn-sezione">
         <Pannello titolo="Verifica Google Ads (solo validazione)">
           <VerificaDataManager />
+        </Pannello>
+      </div>
+
+      <div className="cn-sezione">
+        <Pannello titolo="Prova reale GA4 (un solo evento)">
+          <ProvaGa4Reale prova={d.provaGa4} />
         </Pannello>
       </div>
 

@@ -33,6 +33,7 @@ const PREDEFINITI: Record<string, (ora: string) => Riga> = {
   demo_consensi: (ora) => ({ id: randomUUID(), registrato_il: ora, dichiarato_dal_browser: false, ip_hash: null, firma: null }),
   demo_calendar_casi: (ora) => ({ id: randomUUID(), created_at: ora, risolto: false, attendee_email_norm: null, event_created_at: null, event_starts_at: null, note: null }),
   demo_sync_stato: () => ({ sync_token: null, last_run_at: null, last_success_at: null, last_error: null, lock_until: null }),
+  demo_ga4_prove: (ora) => ({ origine: "prova", riservata_il: ora, riservata_da: null, inviata_il: null, esito_codice: null, http_status: null, risolta_il: null, risolta_da: null, aggiornata_il: ora }),
 };
 
 const INDICI_UNICI: IndiceUnico[] = [
@@ -41,6 +42,8 @@ const INDICI_UNICI: IndiceUnico[] = [
   { tabella: "demo_prenotazioni", colonne: ["calendar_id", "calendar_event_id"] },
   { tabella: "demo_calendar_casi", colonne: ["calendar_event_id"] },
   { tabella: "demo_sync_stato", colonne: ["id"] },
+  // migrazione 0099: una sola prova (una sola prenotazione dell'invio) per richiesta
+  { tabella: "demo_ga4_prove", colonne: ["lead_id"] },
 ];
 
 // chiave esterna: la colonna `colonna` di `tabella` punta all'id di `verso`; «cascata» = si cancella con la riga a cui punta,
@@ -73,7 +76,31 @@ const CONTROLLI: Record<string, (r: Riga) => string | null> = {
     if (r.firma != null && !/^[0-9a-f]{64}$/.test(String(r.firma))) return "firma";
     return null;
   },
+  // migrazione 0099: stati, origine, modalità dell'ora, codici d'esito
+  demo_ga4_prove: (r) => {
+    if (!STATI_PROVA.includes(r.stato as string)) return "stato";
+    if (!["prova", "cron"].includes(r.origine as string)) return "origine";
+    if (!["prenotazione", "invio"].includes(r.timestamp_modalita as string)) return "timestamp_modalita";
+    if (r.esito_codice != null && !["http_2xx", "http_4xx", "http_altro", "timeout", "rete"].includes(r.esito_codice as string)) return "esito_codice";
+    if (r.http_status != null && ((r.http_status as number) < 100 || (r.http_status as number) > 599)) return "http_status";
+    return null;
+  },
 };
+
+const STATI_PROVA = ["reserved", "sent_unverified", "uncertain", "rejected", "verified", "not_received"];
+
+// il trigger demo_ga4_prove_regole della migrazione 0099: dati della prenotazione immutabili, stati finali, transizioni ammesse
+function regoleProveGa4(vecchia: Riga, nuova: Riga): string | null {
+  for (const c of ["lead_id", "origine", "transaction_id", "id_misurazione", "timestamp_evento", "timestamp_modalita", "riservata_il", "riservata_da"]) {
+    if (vecchia[c] !== nuova[c]) return "demo_ga4_prove: i dati della prenotazione dell'invio non si modificano";
+  }
+  const da = vecchia.stato as string;
+  const a = nuova.stato as string;
+  if (da === "verified" || da === "not_received") return `demo_ga4_prove: lo stato ${da} è finale`;
+  if (da === "reserved" && a === "reserved") return "demo_ga4_prove: da reserved non si va in reserved";
+  if ((da === "sent_unverified" || da === "uncertain" || da === "rejected") && a !== "verified" && a !== "not_received") return `demo_ga4_prove: da ${da} si può andare solo in verified o not_received`;
+  return null;
+}
 
 export class FintoDatabase {
   tabelle: Record<string, Riga[]> = {};
@@ -228,6 +255,10 @@ class Interrogazione implements PromiseLike<Risultato> {
       const trovate = corrispondenti();
       for (const r of trovate) {
         const aggiornata = { ...r, ...(this.dati as Riga) };
+        if (this.tabella === "demo_ga4_prove") {
+          const regola = regoleProveGa4(r, aggiornata);
+          if (regola) return { data: null, error: { code: "P0001", message: regola }, count: null };
+        }
         const e = this.errorePerRiga(aggiornata);
         if (e) return { data: null, error: e, count: null };
         if (this.db.violaUnicita(this.tabella, aggiornata, r)) return { data: null, error: { code: "23505", message: "duplicate key" }, count: null };
@@ -243,6 +274,7 @@ class Interrogazione implements PromiseLike<Risultato> {
       return { data: null, error: null, count: null };
     }
     // delete
+    if (this.tabella === "demo_ga4_prove") return { data: null, error: { code: "P0001", message: "demo_ga4_prove non si cancella" }, count: null };
     const daTogliere = corrispondenti();
     this.db.cancella(this.tabella, daTogliere);
     return { data: null, error: null, count: this.conteggio ? daTogliere.length : null };

@@ -117,16 +117,23 @@ export function riepilogoAds(righe: { statoAds: StatoAds }[]): RiepilogoAds {
 
 export const TENTATIVI_MASSIMI_GA4 = 5;
 
-export type RiepilogoGa4 = { inviati: number; inAttesa: number; nonInviabili: number };
+export type RiepilogoGa4 = { inviati: number; inAttesa: number; nonInviabili: number; riservateProva: number };
 
 // Solo le richieste CONFERMATE contano per GA4: inviato = ga4_sent_at; in attesa = c'è il client_id e restano tentativi; non inviabile =
-// manca il client_id (cookie non accettati) o si sono esauriti i tentativi.
-export function riepilogoGa4(righe: { stato: StatoRichiesta; ga4InviatoIl: string | null; ga4Tentativi: number; haClientId: boolean }[]): RiepilogoGa4 {
+// manca il client_id (cookie non accettati) o si sono esauriti i tentativi. Le richieste RISERVATE alla prova reale (hanno una riga in
+// demo_ga4_prove) non sono né «in attesa» né «non inviabili»: il cron non le riprende mai, e il loro stato si vede nella sezione della prova.
+export function riepilogoGa4(
+  righe: { id?: string; stato: StatoRichiesta; ga4InviatoIl: string | null; ga4Tentativi: number; haClientId: boolean }[],
+  riservate: ReadonlySet<string> = new Set(),
+): RiepilogoGa4 {
   const confermate = righe.filter((r) => r.stato === "confirmed");
-  const inviati = confermate.filter((r) => r.ga4InviatoIl !== null).length;
-  const daInviare = confermate.filter((r) => r.ga4InviatoIl === null);
+  const esclusePerProva = (r: { id?: string }) => r.id !== undefined && riservate.has(r.id);
+  const riservateProva = confermate.filter(esclusePerProva).length;
+  const normali = confermate.filter((r) => !esclusePerProva(r));
+  const inviati = normali.filter((r) => r.ga4InviatoIl !== null).length;
+  const daInviare = normali.filter((r) => r.ga4InviatoIl === null);
   const inAttesa = daInviare.filter((r) => r.haClientId && r.ga4Tentativi < TENTATIVI_MASSIMI_GA4).length;
-  return { inviati, inAttesa, nonInviabili: daInviare.length - inAttesa };
+  return { inviati, inAttesa, nonInviabili: daInviare.length - inAttesa, riservateProva };
 }
 
 // ── Casi da verificare del calendario ────────────────────────────────────────────────────────────────────────────────────
