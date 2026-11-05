@@ -30,9 +30,10 @@ import {
 // risposta del server), e riempita quando il server ha risposto. Se il server NON ha salvato la richiesta (sistema attivo), la scheda
 // si chiude, il calendario non si apre e si mostra un errore da cui si può riprovare: la CHIAVE di idempotenza resta la stessa, così un
 // secondo invio dopo una risposta persa non crea una richiesta doppia. Se il browser blocca comunque la scheda, la pagina mostra un
-// pulsante «Apri il calendario». Gli eventi di Google Analytics partono solo se il tag è già stato caricato dal banner dei cookie
-// (cioè con il consenso): niente consenso, nessun evento. I testi dei consensi vengono da demo-consensi-calcoli.ts (la stessa fonte
-// da cui il server calcola l'impronta registrata come prova).
+// pulsante «Apri il calendario». Gli eventi di Google Analytics partono solo con i cookie accettati nel banner: il Google tag ora è
+// presente fin dall'inizio della pagina (Consent Mode avanzato, vedi src/lib/google-tag.ts), quindi la sua presenza non basta più a
+// dire che c'è il consenso e lo si controlla qui: niente consenso, nessun evento (nemmeno i ping senza cookie). I testi dei consensi
+// vengono da demo-consensi-calcoli.ts (la stessa fonte da cui il server calcola l'impronta registrata come prova).
 
 function nuovaChiaveInvio(): string {
   try {
@@ -46,10 +47,11 @@ function nuovaChiaveInvio(): string {
 type GtagFn = (...argomenti: unknown[]) => void;
 function inviaEventoGa(nome: string, parametri: Record<string, string | number>) {
   try {
+    if (!cookiePubblicitariAccettati(localStorage.getItem(CHIAVE_CONSENSO_COOKIE))) return;
     const gtag = (window as unknown as { gtag?: GtagFn }).gtag;
     if (typeof gtag === "function") gtag("event", nome, parametri);
   } catch {
-    // nessun tag caricato: nessun evento
+    // localStorage bloccato o nessun tag: nessun evento
   }
 }
 
