@@ -137,7 +137,30 @@ Letto sulla documentazione ufficiale (Calendar API: `events.list`, sincronizzazi
 - Sincronizzazione incrementale: `syncToken` (non si può combinare con `timeMin`); se Google risponde 410 si rifà una lettura completa. Il token avanza solo se **tutti** gli eventi
   sono stati elaborati.
 - Un'elaborazione interrotta a metà (prenotazione salvata, richiesta non aggiornata) si **completa** al giro dopo, senza doppioni.
-- I casi aperti non si rielaborano da soli: li vedi nella console e li chiudi a mano.
+- I casi aperti **si riesaminano da soli una volta all'ora** (vedi 6.1): se nel frattempo è arrivata la richiesta giusta o è migliorata una regola, il caso si risolve senza doppioni. Quelli che restano incerti li vedi nella console e li chiudi a mano.
+
+### 6.1 Chi ha prenotato: l'identificazione del prenotante (correzione del 05/11/2026)
+
+**Cosa è successo nel test reale.** Una persona ha compilato il modulo e ha prenotato 22 secondi dopo; la console ha segnalato «Più richieste possibili» con un account interno nel caso. Dal database: la stessa persona
+aveva anche una richiesta del giorno prima, già annullata (a 26 ore di distanza); per le regole di allora una richiesta annullata restava candidata e, oltre le 24 ore, la coppia era ambigua. L'account interno compariva nel caso solo perché il
+caso riportava il **primo partecipante esterno** e l'account della squadra non era tra le email interne dichiarate: non aveva richieste dal modulo, quindi non causava l'ambiguità, ma il caso mostrava l'email sbagliata.
+
+**Le regole di adesso** (`src/lib/demo-calendario-calcoli.ts`):
+- **Prima si tolgono gli account interni**: il calendario stesso, l'organizzatore, le risorse, le email della squadra (`DEMO_CALENDAR_INTERNAL_EMAILS`) e i **domini interni** (`DEMO_CALENDAR_INTERNAL_DOMAINS`, predefinito `omniaitalia.com`, anche i sottodomini).
+  I domini di posta **pubblici** (gmail.com, outlook.com, libero.it, pec.it…) non possono mai essere dichiarati interni: escluderebbero i clienti che li usano. Solo tra gli esterni rimasti si cerca chi ha una richiesta dal modulo.
+- **Non si assume mai che il primo partecipante esterno sia il cliente**, né che lo sia il creatore dell'evento. Il prenotante è chi ha una richiesta dal modulo; se **persone diverse** hanno una richiesta per lo stesso evento, l'abbinamento non è certo: caso da verificare, **nessuna conversione**.
+- **La stessa persona con più richieste**: una richiesta annullata di un percorso precedente non confonde un percorso nuovo. Se c'è una richiesta ancora senza prenotazione **creata dopo l'ultima annullata**, la nuova prenotazione è di quella e le annullate restano com'erano.
+  Se invece l'annullata è la più recente, non è certo a quale appartenga: caso. Se per l'annullata la **conversione era già partita**, la nuova prenotazione della stessa persona va a verifica manuale (niente seconda conversione per lo stesso cliente).
+  Senza richieste nuove, la prenotazione riprende l'ultima annullata. Richieste dello stesso percorso (entro 24 ore) e modalità `manuale` come prima.
+- **Il caso riporta l'email del candidato** (la persona con la richiesta più recente) e una nota che dice perché non è certo: «richieste di N persone diverse», «più di 24 ore l'una dall'altra», «annullata più recente»…
+
+**Recupero dei casi già aperti, senza doppioni.** La sincronizzazione legge solo le novità: un caso non verrebbe più rivisto. Ora, **una volta all'ora** (il giro del cron che cade nei primi dieci minuti), si rileggono per id (sola lettura) fino a 10 casi aperti degli ultimi 30 giorni e si rielaborano con le regole di adesso.
+L'operazione è idempotente: la prenotazione ha un indice unico per evento, quindi non nascono doppioni; se il caso si risolve la richiesta passa a «confermata» e il caso si chiude; se resta incerto si aggiorna; un evento che non si trova più o un guasto contano come errore del riesame senza fermare la lettura delle novità.
+Il caso del test del 05/11 si risolve così da solo al primo riesame dopo la pubblicazione, senza modificare a mano nessuna richiesta.
+
+**Diagnosi degli eventi** (console → DEMO e Google Ads → «Diagnosi degli eventi dei casi aperti», solo admin, sola lettura): legge gli eventi dei casi aperti e mostra, **senza nessuna email, nome, titolo o id**, chi sono organizzatore e creatore (interni o esterni), gli ospiti come «ospite 1», «ospite 2» con ruolo e risposta,
+quante richieste dal modulo ha ciascuno, quali richieste sono candidate (stato e minuti prima dell'evento), i **nomi** dei campi presenti nell'evento e l'esito con le regole di adesso. Serve a vedere com'è fatta davvero una prenotazione della Programmazione appuntamenti e a scoprire eventuali indizi affidabili di chi ha prenotato
+senza assumerli. Stesse protezioni del pulsante di Google Ads: una alla volta, un minuto di pausa, dieci all'ora per istanza.
 
 ## 7. Cron di Vercel: limiti verificati
 
@@ -206,6 +229,7 @@ Voce **«DEMO e Google Ads»** nella barra della console (gruppo «Numeri»), co
 - **Google Ads e GA4**: conteggio per stato della conversione su tutte le richieste confermate; eventi GA4 inviati, in attesa, non inviabili.
 - **Verifica Google Ads (solo validazione)**: l'unico pulsante della pagina, descritto nella sezione 8.1; non scrive nulla.
 - **Casi da verificare**: motivo, email del partecipante, date, e cosa significa. Si chiudono a mano (sezione 10.6, query utili).
+- **Diagnosi degli eventi dei casi aperti**: pulsante di sola lettura, descritto nella sezione 6.1.
 - **Prenotazioni** del periodo (con spostamenti e annullamenti), **importazioni in errore** (solo il codice di Google), **richieste ricevute**.
 - Prima della migrazione la pagina lo dice (`tabella_assente`) invece di dare un errore.
 
@@ -260,6 +284,7 @@ Tutte opzionali: senza di esse il modulo funziona come prima e le integrazioni r
 | `DEMO_CALENDAR_SYNC_ENABLED` | `1` per accendere la sincronizzazione. |
 | `DEMO_CALENDAR_TITLE_REGEX` | Espressione regolare (senza distinzione di maiuscole) che riconosce il titolo degli eventi DEMO. Predefinita: `demo`. Da confermare con una prenotazione di prova. |
 | `DEMO_CALENDAR_INTERNAL_EMAILS` | Email della squadra, separate da virgola: non sono mai «chi ha prenotato». |
+| `DEMO_CALENDAR_INTERNAL_DOMAINS` | Domini della squadra, separati da virgola (con o senza «@»): ogni indirizzo di quei domini (e dei loro sottodomini) è un account interno e non è mai «chi ha prenotato». Predefinito: `omniaitalia.com`. I domini di posta **pubblici** (gmail.com, outlook.com, libero.it, pec.it…) vengono ignorati: non possono mai essere interni. |
 | `DEMO_MATCH_WINDOW_DAYS` | Giorni dopo l'invio del modulo entro cui una prenotazione si abbina a quella richiesta (predefinito 30, da 1 a 365). |
 | `DEMO_GA4_MP_ENABLED` | `1` per accendere l'evento GA4 lato server. |
 | `GA4_API_SECRET` | Segreto API del Measurement Protocol (10.3). |
@@ -348,7 +373,7 @@ Google. Cookie policy: citare il salvataggio locale `omnia-ai-attribuzione` (90 
 3. **Consenso ai cookie dichiarato dal browser**: il server non può verificare il banner; è documentato e marcato nel registro. Un visitatore malevolo potrebbe dichiarare il falso, ma la firma impedisce
    solo l'alterazione successiva, non il falso iniziale.
 4. **Nessun pulsante di revoca** per il visitatore e nessuna azione in console per revocare/chiudere casi: si fa dal database (sezioni 4 e 10.6). Possibile sviluppo futuro.
-5. **Casi aperti non si rielaborano da soli**: se arriva dopo la richiesta giusta, resta da chiudere a mano e la conversione non parte.
+5. **Casi aperti**: si riesaminano da soli una volta all'ora per 30 giorni (sezione 6.1); quelli ancora incerti (persone diverse, conversione già partita per un'annullata) restano da chiudere a mano e la conversione non parte.
 6. **Spostamento su una programmazione nativa**: il comportamento esatto di Google non è documentato; gestiti i due casi plausibili, da verificare con una prova reale.
 7. **Piano Vercel**: i cron ogni 10 minuti richiedono il Pro; ricontrollare il piano in dashboard.
 8. **Se si cambia `DEMO_CONSENT_SIGNING_SECRET`** dopo l'attivazione, i consensi già scritti non valgono più: non cambiarlo.

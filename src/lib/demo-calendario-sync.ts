@@ -49,9 +49,12 @@ export type RisultatoSync = {
   sostituite: number;
   casi: number;
   errori: number;
+  // casi aperti riesaminati in questo giro (una volta all'ora) e riesami non riusciti
+  riesaminati: number;
+  erroriRiesame: number;
 };
 
-const VUOTO: Omit<RisultatoSync, "eseguita"> = { eventiVisti: 0, confermati: 0, cancellati: 0, riprogrammati: 0, sostituite: 0, casi: 0, errori: 0 };
+const VUOTO: Omit<RisultatoSync, "eseguita"> = { eventiVisti: 0, confermati: 0, cancellati: 0, riprogrammati: 0, sostituite: 0, casi: 0, errori: 0, riesaminati: 0, erroriRiesame: 0 };
 
 type RigaRichiesta = RichiestaPerAbbinamento & {
   prima_prenotazione_il: string | null;
@@ -199,7 +202,7 @@ async function elaboraEvento(c: Contesto, evento: EventoCalendario): Promise<voi
     if (email.length > 0) {
       const { data, error } = await c.admin.from("demo_leads").select(COLONNE_RICHIESTA).in("email_norm", email);
       if (error) throw new Error("lettura richieste");
-      richieste = (data ?? []) as RigaRichiesta[];
+      richieste = ((data ?? []) as RigaRichiesta[]).map((r) => ({ ...r, conversione_inviata: STATI_ADS_CHIUSI.includes(r.ads_import_status) }));
     }
   }
 
@@ -264,6 +267,55 @@ async function elaboraEvento(c: Contesto, evento: EventoCalendario): Promise<voi
 
   await registraCaso(c, evento, esito.motivo, esito.email, esito.nota);
   c.risultato.casi++;
+}
+
+// Un singolo evento per id (events.get, sola lettura). null se non c'è più (404/410) o la lettura non riesce: si riprova al prossimo giro.
+export async function leggiEvento(calendarId: string, eventoId: string, token: string, fetchFn: typeof fetch): Promise<EventoCalendario | null> {
+  const controllo = new AbortController();
+  const timer = setTimeout(() => controllo.abort(), TEMPO_MASSIMO_MS);
+  try {
+    const risposta = await fetchFn(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventoId)}`, { headers: { Authorization: `Bearer ${token}` }, signal: controllo.signal });
+    if (!risposta.ok) return null;
+    const evento = (await risposta.json()) as EventoCalendario;
+    return evento && typeof evento.id === "string" && evento.id !== "" ? evento : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// RIESAME dei casi aperti. La sincronizzazione legge solo le NOVITÀ del calendario: un caso («più richieste», «nessuna richiesta») non
+// verrebbe mai rivisto da solo, neanche se nel frattempo è cambiata una regola o è arrivata la richiesta giusta. Una volta all'ora (il
+// giro che cade nei primi dieci minuti) si rilegge, per id, ogni caso aperto degli ultimi 30 giorni (al massimo 10) e lo si rielabora con
+// le regole di adesso. È IDEMPOTENTE: la prenotazione ha un indice unico per evento, quindi non nascono doppioni; se il caso si risolve
+// la richiesta passa a «confirmed» e il caso si chiude; se resta incerto, il caso si aggiorna (email e nota del candidato vero).
+export const GIORNI_RIESAME_CASI = 30;
+export const MASSIMO_RIESAMI_PER_GIRO = 10;
+
+async function riesaminaCasiAperti(c: Contesto, token: string, fetchFn: typeof fetch, adessoMs: number): Promise<void> {
+  const dal = new Date(adessoMs - GIORNI_RIESAME_CASI * 86_400_000).toISOString();
+  const { data, error } = await c.admin.from("demo_calendar_casi").select("calendar_event_id").eq("calendar_id", c.calendarId).eq("risolto", false).gte("created_at", dal).limit(MASSIMO_RIESAMI_PER_GIRO);
+  if (error) {
+    c.risultato.erroriRiesame++;
+    return;
+  }
+  for (const riga of (data ?? []) as { calendar_event_id: string }[]) {
+    const evento = await leggiEvento(c.calendarId, riga.calendar_event_id, token, fetchFn);
+    if (!evento) {
+      c.risultato.erroriRiesame++;
+      continue;
+    }
+    // un riesame NON è un caso nuovo: il contatore dei casi del giro non cambia
+    const casiPrima = c.risultato.casi;
+    try {
+      await elaboraEvento(c, evento);
+      c.risultato.riesaminati++;
+    } catch {
+      c.risultato.erroriRiesame++;
+    }
+    c.risultato.casi = casiPrima;
+  }
 }
 
 async function registraCaso(c: Contesto, evento: EventoCalendario, motivo: string, email: string | null, nota: string): Promise<void> {
@@ -334,6 +386,9 @@ export async function sincronizzaCalendario(
       risultato.errori++;
     }
   }
+
+  // una volta all'ora: riesame dei casi aperti (non influisce sul token: un riesame fallito non blocca la lettura delle novità)
+  if (new Date(adessoMs).getUTCMinutes() < 10) await riesaminaCasiAperti(contesto, token, fetchFn, adessoMs);
 
   // Il token avanza solo se tutto è andato bene: altrimenti la prossima esecuzione rilegge gli stessi eventi (è sicuro, è idempotente).
   const tuttoBene = risultato.errori === 0 && lettura.nuovoToken !== null;
