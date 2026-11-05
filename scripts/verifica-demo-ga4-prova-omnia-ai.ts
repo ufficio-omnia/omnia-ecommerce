@@ -180,7 +180,7 @@ async function main() {
   console.log("--- Regole pure ---");
   atteso("la frase di conferma si confronta INTERA e identica: spazi ai bordi e doppi spazi non contano, maiuscole sì, qualsiasi altra cosa no", fraseCorretta(FRASE_INVIO_PROVA, FRASE_INVIO_PROVA) && fraseCorretta(`  ${FRASE_INVIO_PROVA}  `, FRASE_INVIO_PROVA) && fraseCorretta("INVIA  1   EVENTO REALE", FRASE_INVIO_PROVA) && !fraseCorretta("invia 1 evento reale", FRASE_INVIO_PROVA) && !fraseCorretta("INVIA 1 EVENTO", FRASE_INVIO_PROVA) && !fraseCorretta(`${FRASE_INVIO_PROVA}!`, FRASE_INVIO_PROVA) && !fraseCorretta("", FRASE_INVIO_PROVA) && !fraseCorretta(undefined, FRASE_INVIO_PROVA) && !fraseCorretta(null, FRASE_INVIO_PROVA) && !fraseCorretta(42, FRASE_INVIO_PROVA) && !fraseCorretta(["INVIA 1 EVENTO REALE"], FRASE_INVIO_PROVA));
   atteso("le tre frasi sono diverse tra loro (una frase di risoluzione non può mai autorizzare un invio) e ciascuna dichiarazione ha la sua", new Set([FRASE_INVIO_PROVA, FRASE_EVENTO_PRESENTE, FRASE_EVENTO_ASSENTE]).size === 3 && fraseRisoluzione("verified") === FRASE_EVENTO_PRESENTE && fraseRisoluzione("not_received") === FRASE_EVENTO_ASSENTE && !fraseCorretta(FRASE_EVENTO_PRESENTE, FRASE_INVIO_PROVA) && !fraseCorretta(FRASE_INVIO_PROVA, FRASE_EVENTO_PRESENTE));
-  atteso("identificativo di richiesta: solo UUID", idRichiestaValido(randomUUID()) && !idRichiestaValido("l-ok") && !idRichiestaValido("") && !idRichiestaValido(undefined) && !idRichiestaValido("' or 1=1 --") && !idRichiestaValido(`${randomUUID()}x`) && !idRichiestaValido(123));
+  atteso("identificativo di richiesta: solo UUID", idRichiestaValido(randomUUID()) && !idRichiestaValido("l-ok") && !idRichiestaValido("") && !idRichiestaValido(undefined) && !idRichiestaValido("' or 1=1 --") && !idRichiestaValido(`${randomUUID()}x`) && !idRichiestaValido(`x${randomUUID()}`) && !idRichiestaValido(` ${randomUUID()}`) && !idRichiestaValido(`${randomUUID()}\n`) && !idRichiestaValido(123));
   atteso("email di prova: una o più, separate da virgola, punto e virgola o spazio; minuscole, senza doppioni, solo indirizzi con forma valida", JSON.stringify(emailProvaDaAmbiente({ DEMO_GA4_PROVA_EMAIL: " A@x.it, b@y.it;A@X.IT  c@z.it senza-chiocciola , , @x.it, x@y" })) === JSON.stringify(["a@x.it", "b@y.it", "c@z.it"]) && emailProvaDaAmbiente({}).length === 0 && emailProvaDaAmbiente({ DEMO_GA4_PROVA_EMAIL: "   " }).length === 0);
   atteso("l'email di una richiesta si confronta in minuscolo e senza spazi", emailInProva("  Prova.GA4@Esempio.it ", [EMAIL_PROVA]) && !emailInProva("altro@esempio.it", [EMAIL_PROVA]) && !emailInProva("prova.ga4@esempio.it", []));
 
@@ -752,7 +752,7 @@ async function main() {
     atteso("i nuovi moduli non usano NEXT_PUBLIC_ e il segreto API si legge solo nel modulo di invio", !/NEXT_PUBLIC_/.test(modulo + riserva + calcoli + azione + vista) && /GA4_API_SECRET/.test(modulo) && !/GA4_API_SECRET/.test(riserva + azione + vista));
     atteso("il file delle regole può finire nel browser: non importa crittografia né database né rete, non legge process.env", !/^import .*(node:|crypto|supabase|demo-hash|demo-consensi"|demo-ga4-riserva)/m.test(calcoli) && !/fetch\(|process\.env/.test(calcoli));
     atteso("l'azione: ognuna delle tre funzioni controlla l'amministratore come PRIMA operazione", (azione.match(/export async function \w+\([^)]*\): Promise<[^{]+\{\n  const sessione = await richiediAdminAzione\(\);\n  if \(!sessione\) return \{ ok: false, errore: "Non autorizzato\." \};/g) ?? []).length === 3 && (azione.match(/export async function/g) ?? []).length === 3);
-    atteso("l'azione prende l'identificativo dell'amministratore dalla sessione (non dalla pagina) e legge l'ambiente sul server: la pagina non può passare né ambiente, né segreti, né utente", /utenteId: sessione\.userId/.test(azione) && /process\.env/.test(azione) && !/export async function \w+\([^)]*(env|secret|segreto|utenteId|userId)/i.test(azione));
+    atteso("l'azione prende l'identificativo dell'amministratore dalla sessione (non dalla pagina) e legge l'ambiente sul server: la pagina non può passare né ambiente, né segreti, né utente", (azione.match(/utenteId: sessione\.userId/g) ?? []).length === 2 && /process\.env/.test(azione) && !/export async function \w+\([^)]*(env|secret|segreto|utenteId|userId)/i.test(azione));
     atteso("la pagina DEMO ha un tempo massimo adeguato (maxDuration) per l'invio e le letture", /export const maxDuration = (\d+)/.test(pagina) && Number(/export const maxDuration = (\d+)/.exec(pagina)?.[1]) >= 30);
     atteso("la sezione della pagina chiede la frase digitata e la confronta con le costanti condivise (invio e due dichiarazioni)", /FRASE_INVIO_PROVA/.test(vista) && /FRASE_EVENTO_PRESENTE/.test(vista) && /FRASE_EVENTO_ASSENTE/.test(vista) && /disabled=\{inInvio \|\| frase\.trim\(\) !== FRASE_INVIO_PROVA\}/.test(vista) && !/fetch\(|process\.env/.test(vista));
     const vistaDemo = leggi("src/app/site-console/_componenti/demo-vista.tsx");
@@ -776,8 +776,19 @@ async function main() {
     console.log(`\n${fallimenti.length} controlli falliti:\n- ${fallimenti.join("\n- ")}`);
     process.exit(1);
   }
+  completato = true;
   console.log("\nTutti i controlli sono andati a buon fine.");
 }
+
+// Se una promessa resta appesa (per esempio un invio che non si annulla mai) Node esce da solo con codice 0 senza dire niente: qui si
+// trasforma in un fallimento.
+let completato = false;
+process.on("exit", () => {
+  if (!completato && process.exitCode === undefined) {
+    console.log("FALLITO il test non è arrivato in fondo (una promessa è rimasta appesa)");
+    process.exitCode = 1;
+  }
+});
 
 main().catch((e) => {
   console.error(e);
