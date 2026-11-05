@@ -22,10 +22,13 @@ const [TESTO_PRIMA_DEL_LINK, TESTO_DOPO_IL_LINK] = TESTO_BANNER_COOKIE.split("Co
 
 type Consent = "pending" | "accepted" | "rejected";
 
-// Comunica a Google il consenso e, se era concesso ed è stato revocato, toglie dal browser i cookie di Google. Idempotente.
+// Comunica a Google il consenso e, senza un consenso valido (revoca, rifiuto, banner ignorato, scelta fatta con un testo precedente), toglie
+// dal browser i cookie di Google: anche quelli scritti prima di questo rilascio da chi aveva accettato con il vecchio testo e ora rifiuta
+// (senza questo resterebbero per anni, inerti ma presenti, contro la promessa «se rifiuti non resta nessun cookie di Google»). Se non ce ne
+// sono, non fa niente. Idempotente.
 function sincronizzaConsensoGoogle(stato: Consent) {
-  const esito = aggiornaConsensoGoogle(stato, window as unknown as FinestraGoogle);
-  if (esito === "revocato") cancellaCookieGoogle(document, window.location.hostname);
+  aggiornaConsensoGoogle(stato, window as unknown as FinestraGoogle);
+  if (stato !== "accepted") cancellaCookieGoogle(document, window.location.hostname);
 }
 
 // Stessa logica del banner e-commerce (src/components/cookie-consent.tsx):

@@ -61,7 +61,7 @@ Se accetti dopo aver aperto la pagina, da quel momento si accendono Google Analy
 
 ## Come cambiare idea
 
-Puoi modificare o revocare la scelta in qualsiasi momento dal collegamento "Preferenze cookie" nel piè di pagina. Quando revochi, spegniamo subito Google Analytics e **togliamo dal tuo browser i cookie di Google già salvati**; il banner si ripresenta. Puoi anche cancellare i dati di navigazione del sito dal tuo browser. La revoca non pregiudica la liceità del trattamento già effettuato.
+Puoi modificare o revocare la scelta in qualsiasi momento dal collegamento "Preferenze cookie" nel piè di pagina. Quando revochi, spegniamo subito Google Analytics e **togliamo dal tuo browser i cookie di Google già salvati**; il banner si ripresenta. Lo stesso accade se rifiuti, o se avevi accettato con un testo precedente del banner e ora scegli di nuovo: senza un consenso valido non restano cookie di Google nel tuo browser. Puoi anche cancellare i dati di navigazione del sito dal tuo browser. La revoca non pregiudica la liceità del trattamento già effettuato.
 
 Se in futuro cambiamo in modo rilevante il testo del banner, ti chiederemo di nuovo la scelta.
 

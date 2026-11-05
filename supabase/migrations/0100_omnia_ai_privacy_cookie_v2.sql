@@ -29,6 +29,6 @@
 
 insert into public.legal_documents (document_type, version, effective_date, file_path, sha256)
 values
-  ('omnia_ai_cookie_policy', 2, (now() at time zone 'Europe/Rome')::date, 'legal/cookie-policy-omnia-ai-v2.md', '7f7fc6907eb1b47091a906f4d1b15eb1002f7085d54cd4b7b832324d64c61592'),
+  ('omnia_ai_cookie_policy', 2, (now() at time zone 'Europe/Rome')::date, 'legal/cookie-policy-omnia-ai-v2.md', 'aa99229713853a6e3574e3fae2ffd2c8613aa0e1c51867c352e24b1b9620bbc7'),
   ('omnia_ai_privacy_policy', 2, (now() at time zone 'Europe/Rome')::date, 'legal/privacy-policy-omnia-ai-v2.md', '70fe176008f6e3a85616fe31e3aea78a3a2e4f290c74698d21574877f96517d5')
 on conflict (document_type, version) do nothing;
