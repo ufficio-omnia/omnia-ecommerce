@@ -1,21 +1,24 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-import Script from "next/script";
+import { useEffect, useSyncExternalStore } from "react";
+import { aggiornaConsensoGoogle, cancellaCookieGoogle, type FinestraGoogle } from "@/lib/google-tag";
 
 const CONSENT_KEY = "omnia-ai-cookie-consent";
 const CONSENT_EVENT = "omnia-ai-consent-change";
 
-// Google Analytics 4 (installato da Google Analytics, tag "G-").
-const GA4_ID = "G-W551SWPNE4";
-
-// Nessun ID Google Ads collegato per ora — logica di consenso pronta,
-// il tag resta bloccato comunque (mai da CDN/script prima del consenso)
-// finché questo non viene valorizzato. Quando arriva l'ID, basta
-// scriverlo qui: il resto del componente non cambia.
-const GADS_ID: string | null = null;
+// Il Google tag (Analytics + Google Ads, gli ID stanno solo in src/lib/google-tag.ts) NON si carica più da qui: sta nell'HTML iniziale del layout
+// (src/app/site-omnia-ai/layout.tsx, un solo gtag.js) in Consent Mode v2 AVANZATO, con i quattro consensi su «denied» finché il
+// visitatore non preme «Accetta». Questo banner conserva la scelta (stessa chiave, stesso evento, stesso testo di prima) e la comunica a
+// Google: «Accetta» → consensi «granted»; «Rifiuta», ignorare il banner o revocare da «Preferenze cookie» → «denied», e alla revoca si
+// cancellano i cookie di Google già scritti. Vedi src/lib/google-tag.ts e GUIDA-GOOGLE-TAG-CONSENT-MODE.md.
 
 type Consent = "pending" | "accepted" | "rejected";
+
+// Comunica a Google il consenso e, se era concesso ed è stato revocato, toglie dal browser i cookie di Google. Idempotente.
+function sincronizzaConsensoGoogle(stato: Consent) {
+  const esito = aggiornaConsensoGoogle(stato, window as unknown as FinestraGoogle);
+  if (esito === "revocato") cancellaCookieGoogle(document, window.location.hostname);
+}
 
 // Stessa logica del banner e-commerce (src/components/cookie-consent.tsx):
 // localStorage come "external store" con useSyncExternalStore, chiave e
@@ -46,6 +49,7 @@ function getServerSnapshot(): Consent {
 function setConsent(value: "accepted" | "rejected") {
   localStorage.setItem(CONSENT_KEY, value);
   window.dispatchEvent(new Event(CONSENT_EVENT));
+  sincronizzaConsensoGoogle(value);
 }
 
 // Usata dal link "Preferenze cookie" nel footer: rimette il banner in
@@ -53,28 +57,21 @@ function setConsent(value: "accepted" | "rejected") {
 export function resetOmniaAiCookieConsent() {
   localStorage.removeItem(CONSENT_KEY);
   window.dispatchEvent(new Event(CONSENT_EVENT));
+  sincronizzaConsensoGoogle("pending");
 }
 
 export default function OmniaAiCookieConsent() {
   const status = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
+  // Tiene Google allineato alla scelta anche quando cambia da fuori (un'altra scheda del browser). Si legge la scelta VERA dal browser
+  // (getSnapshot) e non `status`: durante l'idratazione `status` vale «pending» (lo stato del server) anche per chi ha già accettato, e
+  // trattarlo come una revoca cancellerebbe i cookie di Google a ogni caricamento.
+  useEffect(() => {
+    sincronizzaConsensoGoogle(getSnapshot());
+  }, [status]);
+
   return (
     <>
-      {status === "accepted" && (
-        <>
-          <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`} strategy="afterInteractive" />
-          <Script id="omnia-ai-gtag-init" strategy="afterInteractive">
-            {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${GA4_ID}');
-              ${GADS_ID ? `gtag('config', '${GADS_ID}');` : ""}
-            `}
-          </Script>
-        </>
-      )}
-
       {status === "pending" && (
         <div
           style={{
