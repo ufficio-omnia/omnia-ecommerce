@@ -149,6 +149,17 @@ async function main() {
   // ═════════════════════════ 4. La stessa persona con più richieste ═════════════════════════
   console.log("\n--- La stessa persona con più richieste, annullate e ripetute ---");
   atteso("richiesta nuova creata DOPO l'ultima annullata → è del percorso nuovo; le annullate non si toccano", (() => { const r = abbina(ev(), [rich("a1", PRENOTANTE, "2026-10-20T10:00:00Z", "cancelled"), rich("a2", PRENOTANTE, "2026-11-01T10:00:00Z", "cancelled"), R_NUOVA]); return r.tipo === "abbinato" && r.richiesta.id === "nuova" && r.sostituite.length === 0; })());
+  atteso("la richiesta nuova prevale sull'annullata SOLO se è vicina alla prenotazione: fino a 24 ore esatte prima sì; un secondo oltre le 24 ore → caso, nessuna conversione (non è certo che non sia la ripresa dell'annullata)", (() => {
+    const evento = ev({ created: "2026-11-05T14:57:35Z" });
+    const a = abbina(evento, [R_ANNULLATA, rich("n24", PRENOTANTE, "2026-11-04T14:57:35Z")]);
+    const b = abbina(evento, [R_ANNULLATA, rich("n24piu1", PRENOTANTE, "2026-11-04T14:57:34Z")]);
+    const c = abbina(evento, [R_ANNULLATA, rich("n3h", PRENOTANTE, "2026-11-05T11:57:35Z")]);
+    return a.tipo === "abbinato" && a.richiesta.id === "n24" && a.sostituite.length === 0 && b.tipo === "caso" && b.motivo === "piu_lead" && /24 ore prima della prenotazione/.test(b.nota) && b.email === PRENOTANTE && c.tipo === "abbinato" && c.richiesta.id === "n3h";
+  })());
+  atteso("la regola temporale vale anche se le richieste sono più d'una e se la conversione dell'annullata non è partita; nel caso reale (22 secondi) la nuova richiesta prevale", (() => {
+    const lenta = abbina(ev(), [rich("a", PRENOTANTE, "2026-10-20T10:00:00Z", "cancelled"), rich("p", PRENOTANTE, "2026-11-04T10:00:00Z")]);
+    return lenta.tipo === "caso" && lenta.motivo === "piu_lead" && abbina(ev(), [R_ANNULLATA, R_NUOVA]).tipo === "abbinato";
+  })());
   atteso("una richiesta annullata PIÙ RECENTE di quella ancora senza prenotazione: non è certo di quale sia → caso, nessuna conversione", (() => { const r = abbina(ev(), [rich("vecchia", PRENOTANTE, "2026-11-05T09:00:00Z"), rich("annullataRecente", PRENOTANTE, "2026-11-05T12:00:00Z", "cancelled")]); return r.tipo === "caso" && r.motivo === "piu_lead"; })());
   atteso("se per la richiesta annullata la conversione era GIÀ PARTITA, la nuova prenotazione della stessa persona va a verifica manuale (niente seconda conversione per lo stesso cliente)", (() => { const r = abbina(ev(), [rich("conv", PRENOTANTE, "2026-11-04T12:31:58Z", "cancelled", true), R_NUOVA]); return r.tipo === "caso" && r.motivo === "prenotazione_duplicata" && r.email === PRENOTANTE; })());
   atteso("più richieste ancora senza prenotazione entro 24 ore: vale la più recente, le altre restano nello storico come sostituite", (() => { const r = abbina(ev(), [rich("p1", PRENOTANTE, "2026-11-05T11:00:00Z"), rich("p2", PRENOTANTE, "2026-11-05T13:00:00Z"), R_NUOVA]); return r.tipo === "abbinato" && r.richiesta.id === "nuova" && r.sostituite.slice().sort().join() === "p1,p2"; })());

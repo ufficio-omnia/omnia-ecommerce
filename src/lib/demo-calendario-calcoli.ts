@@ -211,8 +211,9 @@ const EMAIL_VALIDA = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]{2,}$/;
 const piuRecenteDi = (lista: RichiestaPerAbbinamento[]): RichiestaPerAbbinamento =>
   [...lista].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id.localeCompare(a.id))[0];
 
-// Tra le richieste candidate decide quale (se una sola, con certezza) appartiene alla prenotazione.
-function sceglieRichiesta(candidati: RichiestaPerAbbinamento[], config: ConfigurazioneDemoCalendario): EsitoAbbinamento {
+// Tra le richieste candidate decide quale (se una sola, con certezza) appartiene alla prenotazione. `creatoMs` è il momento in cui è stata
+// creata la prenotazione sul calendario.
+function sceglieRichiesta(candidati: RichiestaPerAbbinamento[], config: ConfigurazioneDemoCalendario, creatoMs: number): EsitoAbbinamento {
   const persone = new Set(candidati.map((c) => c.email_norm));
   const piuRecente = piuRecenteDi(candidati);
   const caso = (motivo: MotivoCaso, nota: string): EsitoAbbinamento => ({ tipo: "caso", motivo, email: piuRecente.email_norm, nota });
@@ -228,7 +229,12 @@ function sceglieRichiesta(candidati: RichiestaPerAbbinamento[], config: Configur
   let scelte = candidati;
   if (pendenti.length > 0 && annullate.length > 0) {
     if (Date.parse(piuRecenteDi(pendenti).created_at) > Date.parse(piuRecenteDi(annullate).created_at)) {
-      // un percorso NUOVO è cominciato dopo l'ultima prenotazione annullata: la nuova prenotazione è di quello; le annullate restano come sono
+      // un percorso NUOVO è cominciato dopo l'ultima prenotazione annullata: la nuova prenotazione è di quello; le annullate restano come sono.
+      // Vale SOLO se la richiesta nuova e la prenotazione sono vicine nel tempo (stesso percorso: entro 24 ore); altrimenti non è certo
+      // che la prenotazione non sia una ripresa di quella annullata, e si lascia al controllo manuale.
+      if (creatoMs - Date.parse(piuRecenteDi(pendenti).created_at) > ORE_STESSO_PERCORSO * 3_600_000) {
+        return caso("piu_lead", `La richiesta nuova è di più di ${ORE_STESSO_PERCORSO} ore prima della prenotazione: non è certo che appartenga a quel percorso e non a quella annullata.`);
+      }
       if (annullate.some((a) => a.conversione_inviata)) return caso("prenotazione_duplicata", "Per questa persona è già partita una conversione di una prenotazione poi annullata: la nuova prenotazione va verificata a mano.");
       scelte = pendenti;
     } else {
@@ -292,7 +298,7 @@ export function abbinaEvento(evento: EventoCalendario, contesto: ContestoAbbinam
   };
 
   const candidati = dellePersone.filter((r) => (r.booking_status === "pending" || r.booking_status === "cancelled") && nellaFinestra(r));
-  if (candidati.length > 0) return sceglieRichiesta(candidati, config);
+  if (candidati.length > 0) return sceglieRichiesta(candidati, config, creato);
 
   const prenotata = dellePersone.find((r) => r.booking_status === "confirmed");
   if (prenotata) return { tipo: "caso", motivo: "prenotazione_duplicata", email: prenotata.email_norm, nota: "Questa persona ha già una demo confermata con un altro evento." };
