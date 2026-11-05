@@ -31,7 +31,7 @@ import {
 } from "@/lib/demo-ga4-prova-calcoli";
 
 // PROVA REALE dell'evento GA4 «demo_booking_confirmed»: UN evento, per UNA richiesta di prova, su comando dell'amministratore. Questo
-// modulo NON controlla chi lo chiama: il controllo admin sta nell'azione (src/app/site-console/azioni/demo-ga4-prova.ts), come prima
+// modulo NON controlla chi lo chiama: il controllo admin sta nell'azione della console (azioni/demo-ga4-prova.ts), come prima
 // operazione. Regole e motivazioni: demo-ga4-prova-calcoli.ts, demo-ga4-riserva.ts, migrazione 0099 e GUIDA-DEMO-TRACCIAMENTO.md.
 //
 // Ordine delle operazioni (ogni passo che fallisce FERMA tutto, prima di mandare qualcosa):
