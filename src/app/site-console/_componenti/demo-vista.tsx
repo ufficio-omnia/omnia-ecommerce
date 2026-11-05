@@ -14,6 +14,7 @@ import { Badge, Pannello, Tessera } from "./elementi";
 import { formattaDataOra, formattaIntero, formattaPercentuale } from "./formati";
 import SelettorePeriodo from "./selettore-periodo";
 import VerificaDataManager from "./verifica-data-manager";
+import DiagnosiCalendario from "./diagnosi-calendario";
 
 // Sezione «DEMO e Google Ads»: le richieste arrivate dal modulo, le prenotazioni confermate sul calendario, i casi da verificare, lo
 // stato delle importazioni verso GA4 e Google Ads e gli errori. SOLA LETTURA sui dati: l'unico pulsante è la verifica della Data Manager
@@ -176,6 +177,12 @@ export default function DemoVista({ periodo, risultato, adessoMs }: { periodo: P
       </div>
 
       <div className="cn-sezione">
+        <Pannello titolo="Diagnosi degli eventi dei casi aperti (sola lettura)">
+          <DiagnosiCalendario />
+        </Pannello>
+      </div>
+
+      <div className="cn-sezione">
         <Pannello titolo={`Casi da verificare (${d.casi.length})`}>
           {d.casi.length === 0 ? (
             <p className="cn-vuoto">Nessun caso aperto: ogni prenotazione vista sul calendario è stata abbinata con certezza, oppure non è una demo.</p>
@@ -186,7 +193,7 @@ export default function DemoVista({ periodo, risultato, adessoMs }: { periodo: P
                   <tr>
                     <th>Visto il</th>
                     <th>Perché</th>
-                    <th>Email del partecipante</th>
+                    <th>Email del candidato</th>
                     <th>Prenotazione creata</th>
                     <th>Demo il</th>
                     <th>Cosa significa</th>
