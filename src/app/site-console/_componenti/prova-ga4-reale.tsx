@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { inviaProvaGa4Azione, preparaProvaGa4Azione, risolviProvaGa4Azione } from "../azioni/demo-ga4-prova";
 import type { RisultatoInvioProva, RisultatoRisoluzione } from "@/lib/demo-ga4-prova";
 import type { DatiDemo } from "@/lib/console/demo";
@@ -111,7 +110,7 @@ function SchedaCandidata({ c, selezionata, onSeleziona }: { c: CandidataProva; s
   );
 }
 
-function RigaRegistro({ p, onFatto }: { p: RigaProvaGa4; onFatto: () => void }) {
+function RigaRegistro({ p }: { p: RigaProvaGa4 }) {
   const [aperta, setAperta] = useState(false);
   const [frase, setFrase] = useState("");
   const [esito, setEsito] = useState<RisultatoRisoluzione | { ok: false; motivo: "errore"; errore: string } | null>(null);
@@ -121,11 +120,9 @@ function RigaRegistro({ p, onFatto }: { p: RigaProvaGa4; onFatto: () => void }) 
     setEsito(null);
     avvia(async () => {
       const r = await risolviProvaGa4Azione(p.leadId, valore, frase);
+      // la pagina si aggiorna da sola: l'azione sul server rinfresca i dati (revalidatePath)
       if (!r.ok) setEsito({ ok: false, motivo: "errore", errore: r.errore });
-      else {
-        setEsito(r.risultato);
-        if (r.risultato.ok) onFatto();
-      }
+      else setEsito(r.risultato);
     });
   }
 
@@ -181,7 +178,6 @@ function RigaRegistro({ p, onFatto }: { p: RigaProvaGa4; onFatto: () => void }) 
 }
 
 export default function ProvaGa4Reale({ prova }: { prova: DatiDemo["provaGa4"] }) {
-  const router = useRouter();
   const [candidate, setCandidate] = useState<CandidataProva[] | null>(null);
   const [errore, setErrore] = useState<string | null>(null);
   const [selezionata, setSelezionata] = useState<string | null>(null);
@@ -217,7 +213,6 @@ export default function ProvaGa4Reale({ prova }: { prova: DatiDemo["provaGa4"] }
       setSelezionata(null);
       setFrase("");
       setCandidate(null);
-      router.refresh();
     });
   }
 
@@ -315,7 +310,7 @@ export default function ProvaGa4Reale({ prova }: { prova: DatiDemo["provaGa4"] }
             </thead>
             <tbody>
               {prova.prove.map((p) => (
-                <RigaRegistro key={p.leadId} p={p} onFatto={() => router.refresh()} />
+                <RigaRegistro key={p.leadId} p={p} />
               ))}
             </tbody>
           </table>

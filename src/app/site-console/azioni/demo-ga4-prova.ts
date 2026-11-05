@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediAdminAzione } from "@/lib/console/accesso";
 import {
@@ -53,6 +54,8 @@ export async function inviaProvaGa4Azione(leadId: string, frase: string): Promis
     return { ok: false, errore: "Errore imprevisto. Controlla il registro delle prove qui sotto prima di fare altro: l'evento potrebbe essere già partito." };
   } finally {
     invioInCorso = false;
+    // qualunque sia l'esito il registro delle prove può essere cambiato: la pagina lo rilegge (come le altre azioni della console)
+    revalidatePath("/site-console", "layout");
   }
 }
 
@@ -63,5 +66,7 @@ export async function risolviProvaGa4Azione(leadId: string, esito: string, frase
     return { ok: true, risultato: await risolviProvaGa4Admin(createAdminClient(), { leadId, esito, frase, utenteId: sessione.userId }, Date.now()) };
   } catch {
     return { ok: false, errore: "Operazione non riuscita (errore imprevisto)." };
+  } finally {
+    revalidatePath("/site-console", "layout");
   }
 }
