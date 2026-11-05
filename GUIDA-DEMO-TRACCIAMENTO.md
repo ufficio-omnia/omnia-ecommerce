@@ -289,7 +289,8 @@ Tutte opzionali: senza di esse il modulo funziona come prima e le integrazioni r
 | `DEMO_GA4_MP_ENABLED` | `1` per accendere l'evento GA4 lato server. |
 | `GA4_API_SECRET` | Segreto API del Measurement Protocol (10.3). |
 | `GA4_MEASUREMENT_ID` | Facoltativa: predefinita `G-W551SWPNE4`. |
-| `DEMO_GA4_MP_DEBUG` | `1` per provare: usa il server di validazione di Google e NON segna l'evento come inviato. |
+| `DEMO_GA4_MP_DEBUG` | `1` per provare: usa il server di validazione di Google e NON segna l'evento come inviato. Riguarda solo il cron: la prova reale (10.7) lo ignora. |
+| `DEMO_GA4_PROVA_EMAIL` | Una o più email di prova (separate da virgola), **solo su Vercel**: la «Prova reale GA4» (10.7) usa soltanto richieste confermate fatte con queste email. Senza (o vuota) la prova è spenta e non può inviare niente. |
 | `DEMO_ADS_IMPORT_ENABLED` | `1` per accendere la conversione Google Ads (parte in «solo verifica»). |
 | `DEMO_ADS_VALIDATE_ONLY` | Predefinito «solo verifica» (Google controlla ma non registra). **`0` = modalità reale.** |
 | `DEMO_ADS_ALLOW_EMAIL_ONLY` | `1` per inviare anche le richieste senza identificativo di clic (solo email cifrata, richiede il consenso del modulo). Predefinito spento. |
@@ -325,6 +326,70 @@ Query utili (editor SQL): stato delle richieste `select booking_status, ads_impo
 Stati Google Ads di una richiesta: `not_ready` (non ancora confermata) → `ready` → `validated` (solo verifica) → `sent` → **`accepted`** (solo qui Google ha confermato).
 `failed` (errore: si riprova da soli solo se è di rete o di Google; un errore di elaborazione lo guarda una persona), `skipped_no_consent`,
 `skipped_no_identifier`, `skipped_cancelled`.
+
+### 10.7 Prova reale dell'evento GA4: UN solo evento (migrazione 0099)
+
+La modalità `DEMO_GA4_MP_DEBUG=1` valida soltanto: il server di validazione di Google non registra niente, **non controlla né il segreto API né l'ID di misurazione**, e il
+Measurement Protocol di produzione risponde «2xx» anche a un corpo sbagliato. L'unico modo di sapere che il segreto, l'ID e il corpo funzionano davvero è mandare UN evento
+reale e vederlo in Analytics. La sezione «Prova reale GA4 (un solo evento)» della pagina DEMO della console lo fa, a mano, per **una** richiesta di prova.
+
+**Cosa NON cambia:** il cron resta come è (con `DEMO_GA4_MP_DEBUG=1` continua a solo validare), Google Ads resta in `DEMO_ADS_VALIDATE_ONLY=1`, consensi, calendario, modulo e
+pagamenti non si toccano. La prova non scrive mai su `demo_leads`, `demo_consensi` o `demo_prenotazioni`: scrive solo nella sua tabella, `demo_ga4_prove`.
+
+**Prima di usarla (nell'ordine; finché non lo fai, il pulsante resta spento e non invia niente):**
+1. Eseguire la migrazione `0099_demo_ga4_prove.sql` (editor SQL di Supabase). Prima, la sezione dice «manca la tabella» e non permette di inviare.
+2. Pubblicare il codice (con il via libera esplicito).
+3. Su Vercel: aggiungere `DEMO_GA4_PROVA_EMAIL` con l'email (o le email) di prova **e rifare il deploy** (le variabili valgono per i deploy nuovi). Servono anche `DEMO_GA4_MP_ENABLED=1`,
+   `GA4_API_SECRET` e il segreto di firma dei consensi, già presenti. `DEMO_GA4_MP_DEBUG` non si tocca.
+4. In GA4: controllare che `demo_booking_confirmed` **non** sia importato in Google Ads come conversione (10.3) e che la proprietà sia quella di OMNIA AI.
+
+**Come si fa:**
+1. Fare una **nuova prenotazione di prova** con l'email di prova (modulo su `/demo` con i cookie accettati, poi il calendario) e attendere che il sistema la confermi (fino a 10 minuti).
+2. Console → DEMO e Google Ads → «Prova reale GA4» → «Cerca richieste di prova» (sola lettura): per ogni richiesta si vede se è idonea (informativa e cookie con firma verificata, client_id,
+   session_id, ora che porterà l'evento) e, se non lo è, perché.
+3. «Prepara l'invio» sulla richiesta idonea, scrivere esattamente **`INVIA 1 EVENTO REALE`** e premere «Invia 1 evento REALE a GA4». Il pulsante resta spento finché la frase non è identica.
+   Per un evento visibile in Realtime conviene inviare **entro circa 15 minuti dalla prenotazione**: l'evento porta l'ora della prenotazione e Realtime mostra gli ultimi 30 minuti
+   (la documentazione di Google non dice se Realtime guardi l'ora dell'evento o quella di ricezione).
+4. Cercare `demo_booking_confirmed` in GA4: **Realtime** (card «Conteggio eventi per nome evento») e, più tardi, i rapporti degli eventi (latenza dichiarata da alcune ore fino a 24-48 ore).
+   Il nome non è mai arrivato alla proprietà (finora solo validazione): ogni occorrenza è la prova. Non compare in Realtime? Non significa che sia fallito: guardare i rapporti il giorno dopo.
+5. Dichiarare l'esito nel registro: «Dichiara cosa vedi in GA4» → frase **`CONFERMO EVENTO PRESENTE IN GA4`** oppure **`CONFERMO EVENTO ASSENTE IN GA4`**.
+
+**Stati della prova** (tabella `demo_ga4_prove`, una riga per richiesta; il database impone anche le transizioni con un trigger):
+
+| Stato | Significato |
+|---|---|
+| `reserved` | invio prenotato in modo esclusivo; esito non ancora registrato (o esecuzione interrotta: dopo 5 minuti si può risolvere a mano) |
+| `sent_unverified` | Google ha risposto 2xx: l'evento è partito ma **non è ancora verificato**; una risposta positiva non prova la registrazione in Analytics |
+| `rejected` | Google ha risposto con un errore 4xx: di norma l'evento non è stato registrato |
+| `uncertain` | esito incerto: tempo scaduto, errore di rete, risposta 5xx o diversa; l'evento può essere arrivato o no |
+| `verified` | **solo** dichiarazione dell'amministratore: evento visto in GA4 (stato finale) |
+| `not_received` | **solo** dichiarazione dell'amministratore: evento non visto in GA4 (stato finale) |
+
+Transizioni: `reserved` → `sent_unverified` / `rejected` / `uncertain` (scritte dal sistema) e → `verified` / `not_received` (dichiarazione, solo se ferma da più di 5 minuti);
+`sent_unverified`, `rejected`, `uncertain` → `verified` / `not_received` (dichiarazione); `verified` e `not_received` sono finali. Nessuno stato torna indietro e nessuno diventa
+`verified` da solo.
+
+**Protezione dai doppioni** (GA4 non deduplica gli eventi del Measurement Protocol; si sceglie «al massimo una volta», non «almeno una volta»):
+- una riga per richiesta con **chiave primaria** (`lead_id`): si prenota PRIMA di inviare con un INSERT; il secondo tentativo, anche in parallelo e da un'altra istanza di Vercel, fallisce;
+- lo stesso **blocco** del cron (`demo_sync_stato.lock_until`): prova e giro del cron non girano insieme; se è occupato si rinuncia, senza attendere e senza ritentare;
+- **nessun ritentativo automatico**, qualunque sia l'esito (4xx, 5xx, rete, tempo scaduto); l'unica cosa che si riprova, una volta, è la scrittura dell'esito sul database, non l'invio;
+- una richiesta ha **una sola prova**: anche dopo «evento assente» non si rimanda; per riprovare serve una nuova prenotazione di prova (è un'altra richiesta);
+- le righe **non si cancellano** (trigger): una riga cancellata permetterebbe di rimandare per errore;
+- il **cron non riprende mai** una richiesta con una riga in `demo_ga4_prove`, in nessuno stato, né con `DEMO_GA4_MP_DEBUG` acceso né dopo averlo spento; se non riesce a leggere quali sono
+  riservate, salta il giro.
+
+**Stati incerti: cosa fare.** Non rimandare. Cercare l'evento in GA4 (Realtime se ancora entro 30 minuti, altrimenti i rapporti) e dichiarare nel registro cosa si vede (punto 5).
+`reserved` fermo da più di 5 minuti = esecuzione interrotta: stessa procedura. Se si dichiara «assente» e si vuole riprovare, nuova prenotazione di prova.
+
+**Se serve davvero togliere una riga** (per esempio una prova fatta su una richiesta che non andava usata), a mano e di proposito, **dopo aver controllato in GA4 che l'evento non sia arrivato**:
+`alter table public.demo_ga4_prove disable trigger demo_ga4_prove_regole; delete from public.demo_ga4_prove where lead_id = '...'; alter table public.demo_ga4_prove enable trigger demo_ga4_prove_regole;`
+
+**Quando si spegne `DEMO_GA4_MP_DEBUG` per sempre**, il cron manderà tutte le richieste confermate non ancora inviate. Prima, guardare l'elenco:
+`select id, created_at from demo_leads l where booking_status = 'confirmed' and ga4_sent_at is null and attribution_consent and ga_client_id is not null and not exists (select 1 from demo_ga4_prove p where p.lead_id = l.id);`
+
+**Integrazione futura nel cron:** la prenotazione esclusiva (`riservaInvioGa4`, `registraEsitoInvio`, `idRichiesteRiservate` in `src/lib/demo-ga4-riserva.ts`) non dipende dalla prova: la colonna `origine`
+(`prova` / `cron`) è pensata perché il cron di produzione possa prenotare ogni richiesta prima di inviarla, chiudendo il margine che oggi resta (se Google risponde 2xx ma la scrittura di
+`ga4_sent_at` fallisce, dopo 10 minuti l'evento ripartirebbe). Non è stato fatto ora per non cambiare il funzionamento del cron; il test `verifica-demo-ga4-prova-omnia-ai.ts` copre le primitive.
 
 ## 11. Regole di prudenza e bozza per l'informativa
 
@@ -397,7 +462,11 @@ Modificati: `src/components/omnia-ai/demo-form.tsx` (modulo), `src/app/actions/o
 
 **Non toccati** (verificato dai test): banner cookie e Google Analytics esistenti, pagamenti Stripe, abbonamenti, autenticazione, generazione delle offerte tecniche, `proxy.ts`, `zone.ts`.
 
+Prova reale GA4 (sezione 10.7): creati `supabase/migrations/0099_demo_ga4_prove.sql`, `src/lib/demo-ga4-prova-calcoli.ts` (regole pure), `demo-ga4-riserva.ts` (prenotazione esclusiva),
+`demo-ga4-prova.ts` (invio), `src/app/site-console/azioni/demo-ga4-prova.ts`, `src/app/site-console/_componenti/prova-ga4-reale.tsx`, test `scripts/verifica-demo-ga4-prova-omnia-ai.ts`;
+modificati `src/lib/demo-ga4.ts` (il cron esclude le richieste riservate), `src/lib/console/demo.ts` e `demo-calcoli.ts`, `demo-vista.tsx`, la pagina DEMO (`maxDuration`), `scripts/demo-finto-supabase.ts`.
+
 ## 15. Come spegnere tutto
 
-Togli `DEMO_CALENDAR_SYNC_ENABLED`, `DEMO_GA4_MP_ENABLED`, `DEMO_ADS_IMPORT_ENABLED` (i cron restano ma non fanno nulla). Per tornare al comportamento di prima del salvataggio obbligatorio
+Togli `DEMO_CALENDAR_SYNC_ENABLED`, `DEMO_GA4_MP_ENABLED`, `DEMO_ADS_IMPORT_ENABLED` (i cron restano ma non fanno nulla). La prova reale (10.7) si spegne togliendo `DEMO_GA4_PROVA_EMAIL`. Per tornare al comportamento di prima del salvataggio obbligatorio
 togli `DEMO_LEADS_ATTIVO`: il modulo continua a funzionare e la richiesta arriva per email.

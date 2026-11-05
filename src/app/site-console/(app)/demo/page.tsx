@@ -6,6 +6,10 @@ import DemoVista from "../../_componenti/demo-vista";
 
 export const metadata: Metadata = { title: "DEMO e Google Ads" };
 
+// Le server action di questa pagina (prova reale GA4) fanno un invio con tempo massimo di 10 secondi più letture e scritture sul
+// database: il tempo predefinito della funzione potrebbe non bastare, e un'esecuzione interrotta a metà lascia una prova «prenotata».
+export const maxDuration = 30;
+
 // Il controllo admin sta qui oltre che nel layout: il layout non si riesegue nelle navigazioni interne.
 export default async function PaginaDemo({ searchParams }: { searchParams: Promise<{ p?: string; dal?: string; al?: string }> }) {
   await richiediAdminPagina();

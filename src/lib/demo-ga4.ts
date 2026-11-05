@@ -3,6 +3,7 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { consensiVerificati } from "@/lib/demo-consensi-calcoli";
 import { leggiConsensi, verificatoreFirma } from "@/lib/demo-consensi";
 import { segretoFirmaConsensi } from "@/lib/demo-hash";
+import { idRichiesteRiservate } from "@/lib/demo-ga4-riserva";
 import { costruisciCorpoGa4, type LeadPerConversione } from "@/lib/demo-conversioni-calcoli";
 
 // Evento GA4 «demo_booking_confirmed» inviato dal SERVER (Measurement Protocol) quando una prenotazione è confermata sul calendario.
@@ -32,6 +33,8 @@ export type RisultatoGa4 = {
   verificati: number;
   errori: number;
   senzaConsenso: number;
+  // richieste lasciate stare perché riservate alla prova reale (presenti solo se ce ne sono)
+  riservateProva?: number;
 };
 
 const VUOTO = { inviati: 0, verificati: 0, errori: 0, senzaConsenso: 0 };
@@ -61,8 +64,17 @@ export async function inviaConversioniGa4(
     .limit(50);
   if (error) return { abilitato: false, motivo: schemaAssente(error) ? "schema_assente" : "errore_database", ...VUOTO };
 
-  const leads = (data ?? []) as LeadGa4[];
+  const candidati = (data ?? []) as LeadGa4[];
   const esito: RisultatoGa4 = { abilitato: true, ...VUOTO };
+  if (candidati.length === 0) return esito;
+
+  // Una richiesta con una riga nel registro delle prove reali (demo_ga4_prove, migrazione 0099) NON si riprende mai da qui, in nessuno
+  // stato e anche con DEMO_GA4_MP_DEBUG spento: la prova l'ha prenotata in modo esclusivo e l'esito lo decide l'amministratore.
+  // Se non si riesce a sapere quali sono riservate, ci si ferma (meglio un giro saltato di un possibile doppione).
+  const riservate = await idRichiesteRiservate(admin, candidati.map((l) => l.id));
+  if (!riservate.ok) return { abilitato: false, motivo: "errore_database", ...VUOTO };
+  const leads = candidati.filter((l) => !riservate.ids.has(l.id));
+  if (leads.length < candidati.length) esito.riservateProva = candidati.length - leads.length;
   if (leads.length === 0) return esito;
 
   const letti = await leggiConsensi(admin, leads.map((l) => l.id));

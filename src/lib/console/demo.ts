@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import type { StatoAds } from "@/lib/demo-conversioni-calcoli";
+import { leggiProveGa4 } from "@/lib/demo-ga4-riserva";
+import { segretoFirmaConsensi } from "@/lib/demo-hash";
+import { statoGateProva, type RigaProvaGa4, type StatoGateProva } from "@/lib/demo-ga4-prova-calcoli";
 import { STATI_ADS, riepilogoAds, riepilogoGa4, riepilogoRichieste, statoIntegrazioni, type RiepilogoAds, type RiepilogoGa4, type RiepilogoRichieste, type RigaRichiestaDemo, type StatoIntegrazioni, type StatoRichiesta, type StatoSync } from "./demo-calcoli";
 import type { Periodo } from "./periodo";
 
@@ -94,6 +97,9 @@ export type DatiDemo = {
   erroriAds: RigaRichiestaDemo[];
   sync: StatoSync;
   integrazioni: StatoIntegrazioni;
+  // Prova reale dell'evento GA4 (migrazione 0099): interruttori, registro delle prove. Se la tabella non c'è ancora, la sezione lo dice
+  // e non permette di inviare; il resto della pagina funziona lo stesso.
+  provaGa4: { gate: StatoGateProva; tabella: "ok" | "assente" | "errore"; prove: RigaProvaGa4[] };
 };
 
 export type RisultatoDemo = { stato: "ok"; dati: DatiDemo } | { stato: "tabella_assente" } | { stato: "errore"; messaggio: string };
@@ -101,7 +107,12 @@ export type RisultatoDemo = { stato: "ok"; dati: DatiDemo } | { stato: "tabella_
 type ErroreDb = { code?: string; message?: string } | null;
 
 // `admin` e `env` si possono sostituire nei test (database finto, ambiente finto).
-export async function leggiDemo(periodo: Pick<Periodo, "daIso" | "aIso">, admin: SupabaseClient = createAdminClient(), env: Record<string, string | undefined> = process.env): Promise<RisultatoDemo> {
+export async function leggiDemo(
+  periodo: Pick<Periodo, "daIso" | "aIso">,
+  admin: SupabaseClient = createAdminClient(),
+  env: Record<string, string | undefined> = process.env,
+  adesso: Date = new Date(),
+): Promise<RisultatoDemo> {
   let assente = false;
   let guasto = false;
   const verifica = (errore: ErroreDb, cosa: string): boolean => {
@@ -183,6 +194,12 @@ export async function leggiDemo(periodo: Pick<Periodo, "daIso" | "aIso">, admin:
   verifica(sr.error, "stato sincronizzazione");
   const sync: StatoSync = sr.data ? { ultimaEsecuzioneIl: sr.data.last_run_at, ultimoSuccessoIl: sr.data.last_success_at, ultimoErrore: sr.data.last_error, bloccoFinoA: sr.data.lock_until } : null;
 
+  // 7. prove reali di GA4 (tabella della migrazione 0099): se manca NON è un errore della pagina, la sezione lo dice
+  const letturaProve = await leggiProveGa4(admin, adesso.getTime());
+  const prove = letturaProve.stato === "ok" ? letturaProve.righe : [];
+  if (letturaProve.stato === "errore") console.error("Console DEMO: lettura non riuscita", "prove GA4");
+  const idRiservati = new Set(prove.map((p) => p.leadId));
+
   if (assente) return { stato: "tabella_assente" };
   if (guasto) return { stato: "errore", messaggio: "Lettura dei dati DEMO non riuscita." };
 
@@ -195,11 +212,12 @@ export async function leggiDemo(periodo: Pick<Periodo, "daIso" | "aIso">, admin:
       prenotazioni,
       casi,
       ads: riepilogoAds(confermate),
-      ga4: riepilogoGa4(confermate),
+      ga4: riepilogoGa4(confermate, idRiservati),
       confermateTotali: confermate.length,
       erroriAds: (er.data ?? []).map(inRiga),
       sync,
       integrazioni: statoIntegrazioni(env),
+      provaGa4: { gate: statoGateProva(env, segretoFirmaConsensi(env) !== null), tabella: letturaProve.stato === "ok" ? "ok" : letturaProve.stato === "tabella_assente" ? "assente" : "errore", prove },
     },
   };
 }
