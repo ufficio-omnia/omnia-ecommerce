@@ -711,6 +711,20 @@ async function main() {
     const ok1 = await eseguiCicloDemo(dbOk.comeClient(), { ...envCal, DEMO_GA4_MP_ENABLED: "1", GA4_API_SECRET: "ga-segreto" }, ADESSO, cfOk.fetch);
     atteso("giro completo: calendario → GA4 → Ads in sequenza, e il blocco viene sempre rilasciato alla fine", ok1.eseguito === true && ok1.calendario.eseguita === true && leadDi(dbOk).booking_status === "confirmed" && leadDi(dbOk).ga4_sent_at === ADESSO_ISO && cfOk.chiamate.filter((c) => c.url.includes("google-analytics.com")).length === 1 && dbOk.da("demo_sync_stato")[0].lock_until === null, JSON.stringify(ok1));
     atteso("… e il risultato del giro non contiene dati personali né segreti", !SEGRETI.some((s) => JSON.stringify(ok1).includes(s)));
+
+    // migrazione 0099 (registro delle prove reali GA4) NON ancora eseguita: il giro funziona come prima, il calendario continua a
+    // sincronizzare e la richiesta confermata non viene bloccata da una tabella che non c'è
+    const dbSenza0099 = dbCon({ leads: [richiesta({ id: "lead1" })] });
+    dbSenza0099.errori.demo_ga4_prove = { code: "42P01", message: 'relation "public.demo_ga4_prove" does not exist' };
+    const cfSenza0099 = fetchFinto((c) => (c.url.startsWith("https://oauth2.googleapis.com/token") ? { status: 200, json: { access_token: "at-segreto" } } : c.url.includes("/calendar/v3/") ? { status: 200, json: { items: [ev()], nextSyncToken: "T" } } : c.url.includes("google-analytics.com") ? { status: 204 } : { status: 404 }));
+    const senza0099 = await eseguiCicloDemo(dbSenza0099.comeClient(), { ...envCal, DEMO_GA4_MP_ENABLED: "1", GA4_API_SECRET: "ga-segreto" }, ADESSO, cfSenza0099.fetch);
+    atteso("tabella delle prove GA4 (migrazione 0099) non ancora creata: il giro del cron funziona come prima (calendario sincronizzato, richiesta confermata, blocco rilasciato)", senza0099.eseguito === true && senza0099.calendario.eseguita === true && leadDi(dbSenza0099).booking_status === "confirmed" && pren(dbSenza0099).stato === "confirmed" && dbSenza0099.da("demo_sync_stato")[0].lock_until === null && dbSenza0099.da("demo_sync_stato")[0].last_error === null, JSON.stringify(senza0099));
+    atteso("… e anche il passo GA4 va come prima (una sola chiamata, senza errori)", cfSenza0099.chiamate.filter((c) => c.url.includes("google-analytics.com")).length === 1 && "ga4" in senza0099 && (senza0099.ga4 as { errori?: number }).errori === 0);
+    const dbDbg0099 = dbCon({ leads: [richiesta({ id: "lead1" })] });
+    dbDbg0099.errori.demo_ga4_prove = { code: "PGRST205", message: "Could not find the table 'public.demo_ga4_prove' in the schema cache" };
+    const cfDbg0099 = fetchFinto((c) => (c.url.startsWith("https://oauth2.googleapis.com/token") ? { status: 200, json: { access_token: "at-segreto" } } : c.url.includes("/calendar/v3/") ? { status: 200, json: { items: [ev()], nextSyncToken: "T" } } : c.url.includes("google-analytics.com") ? { status: 200, json: { validationMessages: [] } } : { status: 404 }));
+    const dbg0099 = await eseguiCicloDemo(dbDbg0099.comeClient(), { ...envCal, DEMO_GA4_MP_ENABLED: "1", DEMO_GA4_MP_DEBUG: "1", GA4_API_SECRET: "ga-segreto" }, ADESSO, cfDbg0099.fetch);
+    atteso("tabella 0099 assente (errore di cache dello schema di PostgREST) con GA4 in DEBUG, come oggi in produzione: calendario ok, evento SOLO validato (mai inviato, nessuna scrittura sulla richiesta)", dbg0099.eseguito === true && dbg0099.calendario.eseguita === true && cfDbg0099.chiamate.filter((c) => c.url.includes("/debug/mp/collect")).length === 1 && cfDbg0099.chiamate.filter((c) => c.url.includes("google-analytics.com") && !c.url.includes("/debug/")).length === 0 && leadDi(dbDbg0099).ga4_sent_at === null && leadDi(dbDbg0099).ga4_attempts === 0, JSON.stringify(dbg0099));
   }
 
   // ═════════════════════════ 8. GA4 lato server ═════════════════════════
