@@ -24,6 +24,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
       { href: "/ricavi", etichetta: "Ricavi", pronto: true },
       { href: "/abbonamenti", etichetta: "Abbonamenti", pronto: true },
       { href: "/crediti", etichetta: "Crediti", pronto: true },
+      { href: "/demo", etichetta: "DEMO e Google Ads", pronto: true },
     ],
   },
   {

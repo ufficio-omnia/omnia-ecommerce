@@ -31,18 +31,20 @@ const sha = (testo: string) => createHash("sha256").update(testo).digest("hex");
 
 console.log("--- Impronte: i file in legal/ sono quelli registrati nelle migrazioni ---");
 const registrati: { tipo: string; versione: number; file: string; sha: string; migrazione: string }[] = [];
-for (const migrazione of ["0052_omnia_ai_legal_documents_v1.sql", "0080_omnia_ai_condizioni_v2_allegato_a.sql"]) {
+for (const migrazione of ["0052_omnia_ai_legal_documents_v1.sql", "0080_omnia_ai_condizioni_v2_allegato_a.sql", "0100_omnia_ai_privacy_cookie_v2.sql"]) {
   const sql = leggi(`supabase/migrations/${migrazione}`);
   for (const m of sql.matchAll(/\('(omnia_ai_[a-z_]+)',\s*(\d+),\s*.+?,\s*'(legal\/[^']+)',\s*'([0-9a-f]{64})'\)/g)) {
     registrati.push({ tipo: m[1], versione: Number(m[2]), file: m[3], sha: m[4], migrazione });
   }
 }
-uguale("le migrazioni 0052 e 0080 registrano cinque documenti di OMNIA AI", registrati.map((r) => `${r.tipo} v${r.versione}`).sort(), [
+uguale("le migrazioni 0052, 0080 e 0100 registrano sette documenti di OMNIA AI", registrati.map((r) => `${r.tipo} v${r.versione}`).sort(), [
   "omnia_ai_allegato_a v1",
   "omnia_ai_condizioni_abbonamento v1",
   "omnia_ai_condizioni_abbonamento v2",
   "omnia_ai_cookie_policy v1",
+  "omnia_ai_cookie_policy v2",
   "omnia_ai_privacy_policy v1",
+  "omnia_ai_privacy_policy v2",
 ]);
 for (const r of registrati) {
   const impronta = fs.existsSync(path.join(radice, r.file)) ? sha(leggi(r.file)) : "(file mancante)";
@@ -206,6 +208,29 @@ console.log("--- Migrazione 0080 ---");
   atteso("la data di entrata in vigore è il giorno (a Roma) in cui si esegue", (sql.match(/\(now\(\) at time zone 'Europe\/Rome'\)::date/g) ?? []).length === 2);
   atteso("avverte di eseguirla DOPO il deploy (il database è condiviso con la produzione)", /DOPO il deploy/.test(sql));
   atteso("non tocca dati né tabelle: nessun delete, truncate, update o drop di tabella", !/\b(delete from|truncate|update public|drop table)\b/i.test(sql));
+}
+
+console.log("--- Privacy e Cookie policy v2 (migrazione 0100, Google tag con Consent Mode avanzato) ---");
+{
+  const sql = leggi("supabase/migrations/0100_omnia_ai_privacy_cookie_v2.sql");
+  const cookie = leggi("legal/cookie-policy-omnia-ai-v2.md");
+  const privacy = leggi("legal/privacy-policy-omnia-ai-v2.md");
+  const registro = leggi("src/lib/legal-documenti.ts");
+  atteso("la migrazione inserisce cookie policy v2 e privacy policy v2, una volta sola (on conflict), con la data del giorno (a Roma) in cui si esegue", /'omnia_ai_cookie_policy', 2,/.test(sql) && /'omnia_ai_privacy_policy', 2,/.test(sql) && /on conflict \(document_type, version\) do nothing/.test(sql) && (sql.match(/\(now\(\) at time zone 'Europe\/Rome'\)::date/g) ?? []).length === 2);
+  atteso("avverte di eseguirla SUBITO DOPO il deploy, dichiara i testi approvati dal titolare (i tre punti tolti per sua decisione) e di ricalcolare l'impronta se un file cambia (dopo l'esecuzione serve una v3)", /SUBITO DOPO il deploy/.test(sql) && /approvati dal titolare/.test(sql) && /ricalcolata/.test(sql) && /serve una versione 3/.test(sql) && !/approvati dal legale/.test(sql));
+  atteso("non tocca dati né tabelle e non ricrea il vincolo dei tipi (già ammessi dalla 0080)", !/\b(delete from|truncate|update public|drop table|drop constraint|alter table)\b/i.test(sql));
+  atteso("le v1 non si toccano: restano registrate come componenti e le v2 sono file markdown registrati con file, titolo e tipo", /"privacy-policy": \{ "1": PrivacyPolicyV1 \}/.test(leggi("src/components/omnia-ai/legal/documento-legale-versionato.tsx")) && /"cookie-policy": \{ "1": CookiePolicyV1 \}/.test(leggi("src/components/omnia-ai/legal/documento-legale-versionato.tsx")) && /"privacy-policy": \{\s*"2": \{ file: "privacy-policy-omnia-ai-v2\.md", titolo: "Privacy policy", tipoDb: "omnia_ai_privacy_policy", versioneNelTesto: false \}/.test(registro) && /"cookie-policy": \{\s*"2": \{ file: "cookie-policy-omnia-ai-v2\.md", titolo: "Cookie policy", tipoDb: "omnia_ai_cookie_policy", versioneNelTesto: false \}/.test(registro));
+  atteso("le pagine /privacy e /cookie-policy seguono la versione in vigore secondo legal_documents (la v2 solo dopo la migrazione), con ricaduta sulla v1", /getCurrentOmniaAiDocumento\("omnia_ai_privacy_policy"\)/.test(leggi("src/app/site-omnia-ai/privacy/page.tsx")) && /getCurrentOmniaAiDocumento\("omnia_ai_cookie_policy"\)/.test(leggi("src/app/site-omnia-ai/cookie-policy/page.tsx")) && /corrente\?\.version \?\? 1/.test(leggi("src/app/site-omnia-ai/privacy/page.tsx")) && /corrente\?\.version \?\? 1/.test(leggi("src/app/site-omnia-ai/cookie-policy/page.tsx")));
+  atteso("la cookie policy v2 descrive il comportamento reale: nulla prima del consenso su Analytics, segnale tecnico senza cookie solo sulle pagine di presentazione, indirizzo senza parametri, revoca con cancellazione dei cookie, personalizzazione disattivata, durate dei cookie di Google", /Google Analytics resta spento/.test(cookie) && /senza cookie/.test(cookie) && /senza parametri né frammenti/.test(cookie) && /Home, Come funziona, Piani, Demo, Contatti, Riservatezza/.test(cookie) && /togliamo dal tuo browser i cookie di Google/.test(cookie) && /personalizzazione pubblicitaria resta disattivata/.test(cookie) && /_ga/.test(cookie) && /_gcl_au/.test(cookie) && /Fino a 2 anni/.test(cookie) && /Fino a 90 giorni/.test(cookie));
+  atteso("la cookie policy v2 NON ripete l'affermazione della v1 diventata falsa («nessun dato viene inviato a Google»)", !/nessun dato viene inviato a Google/i.test(cookie) && !/non viene caricato finché non premi/i.test(cookie));
+  atteso("la privacy v2 contiene Google Analytics 4, Google Ads, finalità, base giuridica, destinatari (Google tra i fornitori), trasferimenti, conservazione, gestione e revoca del consenso, richiesta di demo", /Google Analytics 4 e Google Ads/.test(privacy) && /Se premi "Accetta"/.test(privacy) && /Se rifiuti, o se ignori il banner/.test(privacy) && /\| Consenso \|/.test(privacy) && /\*\*Google\*\* — Google Analytics 4 e Google Ads/.test(privacy) && /Data Privacy Framework/.test(privacy) && /Preferenze cookie/.test(privacy) && /## Richiesta di demo/.test(privacy) && /Le richieste che non portano a una prenotazione sono cancellate dopo 90 giorni/.test(privacy) && /dopo 24 mesi/.test(privacy));
+  atteso("la privacy v2 conserva il contenuto della v1 (titolare, documenti caricati, fornitori, diritti, reclamo al Garante): le righe della v1 che non cambiano ci sono ancora", ["## Titolare del trattamento", "## I documenti che carichi", "Non utilizziamo i tuoi documenti né i contenuti generati per addestrare modelli di intelligenza artificiale", "## Fornitori che trattano i dati per nostro conto", "- **Anthropic** — modelli linguistici", "## Diritti dell'interessato", "Garante per la Protezione dei Dati Personali", "P.IVA 02957590819"].every((s) => privacy.includes(s)));
+  const segnaposto = [...(cookie + privacy).matchAll(/\[([^\]]{3,})\]/g)].map((m) => m[1]);
+  atteso("nei due testi NON resta nessun punto in sospeso: niente parentesi quadre, niente «da confermare», «da definire» o «legale» come rimando (i tre punti sono stati tolti per decisione del titolare il 05/11/2026)", segnaposto.length === 0 && !/[\[\]]/.test(cookie + privacy) && !/da confermare|da definire|da verificare|con il legale|TODO/i.test(cookie + privacy), JSON.stringify(segnaposto));
+  atteso("tolti i tre punti, le frasi restano intere: la conservazione parla solo dei cookie, i trasferimenti passano dalle garanzie generali alla copia su richiesta, e nessuna frase è rimasta a metà", /\nI cookie hanno le durate indicate nella Cookie policy\.\n/.test(privacy) && !/conservati per\s*[;.,]/.test(privacy) && /Data Privacy Framework UE-USA\. Puoi chiederci copia delle garanzie adottate\./.test(privacy) && !/ {2,}[.,;]|\.\s+\./.test(privacy));
+  atteso("nessuna riga di tabella ha celle vuote (la riga del segnale tecnico è stata tolta insieme al suo segnaposto, non lasciata a metà); il segnale tecnico resta descritto per intero nella sezione su Google", [cookie, privacy].every((t) => t.split("\n").filter((r) => /^\|/.test(r) && !/^\|[-| ]+\|$/.test(r)).every((r) => r.split("|").slice(1, -1).every((c) => c.trim() !== ""))) && !/\| Segnale tecnico senza cookie verso Google Ads/.test(privacy) && /riceve un segnale tecnico senza cookie: l'orario, l'indirizzo della pagina e di quella di provenienza senza parametri né frammenti/.test(privacy) && /\| Dati di uso del sito e delle campagne pubblicitarie, raccolti con Google Analytics 4 e Google Ads \(vedi sotto\) \| Solo se premi "Accetta" sul banner \|[^\n]*\| Consenso \|/.test(privacy));
+  atteso("i testi usano solo il markdown che il visualizzatore sa leggere (titoli, elenchi, tabelle, grassetto): nessun collegamento, nessun HTML", !/<[a-z]/i.test(cookie + privacy) && !/\]\(/.test(cookie + privacy));
+  atteso("fine riga LF e newline finale (convenzione delle impronte)", !(cookie + privacy).includes("\r") && cookie.endsWith("\n") && privacy.endsWith("\n"));
 }
 
 if (fallimenti.length > 0) {
