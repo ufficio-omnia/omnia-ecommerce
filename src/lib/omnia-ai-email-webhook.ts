@@ -88,12 +88,15 @@ export async function notificaNuovoAbbonamento({
   session,
   stripeSubscriptionId,
   planSlug,
+  pianoLavoro = false,
   userId,
   accountNuovo,
 }: Contesto & {
   session: Stripe.Checkout.Session;
   stripeSubscriptionId: string;
   planSlug: string;
+  // l'abbonamento include il piano di lavoro (opzione del checkout)
+  pianoLavoro?: boolean;
   userId: string;
   accountNuovo: boolean;
 }): Promise<void> {
@@ -111,6 +114,7 @@ export async function notificaNuovoAbbonamento({
       primoAbbonamento: (abbonamenti ?? 1) <= 1,
       cliente,
       piano: planSlug,
+      pianoLavoro,
       importoCentesimi: session.amount_total ?? null,
       quando: new Date(),
       accountNuovo,

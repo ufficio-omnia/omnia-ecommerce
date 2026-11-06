@@ -24,7 +24,9 @@ export type TipoEmailEvento =
   | "disdetta_confermata"
   | "metodo_pagamento_cambiato"
   | "revisione_umana_richiesta"
-  | "revisione_umana_ricevuta";
+  | "revisione_umana_ricevuta"
+  | "piano_lavoro_acquistato"
+  | "piano_lavoro_ricevuto";
 
 export type EsitoInvioEvento = "inviata" | "duplicata" | "fallita";
 

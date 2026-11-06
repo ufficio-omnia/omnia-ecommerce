@@ -187,6 +187,8 @@ export function emailUfficioNuovoCliente(d: {
   primoAbbonamento: boolean;
   cliente: ClienteEmail;
   piano: string;
+  // l'abbonamento include il piano di lavoro (riga in più nella tabella, nulla se non c'è)
+  pianoLavoro?: boolean;
   importoCentesimi: number | null;
   quando: Date;
   accountNuovo: boolean;
@@ -210,6 +212,7 @@ export function emailUfficioNuovoCliente(d: {
           ["Partita IVA", d.cliente.partitaIva],
           ["Codice fiscale", d.cliente.codiceFiscale],
           ["Piano", nomePiano(d.piano)],
+          ["Piano di lavoro incluso", d.pianoLavoro ? "sì" : null],
           ["Importo pagato (IVA inclusa)", d.importoCentesimi !== null ? euro(d.importoCentesimi) : null],
           ["Data", dataOra(d.quando)],
           ["Account", d.accountNuovo ? "nuovo, creato con questo acquisto" : "già esistente"],

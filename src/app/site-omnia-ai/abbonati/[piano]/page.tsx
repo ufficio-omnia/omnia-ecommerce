@@ -10,6 +10,8 @@ import { PIANI, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { testoOfferta } from "@/lib/omnia-ai-catalogo-calcoli";
 import AbbonatiPianoForm from "./abbonati-piano-form";
+import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { getOffertePianoLavoro } from "@/lib/piano-lavoro-offerta";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 function isPianoSlug(value: string): value is PianoSlug {
@@ -66,6 +68,8 @@ export default async function AbbonatiPianoPage({
 
   const admin = createAdminClient();
   const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
+  // L'opzione «piano di lavoro» compare solo se è in vendita (interruttore della console + chiave Stripe reale, o prova in locale)
+  const offertaConPianoLavoro = (await venditaPianoLavoroAttiva(admin)) ? (await getOffertePianoLavoro(admin))[piano] : null;
 
   return (
     <PageShell>
@@ -90,6 +94,7 @@ export default async function AbbonatiPianoPage({
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}
+            offertaPianoLavoro={offertaConPianoLavoro ? { surplusCentesimi: offertaConPianoLavoro.surplusCentesimi, totaleCentesimi: offertaConPianoLavoro.prezzoCentesimi } : null}
           />
         ) : (
           <p className="omnia-messaggio-stato errore">

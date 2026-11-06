@@ -52,12 +52,14 @@ async function main() {
     "omnia-ai-plan-change.ts": ["previewOmniaAiPlanChange", "confirmOmniaAiPlanChange", "cancelOmniaAiScheduledPlanChange"],
     "omnia-ai-account-settings.ts": ["updateAccountEmail", "updateAccountPassword"],
     "omnia-ai-revisione.ts": ["avviaRevisioneUmana"],
+    "gara-piano-lavoro.ts": ["acquistaPianoLavoro"],
     "omnia-ai-ufficio-gare.ts": ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"],
   };
   const LAVORO: Record<string, string[]> = {
     "gare.ts": ["createGara", "renameGara", "deleteGara", "uploadGaraDocumento", "removeGaraDocumento", "uploadGaraLogoCliente"],
     "gara-extraction.ts": ["extractGaraData", "impostaScadenzaGara"],
     "gara-chat.ts": ["sendGaraMessage"],
+    "gara-piano-lavoro.ts": ["generaPianoLavoroGara", "scaricaPianoLavoroGara"],
     "download.ts": ["downloadGaraDocumento", "downloadGaraMessaggioFile", "downloadAllegatoMessaggio"],
     "assistenza-chat.ts": ["sendAssistenzaMessage", "richiediEscalationAssistenza"],
     "omnia-ai-stato-sistema.ts": ["getStatoElaborazioneGare"],

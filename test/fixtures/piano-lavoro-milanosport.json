@@ -1,0 +1,1159 @@
+{
+ "fonte": "Piano di lavoro Milanosport REV.3 (fatto a mano), usato solo come prova del motore",
+ "dati": {
+  "appalto": {
+   "titolo": "Servizio di pulizia a ridotto impatto ambientale e pulizia aree esterne impianti sportivi",
+   "stazioneAppaltante": "Milanosport S.S.D. S.p.A.",
+   "cig": "BC9264F446",
+   "riferimentoGara": "REP. 117/2026",
+   "criterio": "Offerta economicamente più vantaggiosa",
+   "importoBase": 3513201.59
+  },
+  "parametri": [
+   {
+    "chiave": "durata_mesi",
+    "valore": 24,
+    "origine": "documento",
+    "fonte": "Capitolato"
+   },
+   {
+    "chiave": "monte_ore_dichiarato",
+    "valore": 68627,
+    "origine": "documento",
+    "fonte": "Dato fornito dall'utente"
+   },
+   {
+    "chiave": "ore_fte",
+    "valore": 1440,
+    "origine": "ipotesi",
+    "fonte": "Ipotesi"
+   }
+  ],
+  "tipologie": [
+   {
+    "nome": "Aree esterne",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (rifiuti, scopatura)",
+      "resa": 900,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg (Art. 1.9.2)",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia periodica/a fondo (erbe infestanti, arredi)",
+      "resa": 150,
+      "frequenza": 12,
+      "notaFrequenza": "Ipotesi: mensile",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Uffici al pubblico - corridoi - ascensori",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero",
+      "resa": 250,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica (vetri, deceratura)",
+      "resa": 100,
+      "frequenza": 12,
+      "notaFrequenza": "Ipotesi: mensile",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Tribune e scale al coperto",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero",
+      "resa": 300,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 120,
+      "frequenza": 12,
+      "notaFrequenza": "Ipotesi: mensile",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Locali non aperti al pubblico",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero",
+      "resa": 280,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 110,
+      "frequenza": 12,
+      "notaFrequenza": "Ipotesi: mensile",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Locali primo soccorso",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (alta cura/disinfezione)",
+      "resa": 150,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 80,
+      "frequenza": 12,
+      "notaFrequenza": "Ipotesi: mensile",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Zone spogliatoi",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero",
+      "resa": 180,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica (disinfezione)",
+      "resa": 90,
+      "frequenza": 24,
+      "notaFrequenza": "Ipotesi: quindicinale",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Zone docce e servizi",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (alta frequenza)",
+      "resa": 100,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 60,
+      "frequenza": 24,
+      "notaFrequenza": "Ipotesi: quindicinale",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Zona piscine coperte",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (bordo vasca, P.O.)",
+      "resa": 200,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo ad impianto chiuso",
+      "resa": 100,
+      "frequenza": 12,
+      "notaFrequenza": "Ipotesi: mensile",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Zona piscine scoperte",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (stagionale)",
+      "resa": 250,
+      "frequenza": 200,
+      "notaFrequenza": "Ipotesi: apertura ~200 gg/anno",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 120,
+      "frequenza": 6,
+      "notaFrequenza": "Ipotesi: bimestrale in stagione",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Solarium",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (stagionale)",
+      "resa": 400,
+      "frequenza": 200,
+      "notaFrequenza": "Ipotesi: apertura ~200 gg/anno",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 150,
+      "frequenza": 6,
+      "notaFrequenza": "Ipotesi: bimestrale in stagione",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Palestre e campi coperti",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero",
+      "resa": 350,
+      "frequenza": 365,
+      "notaFrequenza": "7/7 gg",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica (deceratura/inceratura)",
+      "resa": 100,
+      "frequenza": 6,
+      "notaFrequenza": "Ipotesi: bimestrale",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   },
+   {
+    "nome": "Palestre e campi scoperti",
+    "unita": "mq",
+    "lavorazioni": [
+     {
+      "nome": "Ripasso giornaliero (stagionale)",
+      "resa": 500,
+      "frequenza": 200,
+      "notaFrequenza": "Ipotesi: apertura ~200 gg/anno",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     },
+     {
+      "nome": "Pulizia a fondo periodica",
+      "resa": 200,
+      "frequenza": 6,
+      "notaFrequenza": "Ipotesi: bimestrale in stagione",
+      "origineResa": "ipotesi",
+      "origineFrequenza": "ipotesi"
+     }
+    ]
+   }
+  ],
+  "sedi": [
+   {
+    "nome": "Allianz Cloud (Palazzetto dello sport)",
+    "indirizzo": "Piazza Stuparich n. 1",
+    "mq": {
+     "Aree esterne": 4148,
+     "Uffici al pubblico - corridoi - ascensori": 3897.6,
+     "Tribune e scale al coperto": 2754.9,
+     "Locali non aperti al pubblico": 1046.9,
+     "Locali primo soccorso": 70.5,
+     "Zone spogliatoi": 252.6,
+     "Zone docce e servizi": 502.7,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 103,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": false,
+    "canone": null,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina Arioli Venegoni",
+    "indirizzo": "Via Arioli Venegoni n. 9 - 20153 Milano",
+    "mq": {
+     "Aree esterne": 1679.4,
+     "Uffici al pubblico - corridoi - ascensori": 83,
+     "Tribune e scale al coperto": 216.8,
+     "Locali non aperti al pubblico": 81,
+     "Locali primo soccorso": 8,
+     "Zone spogliatoi": 272,
+     "Zone docce e servizi": 102.8,
+     "Zona piscine coperte": 531,
+     "Zona piscine scoperte": 0,
+     "Solarium": 1820,
+     "Palestre e campi coperti": 92,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 148802.8,
+    "oreDichiarate": 2860.6
+   },
+   {
+    "nome": "Piscina Bacone",
+    "indirizzo": "Via Nicola Piccinni n. 8 - 20131 Milano",
+    "mq": {
+     "Aree esterne": 235,
+     "Uffici al pubblico - corridoi - ascensori": 100.6,
+     "Tribune e scale al coperto": 195.4,
+     "Locali non aperti al pubblico": 136.4,
+     "Locali primo soccorso": 26.4,
+     "Zone spogliatoi": 269.1,
+     "Zone docce e servizi": 110.1,
+     "Zona piscine coperte": 744.3,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 55.6,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 213555.84,
+    "oreDichiarate": 3268.6
+   },
+   {
+    "nome": "Centro Sportivo Cambini Fossati",
+    "indirizzo": "Via Leonardo Cambini n. 4 - 20132 Milano",
+    "mq": {
+     "Aree esterne": 5134.2,
+     "Uffici al pubblico - corridoi - ascensori": 477.6,
+     "Tribune e scale al coperto": 626,
+     "Locali non aperti al pubblico": 74.9,
+     "Locali primo soccorso": 21,
+     "Zone spogliatoi": 321.2,
+     "Zone docce e servizi": 298.9,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 4368,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 147245.39,
+    "oreDichiarate": 4089.8
+   },
+   {
+    "nome": "Centro Sportivo Cappelli",
+    "indirizzo": "Piazza Caduti del lavoro n. 5 - 20141 Milano",
+    "mq": {
+     "Aree esterne": 1100,
+     "Uffici al pubblico - corridoi - ascensori": 34,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 84,
+     "Locali primo soccorso": 9.2,
+     "Zone spogliatoi": 180,
+     "Zone docce e servizi": 159.3,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 1305,
+     "Palestre e campi scoperti": 6730
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 41350.8,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina Cardellino",
+    "indirizzo": "Via del Cardellino n. 3 - 20147 Milano",
+    "mq": {
+     "Aree esterne": 3923.9,
+     "Uffici al pubblico - corridoi - ascensori": 269.1,
+     "Tribune e scale al coperto": 105,
+     "Locali non aperti al pubblico": 89.6,
+     "Locali primo soccorso": 7,
+     "Zone spogliatoi": 405.3,
+     "Zone docce e servizi": 170.8,
+     "Zona piscine coperte": 662.7,
+     "Zona piscine scoperte": 3259.3,
+     "Solarium": 5259.4,
+     "Palestre e campi coperti": 135,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 158195.47,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina Carella-Cantù",
+    "indirizzo": "Via Arturo Graf n. 8 - 20157 Milano",
+    "mq": {
+     "Aree esterne": null,
+     "Uffici al pubblico - corridoi - ascensori": null,
+     "Tribune e scale al coperto": null,
+     "Locali non aperti al pubblico": null,
+     "Locali primo soccorso": null,
+     "Zone spogliatoi": null,
+     "Zone docce e servizi": null,
+     "Zona piscine coperte": null,
+     "Zona piscine scoperte": null,
+     "Solarium": null,
+     "Palestre e campi coperti": null,
+     "Palestre e campi scoperti": null
+    },
+    "origineMq": "mancante",
+    "aCanone": true,
+    "canone": 133134.08,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Centro Sportivo Carraro",
+    "indirizzo": "Via dei Missaglia n. 146 - 20142 Milano",
+    "mq": {
+     "Aree esterne": 1262,
+     "Uffici al pubblico - corridoi - ascensori": 532.8,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 314.7,
+     "Locali primo soccorso": 34.8,
+     "Zone spogliatoi": 587.2,
+     "Zone docce e servizi": 309.7,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 3017.4,
+     "Palestre e campi scoperti": 12200
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 107202.77,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Centro Sportivo Catozzi",
+    "indirizzo": "Via Cristoforo Madruzzo n. 3 - 20149 Milano",
+    "mq": {
+     "Aree esterne": 1485,
+     "Uffici al pubblico - corridoi - ascensori": 142.7,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 97.7,
+     "Locali primo soccorso": 21.1,
+     "Zone spogliatoi": 216.9,
+     "Zone docce e servizi": 96.5,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 2607,
+     "Palestre e campi scoperti": 5739
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 39210.62,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina Cozzi",
+    "indirizzo": "Viale Tunisia n. 35 - 20124 Milano",
+    "mq": {
+     "Aree esterne": 184.5,
+     "Uffici al pubblico - corridoi - ascensori": 1483.3,
+     "Tribune e scale al coperto": 1053.3,
+     "Locali non aperti al pubblico": 829.1,
+     "Locali primo soccorso": 9.2,
+     "Zone spogliatoi": 617,
+     "Zone docce e servizi": 339.4,
+     "Zona piscine coperte": 1663.5,
+     "Zona piscine scoperte": 0,
+     "Solarium": 149,
+     "Palestre e campi coperti": 40,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 79185.52,
+    "oreDichiarate": 5867.8
+   },
+   {
+    "nome": "Uffici Milanosport (c/o piscina Cozzi)",
+    "indirizzo": "Viale Tunisia n. 35 - 20124 Milano",
+    "mq": {
+     "Aree esterne": null,
+     "Uffici al pubblico - corridoi - ascensori": null,
+     "Tribune e scale al coperto": null,
+     "Locali non aperti al pubblico": null,
+     "Locali primo soccorso": null,
+     "Zone spogliatoi": null,
+     "Zone docce e servizi": null,
+     "Zona piscine coperte": null,
+     "Zona piscine scoperte": null,
+     "Solarium": null,
+     "Palestre e campi coperti": null,
+     "Palestre e campi scoperti": null
+    },
+    "origineMq": "mancante",
+    "aCanone": true,
+    "canone": 12191.58,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina De Marchi",
+    "indirizzo": "Via Emilio De Marchi n. 17 - 20125 Milano",
+    "mq": {
+     "Aree esterne": 204,
+     "Uffici al pubblico - corridoi - ascensori": 64,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 115,
+     "Locali primo soccorso": 15,
+     "Zone spogliatoi": 258.7,
+     "Zone docce e servizi": 102,
+     "Zona piscine coperte": 816,
+     "Zona piscine scoperte": 0,
+     "Solarium": 572.4,
+     "Palestre e campi coperti": 0,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 125240.22,
+    "oreDichiarate": 3463.6
+   },
+   {
+    "nome": "Centro Sportivo De Nicola",
+    "indirizzo": "Via Enrico De Nicola n. 3 - 20142 Milano",
+    "mq": {
+     "Aree esterne": 2149,
+     "Uffici al pubblico - corridoi - ascensori": 23.2,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 1627.5,
+     "Locali primo soccorso": 18.9,
+     "Zone spogliatoi": 308.9,
+     "Zone docce e servizi": 82.7,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 1601,
+     "Palestre e campi scoperti": 9776
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 35211.14,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina Fatebenesorelle",
+    "indirizzo": "Via Fatebenesorelle n. 7 - 20121 Milano",
+    "mq": {
+     "Aree esterne": 230.7,
+     "Uffici al pubblico - corridoi - ascensori": 250.2,
+     "Tribune e scale al coperto": 20.3,
+     "Locali non aperti al pubblico": 45.7,
+     "Locali primo soccorso": 13.5,
+     "Zone spogliatoi": 151.7,
+     "Zone docce e servizi": 106,
+     "Zona piscine coperte": 826.4,
+     "Zona piscine scoperte": 0,
+     "Solarium": 243.4,
+     "Palestre e campi coperti": 90.6,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 213568.48,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Centro Sportivo Iseo - Ripamonti",
+    "indirizzo": "Via Iseo n. 4-6 - 20161 Milano",
+    "mq": {
+     "Aree esterne": null,
+     "Uffici al pubblico - corridoi - ascensori": null,
+     "Tribune e scale al coperto": null,
+     "Locali non aperti al pubblico": null,
+     "Locali primo soccorso": null,
+     "Zone spogliatoi": null,
+     "Zone docce e servizi": null,
+     "Zona piscine coperte": null,
+     "Zona piscine scoperte": null,
+     "Solarium": null,
+     "Palestre e campi coperti": null,
+     "Palestre e campi scoperti": null
+    },
+    "origineMq": "mancante",
+    "aCanone": true,
+    "canone": 103454.86,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Piscina Iseo",
+    "indirizzo": "Via Iseo n. 10 - 20161 Milano",
+    "mq": {
+     "Aree esterne": 5202.8,
+     "Uffici al pubblico - corridoi - ascensori": 653.7,
+     "Tribune e scale al coperto": 312.5,
+     "Locali non aperti al pubblico": 235.7,
+     "Locali primo soccorso": 56.6,
+     "Zone spogliatoi": 664.8,
+     "Zone docce e servizi": 390.1,
+     "Zona piscine coperte": 726.2,
+     "Zona piscine scoperte": 0,
+     "Solarium": 1876,
+     "Palestre e campi coperti": 1016.8,
+     "Palestre e campi scoperti": 9302
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 164391.09,
+    "oreDichiarate": 5326.3
+   },
+   {
+    "nome": "Piscina Mincio",
+    "indirizzo": "Via Mincio n. 13 - 20139 Milano",
+    "mq": {
+     "Aree esterne": 976,
+     "Uffici al pubblico - corridoi - ascensori": 70,
+     "Tribune e scale al coperto": 417.6,
+     "Locali non aperti al pubblico": 41,
+     "Locali primo soccorso": 6,
+     "Zone spogliatoi": 187.5,
+     "Zone docce e servizi": 124.3,
+     "Zona piscine coperte": 746.5,
+     "Zona piscine scoperte": 0,
+     "Solarium": 1151.6,
+     "Palestre e campi coperti": 105,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 166347.13,
+    "oreDichiarate": 3441.9
+   },
+   {
+    "nome": "Centro Sportivo Muggiano",
+    "indirizzo": "Via Muggiano n. 14 - 20152 Milano",
+    "mq": {
+     "Aree esterne": 1089,
+     "Uffici al pubblico - corridoi - ascensori": 87.2,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 56.8,
+     "Locali primo soccorso": 8.7,
+     "Zone spogliatoi": 200.8,
+     "Zone docce e servizi": 177.4,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 0,
+     "Palestre e campi scoperti": 13118
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 40172.77,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Centro Sportivo Murat",
+    "indirizzo": "Via Dino Villani n. 2 - 20159 Milano",
+    "mq": {
+     "Aree esterne": 1551.7,
+     "Uffici al pubblico - corridoi - ascensori": 300.3,
+     "Tribune e scale al coperto": 90.8,
+     "Locali non aperti al pubblico": 62,
+     "Locali primo soccorso": 11.6,
+     "Zone spogliatoi": 243.5,
+     "Zone docce e servizi": 136.1,
+     "Zona piscine coperte": 811.4,
+     "Zona piscine scoperte": 0,
+     "Solarium": 1252,
+     "Palestre e campi coperti": 655.6,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 186877.39,
+    "oreDichiarate": 3587.8
+   },
+   {
+    "nome": "Piscina Parri Mengoni",
+    "indirizzo": "Via Luigi Mengoni n. 5/b - 20152 Milano",
+    "mq": {
+     "Aree esterne": 4129.4,
+     "Uffici al pubblico - corridoi - ascensori": 252.6,
+     "Tribune e scale al coperto": 15.5,
+     "Locali non aperti al pubblico": 125.2,
+     "Locali primo soccorso": 11,
+     "Zone spogliatoi": 345,
+     "Zone docce e servizi": 127.1,
+     "Zona piscine coperte": 517.9,
+     "Zona piscine scoperte": 0,
+     "Solarium": 1723.6,
+     "Palestre e campi coperti": 244.2,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 187850.92,
+    "oreDichiarate": 4192.6
+   },
+   {
+    "nome": "Piscina Quarto Cagnino",
+    "indirizzo": "Via Benjamin Constant n. 15 - 20153 Milano",
+    "mq": {
+     "Aree esterne": 395.4,
+     "Uffici al pubblico - corridoi - ascensori": 50,
+     "Tribune e scale al coperto": 33,
+     "Locali non aperti al pubblico": 6,
+     "Locali primo soccorso": 10,
+     "Zone spogliatoi": 220.5,
+     "Zone docce e servizi": 35.4,
+     "Zona piscine coperte": 768.5,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 0,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 91265.03,
+    "oreDichiarate": 1610
+   },
+   {
+    "nome": "Centro Balneare Romano",
+    "indirizzo": "Via Andrea Maria Ampère n. 20 - 20133 Milano",
+    "mq": {
+     "Aree esterne": 4151,
+     "Uffici al pubblico - corridoi - ascensori": 777.8,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 90.5,
+     "Locali primo soccorso": 10.6,
+     "Zone spogliatoi": 307,
+     "Zone docce e servizi": 186.7,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 4641,
+     "Solarium": 5256.8,
+     "Palestre e campi coperti": 0,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 64628.01,
+    "oreDichiarate": 1059.6
+   },
+   {
+    "nome": "Piscina Sant'Abbondio",
+    "indirizzo": "Via Sant'Abbondio n. 12 - 20142 Milano",
+    "mq": {
+     "Aree esterne": 1050.7,
+     "Uffici al pubblico - corridoi - ascensori": 273,
+     "Tribune e scale al coperto": 67.2,
+     "Locali non aperti al pubblico": 64,
+     "Locali primo soccorso": 7,
+     "Zone spogliatoi": 445.7,
+     "Zone docce e servizi": 126.9,
+     "Zona piscine coperte": 632.4,
+     "Zona piscine scoperte": 2592,
+     "Solarium": 2409.9,
+     "Palestre e campi coperti": 135,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 174016.75,
+    "oreDichiarate": 3188.3
+   },
+   {
+    "nome": "Piscina Solari",
+    "indirizzo": "Via Montevideo n. 20 - 20144 Milano",
+    "mq": {
+     "Aree esterne": 100,
+     "Uffici al pubblico - corridoi - ascensori": 72,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 14,
+     "Locali primo soccorso": 10.7,
+     "Zone spogliatoi": 218.7,
+     "Zone docce e servizi": 93.2,
+     "Zona piscine coperte": 518.4,
+     "Zona piscine scoperte": 0,
+     "Solarium": 1370,
+     "Palestre e campi coperti": 0,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 217764.04,
+    "oreDichiarate": 3265
+   },
+   {
+    "nome": "Piscina Suzzani",
+    "indirizzo": "Via Luigi Beccali n. 7 - 20172 Milano",
+    "mq": {
+     "Aree esterne": 843.4,
+     "Uffici al pubblico - corridoi - ascensori": 192.1,
+     "Tribune e scale al coperto": 89.8,
+     "Locali non aperti al pubblico": 34.6,
+     "Locali primo soccorso": 14.3,
+     "Zone spogliatoi": 206.6,
+     "Zone docce e servizi": 128.6,
+     "Zona piscine coperte": 939.4,
+     "Zona piscine scoperte": 0,
+     "Solarium": 2495.9,
+     "Palestre e campi coperti": 273.9,
+     "Palestre e campi scoperti": 0
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 211005.16,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Tensostruttura e Palestra Secondaria",
+    "indirizzo": "Viale Enrico Elia n. 3 - 20148 Milano",
+    "mq": {
+     "Aree esterne": null,
+     "Uffici al pubblico - corridoi - ascensori": null,
+     "Tribune e scale al coperto": null,
+     "Locali non aperti al pubblico": null,
+     "Locali primo soccorso": null,
+     "Zone spogliatoi": null,
+     "Zone docce e servizi": null,
+     "Zona piscine coperte": null,
+     "Zona piscine scoperte": null,
+     "Solarium": null,
+     "Palestre e campi coperti": null,
+     "Palestre e campi scoperti": null
+    },
+    "origineMq": "mancante",
+    "aCanone": true,
+    "canone": 145864.57,
+    "oreDichiarate": null
+   },
+   {
+    "nome": "Velodromo Maspes Vigorelli",
+    "indirizzo": "Via Arona n. 19 - 20149 Milano",
+    "mq": {
+     "Aree esterne": 794.6,
+     "Uffici al pubblico - corridoi - ascensori": 868.8,
+     "Tribune e scale al coperto": 82.3,
+     "Locali non aperti al pubblico": 36.6,
+     "Locali primo soccorso": 32,
+     "Zone spogliatoi": 409.9,
+     "Zone docce e servizi": 964,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 0,
+     "Palestre e campi scoperti": 11601.2
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 85124.89,
+    "oreDichiarate": 878.2
+   },
+   {
+    "nome": "Centro Tennis Washington",
+    "indirizzo": "Via Sebastiano Caboto n. 6 - 20147 Milano",
+    "mq": {
+     "Aree esterne": 637.5,
+     "Uffici al pubblico - corridoi - ascensori": 145,
+     "Tribune e scale al coperto": 0,
+     "Locali non aperti al pubblico": 48.5,
+     "Locali primo soccorso": 0,
+     "Zone spogliatoi": 99.1,
+     "Zone docce e servizi": 42.3,
+     "Zona piscine coperte": 0,
+     "Zona piscine scoperte": 0,
+     "Solarium": 0,
+     "Palestre e campi coperti": 1777,
+     "Palestre e campi scoperti": 1777
+    },
+    "origineMq": "documento",
+    "aCanone": true,
+    "canone": 57755.4,
+    "oreDichiarate": 614.5
+   }
+  ],
+  "personaleUscente": [
+   {
+    "livello": "2°",
+    "unita": 46,
+    "oreSettimanali": 1214.5
+   },
+   {
+    "livello": "3°",
+    "unita": 8,
+    "oreSettimanali": 261
+   },
+   {
+    "livello": "4°",
+    "unita": 2,
+    "oreSettimanali": 71
+   },
+   {
+    "livello": "1°",
+    "unita": 2,
+    "oreSettimanali": 60
+   }
+  ],
+  "macchinari": [
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Monospazzola industriale multifunzione (dischi abrasivi)",
+    "quantita": 6,
+    "prezzoUnitario": 1000,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - lavaggio/lucidatura pavimenti a fondo"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Lavasciuga pavimenti uomo a terra",
+    "quantita": 7,
+    "prezzoUnitario": 3000,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - lavaggio meccanico pavimenti"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Idropulitrice professionale",
+    "quantita": 10,
+    "prezzoUnitario": 600,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - lavaggio a fondo, griglie, aree esterne"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Bidone aspiraliquidi / aspirapolvere professionale",
+    "quantita": 10,
+    "prezzoUnitario": 600,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - aspirazione zerbini/tappeti, ambienti confinati"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Vaporizzatore professionale",
+    "quantita": 15,
+    "prezzoUnitario": 300,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - sanificazione a vapore superfici e spogliatoi"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Lucidatrice",
+    "quantita": 3,
+    "prezzoUnitario": 1800,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - lucidatura pavimenti trattati"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Spazzatrice/lavasciuga per aree esterne",
+    "quantita": 4,
+    "prezzoUnitario": 1800,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - macchinari per lo spazzamento/lavaggio aree esterne"
+   },
+   {
+    "categoria": "Macchinari",
+    "descrizione": "Soffiatore elettrico/a batteria",
+    "quantita": 15,
+    "prezzoUnitario": 150,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - scopatura manuale o meccanica esterni"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Carrello attrezzato multiuso (secchi, strizzatore, porta sacchi)",
+    "quantita": 40,
+    "prezzoUnitario": 380,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - carrelli completi"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Scale in alluminio (varie altezze)",
+    "quantita": 15,
+    "prezzoUnitario": 65,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - scale"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Kit attrezzi manuali (scopettoni, piumini, panni, guanti)",
+    "quantita": 28,
+    "prezzoUnitario": 70,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - scopettoni, piumini, panni, guanti"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Spruzzatori e spingi acqua professionali",
+    "quantita": 20,
+    "prezzoUnitario": 40,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - spruzzatori, spingi acqua"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Secchi doppi con strizzatore",
+    "quantita": 40,
+    "prezzoUnitario": 38,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - secchi"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Canne per lavaggio con attacchi rapidi",
+    "quantita": 28,
+    "prezzoUnitario": 50,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - canne per lavaggio secondo necessità e attacchi acqua"
+   },
+   {
+    "categoria": "Attrezzature",
+    "descrizione": "Dotazione accessoria mobile (porta materiali, segnaletica bagnato, varie)",
+    "quantita": 20,
+    "prezzoUnitario": 65,
+    "origine": "ipotesi",
+    "nota": "Art. 1.11 - dotazione complementare al servizio"
+   }
+  ]
+ },
+ "attesi": {
+  "oreCalcolate": [
+   16189.724598124098,
+   4524.614395382396,
+   3363.5397222222223,
+   10996.639631313132,
+   6121.5549855699865,
+   11283.353870851372,
+   0,
+   13164.403869408372,
+   7370.450015151517,
+   11165.373018759017,
+   0,
+   3304.2682799422796,
+   10441.091018037518,
+   3249.565748196248,
+   0,
+   15101.729766955268,
+   4330.991211399712,
+   7589.194665223666,
+   5552.203985569985,
+   6143.5669834054825,
+   2492.775474025974,
+   11643.745830447331,
+   7558.515548340548,
+   2837.077494949495,
+   5388.9457994228,
+   0,
+   11834.466997113997,
+   3729.7373773448776
+  ],
+  "oreAdottate": [
+   0,
+   2860.6,
+   3268.6,
+   4089.8,
+   846.9440036030187,
+   3240.147825765432,
+   2726.8423036846825,
+   2195.7191450016344,
+   803.108996356941,
+   5867.8,
+   249.70703288561504,
+   3463.6,
+   721.1919450899715,
+   4374.293689471818,
+   2118.9547317244114,
+   5326.3,
+   3441.9,
+   822.8156809450661,
+   3587.8,
+   4192.6,
+   1610,
+   1059.6,
+   3188.3,
+   3265,
+   4321.791960283611,
+   2987.5872510237473,
+   878.2,
+   614.5
+  ],
+  "mqTotali": [
+   12776.2,
+   4886,
+   1872.8999999999999,
+   11321.8,
+   9601.5,
+   14287.1,
+   0,
+   18258.6,
+   10405.9,
+   6368.299999999999,
+   0,
+   2147.1,
+   15587.2,
+   1978.5,
+   0,
+   20437.2,
+   3825.4999999999995,
+   14737.9,
+   5115,
+   7491.499999999999,
+   1518.8,
+   15421.400000000001,
+   7803.799999999999,
+   2397,
+   5218.599999999999,
+   0,
+   14789.400000000001,
+   4526.4
+  ],
+  "totaleOreCalcolate": 185377.53028715725,
+  "totaleOreAdottate": 72123.70456583596,
+  "totaleMacchinari": 81505,
+  "fte": 47.65763888888889,
+  "unitaUscenti": 58,
+  "oreSettimanaliUscenti": 1606.5
+ }
+}

@@ -19,6 +19,13 @@ import RevisionePanel from "./revisione-panel";
 import { leggiContestoRevisione } from "@/lib/omnia-ai-revisione";
 import { calcolaPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
+import PianoLavoroPanel from "./piano-lavoro-panel";
+import { leggiPianiGara } from "@/lib/piano-lavoro-gara";
+import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
+import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { leggiDirittiPianoLavoro } from "@/lib/piano-lavoro-diritti";
+import { interpretaRitornoPagamento, valutaOffertaAcquisto } from "@/lib/piano-lavoro-acquisto-calcoli";
+import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
 
 // sendGaraMessage (chiamato da questa pagina) fa sempre almeno due chiamate
 // reali al modello in sequenza quando genera una bozza di sezione
@@ -46,10 +53,13 @@ type Documento = {
 
 export default async function GaraPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ piano_lavoro?: string | string[] }>;
 }) {
   const { id } = await params;
+  const { piano_lavoro: ritornoPianoLavoro } = await searchParams;
   const supabase = await createClient();
   // Titolare o Ufficio Gare: la gara è dell'azienda (del titolare); le regole di accesso la mostrano a entrambi.
   const sessione = await richiediAccountPagina();
@@ -178,6 +188,35 @@ export default async function GaraPage({
       })
     : null;
 
+  // «Piano di lavoro»: i piani già generati e chi può generare adesso (le regole stanno in piano-lavoro-gara-calcoli.ts; l'azione le ricontrolla).
+  // Senza la migrazione 0096 la scheda non compare e la pagina funziona come sempre.
+  const { disponibile: pianoLavoroDisponibile, piani: pianiLavoro } = await leggiPianiGara(supabase, gara.id);
+  const adminPianoLavoro = createAdminClient();
+  // da dove può venire il diritto (concessione, abbonamento con piano di lavoro, prova gratuita, acquisto): le stesse letture dell'azione
+  const dirittiPianoLavoro = await leggiDirittiPianoLavoro({ admin: adminPianoLavoro, accountId: contesto.accountId, garaId: gara.id, statoAccesso });
+  const dirittoPianoLavoro = valutaDirittoPiano({
+    analisiCompleta: gara.estrazione_stato === "completata",
+    garaUsabile: diritto.consentito,
+    messaggioGaraBloccata: diritto.consentito ? undefined : diritto.messaggio,
+    piani: pianiLavoro,
+    prorogaStato: prorogaRaw?.proroga_stato ?? null,
+    concessioneId: dirittiPianoLavoro.concessioneId,
+    abbonamentoCopreGara: dirittiPianoLavoro.abbonamentoCopreGara,
+    provaGratuita: dirittiPianoLavoro.provaGratuita,
+    acquistoPagato: dirittiPianoLavoro.acquistoPagato,
+    aperturaSviluppo: aperturaSviluppoAttiva(process.env),
+    adesso: new Date(),
+  });
+  // Acquisto singolo: si offre solo se manca il diritto, la vendita è accesa, la console non l'ha escluso per la prova e (per comprare) si è il titolare
+  const offertaPianoLavoro = valutaOffertaAcquisto({
+    diritto: dirittoPianoLavoro,
+    titolare: !ufficioGare,
+    venditaAttiva: !dirittoPianoLavoro.ok && dirittoPianoLavoro.motivo === "non_attivo" && !dirittiPianoLavoro.provaBloccata ? await venditaPianoLavoroAttiva(adminPianoLavoro) : false,
+    prezzoCentesimi: !dirittoPianoLavoro.ok && dirittoPianoLavoro.motivo === "non_attivo" ? await leggiPrezzoPianoLavoro(adminPianoLavoro) : 0,
+  });
+  // la Privacy policy in vigore, da linkare accanto all'accettazione delle avvertenze
+  const documentiLegaliPianoLavoro = offertaPianoLavoro.stato === "acquistabile" ? await getCurrentOmniaAiLegalDocuments(adminPianoLavoro) : null;
+
   const chunkCountPerDocumento = new Map<string, number>();
   for (const chunk of chunksRaw ?? []) {
     chunkCountPerDocumento.set(
@@ -290,6 +329,8 @@ export default async function GaraPage({
       </section>
 
       <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} proroga={prorogaRaw ?? null} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
+
+      {pianoLavoroDisponibile && (gara.estrazione_stato === "completata" || pianiLavoro.length > 0) && <PianoLavoroPanel garaId={gara.id} piani={pianiLavoro} diritto={dirittoPianoLavoro} offerta={offertaPianoLavoro} ritorno={interpretaRitornoPagamento(ritornoPianoLavoro)} privacyVersione={documentiLegaliPianoLavoro?.privacyPolicy.version ?? null} />}
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
 

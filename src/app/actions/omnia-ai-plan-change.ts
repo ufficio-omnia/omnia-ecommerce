@@ -2,9 +2,14 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeClient } from "@/lib/stripe";
-import { PIANI, PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
-import { getStripePriceId } from "@/lib/omnia-ai-stripe-prices";
+import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { getStripePriceIdOfferta } from "@/lib/omnia-ai-stripe-prices";
 import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
+import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
+import { etichettaOfferta, interpretaDestinazione, tipoCambioOfferta, type OffertaAbbonamento } from "@/lib/piano-lavoro-offerta-calcoli";
+import { createHash } from "crypto";
 
 type SubscriptionRow = {
   id: string;
@@ -13,39 +18,47 @@ type SubscriptionRow = {
   current_period_end: string | null;
   current_period_start: string | null;
   piano_programmato: string | null;
+  // l'abbonamento include il piano di lavoro (colonna della migrazione 0101: false se manca)
+  piano_lavoro: boolean;
 };
 
 async function getSubscriptionAttivaDelCliente(userId: string): Promise<SubscriptionRow | null> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("subscriptions")
-    .select("id, plan, stripe_subscription_id, current_period_end, current_period_start, piano_programmato")
-    .eq("user_id", userId)
-    .eq("status", "attivo")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<SubscriptionRow>();
-  return data ?? null;
+  const cerca = (colonne: string) =>
+    admin
+      .from("subscriptions")
+      .select(colonne)
+      .eq("user_id", userId)
+      .eq("status", "attivo")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<Omit<SubscriptionRow, "piano_lavoro"> & { piano_lavoro?: boolean | null }>();
+  const base = "id, plan, stripe_subscription_id, current_period_end, current_period_start, piano_programmato";
+  let { data, error } = await cerca(`${base}, piano_lavoro`);
+  // senza la migrazione 0101 la colonna non c'è: si legge come prima, senza piano di lavoro
+  if (error && schemaAssente(error)) ({ data, error } = await cerca(base));
+  if (error) console.error("Cambio piano: lettura dell'abbonamento non riuscita", error.message);
+  return data ? { ...data, piano_lavoro: data.piano_lavoro === true } : null;
 }
 
 // Le stesse verifiche servono sia per il preview che per la conferma:
 // mai fidarsi del solo esito del preview mostrato al cliente, la
 // richiesta di conferma viene rivalidata da zero.
+//
+// La destinazione è «piano», «piano:lavoro» o «piano:base» (vedi interpretaDestinazione): senza opzione si mantiene il piano di lavoro che
+// l'abbonamento ha già; con l'opzione lo si aggiunge o lo si toglie, anche a parità di piano.
 async function validaRichiestaCambioPiano(
   userId: string,
-  pianoDestinazioneRaw: string,
+  destinazioneRaw: string,
 ): Promise<
   | { error: string }
   | {
       subscription: SubscriptionRow;
-      pianoAttuale: PianoSlug;
-      pianoDestinazione: PianoSlug;
+      offertaAttuale: OffertaAbbonamento;
+      destinazione: OffertaAbbonamento;
       tipo: "upgrade" | "downgrade";
     }
 > {
-  if (!(pianoDestinazioneRaw in PIANI)) return { error: "Piano non valido." };
-  const pianoDestinazione = pianoDestinazioneRaw as PianoSlug;
-
   const subscription = await getSubscriptionAttivaDelCliente(userId);
   if (!subscription?.stripe_subscription_id) return { error: "Nessun abbonamento attivo trovato." };
 
@@ -58,15 +71,25 @@ async function validaRichiestaCambioPiano(
 
   const pianoAttuale = subscription.plan as PianoSlug;
   if (!(pianoAttuale in PIANI)) return { error: "Piano attuale non riconosciuto." };
-  if (pianoDestinazione === pianoAttuale) return { error: "È già il tuo piano attuale." };
+  const offertaAttuale: OffertaAbbonamento = { piano: pianoAttuale, pianoLavoro: subscription.piano_lavoro };
 
-  // Salire o scendere di piano si decide dall'ORDINE dei piani (Starter < Professional < Enterprise),
-  // non dal confronto dei prezzi nel codice: i prezzi si modificano dalla console e non devono
-  // poter scambiare un upgrade con un downgrade.
-  const tipo: "upgrade" | "downgrade" =
-    PIANI_ORDINE.indexOf(pianoDestinazione) > PIANI_ORDINE.indexOf(pianoAttuale) ? "upgrade" : "downgrade";
+  const destinazione = interpretaDestinazione(destinazioneRaw, offertaAttuale);
+  if (!destinazione) return { error: "Piano non valido." };
 
-  return { subscription, pianoAttuale, pianoDestinazione, tipo };
+  // Salire o scendere si decide dall'ORDINE dei piani (Starter < Professional < Enterprise) e, a parità di piano, dal piano di lavoro
+  // (aggiungerlo è salire, toglierlo è scendere), non dal confronto dei prezzi nel codice: i prezzi si modificano dalla console e non
+  // devono poter scambiare un upgrade con un downgrade.
+  const tipo = tipoCambioOfferta(offertaAttuale, destinazione);
+  if (!tipo) return { error: "È già la tua offerta attuale." };
+
+  // Il piano di lavoro si AGGIUNGE solo se è in vendita e solo subito (un cambio che decorre dal rinnovo non può portare l'accettazione delle
+  // avvertenze): chi passa a un piano inferiore e vuole anche il piano di lavoro prima cambia piano, poi lo aggiunge. Tenerlo o toglierlo si può sempre.
+  if (destinazione.pianoLavoro && !offertaAttuale.pianoLavoro) {
+    if (!(await venditaPianoLavoroAttiva())) return { error: "Il piano di lavoro nell'abbonamento non è ancora disponibile." };
+    if (tipo !== "upgrade") return { error: "Per aggiungere il piano di lavoro passa prima al piano che vuoi, poi aggiungilo." };
+  }
+
+  return { subscription, offertaAttuale, destinazione, tipo };
 }
 
 // Le gare del piano già consumate in questo periodo restano consumate:
@@ -85,10 +108,15 @@ async function contaGareConsumatePianoNelPeriodo(userId: string, inizioPeriodo: 
   return count ?? 0;
 }
 
+// La destinazione può cambiare il piano, il piano di lavoro o entrambi: `cambioPianoLavoro` dice se lo aggiunge o lo toglie (null = lo lascia com'è).
 export type PreviewCambioPiano =
   | {
       tipo: "upgrade";
       pianoDestinazione: PianoSlug;
+      pianoLavoro: boolean;
+      cambioPianoLavoro: "aggiunto" | "tolto" | null;
+      // se il piano resta lo stesso (si aggiunge o si toglie soltanto il piano di lavoro)
+      stessoPiano: boolean;
       nomeNuovo: string;
       importoImmediatoCentesimi: number;
       gareIncluseNuovo: number;
@@ -98,29 +126,41 @@ export type PreviewCambioPiano =
   | {
       tipo: "downgrade";
       pianoDestinazione: PianoSlug;
+      pianoLavoro: boolean;
+      cambioPianoLavoro: "aggiunto" | "tolto" | null;
+      stessoPiano: boolean;
       nomeNuovo: string;
       gareIncluseNuovo: number;
       dataEffettivo: string;
     }
   | { error: string };
 
-export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Promise<PreviewCambioPiano> {
+const cambioPianoLavoro = (da: OffertaAbbonamento, a: OffertaAbbonamento): "aggiunto" | "tolto" | null => (da.pianoLavoro === a.pianoLavoro ? null : a.pianoLavoro ? "aggiunto" : "tolto");
+
+export async function previewOmniaAiPlanChange(destinazioneRaw: string): Promise<PreviewCambioPiano> {
   // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
   const guardia = await richiediTitolareAzione();
   if (!guardia.ok) return { error: guardia.errore };
   const { user } = guardia;
 
-  const validazione = await validaRichiestaCambioPiano(user.id, pianoDestinazioneRaw);
+  const validazione = await validaRichiestaCambioPiano(user.id, destinazioneRaw);
   if ("error" in validazione) return validazione;
 
-  const { subscription, pianoDestinazione, tipo } = validazione;
+  const { subscription, offertaAttuale, destinazione, tipo } = validazione;
+  const pianoDestinazione = destinazione.piano;
   const nuovo = PIANI[pianoDestinazione];
+  const comune = {
+    pianoDestinazione,
+    pianoLavoro: destinazione.pianoLavoro,
+    cambioPianoLavoro: cambioPianoLavoro(offertaAttuale, destinazione),
+    stessoPiano: pianoDestinazione === offertaAttuale.piano,
+    nomeNuovo: etichettaOfferta(destinazione),
+  };
 
   if (tipo === "downgrade") {
     return {
       tipo: "downgrade",
-      pianoDestinazione,
-      nomeNuovo: nuovo.nome,
+      ...comune,
       gareIncluseNuovo: nuovo.gareIncluse,
       dataEffettivo: subscription.current_period_end ?? new Date().toISOString(),
     };
@@ -132,7 +172,7 @@ export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
   let nuovoPriceId: string;
   try {
     stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id!);
-    nuovoPriceId = await getStripePriceId(stripe, pianoDestinazione);
+    nuovoPriceId = await getStripePriceIdOfferta(stripe, destinazione.piano, destinazione.pianoLavoro);
   } catch (err) {
     console.error("Errore preview cambio piano (recupero abbonamento/prezzo):", err);
     return { error: "Errore nel calcolo dell'importo. Riprova." };
@@ -161,8 +201,7 @@ export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
 
   return {
     tipo: "upgrade",
-    pianoDestinazione,
-    nomeNuovo: nuovo.nome,
+    ...comune,
     importoImmediatoCentesimi,
     gareIncluseNuovo: nuovo.gareIncluse,
     gareConsumate,
@@ -175,21 +214,25 @@ export async function previewOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
 // subscription_schedule.* per il downgrade programmato), mai da questa
 // azione né dalla pagina di ritorno — stessa disciplina del resto della
 // tappa 6.
-export async function confirmOmniaAiPlanChange(pianoDestinazioneRaw: string): Promise<{ error?: string }> {
+// `accettaAvvertenze`: chi AGGIUNGE il piano di lavoro deve aver accettato le avvertenze sul servizio (le stesse del checkout); versione e impronta
+// viaggiano nei metadata dell'abbonamento e le registra il webhook.
+export async function confirmOmniaAiPlanChange(destinazioneRaw: string, accettaAvvertenze = false): Promise<{ error?: string }> {
   // Solo il titolare: l'Ufficio Gare non può usare questa azione (la barra laterale nasconde la voce, il controllo vero è qui).
   const guardia = await richiediTitolareAzione();
   if (!guardia.ok) return { error: guardia.errore };
   const { user } = guardia;
 
-  const validazione = await validaRichiestaCambioPiano(user.id, pianoDestinazioneRaw);
+  const validazione = await validaRichiestaCambioPiano(user.id, destinazioneRaw);
   if ("error" in validazione) return validazione;
 
-  const { subscription, pianoDestinazione, tipo } = validazione;
+  const { subscription, offertaAttuale, destinazione, tipo } = validazione;
+  const aggiungePianoLavoro = destinazione.pianoLavoro && !offertaAttuale.pianoLavoro;
+  if (aggiungePianoLavoro && accettaAvvertenze !== true) return { error: "Per aggiungere il piano di lavoro devi accettare le avvertenze sul servizio." };
   const stripe = createStripeClient("omnia-ai");
 
   let nuovoPriceId: string;
   try {
-    nuovoPriceId = await getStripePriceId(stripe, pianoDestinazione);
+    nuovoPriceId = await getStripePriceIdOfferta(stripe, destinazione.piano, destinazione.pianoLavoro);
   } catch (err) {
     console.error("Errore cambio piano (recupero prezzo):", err);
     return { error: "Errore nell'aggiornamento del piano. Riprova." };
@@ -207,6 +250,15 @@ export async function confirmOmniaAiPlanChange(pianoDestinazioneRaw: string): Pr
       await stripe.subscriptions.update(subscription.stripe_subscription_id!, {
         items: [{ id: item.id, price: nuovoPriceId }],
         proration_behavior: "always_invoice",
+        ...(aggiungePianoLavoro
+          ? {
+              metadata: {
+                pianoLavoroCondizioniVersione: String(VERSIONE_CONDIZIONI_PIANO_LAVORO),
+                pianoLavoroCondizioniHash: createHash("sha256").update(testoCanonicoCondizioniPianoLavoro()).digest("hex"),
+                pianoLavoroAccettatoIl: new Date().toISOString(),
+              },
+            }
+          : {}),
       });
     } catch (err) {
       console.error("Errore cambio piano (upgrade immediato):", err);

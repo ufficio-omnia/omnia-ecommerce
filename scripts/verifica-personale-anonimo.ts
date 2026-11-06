@@ -133,6 +133,7 @@ const consumatoriNoti = new Set([
   "src/lib/valori-impresa.ts", // solo confronti numerici
   "src/lib/organigramma-fatti.ts", // solo il totale degli addetti
   "src/lib/personale-anonimo.ts", // il filtro stesso
+  "src/lib/piano-lavoro-estrazione.ts", // piano di lavoro: livello e nota passano dal filtro in risolviRiferimenti (provato in verifica-piano-lavoro-estrazione)
 ]);
 const trovati: string[] = [];
 const visita = (dir: string) => {

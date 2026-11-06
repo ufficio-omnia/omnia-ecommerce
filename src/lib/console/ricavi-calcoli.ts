@@ -21,7 +21,7 @@ import { aggiungiGiorni, type Periodo } from "./periodo";
 // sempre quanto è stato escluso.
 
 export type DominioRicavo = "ecommerce" | "omnia_ai";
-export type FonteRicavo = "ordine" | "abbonamento" | "crediti" | "revisione";
+export type FonteRicavo = "ordine" | "abbonamento" | "crediti" | "revisione" | "piano_lavoro";
 
 export type VoceRicavo = {
   dominio: DominioRicavo;
@@ -49,6 +49,8 @@ export type MeseRicavi = {
   crediti: number;
   // revisioni umane delle relazioni tecniche (servizio con consulente)
   revisioni: number;
+  // acquisti singoli del piano di lavoro di una gara
+  pianiLavoro: number;
   totale: number;
 };
 
@@ -63,9 +65,11 @@ export type TotaliRicavi = {
   abbonamentiNetto: number;
   creditiNetto: number;
   revisioniNetto: number;
+  pianiLavoroNetto: number;
   incassiAbbonamento: number;
   acquistiCrediti: number;
   acquistiRevisione: number;
+  acquistiPianoLavoro: number;
 };
 
 export type RiepilogoRicavi = {
@@ -92,10 +96,10 @@ function mesiDelPeriodo(periodo: Periodo): string[] {
 }
 
 export function aggregaRicavi(voci: VoceRicavo[], periodo: Periodo, aliquotaIva: number, includiProva: boolean): RiepilogoRicavi {
-  const mesi = new Map<string, MeseRicavi>(mesiDelPeriodo(periodo).map((m) => [m, { mese: m, ecommerce: 0, abbonamenti: 0, crediti: 0, revisioni: 0, totale: 0 }]));
+  const mesi = new Map<string, MeseRicavi>(mesiDelPeriodo(periodo).map((m) => [m, { mese: m, ecommerce: 0, abbonamenti: 0, crediti: 0, revisioni: 0, pianiLavoro: 0, totale: 0 }]));
   const totali: TotaliRicavi = {
     lordo: 0, netto: 0, ecommerceLordo: 0, ecommerceNetto: 0, ecommerceOrdini: 0,
-    omniaAiLordo: 0, omniaAiNetto: 0, abbonamentiNetto: 0, creditiNetto: 0, revisioniNetto: 0, incassiAbbonamento: 0, acquistiCrediti: 0, acquistiRevisione: 0,
+    omniaAiLordo: 0, omniaAiNetto: 0, abbonamentiNetto: 0, creditiNetto: 0, revisioniNetto: 0, pianiLavoroNetto: 0, incassiAbbonamento: 0, acquistiCrediti: 0, acquistiRevisione: 0, acquistiPianoLavoro: 0,
   };
   let provaVoci = 0;
   let provaLordo = 0;
@@ -137,6 +141,10 @@ export function aggregaRicavi(voci: VoceRicavo[], periodo: Periodo, aliquotaIva:
         totali.revisioniNetto += netto;
         totali.acquistiRevisione++;
         if (mese) mese.revisioni += netto;
+      } else if (v.fonte === "piano_lavoro") {
+        totali.pianiLavoroNetto += netto;
+        totali.acquistiPianoLavoro++;
+        if (mese) mese.pianiLavoro += netto;
       } else {
         totali.abbonamentiNetto += netto;
         totali.incassiAbbonamento++;

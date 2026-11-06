@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import PagamentiVista from "@/components/omnia-ai/pagamenti-vista";
-import { costruisciPagamenti, type AbbonamentoCliente, type AcquistoCrediti, type IncassoCliente, type RevisioneCliente } from "@/lib/omnia-ai-pagamenti";
+import { costruisciPagamenti, type AbbonamentoCliente, type AcquistoCrediti, type IncassoCliente, type PianoLavoroCliente, type RevisioneCliente } from "@/lib/omnia-ai-pagamenti";
 import GestisciPagamentoButton from "../abbonamento/gestisci-pagamento-button";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
@@ -14,6 +14,8 @@ const COLONNE_CREDITI_BASE = "id, pacchetto, crediti, importo_centesimi, created
 const FILE = ", fattura_file_path";
 // revisioni umane pagate (migrazione 0089): le colonne le concede la stessa migrazione
 const COLONNE_REVISIONE = "id, gara_titolo, pagine, maggiorazione_percentuale, prezzo_totale_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura, data_fattura, fattura_file_path";
+// acquisti singoli del piano di lavoro pagati (migrazione 0097): le colonne le concede la stessa migrazione
+const COLONNE_PIANO_LAVORO = "id, gara_titolo, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura, data_fattura, fattura_file_path";
 
 type Errore = { code?: string } | null;
 // colonna che non esiste ancora (migrazione non eseguita)
@@ -43,10 +45,21 @@ export default async function PagamentiPage() {
     .limit(200)
     .returns<RevisioneCliente[]>();
 
-  const [incassiIniziali, creditiIniziali, revisioni] = await Promise.all([leggiIncassi(COLONNE_INCASSO_BASE + FILE), leggiCrediti(COLONNE_CREDITI_BASE + FILE), leggiRevisioni]);
+  // prima della migrazione 0097 la tabella non esiste: nessun piano di lavoro acquistato, e il resto della pagina funziona
+  const leggiPianiLavoro = supabase
+    .from("omnia_ai_piani_lavoro_acquisti")
+    .select(COLONNE_PIANO_LAVORO)
+    .eq("user_id", user.id)
+    .eq("stato", "pagata")
+    .order("pagata_il", { ascending: false })
+    .limit(200)
+    .returns<PianoLavoroCliente[]>();
+
+  const [incassiIniziali, creditiIniziali, revisioni, pianiLavoro] = await Promise.all([leggiIncassi(COLONNE_INCASSO_BASE + FILE), leggiCrediti(COLONNE_CREDITI_BASE + FILE), leggiRevisioni, leggiPianiLavoro]);
   let incassi = incassiIniziali;
   let crediti = creditiIniziali;
   if (revisioni.error) console.error("Pagamenti cliente: lettura delle revisioni umane non riuscita (migrazione 0089?)", revisioni.error.code, revisioni.error.message);
+  if (pianiLavoro.error) console.error("Pagamenti cliente: lettura dei piani di lavoro acquistati non riuscita (migrazione 0097?)", pianiLavoro.error.code, pianiLavoro.error.message);
   // prima della migrazione 0081 manca la colonna del file: si legge senza (nessuna fattura scaricabile)
   if (colonnaAssente(incassi.error)) incassi = await leggiIncassi(COLONNE_INCASSO_BASE);
   if (colonnaAssente(crediti.error)) crediti = await leggiCrediti(COLONNE_CREDITI_BASE);
@@ -68,7 +81,7 @@ export default async function PagamentiPage() {
 
   return (
     <PagamentiVista
-      pagamenti={costruisciPagamenti(incassi.data ?? [], crediti.data ?? [], abbonamenti ?? [], revisioni.error ? [] : (revisioni.data ?? []))}
+      pagamenti={costruisciPagamenti(incassi.data ?? [], crediti.data ?? [], abbonamenti ?? [], revisioni.error ? [] : (revisioni.data ?? []), pianiLavoro.error ? [] : (pianiLavoro.data ?? []))}
       storicoAbbonamentoDisponibile={storicoDisponibile}
       portale={haPortale ? <GestisciPagamentoButton etichetta="Apri il portale pagamenti di Stripe" /> : null}
     />

@@ -6,6 +6,7 @@ import HeroDemo from "@/components/omnia-ai/hero-demo";
 import FaqAccordion from "@/components/omnia-ai/faq-accordion";
 import SiteFooter from "@/components/omnia-ai/site-footer";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
+import { SITO_FAQ_PIANO_LAVORO, SITO_HOME_PIANO_LAVORO } from "@/lib/piano-lavoro-testi";
 import {
   OMNIA_AI_LOGO_URL,
   OMNIA_AI_NOME,
@@ -91,6 +92,8 @@ const FAQ = [
     risposta:
       "L'accesso è ad abbonamento mensile, con un pacchetto di crediti incluso. Ogni operazione — analisi dei documenti, generazione di un criterio, revisione — consuma crediti in base al lavoro richiesto, e se finiscono puoi ricaricarli senza cambiare piano.",
   },
+  // il piano di lavoro in Excel (testo in piano-lavoro-testi.ts, lo stesso che si fa vedere al legale)
+  SITO_FAQ_PIANO_LAVORO,
   {
     domanda: "Posso far rivedere il testo da un consulente vero?",
     risposta:
@@ -163,6 +166,30 @@ export default function OmniaAiHomePage() {
                 Lo spazio dedicato a ogni criterio è calcolato sul suo peso e sul limite di
                 pagine imposto dalla gara. Niente sezioni gonfie e criteri pesanti liquidati in
                 tre righe.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="omnia-section" id="piano-di-lavoro">
+          <div className="omnia-duo">
+            <div>
+              <h2>{SITO_HOME_PIANO_LAVORO.titolo}</h2>
+              <p className="omnia-guida">{SITO_HOME_PIANO_LAVORO.guida}</p>
+              <div className="omnia-azioni" style={{ justifyContent: "flex-start", marginTop: 28 }}>
+                <Link className="omnia-btn omnia-btn-s" href="/piani">
+                  {SITO_HOME_PIANO_LAVORO.collegamento}
+                </Link>
+              </div>
+            </div>
+            <div>
+              <ul className="omnia-elenco" style={{ marginTop: 0 }}>
+                {SITO_HOME_PIANO_LAVORO.punti.map((punto) => (
+                  <li key={punto}>{punto}</li>
+                ))}
+              </ul>
+              <p className="micro" style={{ marginTop: 16, textAlign: "left" }}>
+                {SITO_HOME_PIANO_LAVORO.nota}
               </p>
             </div>
           </div>
