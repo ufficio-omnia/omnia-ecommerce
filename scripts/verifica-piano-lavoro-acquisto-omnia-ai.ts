@@ -183,7 +183,9 @@ async function main() {
 
   {
     // lettura dal database e dall'ambiente (chiave Stripe)
-    const salvate = { chiave: process.env.STRIPE_SECRET_KEY_OMNIA_AI, prova: process.env.OMNIA_AI_PIANO_LAVORO_ACQUISTO_PROVA, vercel: process.env.VERCEL };
+    // Su Vercel la build gira con VERCEL=1 e NODE_ENV=production: la prova in locale si spegne proprio per questo, quindi il test
+    // deve simulare un computer locale (né VERCEL né NODE_ENV=production) e poi rimettere l'ambiente com'era.
+    const salvate = { chiave: process.env.STRIPE_SECRET_KEY_OMNIA_AI, prova: process.env.OMNIA_AI_PIANO_LAVORO_ACQUISTO_PROVA, vercel: process.env.VERCEL, nodeEnv: process.env.NODE_ENV };
     const env = process.env as Record<string, string | undefined>;
     const imposta = (chiave: string | undefined, prova: string | undefined) => {
       if (chiave === undefined) delete env.STRIPE_SECRET_KEY_OMNIA_AI;
@@ -191,6 +193,7 @@ async function main() {
       if (prova === undefined) delete env.OMNIA_AI_PIANO_LAVORO_ACQUISTO_PROVA;
       else env.OMNIA_AI_PIANO_LAVORO_ACQUISTO_PROVA = prova;
       delete env.VERCEL;
+      delete env.NODE_ENV;
     };
     try {
       const acceso = fintoAdmin({ console_impostazioni: [{ chiave: "vendita_piano_lavoro_attiva", valore: "1" }, { chiave: "piano_lavoro_prezzo_singolo_centesimi", valore: "9900" }] });
@@ -208,6 +211,7 @@ async function main() {
     } finally {
       imposta(salvate.chiave, salvate.prova);
       if (salvate.vercel !== undefined) env.VERCEL = salvate.vercel;
+      if (salvate.nodeEnv !== undefined) env.NODE_ENV = salvate.nodeEnv;
     }
   }
 
