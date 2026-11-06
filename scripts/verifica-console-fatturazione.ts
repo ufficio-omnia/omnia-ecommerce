@@ -170,7 +170,7 @@ atteso(
   /extra: \{ fattura_file_path: percorsoFatturaPagamento\(fonte, id\), fattura_caricata_il: [^}]*\}/.test(azioni) && (azioni.match(/\bextra\b/g) ?? []).length >= 4 && !/applica\(righe,[^)]*,[^)]*,[^)]+\)/.test(azioni),
 );
 atteso("'fatturata' richiede una data valida non futura; 'non dovuta' richiede una nota", /Indica la data della fattura/.test(azioni) && /dataRoma\(new Date\(\)\)/.test(azioni) && /scrivi nelle note perché/.test(azioni));
-atteso("chiavi delle righe validate (uuid) e tabelle ammesse in lista chiusa", /const CHIAVE = \/\^\(incasso\|crediti\|revisione\):/.test(azioni) && /const TABELLE = TABELLA_PER_FONTE;/.test(azioni) && /TABELLA_PER_FONTE = \{ incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni" \} as const/.test(leggi("src/lib/omnia-ai-pagamenti.ts")));
+atteso("chiavi delle righe validate (uuid) e tabelle ammesse in lista chiusa", /const CHIAVE = \/\^\(incasso\|crediti\|revisione\|piano_lavoro\):/.test(azioni) && /const TABELLE = TABELLA_PER_FONTE;/.test(azioni) && /TABELLA_PER_FONTE = \{ incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni", piano_lavoro: "omnia_ai_piani_lavoro_acquisti" \} as const/.test(leggi("src/lib/omnia-ai-pagamenti.ts")));
 atteso("l'azione multipla ha un massimo di righe", /MASSIMO_RIGHE = 200/.test(azioni) && /righe\.length > MASSIMO_RIGHE/.test(azioni));
 for (const [file, lettura] of [
   ["src/app/site-console/(app)/fatturazione/page.tsx", /await leggiFatturazione\(/],

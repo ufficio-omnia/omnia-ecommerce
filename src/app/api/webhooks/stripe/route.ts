@@ -6,7 +6,9 @@ import { sendEmail, ADMIN_EMAIL } from "@/lib/email";
 import { recordLegalAcceptances, type BuyerType } from "@/lib/legal-acceptance";
 import { recordOmniaAiLegalAcceptances } from "@/lib/omnia-ai-legal";
 import { PACCHETTI_CREDITI, type PacchettoCreditiSlug } from "@/lib/omnia-ai-plans";
-import { pianoDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
+import { offertaDaLookupKey } from "@/lib/omnia-ai-stripe-prices";
+import { rilevaCambioPianoLavoro } from "@/lib/piano-lavoro-offerta-calcoli";
+import { notificaCambioPianoLavoroAbbonamento } from "@/lib/omnia-ai-email-piano-lavoro";
 import { getOmniaAiBaseUrl } from "@/lib/omnia-ai-request";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { registraAcquistoPilot } from "@/lib/omnia-ai-pilot";
@@ -22,6 +24,7 @@ import {
 } from "@/lib/omnia-ai-email-webhook";
 import { nuovoMetodoDaAbbonamento, nuovoMetodoDaCliente } from "@/lib/omnia-ai-email-eventi-calcoli";
 import { notificaRevisioneUmana, type RigaRevisione } from "@/lib/omnia-ai-email-revisione";
+import { registraPagamentoPianoLavoro } from "@/lib/piano-lavoro-acquisto";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -134,6 +137,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, eventoI
   // Revisione umana della relazione tecnica (pagamento una tantum): la richiesta diventa «pagata» solo qui.
   if (session.metadata?.tipo === "omnia_ai_revisione") {
     await handleOmniaAiRevisioneCompleted(session, eventoId);
+    return;
+  }
+
+  // Acquisto singolo del piano di lavoro di una gara (pagamento una tantum): l'acquisto diventa «pagato» solo qui.
+  if (session.metadata?.tipo === "omnia_ai_piano_lavoro") {
+    await registraPagamentoPianoLavoro({ admin: createAdminClient(), sessione: session, eventoId });
     return;
   }
 
@@ -515,13 +524,33 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
       cancel_at_period_end: subscription.cancel_at_period_end,
     };
 
+    // Il piano di lavoro incluso nell'abbonamento (opzione del checkout), con la versione e l'impronta delle avvertenze accettate: colonne
+    // della migrazione 0101. Il prezzo Stripe resta la fonte vera (lo riscrive customer.subscription.updated).
+    const pianoLavoroIncluso = metadata?.pianoLavoro === "1";
+    const colonnePianoLavoro = pianoLavoroIncluso
+      ? {
+          piano_lavoro: true,
+          piano_lavoro_condizioni_versione: Number(metadata?.pianoLavoroCondizioniVersione) || null,
+          piano_lavoro_condizioni_hash: metadata?.pianoLavoroCondizioniHash || null,
+        }
+      : {};
+
     // livemode: l'abbonamento è di prova? (colonna della migrazione 0078; se non
     // è ancora stata eseguita si crea la riga come sempre, senza.)
     let creazione = await admin
       .from("subscriptions")
-      .insert({ ...rigaSubscription, livemode: session.livemode })
+      .insert({ ...rigaSubscription, livemode: session.livemode, ...colonnePianoLavoro })
       .select("id")
       .single();
+    if (creazione.error && schemaAssente(creazione.error) && pianoLavoroIncluso) {
+      // migrazione 0101 non eseguita: l'abbonamento si crea lo stesso (il cliente ha pagato), ma si dice che il piano di lavoro non è registrato
+      console.error("Webhook Stripe (abbonamento AI): migrazione 0101 non eseguita, il piano di lavoro dell'abbonamento NON è stato registrato", stripeSubscriptionId);
+      creazione = await admin
+        .from("subscriptions")
+        .insert({ ...rigaSubscription, livemode: session.livemode })
+        .select("id")
+        .single();
+    }
     if (creazione.error && schemaAssente(creazione.error)) {
       creazione = await admin.from("subscriptions").insert(rigaSubscription).select("id").single();
     }
@@ -656,6 +685,7 @@ async function handleOmniaAiSubscriptionCheckoutCompleted(session: Stripe.Checko
       session,
       stripeSubscriptionId,
       planSlug,
+      pianoLavoro: metadata?.pianoLavoro === "1",
       userId,
       accountNuovo: accountCreatoOra,
     });
@@ -691,16 +721,29 @@ async function handleOmniaAiSubscriptionUpdated(
   // risalire al piano. Un cambio piano (upgrade immediato, o l'entrata
   // nella nuova fase di un downgrade programmato) passa sempre da qui —
   // è l'unico punto che aggiorna subscriptions.plan dopo la creazione.
-  const pianoAggiornato = item ? pianoDaLookupKey(item.price.lookup_key) : null;
+  const offertaAggiornata = item ? offertaDaLookupKey(item.price.lookup_key) : null;
+  const pianoAggiornato = offertaAggiornata?.piano ?? null;
   if (pianoAggiornato) {
     update.plan = pianoAggiornato;
   }
+
+  // Il piano di lavoro dell'abbonamento prima dell'aggiornamento (colonna della migrazione 0101: letta a parte, così senza la migrazione
+  // tutto il resto continua a funzionare). null = non si sa.
+  const { data: rigaPianoLavoro } = await admin.from("subscriptions").select("piano_lavoro").eq("stripe_subscription_id", subscription.id).maybeSingle<{ piano_lavoro: boolean | null }>();
+  const pianoLavoroPrima = typeof rigaPianoLavoro?.piano_lavoro === "boolean" ? rigaPianoLavoro.piano_lavoro : null;
 
   // Colonne della migrazione 0078. La data della disdetta è quella che Stripe
   // dichiara (canceled_at: l'istante della richiesta, stabile a ogni evento
   // successivo); si azzera solo se l'abbonamento è tornato attivo senza
   // disdetta — mai su uno già concluso, altrimenti si perderebbe la data.
   const nuoveColonne: Record<string, unknown> = { livemode };
+  // il piano di lavoro lo dice il prezzo Stripe dell'abbonamento (chiave «_pdl»): colonna della migrazione 0101, se manca la riga si aggiorna come sempre
+  if (offertaAggiornata) nuoveColonne.piano_lavoro = offertaAggiornata.pianoLavoro;
+  // il piano di lavoro appena aggiunto con un cambio di piano: versione e impronta delle avvertenze accettate (metadata scritti dall'azione)
+  if (offertaAggiornata?.pianoLavoro && pianoLavoroPrima === false && subscription.metadata?.pianoLavoroCondizioniVersione) {
+    nuoveColonne.piano_lavoro_condizioni_versione = Number(subscription.metadata.pianoLavoroCondizioniVersione) || null;
+    nuoveColonne.piano_lavoro_condizioni_hash = subscription.metadata.pianoLavoroCondizioniHash || null;
+  }
   if (subscription.cancel_at_period_end) {
     if (subscription.canceled_at) nuoveColonne.disdetta_richiesta_il = new Date(subscription.canceled_at * 1000).toISOString();
   } else if (subscription.status === "active" || subscription.status === "trialing") {
@@ -726,6 +769,11 @@ async function handleOmniaAiSubscriptionUpdated(
   // è quello vero anche se la scrittura locale fosse fallita.
   if (prima) {
     await notificaVariazioniAbbonamento({ admin, livemode, eventoId, subscription, userId: prima.user_id, prima, nuovoPiano: pianoAggiornato });
+    // il piano di lavoro aggiunto o tolto (anche a parità di piano) lo sa l'ufficio con una email a parte
+    const cambioPianoLavoro = offertaAggiornata ? rilevaCambioPianoLavoro(pianoLavoroPrima, offertaAggiornata.pianoLavoro) : null;
+    if (cambioPianoLavoro) {
+      await notificaCambioPianoLavoroAbbonamento({ admin, livemode, eventoId, stripeSubscriptionId: subscription.id, userId: prima.user_id, piano: pianoAggiornato ?? prima.plan, cambio: cambioPianoLavoro, dal: null });
+    }
     const metodoId = nuovoMetodoDaAbbonamento(subscription, precedenti);
     if (metodoId) {
       const stripeCustomerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
@@ -850,6 +898,8 @@ async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.Subscript
 
   let pianoProgrammato: string | null = null;
   let pianoProgrammatoDa: string | null = null;
+  // se l'offerta della fase successiva include il piano di lavoro (null = nessun cambio programmato)
+  let pianoLavoroProgrammato: boolean | null = null;
 
   const rilasciata = schedule.status === "released" || schedule.status === "canceled";
 
@@ -865,9 +915,10 @@ async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.Subscript
       try {
         const stripe = createStripeClient("omnia-ai");
         const price = await stripe.prices.retrieve(priceId);
-        const slug = pianoDaLookupKey(price.lookup_key);
-        if (slug) {
-          pianoProgrammato = slug;
+        const offertaSuccessiva = offertaDaLookupKey(price.lookup_key);
+        if (offertaSuccessiva) {
+          pianoProgrammato = offertaSuccessiva.piano;
+          pianoLavoroProgrammato = offertaSuccessiva.pianoLavoro;
           pianoProgrammatoDa = new Date(faseSuccessiva.start_date * 1000).toISOString();
         }
       } catch (err) {
@@ -887,6 +938,31 @@ async function handleOmniaAiSubscriptionScheduleEvent(schedule: Stripe.Subscript
 
   if (error) {
     console.error("Webhook Stripe (schedule AI): errore aggiornamento subscription", error);
+  }
+
+  // Il piano di lavoro dell'offerta programmata (colonna della migrazione 0101): a parte, così senza la migrazione il resto si aggiorna comunque.
+  // Il piano di lavoro dell'abbonamento di oggi si legge prima, per capire se il cambio programmato lo aggiunge o lo toglie.
+  const { data: rigaPianoLavoro } = await admin.from("subscriptions").select("piano_lavoro, piano_lavoro_programmato").eq("stripe_subscription_id", stripeSubscriptionId).maybeSingle<{ piano_lavoro: boolean | null; piano_lavoro_programmato: boolean | null }>();
+  const programmatoPrima = typeof rigaPianoLavoro?.piano_lavoro_programmato === "boolean" ? rigaPianoLavoro.piano_lavoro_programmato : null;
+  if (rigaPianoLavoro) {
+    const { error: errorePianoLavoro } = await admin.from("subscriptions").update({ piano_lavoro_programmato: pianoProgrammato ? pianoLavoroProgrammato : null }).eq("stripe_subscription_id", stripeSubscriptionId);
+    if (errorePianoLavoro && !schemaAssente(errorePianoLavoro)) console.error("Webhook Stripe (schedule AI): errore aggiornamento del piano di lavoro programmato", errorePianoLavoro);
+  }
+  // all'ufficio: il piano di lavoro che sparirà (o comparirà) al prossimo rinnovo, solo la prima volta che il cambio compare
+  if (prima && !rilasciata && pianoProgrammato && pianoLavoroProgrammato !== null && typeof rigaPianoLavoro?.piano_lavoro === "boolean") {
+    const cambio = rilevaCambioPianoLavoro(rigaPianoLavoro.piano_lavoro, pianoLavoroProgrammato);
+    if (cambio && programmatoPrima !== pianoLavoroProgrammato) {
+      await notificaCambioPianoLavoroAbbonamento({
+        admin,
+        livemode,
+        eventoId,
+        stripeSubscriptionId,
+        userId: prima.user_id,
+        piano: pianoProgrammato,
+        cambio,
+        dal: pianoProgrammatoDa ? new Date(pianoProgrammatoDa) : null,
+      });
+    }
   }
 
   // All'ufficio: il cliente ha chiesto un cambio di piano (downgrade). Solo quando compare, non a

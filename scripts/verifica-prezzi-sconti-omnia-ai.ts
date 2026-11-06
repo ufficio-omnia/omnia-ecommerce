@@ -155,13 +155,16 @@ async function main() {
 
   console.log("--- Checkout: ciò che si addebita è ciò che si mostra ---");
   const checkout = leggi("src/app/actions/omnia-ai-subscription.ts");
-  atteso("il prezzo viene dal catalogo e dal prezzo Stripe attivo", /getStripePrezzoAttivo\(stripe, planSlug as PianoSlug\)/.test(checkout) && /\(await getCatalogoPiani\(\)\)\[planSlug as PianoSlug\]/.test(checkout) && !/getStripePriceId/.test(checkout));
-  atteso("si ferma se il prezzo Stripe non coincide col listino", /prezzoStripe\.unit_amount !== voce\.prezzoListinoCentesimi/.test(checkout) && primaDi(checkout, "prezzoStripe.unit_amount !== voce.prezzoListinoCentesimi", "checkout.sessions.create"));
+  atteso("il prezzo viene dal catalogo e dal prezzo Stripe attivo (dell'offerta: piano, con o senza piano di lavoro)", /getStripePrezzoAttivoOfferta\(stripe, planSlug as PianoSlug, pianoLavoro\)/.test(checkout) && /\(await getCatalogoPiani\(\)\)\[planSlug as PianoSlug\]/.test(checkout) && !/getStripePriceId/.test(checkout));
+  atteso("si ferma se il prezzo Stripe non coincide col listino (più il supplemento, se c'è il piano di lavoro)", /prezzoStripe\.unit_amount !== importoAtteso/.test(checkout) && /: voce\.prezzoListinoCentesimi;/.test(checkout) && primaDi(checkout, "prezzoStripe.unit_amount !== importoAtteso", "checkout.sessions.create"));
   atteso("lo sconto in corso diventa un coupon applicato alla sessione, con lo sconto nei metadata", /discounts = \[\{ coupon \}\]/.test(checkout) && /metadata\.scontoId = voce\.sconto\.id/.test(checkout) && /\.\.\.\(discounts \? \{ discounts \} : \{\}\)/.test(checkout));
   atteso("il coupon è quello deterministico (importo e durata dal catalogo)", /idCouponSconto\(voce\.sconto\.id, voce\.sconto\.risparmioCentesimi, voce\.sconto\.durataMesi\)/.test(checkout));
   atteso("il rinnovo a prezzo pieno dopo i mesi di sconto lo fa Stripe (coupon a durata), non il nostro codice", /durataMesi/.test(checkout) && !/subscriptionSchedules/.test(checkout));
   const cambio = leggi("src/app/actions/omnia-ai-plan-change.ts");
-  atteso("salire o scendere di piano si decide dall'ordine dei piani, non dai prezzi", /PIANI_ORDINE\.indexOf\(pianoDestinazione\) > PIANI_ORDINE\.indexOf\(pianoAttuale\)/.test(cambio) && !/prezzoCentesimi/.test(cambio));
+  atteso(
+    "salire o scendere di piano si decide dall'ordine dei piani (e, a parità di piano, dal piano di lavoro), non dai prezzi",
+    /tipoCambioOfferta\(offertaAttuale, destinazione\)/.test(cambio) && !/prezzoCentesimi/.test(cambio) && /PIANI_ORDINE\.indexOf\(destinazione\.piano\)/.test(leggi("src/lib/piano-lavoro-offerta-calcoli.ts")) && !/prezzo/i.test((leggi("src/lib/piano-lavoro-offerta-calcoli.ts").match(/export function tipoCambioOfferta[\s\S]*?\n\}/) ?? [""])[0].replace(/\/\/.*$/gm, "")),
+  );
 
   console.log("--- Cosa vede il cliente ---");
   // la pagina legge il catalogo, la vista (piani-vista.tsx) lo disegna: si controllano insieme

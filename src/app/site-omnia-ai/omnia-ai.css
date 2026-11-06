@@ -952,6 +952,23 @@ li {
   margin-top: 24px;
   text-align: center;
 }
+/* Il piano di lavoro, sotto l'elenco di ogni piano: una riga a parte, con il prezzo che si aggiunge in evidenza. */
+.omnia-prezzo-opzione {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--bordo);
+}
+.omnia-prezzo-opzione p {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #c4c1d8;
+  font-weight: 300;
+  text-align: left;
+}
+.omnia-prezzo-opzione strong {
+  color: var(--verde);
+  font-weight: 600;
+}
 
 /* Fascia «revisione umana» sotto i piani: superficie neutra (nessun colore con un ruolo fisso). */
 .omnia-revisione {

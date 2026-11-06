@@ -15,6 +15,7 @@ import GestisciPagamentoButton from "./gestisci-pagamento-button";
 import CambiaPianoForm from "./cambia-piano-form";
 import AnnullaCambioPianoButton from "./annulla-cambio-piano-button";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { surplusSeInVendita } from "@/lib/piano-lavoro-offerta";
 
 type ConsumoRow = {
   gara_id: string | null;
@@ -72,6 +73,7 @@ export default async function AbbonamentoPage() {
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}
+            surplusPianoLavoro={await surplusSeInVendita()}
           />
         ) : (
           <p className="omnia-messaggio-stato errore" style={{ marginTop: 24 }}>
@@ -120,6 +122,14 @@ export default async function AbbonamentoPage() {
   // fondo alla pagina insieme al resto.
   const gareQuasiEsaurite = gareResidue <= 1;
   const pianoRiconosciuto = (piano?.slug ?? null) as PianoSlug | null;
+  // il piano di lavoro incluso nell'abbonamento, e quello dell'eventuale cambio programmato (colonne della migrazione 0101: se mancano, nulla)
+  const { data: rigaPianoLavoro } = await supabase
+    .from("subscriptions")
+    .select("piano_lavoro, piano_lavoro_programmato")
+    .eq("id", subscription.id)
+    .maybeSingle<{ piano_lavoro: boolean | null; piano_lavoro_programmato: boolean | null }>();
+  const pianoLavoroAttivo = rigaPianoLavoro?.piano_lavoro === true;
+  const pianoLavoroProgrammato = typeof rigaPianoLavoro?.piano_lavoro_programmato === "boolean" ? rigaPianoLavoro.piano_lavoro_programmato : null;
 
   return (
     <div className="omnia-app-shell">
@@ -148,6 +158,11 @@ export default async function AbbonamentoPage() {
           <div className="omnia-dato">
             <div className="omnia-dato-etichetta">Piano corrente</div>
             <div className="omnia-dato-valore">{piano?.nome ?? subscription.plan}</div>
+            {pianoLavoroAttivo && (
+              <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                con piano di lavoro
+              </div>
+            )}
           </div>
           <div className="omnia-dato">
             <div className="omnia-dato-etichetta">Prossimo rinnovo</div>
@@ -186,7 +201,8 @@ export default async function AbbonamentoPage() {
           {subscription.piano_programmato ? (
             <>
               <p className="omnia-messaggio-stato avviso" style={{ marginTop: 12 }}>
-                Cambio a <strong>{PIANI[subscription.piano_programmato as PianoSlug]?.nome ?? subscription.piano_programmato}</strong>{" "}
+                Cambio a <strong>{PIANI[subscription.piano_programmato as PianoSlug]?.nome ?? subscription.piano_programmato}</strong>
+                {pianoLavoroProgrammato !== null && pianoLavoroProgrammato !== pianoLavoroAttivo ? (pianoLavoroProgrammato ? " con il piano di lavoro" : " senza il piano di lavoro") : ""}{" "}
                 programmato dal{" "}
                 {subscription.piano_programmato_da
                   ? new Date(subscription.piano_programmato_da).toLocaleDateString("it-IT")
@@ -206,7 +222,7 @@ export default async function AbbonamentoPage() {
                 periodo già pagato.
               </p>
               <div style={{ marginTop: 12 }}>
-                <CambiaPianoForm pianoAttuale={pianoRiconosciuto} />
+                <CambiaPianoForm pianoAttuale={pianoRiconosciuto} pianoLavoroAttuale={pianoLavoroAttivo} surplusPianoLavoro={await surplusSeInVendita()} />
               </div>
             </>
           )}

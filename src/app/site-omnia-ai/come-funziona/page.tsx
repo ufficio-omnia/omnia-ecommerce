@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
+import { SITO_COME_FUNZIONA_PIANO_LAVORO } from "@/lib/piano-lavoro-testi";
 import ComeFunzionaDemo from "@/components/omnia-ai/come-funziona-demo";
 import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
@@ -60,6 +62,26 @@ export default function ComeFunzionaPage() {
         <div style={{ maxWidth: 640, margin: "32px auto 0" }}>
           <ComeFunzionaDemo />
         </div>
+
+        <h2 id="piano-di-lavoro">{SITO_COME_FUNZIONA_PIANO_LAVORO.titolo}</h2>
+        <p className="omnia-guida">{SITO_COME_FUNZIONA_PIANO_LAVORO.guida}</p>
+        <ol className="omnia-passi">
+          {SITO_COME_FUNZIONA_PIANO_LAVORO.passi.map((p) => (
+            <li key={p.titolo} className="omnia-passo">
+              <div>
+                <b>{p.titolo}</b>
+                <p>{p.testo}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <p className="micro" style={{ marginTop: 24 }}>
+          {SITO_COME_FUNZIONA_PIANO_LAVORO.nota}{" "}
+          <Link href="/piani" style={{ color: "inherit", textDecoration: "underline" }}>
+            {SITO_COME_FUNZIONA_PIANO_LAVORO.collegamento}
+          </Link>
+          .
+        </p>
       </section>
     </PageShell>
   );

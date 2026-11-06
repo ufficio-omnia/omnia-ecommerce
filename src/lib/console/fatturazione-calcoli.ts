@@ -12,7 +12,7 @@ import { giorniTra } from "./periodo";
 export type StatoFattura = "da_fatturare" | "fatturata" | "non_dovuta";
 export const STATI_FATTURA: StatoFattura[] = ["da_fatturare", "fatturata", "non_dovuta"];
 
-export type FonteRiga = "incasso" | "crediti" | "revisione";
+export type FonteRiga = "incasso" | "crediti" | "revisione" | "piano_lavoro";
 
 // Giorni dall'incasso oltre i quali la riga è segnalata. È il termine ORDINARIO
 // indicativo per l'emissione della fattura immediata, non un consiglio fiscale:
@@ -213,6 +213,10 @@ export function snapshotDaDettagliStripe(d: DettagliClienteStripe | undefined): 
 export function descrizioneRevisioneRiga(garaTitolo: string, pagine: number, maggiorazionePercentuale: number): string {
   const urgenza = maggiorazionePercentuale > 0 ? `, urgenza +${maggiorazionePercentuale}%` : "";
   return `Revisione umana relazione tecnica — ${garaTitolo} (${pagine} ${pagine === 1 ? "pagina" : "pagine"}${urgenza})`;
+}
+
+export function descrizionePianoLavoroRiga(garaTitolo: string): string {
+  return `Piano di lavoro della gara — ${garaTitolo}`;
 }
 
 export function descrizioneCrediti(pacchetto: string, crediti: number): string {

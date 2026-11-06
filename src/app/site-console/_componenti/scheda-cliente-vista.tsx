@@ -289,7 +289,7 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
         />
         <Tessera
           etichetta="Abbonamento AI"
-          valore={ultimoAbb ? nomePiano(ultimoAbb.piano) : "—"}
+          valore={ultimoAbb ? `${nomePiano(ultimoAbb.piano)}${ultimoAbb.pianoLavoro ? " + piano di lavoro" : ""}` : "—"}
           dettaglio={
             ultimoAbb
               ? `${ultimoAbb.stato === "sola_lettura" ? "sola lettura" : ultimoAbb.stato}${ultimoAbb.finePeriodo ? ` · fino al ${formattaData(ultimoAbb.finePeriodo)}` : ""}`
@@ -624,6 +624,43 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                       <td className="num">{formattaIntero(r.pagine)}</td>
                       <td className="num">{formattaEuro(r.lordo)}</td>
                       <td>{r.statoFattura === "fatturata" ? `fatturata${r.numeroFattura ? ` ${r.numeroFattura}` : ""}` : r.statoFattura === "non_dovuta" ? "non dovuta" : "da fatturare"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Pannello>
+
+        <Pannello titolo={`Piani di lavoro acquistati (${s.pianiLavoro.length})`}>
+          {s.pianiLavoro.length === 0 ? (
+            <p className="cn-vuoto">Nessun piano di lavoro acquistato.</p>
+          ) : (
+            <div className="cn-scorri">
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Gara</th>
+                    <th className="num">Importo lordo</th>
+                    <th>Fattura</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.pianiLavoro.map((p) => (
+                    <tr key={p.id}>
+                      <td className="mono">{formattaData(p.data)}</td>
+                      <td>
+                        {p.garaTitolo}
+                        {p.prova && (
+                          <>
+                            {" "}
+                            <Badge tono="avviso">prova</Badge>
+                          </>
+                        )}
+                      </td>
+                      <td className="num">{formattaEuro(p.lordo)}</td>
+                      <td>{p.statoFattura === "fatturata" ? `fatturata${p.numeroFattura ? ` ${p.numeroFattura}` : ""}` : p.statoFattura === "non_dovuta" ? "non dovuta" : "da fatturare"}</td>
                     </tr>
                   ))}
                 </tbody>

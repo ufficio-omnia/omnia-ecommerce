@@ -23,6 +23,7 @@ import {
   VOCI_MENU_UFFICIO_GARE,
 } from "@/lib/omnia-ai-account-calcoli";
 import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
+import { surplusSeInVendita } from "@/lib/piano-lavoro-offerta";
 import type { User } from "@supabase/supabase-js";
 
 // Avviso non bloccante ma ben visibile: il profilo azienda resta
@@ -227,6 +228,7 @@ async function LayoutInterno({
             condizioniVersion={legalDocuments.condizioniAbbonamento.version}
             privacyVersion={legalDocuments.privacyPolicy.version}
             allegatoVersion={legalDocuments.allegatoA?.version ?? null}
+            surplusPianoLavoro={await surplusSeInVendita()}
           />
         ) : (
           <p className="omnia-messaggio-stato errore" style={{ marginTop: 24 }}>

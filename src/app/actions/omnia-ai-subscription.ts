@@ -11,7 +11,12 @@ import {
   validateOmniaAiAcceptance,
 } from "@/lib/omnia-ai-legal";
 import { getRequestMeta } from "@/lib/legal-acceptance";
-import { getStripePrezzoAttivo } from "@/lib/omnia-ai-stripe-prices";
+import { createHash } from "crypto";
+import { getStripePrezzoAttivoOfferta } from "@/lib/omnia-ai-stripe-prices";
+import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { leggiSurplusPianoLavoro } from "@/lib/piano-lavoro-offerta";
+import { prezzoConPianoLavoro } from "@/lib/piano-lavoro-offerta-calcoli";
+import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { assicuraCoupon, idCouponSconto } from "@/lib/omnia-ai-stripe-sconti";
 import { leggiOffertaPilotAperta } from "@/lib/omnia-ai-pilot";
@@ -50,6 +55,13 @@ export async function startOmniaAiSubscriptionCheckout(
   if (acceptanceError) return { error: acceptanceError };
 
   const admin = createAdminClient();
+
+  // Abbonamento con il piano di lavoro: opzione del modulo, riverificata QUI (la vendita deve essere accesa, le avvertenze accettate).
+  const pianoLavoro = formData.get("pianoLavoro") === "on";
+  if (pianoLavoro) {
+    if (!(await venditaPianoLavoroAttiva(admin))) return { error: "Il piano di lavoro nell'abbonamento non è ancora disponibile." };
+    if (formData.get("acceptPianoLavoro") !== "on") return { error: "Per aggiungere il piano di lavoro devi accettare le avvertenze sul servizio." };
+  }
 
   let email: string;
   let userId: string | null = null;
@@ -133,6 +145,13 @@ export async function startOmniaAiSubscriptionCheckout(
     metadata.allegatoAVersion = String(legalDocuments.allegatoA.version);
   }
   if (userId) metadata.userId = userId;
+  // Il piano di lavoro incluso, con la versione e l'impronta delle avvertenze accettate (la prova completa — data, indirizzo IP, browser — è
+  // nelle accettazioni legali dell'abbonamento, registrate dal webhook).
+  if (pianoLavoro) {
+    metadata.pianoLavoro = "1";
+    metadata.pianoLavoroCondizioniVersione = String(VERSIONE_CONDIZIONI_PIANO_LAVORO);
+    metadata.pianoLavoroCondizioniHash = createHash("sha256").update(testoCanonicoCondizioniPianoLavoro()).digest("hex");
+  }
 
   // Prezzo Stripe persistente (mai price_data creato al volo): un
   // eventuale cambio piano futuro, programmato tramite Subscription
@@ -140,14 +159,16 @@ export async function startOmniaAiSubscriptionCheckout(
   let priceId: string;
   let discounts: { coupon: string }[] | undefined;
   try {
-    const prezzoStripe = await getStripePrezzoAttivo(stripe, planSlug as PianoSlug);
+    const prezzoStripe = await getStripePrezzoAttivoOfferta(stripe, planSlug as PianoSlug, pianoLavoro);
     const voce = (await getCatalogoPiani())[planSlug as PianoSlug];
+    // con il piano di lavoro l'importo del prezzo Stripe è il listino + il supplemento deciso dalla console
+    const importoAtteso = pianoLavoro ? prezzoConPianoLavoro(voce.prezzoListinoCentesimi, (await leggiSurplusPianoLavoro(admin))[planSlug as PianoSlug]) : voce.prezzoListinoCentesimi;
 
     // Ciò che si addebita deve essere ciò che il cliente ha visto: il prezzo attivo su Stripe deve
-    // coincidere col listino del catalogo (migrazione 0085). Se non coincide (una modifica di prezzo
-    // rimasta a metà) si ferma tutto, invece di addebitare un importo diverso da quello mostrato.
-    if (prezzoStripe.unit_amount !== voce.prezzoListinoCentesimi) {
-      console.error("Checkout AI: prezzo Stripe diverso dal listino", planSlug, prezzoStripe.unit_amount, voce.prezzoListinoCentesimi);
+    // coincidere col listino del catalogo (migrazione 0085), più il supplemento se c'è il piano di lavoro. Se non coincide (una modifica di
+    // prezzo rimasta a metà) si ferma tutto, invece di addebitare un importo diverso da quello mostrato.
+    if (prezzoStripe.unit_amount !== importoAtteso) {
+      console.error("Checkout AI: prezzo Stripe diverso dal listino", planSlug, pianoLavoro ? "con piano di lavoro" : "", prezzoStripe.unit_amount, importoAtteso);
       return { error: "Il prezzo di questo piano è in aggiornamento: riprova tra qualche minuto o scrivici dalla pagina Contatti." };
     }
     priceId = prezzoStripe.id;

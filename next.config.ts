@@ -6,7 +6,8 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "30mb",
     },
   },
-  serverExternalPackages: ["pdf-parse", "@napi-rs/canvas", "sharp"],
+  // exceljs (piano di lavoro) resta fuori dal bundle: usa stream e zip di Node e non va impacchettato.
+  serverExternalPackages: ["pdf-parse", "@napi-rs/canvas", "sharp", "exceljs"],
   // src/lib/prompts.ts legge prompts/*.md e src/lib/org-chart.ts legge i
   // font in src/assets/fonts/ con fs.readFileSync a runtime: un percorso
   // costruito con process.cwd() non viene tracciato automaticamente dal

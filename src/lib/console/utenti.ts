@@ -155,6 +155,8 @@ export type AbbonamentoScheda = {
   finePeriodo: string | null;
   inDisdetta: boolean;
   disdettaRichiestaIl: string | null;
+  // l'abbonamento include il piano di lavoro (migrazione 0101: falso se manca)
+  pianoLavoro: boolean;
   accettazioni: AccettazioneScheda[];
   provaAccettazione: StatoProva;
 };
@@ -162,6 +164,7 @@ export type AbbonamentoScheda = {
 export type IncassoScheda = { id: string; data: string; tipo: string; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type AcquistoCreditiScheda = { id: string; data: string; pacchetto: string; crediti: number; lordo: number; prova: boolean; statoFattura: string | null };
 export type RevisioneScheda = { id: string; data: string; garaTitolo: string; pagine: number; lordo: number; maggiorazione: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
+export type PianoLavoroScheda = { id: string; data: string; garaTitolo: string; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type MessaggioScheda = { id: string; mittente: "cliente" | "admin"; testo: string; creatoIl: string };
 
 export type ProfiloScheda = {
@@ -188,6 +191,8 @@ export type SchedaCliente =
       acquistiCrediti: AcquistoCreditiScheda[];
       // revisioni umane pagate (migrazione 0089)
       revisioni: RevisioneScheda[];
+      // piani di lavoro acquistati e pagati (migrazione 0097)
+      pianiLavoro: PianoLavoroScheda[];
       incassi: IncassoScheda[];
       messaggi: MessaggioScheda[];
       // la tabella degli incassi / le colonne di stato fattura esistono (migrazioni 0078, 0079)
@@ -254,6 +259,10 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
   let subQ: Risposta = await admin.from("subscriptions").select(`${baseSub}, livemode, disdetta_richiesta_il`).eq("user_id", id).order("created_at", { ascending: false });
   if (schemaAssente(subQ.error)) subQ = await admin.from("subscriptions").select(baseSub).eq("user_id", id).order("created_at", { ascending: false });
 
+  // Il piano di lavoro incluso negli abbonamenti (colonna della migrazione 0101: letta a parte, senza la migrazione nessuno lo include).
+  const pianoLavoroQ: Risposta = await admin.from("subscriptions").select("id, piano_lavoro").eq("user_id", id);
+  const conPianoLavoro = new Set(pianoLavoroQ.error ? [] : ((pianoLavoroQ.data ?? []) as { id: string; piano_lavoro: boolean | null }[]).filter((r) => r.piano_lavoro === true).map((r) => r.id));
+
   let incassiQ: Risposta = await admin
     .from("omnia_ai_incassi")
     .select("id, tipo, importo_lordo_centesimi, pagato_il, livemode, stato_fattura, numero_fattura")
@@ -277,6 +286,14 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
   const revisioniQ: Risposta = await admin
     .from("omnia_ai_revisioni")
     .select("id, gara_titolo, pagine, maggiorazione_percentuale, prezzo_totale_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura")
+    .eq("user_id", id)
+    .eq("stato", "pagata")
+    .order("pagata_il", { ascending: false });
+
+  // Piani di lavoro acquistati e pagati dal cliente: senza la tabella (migrazione 0097) non ce ne sono.
+  const pianiLavoroQ: Risposta = await admin
+    .from("omnia_ai_piani_lavoro_acquisti")
+    .select("id, gara_titolo, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura")
     .eq("user_id", id)
     .eq("stato", "pagata")
     .order("pagata_il", { ascending: false });
@@ -349,6 +366,7 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
       finePeriodo: s.current_period_end,
       inDisdetta: stato === "attivo" && Boolean(s.cancel_at_period_end),
       disdettaRichiestaIl: s.disdetta_richiesta_il ?? null,
+      pianoLavoro: conPianoLavoro.has(s.id),
       accettazioni,
       provaAccettazione: statoProvaAbbonamento(manuale, accettazioni),
     };
@@ -390,6 +408,17 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
           prova: !r.livemode,
           statoFattura: r.stato_fattura ?? null,
           numeroFattura: r.numero_fattura ?? null,
+        })),
+    pianiLavoro: pianiLavoroQ.error
+      ? []
+      : ((pianiLavoroQ.data ?? []) as { id: string; gara_titolo: string; prezzo_centesimi: number; importo_pagato_centesimi: number | null; pagata_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((p) => ({
+          id: p.id,
+          data: p.pagata_il,
+          garaTitolo: p.gara_titolo,
+          lordo: num(p.importo_pagato_centesimi ?? p.prezzo_centesimi) / 100,
+          prova: !p.livemode,
+          statoFattura: p.stato_fattura ?? null,
+          numeroFattura: p.numero_fattura ?? null,
         })),
     incassi: incassiDisponibili
       ? ((incassiQ.data ?? []) as { id: string; tipo: string; importo_lordo_centesimi: number; pagato_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((i) => ({

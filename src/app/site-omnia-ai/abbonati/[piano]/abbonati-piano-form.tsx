@@ -6,7 +6,8 @@ import {
   type OmniaAiCheckoutState,
 } from "@/app/actions/omnia-ai-subscription";
 import ConsensiAbbonamento from "@/components/omnia-ai/consensi-abbonamento";
-import type { PianoSlug } from "@/lib/omnia-ai-plans";
+import OpzionePianoLavoro from "@/components/omnia-ai/opzione-piano-lavoro";
+import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
 
 const initialState: OmniaAiCheckoutState = {};
 
@@ -16,12 +17,15 @@ export default function AbbonatiPianoForm({
   condizioniVersion,
   privacyVersion,
   allegatoVersion,
+  offertaPianoLavoro,
 }: {
   piano: PianoSlug;
   emailUtente: string | null;
   condizioniVersion: number;
   privacyVersion: number;
   allegatoVersion: number | null;
+  // il supplemento e il prezzo mensile con il piano di lavoro; null = l'opzione non è in vendita
+  offertaPianoLavoro: { surplusCentesimi: number; totaleCentesimi: number } | null;
 }) {
   const [state, formAction, pending] = useActionState(
     startOmniaAiSubscriptionCheckout,
@@ -29,8 +33,10 @@ export default function AbbonatiPianoForm({
   );
   const [acceptCondizioniPrivacy, setAcceptCondizioniPrivacy] = useState(false);
   const [acceptClausoleSpecifiche, setAcceptClausoleSpecifiche] = useState(false);
+  const [pianoLavoro, setPianoLavoro] = useState(false);
+  const [acceptPianoLavoro, setAcceptPianoLavoro] = useState(false);
 
-  const canSubmit = acceptCondizioniPrivacy && acceptClausoleSpecifiche;
+  const canSubmit = acceptCondizioniPrivacy && acceptClausoleSpecifiche && (!pianoLavoro || acceptPianoLavoro);
 
   return (
     <form action={formAction} className="omnia-modulo">
@@ -54,6 +60,18 @@ export default function AbbonatiPianoForm({
             autoComplete="email"
           />
         </div>
+      )}
+
+      {offertaPianoLavoro && (
+        <OpzionePianoLavoro
+          nomePiano={PIANI[piano].nome}
+          surplusCentesimi={offertaPianoLavoro.surplusCentesimi}
+          totaleCentesimi={offertaPianoLavoro.totaleCentesimi}
+          aggiunto={pianoLavoro}
+          onAggiuntoChange={setPianoLavoro}
+          accettato={acceptPianoLavoro}
+          onAccettatoChange={setAcceptPianoLavoro}
+        />
       )}
 
       <ConsensiAbbonamento

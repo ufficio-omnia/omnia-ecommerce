@@ -6,6 +6,7 @@ import {
   type OmniaAiCheckoutState,
 } from "@/app/actions/omnia-ai-subscription";
 import ConsensiAbbonamento from "@/components/omnia-ai/consensi-abbonamento";
+import OpzionePianoLavoro from "@/components/omnia-ai/opzione-piano-lavoro";
 import { formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { testoOfferta, type PianoCatalogo } from "@/lib/omnia-ai-catalogo-calcoli";
 
@@ -17,9 +18,12 @@ export default function ActivateSubscriptionForm({
   condizioniVersion,
   privacyVersion,
   allegatoVersion,
+  surplusPianoLavoro = null,
 }: {
   // i piani con il prezzo e lo sconto di oggi (catalogo modificabile dalla console)
   piani: PianoCatalogo[];
+  // il supplemento mensile del piano di lavoro per ogni piano; null = l'opzione non è in vendita
+  surplusPianoLavoro?: Record<PianoSlug, number> | null;
   // piano selezionato in partenza (l'offerta riservata al cliente), altrimenti Professional
   pianoPredefinito?: PianoSlug | null;
   condizioniVersion: number;
@@ -35,7 +39,11 @@ export default function ActivateSubscriptionForm({
   const [acceptCondizioniPrivacy, setAcceptCondizioniPrivacy] = useState(false);
   const [acceptClausoleSpecifiche, setAcceptClausoleSpecifiche] = useState(false);
 
-  const canSubmit = acceptCondizioniPrivacy && acceptClausoleSpecifiche;
+  const [pianoLavoro, setPianoLavoro] = useState(false);
+  const [acceptPianoLavoro, setAcceptPianoLavoro] = useState(false);
+
+  const canSubmit = acceptCondizioniPrivacy && acceptClausoleSpecifiche && (!pianoLavoro || acceptPianoLavoro);
+  const pianoScelto = piani.find((p) => p.slug === planSlug);
 
   return (
     <form action={formAction}>
@@ -74,6 +82,18 @@ export default function ActivateSubscriptionForm({
         })}
       </div>
 
+      {surplusPianoLavoro && pianoScelto && (
+        <OpzionePianoLavoro
+          nomePiano={pianoScelto.nome}
+          surplusCentesimi={surplusPianoLavoro[planSlug]}
+          totaleCentesimi={pianoScelto.prezzoCentesimi + surplusPianoLavoro[planSlug]}
+          aggiunto={pianoLavoro}
+          onAggiuntoChange={setPianoLavoro}
+          accettato={acceptPianoLavoro}
+          onAccettatoChange={setAcceptPianoLavoro}
+        />
+      )}
+
       <ConsensiAbbonamento
         condizioniVersion={condizioniVersion}
         privacyVersion={privacyVersion}
@@ -102,7 +122,7 @@ export default function ActivateSubscriptionForm({
         className="omnia-btn omnia-btn-p"
         style={{ marginTop: 16 }}
       >
-        {pending ? "Attivazione in corso..." : `Attiva il piano ${piani.find((p) => p.slug === planSlug)?.nome ?? ""}`}
+        {pending ? "Attivazione in corso..." : `Attiva il piano ${pianoScelto?.nome ?? ""}${surplusPianoLavoro && pianoLavoro ? " con piano di lavoro" : ""}`}
       </button>
     </form>
   );
