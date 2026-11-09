@@ -70,6 +70,15 @@ export default function HeroDemo() {
     if (!cx) return;
 
     const ridotto = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Colori delle parole che galleggiano: vengono dal tema (variabili di omnia-ai.css) e si rileggono quando il tema cambia.
+    let rgbParticella = "155,146,220";
+    let rgbVerde = "79,209,165";
+    const leggiColori = () => {
+      const stile = getComputedStyle(document.documentElement);
+      rgbParticella = stile.getPropertyValue("--particella-rgb").replace(/\s/g, "") || rgbParticella;
+      rgbVerde = stile.getPropertyValue("--verde-rgb").replace(/\s/g, "") || rgbVerde;
+    };
+    leggiColori();
     let W = 0;
     let H = 0;
     let P: Particella[] = [];
@@ -135,7 +144,7 @@ export default function HeroDemo() {
           cx!.beginPath();
           cx!.moveTo(c.x, c.y);
           cx!.lineTo(p.x, p.y);
-          cx!.strokeStyle = "rgba(79,209,165," + p.o * 0.24 + ")";
+          cx!.strokeStyle = "rgba(" + rgbVerde + "," + p.o * 0.24 + ")";
           cx!.lineWidth = dpr;
           cx!.stroke();
         } else {
@@ -148,20 +157,29 @@ export default function HeroDemo() {
           p.o += (0.14 - p.o) * 0.02;
         }
         cx!.font = 13 * dpr + 'px "Space Grotesk", sans-serif';
-        cx!.fillStyle = (fase === 1 && p.r ? "rgba(79,209,165," : "rgba(155,146,220,") + p.o.toFixed(3) + ")";
+        cx!.fillStyle = "rgba(" + (fase === 1 && p.r ? rgbVerde : rgbParticella) + "," + p.o.toFixed(3) + ")";
         cx!.fillText(p.t, p.x, p.y);
       });
       raf = requestAnimationFrame(disegna);
     }
     if (!ridotto) {
       raf = requestAnimationFrame(disegna);
-    } else {
+    }
+    // Con il movimento ridotto le parole si disegnano una volta sola: si ridisegnano se cambia il tema.
+    const disegnaFermo = () => {
+      cx.clearRect(0, 0, W, H);
       cx.font = 13 * dpr + "px sans-serif";
       P.forEach((p) => {
-        cx.fillStyle = "rgba(155,146,220,.14)";
+        cx.fillStyle = "rgba(" + rgbParticella + ",.14)";
         cx.fillText(p.t, p.x, p.y);
       });
-    }
+    };
+    if (ridotto) disegnaFermo();
+    const osservatoreTema = new MutationObserver(() => {
+      leggiColori();
+      if (ridotto) disegnaFermo();
+    });
+    osservatoreTema.observe(document.documentElement, { attributes: true, attributeFilter: ["data-tema"] });
 
     function scrivi(el: HTMLElement, txt: string, vel: number, fine?: () => void) {
       let i = 0;
@@ -248,6 +266,7 @@ export default function HeroDemo() {
       cancelAnimationFrame(raf);
       removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibility);
+      osservatoreTema.disconnect();
       timeout.forEach(clearTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setup imperativo eseguito una sola volta, come nello script originale

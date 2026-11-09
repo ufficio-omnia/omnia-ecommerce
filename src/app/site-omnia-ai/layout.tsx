@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./omnia-ai.css";
 import OmniaAiCookieConsent from "@/components/omnia-ai/cookie-consent";
 import AttribuzioneDemo from "@/components/omnia-ai/attribuzione-demo";
+import ApplicaTema from "@/components/omnia-ai/applica-tema";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { URL_GTAG_JS, costruisciSnippetIniziale } from "@/lib/google-tag";
 
@@ -31,12 +32,15 @@ export const viewport: Viewport = {
 // Tutto sta in src/lib/google-tag.ts (testato in scripts/verifica-google-tag-omnia-ai.ts) e nella guida GUIDA-GOOGLE-TAG-CONSENT-MODE.md.
 export default function OmniaAiRootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="it">
+    // suppressHydrationWarning: lo script del tema scrive data-tema e data-tema-scelta sull'<html> prima che React parta.
+    <html lang="it" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: costruisciSnippetIniziale() }} />
         <script defer src={URL_GTAG_JS} />
       </head>
       <body>
+        {/* Primo elemento del body: applica il tema scelto (di base lo scuro) prima che la pagina compaia. */}
+        <ApplicaTema />
         {children}
         <OmniaAiCookieConsent />
         <AttribuzioneDemo />
