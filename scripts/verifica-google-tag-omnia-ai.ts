@@ -369,7 +369,7 @@ async function main() {
     const posFineHead = codiceLayout.indexOf("</head>");
     atteso("il layout della zona omnia-ai mette il Google tag nell'HTML iniziale come VERI tag <script> dell'<head>: prima lo snippet inline, poi la libreria con «defer» (il browser la esegue dopo lo snippet, sempre), UNA sola volta src=URL_GTAG_JS, tutto prima di <body>", posHead > 0 && posInit > posHead && posLib > posInit && posFineHead > posLib && codiceLayout.indexOf("<body>") > posFineHead && (codiceLayout.match(/src=\{URL_GTAG_JS\}/g) ?? []).length === 1 && (codiceLayout.match(/<script\b/g) ?? []).length === 2);
     atteso("niente next/script e niente «async» sulla libreria (Next metterebbe lo snippet in una coda interna e React sposterebbe uno script «async» prima dello snippet): l'ordine dell'HTML è quello garantito", !/next\/script|<Script|beforeInteractive|afterInteractive/.test(codiceLayout) && !/<script[^>]*\basync\b/.test(codiceLayout));
-    atteso("il layout resta un root layout con il proprio <html> e NON contiene ID o indirizzi di Google scritti a mano", /<html lang="it">/.test(codiceLayout) && !/G-W551SWPNE4|AW-18422155730|googletagmanager|gtag\(/.test(codiceLayout));
+    atteso("il layout resta un root layout con il proprio <html> e NON contiene ID o indirizzi di Google scritti a mano", /<html lang="it" suppressHydrationWarning>/.test(codiceLayout) && !/G-W551SWPNE4|AW-18422155730|googletagmanager|gtag\(/.test(codiceLayout));
   }
 
   // ═════════════════════════ 6. Un solo punto, nessun doppione, nessuna conversione ═════════════════════════

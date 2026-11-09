@@ -96,7 +96,7 @@ export default function OmniaAiCookieConsent() {
             bottom: 0,
             zIndex: 50,
             borderTop: "1px solid var(--bordo)",
-            background: "rgba(11,10,22,.92)",
+            background: "rgba(var(--pannello-rgb), .92)",
             backdropFilter: "blur(14px)",
             padding: "16px 24px",
           }}

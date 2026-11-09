@@ -2,6 +2,7 @@ import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
 import ProfiloMenu from "./profilo-menu";
 import NotificationBell from "./notification-bell";
+import ToggleTema from "./toggle-tema";
 
 // L'Ufficio Gare ha «Nuova gara» ed «Esci»: niente campanella (le notifiche sono del titolare) né menu del profilo
 // (che porta alle impostazioni dell'account, riservate al titolare).
@@ -19,6 +20,7 @@ export default function Topbar({ nomeSaluto, email, ufficioGare = false }: { nom
         </Link>
         {!ufficioGare && <NotificationBell />}
         {!ufficioGare && <ProfiloMenu email={email} />}
+        <ToggleTema />
         {/* «Esci» sta anche dentro il menu del profilo, ma nascosto dietro un clic sull'email:
             un cliente non lo trova. Qui è sempre visibile. */}
         <form action={signOut}>

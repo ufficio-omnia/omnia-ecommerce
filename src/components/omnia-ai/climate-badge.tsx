@@ -12,19 +12,29 @@
 // dei piani (src/app/site-omnia-ai/piani/piani-vista.tsx).
 export const URL_BADGE_CLIMATE = "https://climate.stripe.com/badge/mE76Pa";
 
-// Il sito è scuro: il tema «dark» del badge (blu notte, testo chiaro) si integra, quello «light» è una barra bianca.
-export default function ClimateBadge({ tema = "dark" }: { tema?: "light" | "dark" }) {
+// I due temi di Stripe: «dark» (blu notte, testo chiaro) per il tema scuro del sito, «light» (barra chiara) per quello chiaro.
+// Si disegnano entrambi, ma il CSS (omnia-ai.css) ne mostra UNO solo secondo il tema scelto dal visitatore, di base quello
+// scuro; l'altro resta con display:none e, essendo «lazy», non si carica finché non serve. Così il componente resta lato server
+// e il badge cambia insieme al tema, senza lampi.
+const TEMI_BADGE = ["dark", "light"] as const;
+
+export default function ClimateBadge() {
   return (
-    <iframe
-      src={`${URL_BADGE_CLIMATE}?theme=${tema}&size=small&locale=it-IT`}
-      title="Stripe Climate: l'1% degli acquisti contribuisce alla rimozione di CO₂ dall'atmosfera"
-      width={380}
-      height={38}
-      className="omnia-climate-badge"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      sandbox=""
-      style={{ border: 0, maxWidth: "100%" }}
-    />
+    <>
+      {TEMI_BADGE.map((tema) => (
+        <iframe
+          key={tema}
+          src={`${URL_BADGE_CLIMATE}?theme=${tema}&size=small&locale=it-IT`}
+          title="Stripe Climate: l'1% degli acquisti contribuisce alla rimozione di CO₂ dall'atmosfera"
+          width={380}
+          height={38}
+          className={`omnia-climate-badge omnia-climate-${tema}`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          sandbox=""
+          style={{ border: 0, maxWidth: "100%" }}
+        />
+      ))}
+    </>
   );
 }

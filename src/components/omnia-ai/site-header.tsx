@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import BrandMark from "./brand-mark";
+import ToggleTema from "./toggle-tema";
 import { useMarchioStato } from "./marchio-stato-context";
 
 // Unica fonte delle voci: la navigazione desktop e il menu mobile le
@@ -44,7 +45,8 @@ export default function SiteHeader() {
     html.classList.add("omnia-menu-aperto");
     if (larghezzaScrollbar > 0) body.style.paddingRight = `${larghezzaScrollbar}px`;
 
-    const voci = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>("a[href]") ?? []);
+    // Link e pulsanti del menu (anche l'interruttore del tema): tutti nel ciclo di tabulazione.
+    const voci = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>("a[href], button") ?? []);
     voci()[0]?.focus({ preventScroll: true });
 
     const alTasto = (e: KeyboardEvent) => {
@@ -104,6 +106,7 @@ export default function SiteHeader() {
             <Link href="/login" className="omnia-accedi">
               Accedi
             </Link>
+            <ToggleTema />
           </nav>
           {/* Visibile solo sotto i 900px, dove la navigazione sopra sparisce
               (vedi omnia-ai.css). */}
@@ -143,6 +146,10 @@ export default function SiteHeader() {
             Accedi
           </Link>
         </nav>
+        <div className="omnia-menu-tema">
+          <span>Aspetto</span>
+          <ToggleTema grande />
+        </div>
       </div>
     </>
   );

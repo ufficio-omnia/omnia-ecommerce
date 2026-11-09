@@ -137,6 +137,61 @@ a {
   --rosso: #e85d3d;
   --testo: #e9e7f4;
   --fioco: #8b8aa8;
+  /* Le stesse tinte come terne R, G, B: servono per i colori con trasparenza (rgba(var(--verde-rgb), 0.3)), così cambiano
+     insieme al tema. --bianco-rgb è il colore delle velature: bianco sul fondo scuro, inchiostro su quello chiaro. */
+  --nero-rgb: 5, 5, 9;
+  --pannello-rgb: 11, 10, 22;
+  --bianco-rgb: 255, 255, 255;
+  --viola-rgb: 139, 127, 232;
+  --verde-rgb: 79, 209, 165;
+  --ambra-rgb: 232, 163, 61;
+  --rosso-rgb: 232, 93, 61;
+  /* testi secondari, in tre gradazioni (dal più al meno acceso rispetto al fondo) */
+  --testo-2: #c4c1d8;
+  --testo-2b: #c9c6dd;
+  --testo-3: #b9b7cc;
+  /* testo sopra i pulsanti pieni, fine del gradiente del pulsante «Nuova gara», parole che galleggiano nella home */
+  --su-viola: #0b0818;
+  --su-verde: #06231a;
+  --viola-2: #6f5fd6;
+  --particella-rgb: 155, 146, 220;
+}
+
+/* ---------- Tema chiaro ----------
+   Si attiva con data-tema="chiaro" sull'<html> (lo scrive lo script di src/lib/tema-omnia-ai.ts prima che la pagina compaia;
+   senza una scelta dell'utente il tema è SEMPRE quello scuro). Stessi nomi di variabile del tema scuro, quindi nessuna regola
+   sotto cambia: --nero è «il colore di fondo», --vetro «la superficie», --testo «il testo», anche se qui il fondo non è nero.
+   I ruoli dei colori restano gli stessi (viola = azione, verde = risposta del sistema, ambra = avvisi, rosso = errori): cambiano
+   solo le tonalità, più scure, perché sul fondo chiaro reggano il contrasto (controllato in scripts/verifica-tema-omnia-ai.ts). */
+:root[data-tema="chiaro"] {
+  color-scheme: light;
+  --nero: #f5f4fb;
+  --nero-0: rgba(245, 244, 251, 0);
+  --vetro: rgba(255, 255, 255, 0.72);
+  --vetro-2: rgba(91, 75, 208, 0.08);
+  --vetro-3: rgba(255, 255, 255, 0.6);
+  --bordo: rgba(70, 60, 160, 0.18);
+  --bordo-f: rgba(70, 60, 160, 0.34);
+  --viola: #5b4bd0;
+  --verde: #09704e;
+  --ambra: #8f5509;
+  --rosso: #b63218;
+  --testo: #1b1930;
+  --fioco: #5d5b78;
+  --nero-rgb: 245, 244, 251;
+  --pannello-rgb: 255, 255, 255;
+  --bianco-rgb: 40, 36, 90;
+  --viola-rgb: 91, 75, 208;
+  --verde-rgb: 9, 112, 78;
+  --ambra-rgb: 143, 85, 9;
+  --rosso-rgb: 182, 50, 24;
+  --testo-2: #38365a;
+  --testo-2b: #34324f;
+  --testo-3: #46445f;
+  --su-viola: #ffffff;
+  --su-verde: #ffffff;
+  --viola-2: #4a3bb8;
+  --particella-rgb: 91, 75, 208;
 }
 
 /* ---------- Fondamenta ----------
@@ -249,7 +304,7 @@ li {
   pointer-events: none;
   /* Mai "transparent": Safari la interpreta come nero trasparente e crea
      aloni. Sempre lo stesso colore di fondo a opacità zero. */
-  background: radial-gradient(120% 80% at 50% 30%, var(--nero-0) 30%, rgba(5, 5, 9, 0.86) 78%);
+  background: radial-gradient(120% 80% at 50% 30%, var(--nero-0) 30%, rgba(var(--nero-rgb), 0.86) 78%);
 }
 .omnia-wrap {
   position: relative;
@@ -265,7 +320,7 @@ li {
   top: 0;
   z-index: 20;
   backdrop-filter: blur(16px);
-  background: rgba(5, 5, 9, 0.72);
+  background: rgba(var(--nero-rgb), 0.72);
   border-bottom: 1px solid var(--bordo);
 }
 .omnia-bar {
@@ -325,7 +380,7 @@ li {
 }
 .omnia-btn-p {
   background: var(--viola);
-  color: #0b0818;
+  color: var(--su-viola);
 }
 .omnia-btn-s {
   background: var(--vetro);
@@ -351,7 +406,7 @@ li {
   max-width: 64ch;
   font-size: 18px;
   line-height: 1.68;
-  color: #b9b7cc;
+  color: var(--testo-3);
   font-weight: 300;
 }
 .omnia-azioni {
@@ -366,7 +421,7 @@ li {
 .omnia-console {
   max-width: 740px;
   margin: 64px auto 0;
-  background: rgba(11, 10, 22, 0.78);
+  background: rgba(var(--pannello-rgb), 0.78);
   border: 1px solid var(--bordo);
   border-radius: 18px;
   padding: 6px;
@@ -404,7 +459,7 @@ li {
   text-align: left;
   font-size: 14.8px;
   line-height: 1.75;
-  color: #c9c6dd;
+  color: var(--testo-2b);
   font-weight: 300;
   min-height: 96px;
 }
@@ -418,7 +473,7 @@ li {
   font-size: 12px;
   padding: 5px 12px;
   border-radius: 20px;
-  border: 1px solid rgba(79, 209, 165, 0.28);
+  border: 1px solid rgba(var(--verde-rgb), 0.28);
   color: var(--verde);
   opacity: 0;
   transition: opacity 0.5s;
@@ -473,7 +528,7 @@ li {
   padding: 15px 0;
   border-bottom: 1px solid var(--bordo);
   font-size: 15px;
-  color: #c4c1d8;
+  color: var(--testo-2);
   font-weight: 300;
   text-align: left;
 }
@@ -531,7 +586,7 @@ li {
 .omnia-firma {
   font-size: 15px;
   line-height: 1.75;
-  color: #c4c1d8;
+  color: var(--testo-2);
   font-weight: 300;
 }
 .omnia-firma strong {
@@ -645,6 +700,17 @@ li {
    dove il badge non arriva. Con «light» (lo schema del contenuto) lo sfondo resta trasparente. */
 .omnia-climate-badge {
   color-scheme: light;
+}
+/* Due versioni del badge (la scura e la chiara di Stripe): se ne vede una sola, secondo il tema. L'altra resta con display:none
+   e, essendo «lazy», non viene nemmeno caricata. Di base (senza scelta) c'è la scura. */
+.omnia-climate-light {
+  display: none;
+}
+:root[data-tema="chiaro"] .omnia-climate-dark {
+  display: none;
+}
+:root[data-tema="chiaro"] .omnia-climate-light {
+  display: inline;
 }
 /* Sugli schermi stretti il testo del badge può andare su due righe: l'altezza di 38px non basterebbe (comparirebbe una
    barra di scorrimento). */
@@ -842,7 +908,7 @@ li {
   border: 1px solid var(--bordo);
   border-left: 2px solid var(--verde);
   border-radius: 10px;
-  background: rgba(11, 10, 22, 0.6);
+  background: rgba(var(--pannello-rgb), 0.6);
   padding: 14px 16px;
   text-align: left;
   opacity: 0;
@@ -865,7 +931,7 @@ li {
   margin-top: 4px;
   font-size: 13.5px;
   line-height: 1.6;
-  color: #c9c6dd;
+  color: var(--testo-2b);
   font-weight: 300;
   text-align: left;
 }
@@ -935,7 +1001,7 @@ li {
   display: flex;
   gap: 10px;
   font-size: 14px;
-  color: #c4c1d8;
+  color: var(--testo-2);
   font-weight: 300;
   text-align: left;
 }
@@ -961,7 +1027,7 @@ li {
 .omnia-prezzo-opzione p {
   font-size: 13.5px;
   line-height: 1.55;
-  color: #c4c1d8;
+  color: var(--testo-2);
   font-weight: 300;
   text-align: left;
 }
@@ -1000,7 +1066,7 @@ li {
   max-width: 62ch;
   font-size: 16px;
   font-weight: 300;
-  color: #c4c1d8;
+  color: var(--testo-2);
   text-align: left;
 }
 .omnia-revisione-punti {
@@ -1027,7 +1093,7 @@ li {
 .omnia-revisione-punti span {
   font-size: 14px;
   font-weight: 300;
-  color: #c4c1d8;
+  color: var(--testo-2);
 }
 .omnia-revisione-nota {
   margin-top: 18px;
@@ -1094,11 +1160,11 @@ li {
   border: 1px solid var(--bordo);
 }
 .omnia-esito.errore {
-  border-color: rgba(232, 93, 61, 0.4);
+  border-color: rgba(var(--rosso-rgb), 0.4);
   color: var(--rosso);
 }
 .omnia-esito.successo {
-  border-color: rgba(79, 209, 165, 0.4);
+  border-color: rgba(var(--verde-rgb), 0.4);
   color: var(--verde);
 }
 
@@ -1296,7 +1362,7 @@ li {
   padding: 10px 14px;
   border: 1px solid var(--bordo);
   border-radius: 12px;
-  background: rgba(11, 10, 22, 0.5);
+  background: rgba(var(--pannello-rgb), 0.5);
   font-size: 13.5px;
 }
 .omnia-doc + .omnia-doc {
@@ -1329,15 +1395,15 @@ li {
   white-space: nowrap;
 }
 .omnia-badge.verde {
-  background: rgba(79, 209, 165, 0.12);
+  background: rgba(var(--verde-rgb), 0.12);
   color: var(--verde);
 }
 .omnia-badge.ambra {
-  background: rgba(232, 163, 61, 0.12);
+  background: rgba(var(--ambra-rgb), 0.12);
   color: var(--ambra);
 }
 .omnia-badge.rosso {
-  background: rgba(232, 93, 61, 0.12);
+  background: rgba(var(--rosso-rgb), 0.12);
   color: var(--rosso);
 }
 
@@ -1349,7 +1415,7 @@ li {
 }
 .omnia-btn-verde {
   background: var(--verde);
-  color: #06231a;
+  color: var(--su-verde);
 }
 
 /* Messaggi di stato (errore/avviso) fuori dal modulo demo pubblico */
@@ -1361,18 +1427,18 @@ li {
   border: 1px solid var(--bordo);
 }
 .omnia-messaggio-stato.errore {
-  border-color: rgba(232, 93, 61, 0.35);
-  background: rgba(232, 93, 61, 0.08);
+  border-color: rgba(var(--rosso-rgb), 0.35);
+  background: rgba(var(--rosso-rgb), 0.08);
   color: var(--rosso);
 }
 .omnia-messaggio-stato.avviso {
-  border-color: rgba(232, 163, 61, 0.35);
-  background: rgba(232, 163, 61, 0.08);
+  border-color: rgba(var(--ambra-rgb), 0.35);
+  background: rgba(var(--ambra-rgb), 0.08);
   color: var(--ambra);
 }
 .omnia-messaggio-stato.successo {
-  border-color: rgba(79, 209, 165, 0.35);
-  background: rgba(79, 209, 165, 0.08);
+  border-color: rgba(var(--verde-rgb), 0.35);
+  background: rgba(var(--verde-rgb), 0.08);
   color: var(--verde);
 }
 
@@ -1387,7 +1453,7 @@ li {
   padding: 14px 16px;
   border: 1px solid var(--bordo);
   border-radius: 12px;
-  background: rgba(11, 10, 22, 0.5);
+  background: rgba(var(--pannello-rgb), 0.5);
 }
 .omnia-dato-etichetta {
   font-size: 11px;
@@ -1408,7 +1474,7 @@ li {
   margin-top: 20px;
   border: 1px solid var(--bordo);
   border-radius: 14px;
-  background: rgba(11, 10, 22, 0.4);
+  background: rgba(var(--pannello-rgb), 0.4);
 }
 .omnia-dettagli summary {
   cursor: pointer;
@@ -1468,7 +1534,7 @@ li {
 .omnia-chat-nota {
   padding: 12px 24px;
   border-bottom: 1px solid var(--bordo);
-  background: rgba(11, 10, 22, 0.5);
+  background: rgba(var(--pannello-rgb), 0.5);
   font-size: 12.5px;
   color: var(--fioco);
 }
@@ -1516,12 +1582,12 @@ li {
   text-align: left;
 }
 .omnia-msg.utente {
-  background: rgba(139, 127, 232, 0.16);
+  background: rgba(var(--viola-rgb), 0.16);
   border: 1px solid var(--bordo-f);
 }
 .omnia-msg.assistente {
-  background: rgba(79, 209, 165, 0.07);
-  border: 1px solid rgba(79, 209, 165, 0.22);
+  background: rgba(var(--verde-rgb), 0.07);
+  border: 1px solid rgba(var(--verde-rgb), 0.22);
 }
 .omnia-msg p {
   text-align: left;
@@ -1543,9 +1609,9 @@ li {
   gap: 12px;
   margin-bottom: 12px;
   padding: 12px 14px;
-  border: 1px solid rgba(79, 209, 165, 0.35);
+  border: 1px solid rgba(var(--verde-rgb), 0.35);
   border-radius: 12px;
-  background: rgba(79, 209, 165, 0.1);
+  background: rgba(var(--verde-rgb), 0.1);
 }
 .omnia-allegato-generato .nome {
   flex: 1;
@@ -1576,7 +1642,7 @@ li {
   padding: 10px 12px;
   border: 2px solid var(--rosso);
   border-radius: 10px;
-  background: rgba(232, 93, 61, 0.14);
+  background: rgba(var(--rosso-rgb), 0.14);
   color: var(--rosso);
   font-size: 13px;
   line-height: 1.45;
@@ -1612,12 +1678,12 @@ li {
   padding: 5px 12px;
   border-radius: 20px;
   border: 1px solid var(--bordo-f);
-  background: rgba(5, 5, 9, 0.3);
+  background: rgba(var(--nero-rgb), 0.3);
   font-size: 11.5px;
 }
 .omnia-msg.utente .omnia-allegato-pillola {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(5, 5, 9, 0.2);
+  border-color: rgba(var(--bianco-rgb), 0.3);
+  background: rgba(var(--nero-rgb), 0.2);
 }
 .omnia-allegato-pillola .nome {
   max-width: 9rem;
@@ -1704,7 +1770,7 @@ li {
   padding: 12px 18px;
   border: 1px solid var(--bordo);
   border-radius: 16px;
-  background: rgba(11, 10, 22, 0.5);
+  background: rgba(var(--pannello-rgb), 0.5);
   width: fit-content;
 }
 .omnia-pensiero span {
@@ -1748,7 +1814,7 @@ li {
   font-weight: 600;
 }
 .prose-chat code {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--bianco-rgb), 0.08);
   border-radius: 0.3em;
   padding: 0.1em 0.4em;
   font-size: 0.9em;
@@ -1808,7 +1874,7 @@ li {
   padding: 9px 12px;
   border: 1px solid var(--bordo);
   border-radius: 10px;
-  background: rgba(11, 10, 22, 0.4);
+  background: rgba(var(--pannello-rgb), 0.4);
   font-size: 13px;
 }
 .omnia-file-riga .nome {
@@ -1952,7 +2018,7 @@ li {
 }
 .omnia-piano-scelta li {
   font-size: 12.5px;
-  color: #c4c1d8;
+  color: var(--testo-2);
   padding-left: 14px;
   position: relative;
 }
@@ -1984,7 +2050,7 @@ li {
 }
 .omnia-check-riga label {
   font-size: 12.5px;
-  color: #c4c1d8;
+  color: var(--testo-2);
   line-height: 1.6;
 }
 .omnia-check-riga a {
@@ -1998,8 +2064,8 @@ li {
    mostrata su ogni pagina della dashboard finché il profilo resta
    vuoto, colore ambra per la regola di prodotto (avviso, non errore). */
 .omnia-avviso-profilo {
-  background: rgba(232, 163, 61, 0.08);
-  border-bottom: 1px solid rgba(232, 163, 61, 0.25);
+  background: rgba(var(--ambra-rgb), 0.08);
+  border-bottom: 1px solid rgba(var(--ambra-rgb), 0.25);
   padding: 14px 24px;
   text-align: center;
   font-size: 13px;
@@ -2197,8 +2263,8 @@ li {
 /* Unico gradiente dell'app, riservato al pulsante più importante della
    piattaforma — ogni altro pulsante primario (.omnia-btn-p) resta piatto. */
 .omnia-btn-nuova-gara {
-  background: linear-gradient(135deg, var(--viola), #6f5fd6);
-  color: #0b0818;
+  background: linear-gradient(135deg, var(--viola), var(--viola-2));
+  color: var(--su-viola);
 }
 
 .omnia-riquadri-stato {
@@ -2501,7 +2567,7 @@ li {
   background: var(--vetro-2);
 }
 .omnia-notifica-riga.non-letta {
-  background: rgba(139, 127, 232, 0.08);
+  background: rgba(var(--viola-rgb), 0.08);
 }
 .omnia-notifica-riga .titolo {
   font-size: 13px;
@@ -2660,7 +2726,7 @@ li {
     inset: 0;
     z-index: 19;
     padding: 84px 32px 32px;
-    background: rgba(5, 5, 9, 0.9);
+    background: rgba(var(--nero-rgb), 0.9);
     /* Solo la forma standard, come .omnia-header: la pipeline CSS aggiunge da
        sé il prefisso -webkit- dove serve. Scrivendo a mano anche la versione
        prefissata, la standard veniva eliminata e Chrome non sfocava nulla. */
@@ -2826,4 +2892,68 @@ li {
   line-height: 1.5;
   color: var(--verde);
   text-align: left;
+}
+
+/* ---------- Interruttore del tema (Scuro / Chiaro / Automatico) ----------
+   Tre pulsanti a icona in una pillola, nell'intestazione del sito, nel menu mobile e nella barra dell'area riservata
+   (src/components/omnia-ai/toggle-tema.tsx). Solo variabili: segue il tema che sta cambiando. */
+.omnia-tema {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--vetro);
+}
+.omnia-tema button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fioco);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+.omnia-tema button:hover {
+  color: var(--testo);
+}
+.omnia-tema button[aria-pressed="true"] {
+  background: var(--vetro-2);
+  color: var(--viola);
+}
+.omnia-tema svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+/* Nel menu mobile i pulsanti sono più grandi, per il dito. */
+.omnia-tema.grande button {
+  width: 44px;
+  height: 40px;
+}
+.omnia-tema.grande svg {
+  width: 18px;
+  height: 18px;
+}
+.omnia-nav .omnia-tema {
+  margin-left: 8px;
+}
+.omnia-menu-tema {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--bordo);
+  font-size: 14px;
+  color: var(--fioco);
 }

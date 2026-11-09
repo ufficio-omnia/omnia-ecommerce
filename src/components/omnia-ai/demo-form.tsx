@@ -245,7 +245,7 @@ export default function DemoForm() {
         <span>{TESTI_MODULO_DEMO.ads}</span>
       </label>
 
-      <TurnstileCampo resetKey={chiaveVerifica} tema="dark" />
+      <TurnstileCampo resetKey={chiaveVerifica} tema="sito" />
 
       {errore && (
         <div className="omnia-esito errore" role="alert">
