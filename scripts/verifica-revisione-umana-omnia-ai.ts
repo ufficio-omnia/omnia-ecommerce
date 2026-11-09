@@ -1,7 +1,8 @@
 // Autotest della «revisione umana» della relazione tecnica (servizio a pagamento di OMNIA AI):
 //   - il prezzo (da 250 € per 5 pagine a 550 € per 50 o più; pagine dal disciplinare, altrimenti dalla
 //     relazione generata; ore dalla richiesta alla scadenza della gara: +25% da 72 a 96, +50% da 48 a 72,
-//     non gestibile sotto 48; la scadenza è l'ora indicata dal bando, altrimenti le 23:59);
+//     non gestibile sotto 48; la scadenza è data e ora scritte nei documenti o dal cliente: nessun'ora si presume, senza ora
+//     il prezzo non si calcola);
 //   - l'ora di scadenza nell'estrazione dati e la contabilità (pagamenti del cliente, fatturazione, ricavi,
 //     scheda cliente, dati di prova) della revisione pagata;
 //   - i contatti del referente, le condizioni del servizio (versione e impronta);
@@ -17,12 +18,12 @@ import { createHash } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MESSAGGIO_NON_GESTIBILE,
+  MESSAGGIO_ORA_SCADENZA_MANCANTE,
   MESSAGGIO_PAGINE_NON_DETERMINABILI,
   MESSAGGIO_SCADUTA,
   REVISIONE,
   calcolaPrezzoRevisione,
   descriviFontePagine,
-  fineGiornoRoma,
   istanteScadenza,
   normalizzaOraScadenza,
   oreAllaScadenza,
@@ -167,14 +168,18 @@ async function main() {
   uguale("nessuna delle due: non si può stabilire", [paginePerRevisione({ limitePagineDisciplinare: null, pagineStimateRelazione: null }), paginePerRevisione({ limitePagineDisciplinare: undefined, pagineStimateRelazione: 0 })], [null, null]);
   uguale("descrizione della fonte", [descriviFontePagine("disciplinare"), descriviFontePagine("relazione")], ["pagine prescritte dal disciplinare di gara", "pagine della relazione tecnica generata da OMNIA AI"]);
 
-  console.log("--- Scadenza: la fine del giorno, ora di Roma ---");
-  uguale("d'estate (CEST, UTC+2)", fineGiornoRoma("2026-10-20")?.toISOString(), "2026-10-20T21:59:59.000Z");
-  uguale("d'inverno (CET, UTC+1)", fineGiornoRoma("2026-12-20")?.toISOString(), "2026-12-20T22:59:59.000Z");
-  uguale("giorno del passaggio all'ora legale (marzo): fine giornata in CEST", fineGiornoRoma("2026-03-29")?.toISOString(), "2026-03-29T21:59:59.000Z");
-  uguale("giorno del ritorno all'ora solare (ottobre): fine giornata in CET", fineGiornoRoma("2026-10-25")?.toISOString(), "2026-10-25T22:59:59.000Z");
-  uguale("una data con l'ora attaccata si legge come data", fineGiornoRoma("2026-10-20T10:00:00+00:00")?.toISOString(), "2026-10-20T21:59:59.000Z");
-  uguale("date non valide o assenti: nessuna scadenza", [fineGiornoRoma(null), fineGiornoRoma(""), fineGiornoRoma("domani"), oreAllaScadenza(undefined, new Date())], [null, null, null, null]);
-  atteso("ore alla scadenza: 57,9997 ore dal 18/10 a mezzogiorno UTC alla fine del 20/10", Math.abs((oreAllaScadenza("2026-10-20", new Date("2026-10-18T12:00:00Z")) ?? 0) - (9 + 48 + 59 / 60 + 59 / 3600)) < 0.001);
+  // Un'ora ESPLICITA (qui le 23:59, scritte nei documenti) si converte da ora di Roma a UTC con la differenza in vigore quel giorno.
+  // Nessun'ora si presume mai: senza ora non c'è un istante (vedi «Ora di scadenza» più sotto).
+  const FINE = (data: string | null) => istanteScadenza(data, "23:59");
+  console.log("--- Scadenza alle 23:59 scritte nei documenti, ora di Roma ---");
+  uguale("d'estate (CEST, UTC+2)", FINE("2026-10-20")?.toISOString(), "2026-10-20T21:59:00.000Z");
+  uguale("d'inverno (CET, UTC+1)", FINE("2026-12-20")?.toISOString(), "2026-12-20T22:59:00.000Z");
+  uguale("giorno del passaggio all'ora legale (marzo): 23:59 in CEST", FINE("2026-03-29")?.toISOString(), "2026-03-29T21:59:00.000Z");
+  uguale("giorno del ritorno all'ora solare (ottobre): 23:59 in CET", FINE("2026-10-25")?.toISOString(), "2026-10-25T22:59:00.000Z");
+  uguale("una data con l'ora attaccata si legge come data", FINE("2026-10-20T10:00:00+00:00")?.toISOString(), "2026-10-20T21:59:00.000Z");
+  uguale("date non valide o assenti: nessuna scadenza", [FINE(null), FINE(""), FINE("domani"), oreAllaScadenza(undefined, new Date(), "12:00")], [null, null, null, null]);
+  atteso("ore alla scadenza: 57,98 ore dal 18/10 a mezzogiorno UTC alle 23:59 del 20/10", Math.abs((oreAllaScadenza("2026-10-20", new Date("2026-10-18T12:00:00Z"), "23:59") ?? 0) - (9 + 48 + 59 / 60)) < 0.001);
+  uguale("senza ora non ci sono ore alla scadenza (non si presume nessun orario)", [oreAllaScadenza("2026-10-20", new Date("2026-10-18T12:00:00Z")), oreAllaScadenza("2026-10-20", new Date("2026-10-18T12:00:00Z"), null), oreAllaScadenza("2026-10-20", new Date("2026-10-18T12:00:00Z"), "")], [null, null, null]);
 
   console.log("--- Urgenza: ai limiti ---");
   const tipo = (ore: number | null) => {
@@ -188,42 +193,54 @@ async function main() {
   uguale("oltre 96 ore: nessuna maggiorazione", [tipo(96.001), tipo(200), tipo(5000)], ["nessuna:0", "nessuna:0", "nessuna:0"]);
   uguale("scadenza non registrata: nessuna maggiorazione", tipo(null), "sconosciuta:0");
 
-  console.log("--- Ora di scadenza (dal bando, altrimenti 23:59) ---");
+  console.log("--- Ora di scadenza (dai documenti o dal cliente; mai presunta) ---");
   uguale("ore normalizzate (anche dalla colonna time del database); valori non validi = nessuna ora", ["12:00", "9:30", "09:30:00", "23:59:59.123", "24:00", "12:60", "", null, "mezzogiorno", "7"].map(normalizzaOraScadenza), ["12:00", "09:30", "09:30", "23:59", null, null, null, null, null, null]);
   uguale("con l'ora indicata, d'estate (12:00 a Roma = 10:00 UTC)", istanteScadenza("2026-10-20", "12:00")?.toISOString(), "2026-10-20T10:00:00.000Z");
   uguale("con l'ora indicata, d'inverno (09:30 a Roma = 08:30 UTC)", istanteScadenza("2026-12-20", "09:30")?.toISOString(), "2026-12-20T08:30:00.000Z");
-  uguale("senza ora: le 23:59:59 di quel giorno", istanteScadenza("2026-10-20", null)?.toISOString(), "2026-10-20T21:59:59.000Z");
-  uguale("ora non valida: come se mancasse", [istanteScadenza("2026-10-20", "25:00")?.toISOString(), istanteScadenza("2026-10-20", "boh")?.toISOString()], ["2026-10-20T21:59:59.000Z", "2026-10-20T21:59:59.000Z"]);
+  uguale("senza ora NON c'è un istante: nessun orario si presume (né le 23:59:59 né altro)", [istanteScadenza("2026-10-20", null), istanteScadenza("2026-10-20", undefined), istanteScadenza("2026-10-20", ""), istanteScadenza("2026-10-20")], [null, null, null, null]);
+  uguale("ora non valida: come se mancasse (nessun istante)", [istanteScadenza("2026-10-20", "25:00"), istanteScadenza("2026-10-20", "boh")], [null, null]);
   uguale("l'ora dalla colonna time (HH:MM:SS) vale come HH:MM", istanteScadenza("2026-10-20", "12:00:00")?.toISOString(), "2026-10-20T10:00:00.000Z");
   uguale("giorno del cambio all'ora legale, alle 12:00", istanteScadenza("2026-03-29", "12:00")?.toISOString(), "2026-03-29T10:00:00.000Z");
   uguale("giorno del ritorno all'ora solare, alle 12:00", istanteScadenza("2026-10-25", "12:00")?.toISOString(), "2026-10-25T11:00:00.000Z");
   uguale("senza data non c'è scadenza, anche con un'ora", istanteScadenza(null, "12:00"), null);
   uguale("scadenza scritta per esteso", [testoScadenza("2026-10-20", "12:00"), testoScadenza("2026-10-20", null), testoScadenza("2026-10-20", "xx"), testoScadenza(null, "12:00"), testoScadenza("domani", null)], ["20/10/2026 ore 12:00", "20/10/2026", "20/10/2026", null, null]);
   {
-    // lo stesso giorno, con l'ora del bando, cambia fascia. Richiesta il 18/10 a mezzogiorno UTC: il 20/10 alle
-    // 08:00 (06:00 UTC) mancano 42 ore; senza ora, alla fine del giorno (21:59 UTC) ne mancano 58.
+    // lo stesso giorno, con l'ora scritta, cambia fascia. Richiesta il 18/10 a mezzogiorno UTC: il 20/10 alle 08:00 (06:00 UTC)
+    // mancano 42 ore; alle 23:59 (21:59 UTC) ne mancano 58. SENZA ora il prezzo non si calcola (nessun orario si presume).
     const richiesta = new Date("2026-10-18T12:00:00Z");
     const conOra = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "08:00", limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta });
+    const allaFine = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "23:59", limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta });
     const senzaOra = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta });
-    uguale("scade il 20 alle 08:00 (42 ore): non gestibile; senza ora (fine giornata, 58 ore): +50%", [conOra.ok ? "ok" : conOra.motivo, senzaOra.ok ? senzaOra.prezzo.maggiorazionePercentuale : "no"], ["non_gestibile", 50]);
+    uguale("scade il 20 alle 08:00 (42 ore): non gestibile; alle 23:59 (58 ore): +50%; senza ora: il prezzo non si calcola", [conOra.ok ? "ok" : conOra.motivo, allaFine.ok ? allaFine.prezzo.maggiorazionePercentuale : "no", senzaOra.ok ? "ok" : senzaOra.motivo], ["non_gestibile", 50, "ora_scadenza_mancante"]);
+    uguale("senza ora il messaggio dice di scriverla, non presume nulla", senzaOra.ok ? "ok" : senzaOra.messaggio, MESSAGGIO_ORA_SCADENZA_MANCANTE);
+    atteso("il messaggio chiede l'ora, dice che non è nei documenti e che non si presume (nessun «23:59»)", /ora esatta della scadenza/.test(MESSAGGIO_ORA_SCADENZA_MANCANTE) && /Nei documenti non è indicata/.test(MESSAGGIO_ORA_SCADENZA_MANCANTE) && /non ne presume nessuna/.test(MESSAGGIO_ORA_SCADENZA_MANCANTE) && !/23:59/.test(MESSAGGIO_ORA_SCADENZA_MANCANTE));
+    uguale("un'ora vuota o non valida vale come mancante, in ogni forma", ["", " ", "25:00", "boh", "12", undefined].map((ora) => { const x = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: ora, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta }); return x.ok ? "ok" : x.motivo; }), Array(6).fill("ora_scadenza_mancante"));
+    uguale("senza ora: con le pagine mancanti si chiede comunque l'ora (prima delle pagine); un giorno già finito è «scaduta» senza chiedere l'ora; oggi stesso, senza ora, si chiede l'ora (non si sa se è già passata)", [
+      calcolaPrezzoRevisione({ scadenza: "2026-12-20", scadenzaOra: null, limitePagineDisciplinare: null, pagineStimateRelazione: null, adesso: richiesta }),
+      calcolaPrezzoRevisione({ scadenza: "2026-10-01", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta }),
+      calcolaPrezzoRevisione({ scadenza: "2026-10-17", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta }),
+      calcolaPrezzoRevisione({ scadenza: "2026-10-18", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta }),
+    ].map((x) => (x.ok ? "ok" : x.motivo)), ["ora_scadenza_mancante", "scaduta", "scaduta", "ora_scadenza_mancante"]);
+    uguale("«oggi» si conta a Roma: alle 23:30 UTC del 17/10 a Roma è già il 18/10, quindi il 17/10 senza ora è scaduto e il 18/10 chiede l'ora", [calcolaPrezzoRevisione({ scadenza: "2026-10-17", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: new Date("2026-10-17T23:30:00Z") }), calcolaPrezzoRevisione({ scadenza: "2026-10-18", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: new Date("2026-10-17T23:30:00Z") })].map((x) => (x.ok ? "ok" : x.motivo)), ["scaduta", "ora_scadenza_mancante"]);
+    uguale("con la scadenza che non si legge (non è una data) resta com'era: urgenza sconosciuta, nessuna maggiorazione", (() => { const x = calcolaPrezzoRevisione({ scadenza: "domani", scadenzaOra: null, limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta }); return x.ok ? x.prezzo.maggiorazionePercentuale : x.motivo; })(), 0);
     // richiesta il 17/10 a mezzogiorno UTC: il 20/10 alle 18:00 (16:00 UTC) mancano 76 ore
     const tardi = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "18:00", limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: new Date("2026-10-17T12:00:00Z") });
     atteso("scade il 20 alle 18:00 (76 ore): +25%, e il prezzo ricorda l'ora indicata", tardi.ok && tardi.prezzo.maggiorazionePercentuale === 25 && tardi.prezzo.scadenzaOra === "18:00" && tardi.prezzo.scadenza === "2026-10-20", JSON.stringify(tardi));
     const senzaData = calcolaPrezzoRevisione({ scadenza: null, scadenzaOra: "12:00", limitePagineDisciplinare: 20, pagineStimateRelazione: null, adesso: richiesta });
     atteso("senza data l'ora non conta: nessuna maggiorazione e nessuna ora", senzaData.ok && senzaData.prezzo.maggiorazionePercentuale === 0 && senzaData.prezzo.scadenzaOra === null);
-    atteso("ora non indicata: nel prezzo resta vuota (si è usato 23:59)", senzaOra.ok && senzaOra.prezzo.scadenzaOra === null);
+    atteso("con l'ora scritta il prezzo la ricorda, senza ora non c'è prezzo", allaFine.ok && allaFine.prezzo.scadenzaOra === "23:59" && !senzaOra.ok);
   }
 
   console.log("--- Prezzo completo ---");
   const adesso = new Date("2026-10-18T12:00:00Z");
-  const prezzo = (scadenza: string | null, limite: number | null, stima: number | null = null) => calcolaPrezzoRevisione({ scadenza, limitePagineDisciplinare: limite, pagineStimateRelazione: stima, adesso });
+  const prezzo = (scadenza: string | null, limite: number | null, stima: number | null = null) => calcolaPrezzoRevisione({ scadenza, scadenzaOra: "23:59", limitePagineDisciplinare: limite, pagineStimateRelazione: stima, adesso });
   {
     const e = prezzo("2026-12-30", 20);
     atteso("gara lontana, 20 pagine dal disciplinare: 350 € senza maggiorazione", e.ok && e.prezzo.baseCentesimi === 35000 && e.prezzo.totaleCentesimi === 35000 && e.prezzo.maggiorazionePercentuale === 0 && e.prezzo.maggiorazioneCentesimi === 0 && e.prezzo.fonte === "disciplinare", JSON.stringify(e));
   }
   {
-    // la richiesta arriva `ore` ore prima della scadenza (con o senza l'ora indicata dal bando)
-    const dopo = (ore: number, limite = 20, ora: string | null = null) =>
+    // la richiesta arriva `ore` ore prima della scadenza (alle 23:59 scritte nei documenti, o a un'altra ora scritta)
+    const dopo = (ore: number, limite = 20, ora: string = "23:59") =>
       calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: ora, limitePagineDisciplinare: limite, pagineStimateRelazione: null, adesso: new Date(istanteScadenza("2026-10-20", ora)!.getTime() - ore * ORA) });
     const e60 = dopo(60);
     atteso("scade tra circa 60 ore: +50% su 350 € = 525 €", e60.ok && e60.prezzo.maggiorazionePercentuale === 50 && e60.prezzo.totaleCentesimi === 52500 && e60.prezzo.maggiorazioneCentesimi === 17500, JSON.stringify(e60));
@@ -244,11 +261,11 @@ async function main() {
     atteso("scade tra 96,1 ore: nessuna maggiorazione", tra97.ok && tra97.prezzo.maggiorazionePercentuale === 0 && tra97.prezzo.totaleCentesimi === 35000);
   }
   {
-    const e30 = calcolaPrezzoRevisione({ scadenza: "2026-10-20", limitePagineDisciplinare: 30, pagineStimateRelazione: null, adesso: new Date(fineGiornoRoma("2026-10-20")!.getTime() - 85 * ORA) });
+    const e30 = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "23:59", limitePagineDisciplinare: 30, pagineStimateRelazione: null, adesso: new Date(FINE("2026-10-20")!.getTime() - 85 * ORA) });
     atteso("30 pagine: base 417 €, +25% = 521 €", e30.ok && e30.prezzo.baseCentesimi === 41700 && e30.prezzo.totaleCentesimi === 52100, JSON.stringify(e30));
-    const e30b = calcolaPrezzoRevisione({ scadenza: "2026-10-20", limitePagineDisciplinare: 30, pagineStimateRelazione: null, adesso: new Date(fineGiornoRoma("2026-10-20")!.getTime() - 60 * ORA) });
+    const e30b = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "23:59", limitePagineDisciplinare: 30, pagineStimateRelazione: null, adesso: new Date(FINE("2026-10-20")!.getTime() - 60 * ORA) });
     atteso("30 pagine: base 417 €, +50% = 626 €", e30b.ok && e30b.prezzo.baseCentesimi === 41700 && e30b.prezzo.totaleCentesimi === 62600, JSON.stringify(e30b));
-    const e50 = calcolaPrezzoRevisione({ scadenza: "2026-10-20", limitePagineDisciplinare: 50, pagineStimateRelazione: null, adesso: new Date(fineGiornoRoma("2026-10-20")!.getTime() - 48 * ORA) });
+    const e50 = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "23:59", limitePagineDisciplinare: 50, pagineStimateRelazione: null, adesso: new Date(FINE("2026-10-20")!.getTime() - 48 * ORA) });
     atteso("il massimo possibile: 550 € + 50% = 825 €", e50.ok && e50.prezzo.totaleCentesimi === 82500);
     const grande = prezzo("2026-12-30", 120);
     atteso("oltre 50 pagine: 550 €", grande.ok && grande.prezzo.totaleCentesimi === 55000 && grande.prezzo.pagine === 120);
@@ -264,7 +281,7 @@ async function main() {
     uguale("pagine non determinabili", nessuna.ok ? "ok" : [nessuna.motivo, nessuna.messaggio], ["pagine_non_determinabili", MESSAGGIO_PAGINE_NON_DETERMINABILI]);
     const urgenteSenzaPagine = prezzo("2026-10-19", null, null);
     uguale("scadenza troppo vicina e pagine mancanti: si dice prima della scadenza", urgenteSenzaPagine.ok ? "ok" : urgenteSenzaPagine.motivo, "non_gestibile");
-    atteso("totale = base + maggiorazione, sempre", [15, 25, 33, 45].every((p) => [48, 55, 70, 100].every((ore) => { const x = calcolaPrezzoRevisione({ scadenza: "2026-10-20", limitePagineDisciplinare: p, pagineStimateRelazione: null, adesso: new Date(fineGiornoRoma("2026-10-20")!.getTime() - ore * ORA) }); return !x.ok || x.prezzo.baseCentesimi + x.prezzo.maggiorazioneCentesimi === x.prezzo.totaleCentesimi; })));
+    atteso("totale = base + maggiorazione, sempre", [15, 25, 33, 45].every((p) => [48, 55, 70, 100].every((ore) => { const x = calcolaPrezzoRevisione({ scadenza: "2026-10-20", scadenzaOra: "23:59", limitePagineDisciplinare: p, pagineStimateRelazione: null, adesso: new Date(FINE("2026-10-20")!.getTime() - ore * ORA) }); return !x.ok || x.prezzo.baseCentesimi + x.prezzo.maggiorazioneCentesimi === x.prezzo.totaleCentesimi; })));
     atteso("i messaggi citano le 48 ore e la scadenza", /48 ore/.test(MESSAGGIO_NON_GESTIBILE) && /consulenti umani/.test(MESSAGGIO_NON_GESTIBILE) && /scadenza troppo ravvicinata/.test(MESSAGGIO_NON_GESTIBILE) && /scadenza/.test(MESSAGGIO_SCADUTA));
   }
 
@@ -293,7 +310,7 @@ async function main() {
   atteso("l'impegno del cliente a fornire le informazioni necessarie", /tutte le informazioni, i dati e i materiali necessari alla revisione/.test(testi));
   atteso("segreto professionale e riservatezza", /segreto professionale/.test(testi) && /riservatezza/.test(testi));
   atteso("il prezzo e le maggiorazioni descritti come in pagina: 250, 550, 5 e 50 pagine, +25% da 72 a 96 ore, +50% da 48 a 72, non gestibili sotto 48", /250 euro/.test(testi) && /550 euro/.test(testi) && /5 pagine/.test(testi) && /50 pagine/.test(testi) && /da 72 a 96 ore dalla richiesta il prezzo sale del 25%/.test(testi) && /da 48 a 72 ore sale del 50%/.test(testi) && /meno di 48 ore non possono essere gestite/.test(testi) && testi.includes(testoRegoleUrgenza()));
-  atteso("le ore alla scadenza si contano dalla richiesta, con l'ora del bando o le 23:59", /dal momento della richiesta fino alla data e all'ora di scadenza indicate nel bando \(le 23:59 di quel giorno se l'ora non è indicata\)/.test(testi));
+  atteso("le ore alla scadenza si contano dalla richiesta fino alla data e all'ora risultanti dai documenti o indicate dal cliente; senza l'ora la richiesta non si invia; nessun «23:59» presunto (versione 2 delle condizioni)", /dal momento della richiesta fino alla data e all'ora di scadenza risultanti dai documenti di gara o, quando i documenti non riportano l'ora, indicate dal cliente; senza l'ora esatta della scadenza la richiesta non può essere inviata/.test(testi) && !/23:59/.test(testi) && !/se l'ora non è indicata/.test(testi) && VERSIONE_CONDIZIONI_REVISIONE === 2);
   atteso("pagine dal disciplinare, altrimenti dalla relazione generata", /prescritte dal disciplinare di gara/.test(testi) && /Relazione tecnica finale generata da OMNIA AI/.test(testi));
   atteso("importi IVA inclusa, pagamento anticipato con Stripe", /IVA inclusa/.test(testi) && /Stripe/.test(testi));
   const canonico = testoCanonicoCondizioniRevisione();
@@ -486,7 +503,8 @@ async function main() {
   atteso("0089: nessun altro permesso ai ruoli utente (né lettura dell'intera tabella, né scrittura, né accesso anonimo)", !/to anon/.test(m89Codice) && !/grant\s+(select|insert|update|all)(?!\s*\()[^;]*to authenticated/.test(m89Codice) && !/grant\s+(insert|update)[^;]*to authenticated/.test(m89Codice));
   atteso("0089: stato di fattura e PDF come per incassi e crediti, ora di scadenza", /stato_fattura text not null default 'da_fatturare' check \(stato_fattura in \('da_fatturare', 'fatturata', 'non_dovuta'\)\)/.test(m89) && /numero_fattura text/.test(m89) && /data_fattura date/.test(m89) && /note_fattura text/.test(m89) && /fattura_file_path text/.test(m89) && /fattura_caricata_il timestamptz/.test(m89) && /scadenza_ora time without time zone/.test(m89));
   const m91 = leggi("supabase/migrations/0091_gare_scadenza_ora.sql");
-  atteso("0091: ora di scadenza della gara, facoltativa (senza ora si intende 23:59)", /add column if not exists scadenza_ora time without time zone/.test(m91) && !/not null/.test(m91.replace(/--[^\n]*/g, "")) && /23:59/.test(m91));
+  // (il commento della 0091, già eseguita e quindi non modificabile, parlava ancora di «23:59»: oggi non si presume più nessun'ora)
+  atteso("0091: ora di scadenza della gara, facoltativa (la colonna può restare vuota)", /add column if not exists scadenza_ora time without time zone/.test(m91) && !/not null/.test(m91.replace(/--[^\n]*/g, "")));
   atteso("0089: nessun indice unico sui pagamenti (un doppio pagamento resta registrato)", !/create unique index[^;]*omnia_ai_revisioni/.test(m89));
   // La prima versione della 0089 è già stata eseguita sul database: rieseguirla non deve lasciare la tabella senza le colonne nate dopo.
   const colonneNuove089 = ["scadenza_ora", "stato_fattura", "numero_fattura", "data_fattura", "note_fattura", "fatturazione_aggiornata_il", "fatturazione_aggiornata_da", "fattura_file_path", "fattura_caricata_il"];
@@ -578,14 +596,14 @@ async function main() {
   const proroga = leggi("src/lib/gara-proroga.ts");
   const requisitiAlto = corpo(proroga, "scadenza_ora: {", "proroga_termini: {");
   atteso("lo schema dell'estrazione include le voci di scadenza e ora (spread nello strumento)", /\.\.\.PROPRIETA_SCADENZA_ESTRAZIONE/.test(estrazione));
-  atteso("lo schema dell'estrazione chiede l'ora (HH:MM) solo se il bando la indica, senza dedurla né scrivere 23:59", /type: "string"/.test(requisitiAlto) && /formato HH:MM/.test(requisitiAlto) && /SOLO se i documenti la indicano/.test(requisitiAlto) && /non scrivere 23:59/.test(requisitiAlto));
+  atteso("lo schema dell'estrazione chiede l'ora (HH:MM) solo se un documento la scrive, senza dedurla né presumerla né scrivere 23:59 e senza riprendere quella del bando per una data prorogata", /type: "string"/.test(requisitiAlto) && /formato HH:MM/.test(requisitiAlto) && /SOLO se un documento la scrive espressamente/.test(requisitiAlto) && /non scrivere 23:59/.test(requisitiAlto) && /NON riprendere quella del bando/.test(requisitiAlto) && !/vale l'ora del bando/.test(requisitiAlto));
   atteso("l'ora non è tra i campi obbligatori dell'estrazione", !/required: \[[^\]]*scadenza_ora/.test(estrazione));
   atteso("l'ora si normalizza prima di salvarla e senza data di scadenza non si salva nessuna ora", /scadenza \? normalizzaOraScadenza\(typeof risultato\.scadenza_ora === "string" \? risultato\.scadenza_ora : null\) : null/.test(proroga) && /scadenza_ora: decisioneScadenza\.scadenza_ora/.test(estrazione));
   atteso("l'ora si salva in un aggiornamento a parte, dopo i dati estratti: senza la colonna (0091) non si perde nulla", primaDi(estrazione, "Errore nel salvataggio dei dati estratti.", "update({ scadenza_ora: decisioneScadenza.scadenza_ora })") && /erroreOraScadenza && !schemaAssente\(erroreOraScadenza\)/.test(estrazione));
   const caricamento = leggi("src/lib/omnia-ai-revisione.ts");
   atteso("la gara si legge come sempre e l'ora a parte (senza la colonna la lettura non si rompe), poi si normalizza", /Omit<GaraRevisione, "scadenza_ora">/.test(caricamento) && /select\("scadenza_ora"\)/.test(caricamento) && /scadenza_ora: normalizzaOraScadenza\(oraRiga\?\.scadenza_ora\)/.test(caricamento));
   const sezione = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/extraction-section.tsx");
-  atteso("tra i dati estratti si vede l'ora (se indicata) oppure la nota «si intendono le 23:59»", /\$\{estrazione\.scadenza_ora \? ` · ore \$\{estrazione\.scadenza_ora\}` : ""\}/.test(sezione) && /estrazione\.scadenza && !estrazione\.scadenza_ora/.test(sezione) && /ora non indicata: si intendono le 23:59/.test(sezione));
+  atteso("tra i dati estratti si vede l'ora (se c'è) oppure «ora non indicata» con il modulo per scriverla: mai «si intendono le 23:59»", /\$\{estrazione\.scadenza_ora \? ` · ore \$\{estrazione\.scadenza_ora\}` : ""\}/.test(sezione) && /statoOra === "mancante"/.test(sezione) && /TESTO_ORA_NON_INDICATA/.test(sezione) && !/23:59|si intendono/.test(sezione));
   atteso("la pagina della gara passa l'ora ai dati estratti e al calcolo del prezzo", /scadenza_ora: contestoRevisione\?\.gara\.scadenza_ora \?\? null/.test(paginaGara) && /scadenzaOra: contestoRevisione\.gara\.scadenza_ora/.test(paginaGara));
   atteso("la pagina di acquisto e l'azione usano la stessa ora, e la richiesta la conserva", /scadenzaOra: contesto\.gara\.scadenza_ora/.test(paginaAcquisto) && /testoScadenza\(esito\.prezzo\.scadenza, esito\.prezzo\.scadenzaOra\)/.test(paginaAcquisto) && /scadenzaOra: contesto\.gara\.scadenza_ora/.test(azione) && /scadenza_ora: prezzo\.scadenzaOra/.test(azione));
   atteso("l'email all'ufficio riporta la scadenza con l'ora", /scadenzaOra: revisione\.scadenza_ora/.test(notifica) && /testoScadenza\(d\.scadenza, d\.scadenzaOra\)/.test(leggi("src/lib/omnia-ai-email-revisione-calcoli.ts")));

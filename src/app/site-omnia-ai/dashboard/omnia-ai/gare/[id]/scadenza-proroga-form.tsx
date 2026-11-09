@@ -2,12 +2,14 @@
 
 import { useActionState } from "react";
 import { impostaScadenzaGara, type ScadenzaState } from "@/app/actions/gara-extraction";
-import { TESTO_PROROGA_SENZA_DATA } from "@/lib/gara-proroga";
+import { TESTO_ORA_SENZA_PRESUNZIONI, TESTO_PROROGA_SENZA_DATA } from "@/lib/gara-proroga";
 
 const statoIniziale: ScadenzaState = {};
 
 // Compare SOLO quando i documenti indicano una proroga dei termini di presentazione senza riportare la nuova data (la scheda
-// della gara lo decide, e l'azione lo ricontrolla sul database). Il cliente scrive la nuova data (e, se vuole, l'ora).
+// della gara lo decide, e l'azione lo ricontrolla sul database). Il cliente scrive la nuova data (e, se la conosce, l'ora).
+// I campi partono VUOTI: la data e l'ora che la scheda mostra (quelle del bando, superate dalla proroga) non si propongono come se
+// fossero la nuova scadenza; si precompila solo ciò che il cliente ha già scritto lui.
 export default function ScadenzaProrogaForm({
   garaId,
   scadenza,
@@ -29,16 +31,17 @@ export default function ScadenzaProrogaForm({
         <input type="hidden" name="garaId" value={garaId} />
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
           Nuova data di scadenza
-          <input type="date" name="scadenza" required defaultValue={scadenza ?? ""} style={{ padding: "6px 8px" }} />
+          <input type="date" name="scadenza" required defaultValue={manuale ? (scadenza ?? "") : ""} style={{ padding: "6px 8px" }} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5 }}>
-          Ora (facoltativa)
-          <input type="time" name="ora" defaultValue={ora ?? ""} style={{ padding: "6px 8px" }} />
+          Ora (se la conosci)
+          <input type="time" name="ora" defaultValue={manuale ? (ora ?? "") : ""} style={{ padding: "6px 8px" }} />
         </label>
         <button type="submit" disabled={inCorso} className="omnia-btn omnia-btn-p omnia-btn-piccolo">
           {inCorso ? "Salvataggio..." : manuale ? "Aggiorna la scadenza" : "Salva la nuova scadenza"}
         </button>
       </form>
+      <p className="omnia-riquadro-nota" style={{ margin: "8px 0 0" }}>{TESTO_ORA_SENZA_PRESUNZIONI}</p>
       {manuale && !stato.error && (
         <p className="omnia-riquadro-nota" style={{ margin: "10px 0 0" }}>
           La scadenza mostrata l&apos;hai inserita tu. Se carichi un documento che riporta la nuova data e rianalizzi, la prenderà da lì.

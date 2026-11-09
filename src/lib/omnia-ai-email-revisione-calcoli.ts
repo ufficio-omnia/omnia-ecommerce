@@ -69,7 +69,7 @@ export function emailUfficioRevisioneUmana(d: {
   fatturazione: FatturazioneStripe | null;
   garaTitolo: string;
   scadenza: string | null;
-  // ora indicata dal bando («HH:MM»); null = non indicata (23:59)
+  // ora della scadenza («HH:MM»), scritta nei documenti o inserita dal cliente; null solo per le richieste fatte prima che l'ora fosse obbligatoria
   scadenzaOra: string | null;
   oreAllaScadenza: number | null;
   pagine: number;

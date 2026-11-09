@@ -8,6 +8,7 @@ import { formatEuro } from "@/lib/omnia-ai-plans";
 import { REVISIONE, calcolaPrezzoRevisione, testoScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 import { leggiContestoRevisione, leggiRichiestaRevisione } from "@/lib/omnia-ai-revisione";
 import RevisioneForm from "./revisione-form";
+import ScadenzaOraForm from "../scadenza-ora-form";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 // Pagina di acquisto della revisione umana: spiega, calcola il prezzo con le regole del server, raccoglie il
@@ -140,6 +141,8 @@ export default async function RevisionePage({
           <div className="omnia-messaggio-stato avviso">
             <p style={{ margin: 0 }}>{esito.messaggio}</p>
           </div>
+          {/* senza l'ora esatta della scadenza non si calcola il prezzo: la scrive il cliente (mai presunta) */}
+          {esito.motivo === "ora_scadenza_mancante" && <ScadenzaOraForm garaId={id} ora={null} manuale={false} contesto="bando" spiegazione={false} />}
         </section>
       );
     } else {

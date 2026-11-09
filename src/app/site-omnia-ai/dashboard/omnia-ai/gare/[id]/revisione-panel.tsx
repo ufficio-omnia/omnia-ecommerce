@@ -3,6 +3,7 @@ import { formatEuro } from "@/lib/omnia-ai-plans";
 import { REVISIONE, descriviFontePagine, testoRegoleUrgenza, testoScadenza, type EsitoPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import type { RichiestaRevisione } from "@/lib/omnia-ai-revisione";
 import RevisioneAvvisoForm from "./revisione-avviso-form";
+import ScadenzaOraForm from "./scadenza-ora-form";
 
 // Riquadro «Revisione umana» dentro la gara: compare solo dopo la relazione tecnica FINALE (con tutti i
 // criteri). Spiega che cosa si ottiene, i tempi, quanto costa per QUESTA gara e quando il prezzo sale, e
@@ -51,9 +52,13 @@ export default function RevisionePanel({
           </p>
         </div>
       ) : !esito.ok ? (
-        <div className="omnia-messaggio-stato avviso">
-          <p style={{ margin: 0 }}>{esito.messaggio}</p>
-        </div>
+        <>
+          <div className="omnia-messaggio-stato avviso">
+            <p style={{ margin: 0 }}>{esito.messaggio}</p>
+          </div>
+          {/* senza l'ora esatta della scadenza non si calcola il prezzo: la scrive il cliente (mai presunta) */}
+          {esito.motivo === "ora_scadenza_mancante" && <ScadenzaOraForm garaId={garaId} ora={null} manuale={false} contesto="bando" spiegazione={false} />}
+        </>
       ) : ufficioGare ? (
         <RevisioneAvvisoForm garaId={garaId} />
       ) : (

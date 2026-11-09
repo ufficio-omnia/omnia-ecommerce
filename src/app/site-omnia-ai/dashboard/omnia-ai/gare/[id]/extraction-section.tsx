@@ -8,7 +8,17 @@ import {
 } from "@/app/actions/gara-extraction";
 import QuotaEsauritaConfronto from "./quota-esaurita-confronto";
 import ScadenzaProrogaForm from "./scadenza-proroga-form";
-import { TESTO_PROROGA_CON_DATA, normalizzaProroga, puoModificareScadenza } from "@/lib/gara-proroga";
+import ScadenzaOraForm from "./scadenza-ora-form";
+import {
+  TESTO_ORA_INSERITA_DAL_CLIENTE,
+  TESTO_ORA_NON_INDICATA,
+  TESTO_PROROGA_CON_DATA,
+  contestoOra,
+  normalizzaProroga,
+  puoInserireOra,
+  puoModificareScadenza,
+  statoOraScadenza,
+} from "@/lib/gara-proroga";
 
 const initialState: ExtractionState = {};
 
@@ -23,8 +33,10 @@ type CriterioRiepilogo = { numero: string; titolo: string; punti_max: number };
 
 export type Estrazione = {
   scadenza: string | null;
-  // ora di scadenza indicata dal bando («HH:MM»); null = non indicata (si intendono le 23:59)
+  // ora di scadenza («HH:MM»), scritta nei documenti o inserita dal cliente; null = non indicata (nessun'ora si presume)
   scadenza_ora?: string | null;
+  // vero se l'ora l'ha inserita il cliente a mano (migrazione 0102)
+  scadenza_ora_manuale?: boolean | null;
   importo: number | null;
   criteri_valutazione: string | null;
   requisiti: string | null;
@@ -65,6 +77,11 @@ export default function ExtractionSection({
   );
 
   const hasData = estrazione.estrazione_stato === "completata";
+
+  // L'ora della scadenza: mai presunta. Se i documenti non la riportano (del bando o della proroga) il cliente può scriverla.
+  const datiOra = { scadenza: estrazione.scadenza, scadenza_ora: estrazione.scadenza_ora ?? null, scadenza_ora_manuale: estrazione.scadenza_ora_manuale ?? false };
+  const statoOra = statoOraScadenza(datiOra);
+  const inserisciOra = puoInserireOra({ ...datiOra, proroga_stato: proroga?.proroga_stato ?? null });
 
   return (
     <section className="omnia-riquadro" style={{ marginTop: 24 }}>
@@ -112,9 +129,19 @@ export default function ExtractionSection({
                   ? `${new Date(estrazione.scadenza).toLocaleDateString("it-IT")}${estrazione.scadenza_ora ? ` · ore ${estrazione.scadenza_ora}` : ""}`
                   : "Non specificata"}
               </div>
-              {estrazione.scadenza && !estrazione.scadenza_ora && (
+              {statoOra === "mancante" && (
                 <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
-                  ora non indicata: si intendono le 23:59
+                  {TESTO_ORA_NON_INDICATA}
+                </div>
+              )}
+              {statoOra === "manuale" && (
+                <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                  {TESTO_ORA_INSERITA_DAL_CLIENTE}
+                </div>
+              )}
+              {puoModificareScadenza(proroga?.proroga_stato) && !proroga?.scadenza_manuale && estrazione.scadenza && (
+                <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                  scadenza originaria del bando: la proroga non riporta la nuova data
                 </div>
               )}
               {normalizzaProroga(proroga?.proroga_stato) === "con_nuova_data" && (
@@ -169,6 +196,10 @@ export default function ExtractionSection({
 
           {puoModificareScadenza(proroga?.proroga_stato) && (
             <ScadenzaProrogaForm garaId={garaId} scadenza={estrazione.scadenza} ora={estrazione.scadenza_ora ?? null} manuale={Boolean(proroga?.scadenza_manuale)} />
+          )}
+
+          {inserisciOra && (
+            <ScadenzaOraForm garaId={garaId} ora={estrazione.scadenza_ora ?? null} manuale={statoOra === "manuale"} contesto={contestoOra(proroga?.proroga_stato)} />
           )}
 
           {estrazione.criteri_riepilogo && estrazione.criteri_riepilogo.length > 0 && (

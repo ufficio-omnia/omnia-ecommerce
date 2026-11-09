@@ -146,6 +146,9 @@ export default async function GaraPage({
     .eq("id", id)
     .maybeSingle<ProrogaGara>();
 
+  // Ora della scadenza scritta a mano dal cliente (migrazione 0102), in una lettura a parte: senza la colonna nessuna ora risulta «a mano».
+  const { data: oraManualeRaw } = await supabase.from("gare").select("scadenza_ora_manuale").eq("id", id).maybeSingle<{ scadenza_ora_manuale: boolean | null }>();
+
   // Colonna avvisi_economici non ancora creata (migrazione 0070): senza
   // questo ripiego la query intera fallirebbe e la chat apparirebbe vuota.
   let messaggiRaw = messaggiConAvvisi;
@@ -328,7 +331,7 @@ export default async function GaraPage({
         <LogoClienteForm garaId={gara.id} loghiCaricato={!!gara.logo_cliente_path} />
       </section>
 
-      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null }} proroga={prorogaRaw ?? null} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
+      <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null, scadenza_ora_manuale: Boolean(oraManualeRaw?.scadenza_ora_manuale) }} proroga={prorogaRaw ?? null} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
 
       {pianoLavoroDisponibile && (gara.estrazione_stato === "completata" || pianiLavoro.length > 0) && <PianoLavoroPanel garaId={gara.id} piani={pianiLavoro} diritto={dirittoPianoLavoro} offerta={offertaPianoLavoro} ritorno={interpretaRitornoPagamento(ritornoPianoLavoro)} privacyVersione={documentiLegaliPianoLavoro?.privacyPolicy.version ?? null} />}
 

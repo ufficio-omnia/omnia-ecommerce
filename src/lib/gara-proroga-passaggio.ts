@@ -171,6 +171,7 @@ export const ISTRUZIONI_SECONDO_PASSAGGIO = [
   "Se l'atto dispone la proroga ma dice che la nuova data sarà comunicata, pubblicata o individuata in seguito (con la rettifica del bando, sul portale o sulla piattaforma telematica), la risposta è «senza_nuova_data». Se scrive la nuova data, è «con_nuova_data» e quella data va in «scadenza».",
   "NON è una proroga: una clausola GENERALE o IPOTETICA che prevede la possibilità di prorogare o sospendere il termine in certi casi (per esempio in caso di malfunzionamento della piattaforma, «fino a 48 ore», o «la stazione appaltante può prorogare»), perché non sposta il termine di questa gara; la proroga o il rinvio del CONTRATTO o del servizio in corso («proroga tecnica», art. 106 comma 11); il rinvio della seduta di gara o dell'apertura delle buste; la proroga di termini diversi dalla presentazione dell'offerta (chiarimenti, sopralluogo, iscrizione alla piattaforma); un semplice rimando a un articolo («si rinvia all'art. 5»).",
   "Se più atti spostano il termine, vale il più recente (per data scritta nel documento). Se nessun atto dispone la proroga del termine di presentazione di questa gara, rispondi «nessuna»: nel dubbio, «nessuna».",
+  "ORA: scrivi «scadenza_ora» SOLO se l'atto che sposta il termine la scrive espressamente accanto alla nuova data. Se l'atto indica la nuova data senza l'ora (anche con frasi come «restano invariate le altre condizioni»), ometti «scadenza_ora»: non riprendere l'ora del bando e non presumerne una.",
 ].join("\n");
 
 export function testoSecondoPassaggio(selezione: SelezionePassaggi, elenco: { indice: number; nome: string; caricatoIl: string }[], dataCaricamento: (iso: string) => string): string {
@@ -225,7 +226,9 @@ export function unisciEsitiProroga(generale: RisultatoScadenza, mirato: Risultat
       ...generale,
       proroga_termini: "con_nuova_data",
       scadenza: dataMirato,
-      scadenza_ora: oraMirato ?? (statoGenerale === "con_nuova_data" ? undefined : generale.scadenza_ora),
+      // L'ora è quella scritta dall'atto che sposta il termine, e basta: se l'atto non la scrive NON si riprende quella del bando (né
+      // dell'analisi generale), che apparteneva a un'altra data. Resta «mancante» e la inserisce il cliente.
+      scadenza_ora: oraMirato ?? undefined,
       scadenza_originaria: dataValida(mirato.scadenza_originaria) ?? dataPrima ?? undefined,
     };
   }
