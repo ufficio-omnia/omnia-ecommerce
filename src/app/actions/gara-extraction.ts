@@ -15,6 +15,7 @@ import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { nessunIntervento, ripulisciPersonaleUscente } from "@/lib/personale-anonimo";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { ordinaPerCaricamento, testoElencoCronologicoPerEstrazione } from "@/lib/gara-documenti-elenco";
+import { PROPRIETA_SETTORE_ESTRAZIONE, normalizzaSettore } from "@/lib/gara-settore";
 import { unisciEsitiProroga } from "@/lib/gara-proroga-passaggio";
 import { secondoPassaggioProroga } from "@/lib/gara-proroga-secondo-passaggio";
 import {
@@ -56,6 +57,9 @@ const EXTRACTION_TOOL = {
       // scadenza, scadenza_ora, proroga_termini e scadenza_originaria: le regole della proroga dei termini di presentazione
       // stanno in src/lib/gara-proroga.ts (testo e decisione sono provati dai test).
       ...PROPRIETA_SCADENZA_ESTRAZIONE,
+      // settore_gara: di cosa tratta la gara (pulizie, ristorazione collettiva, altro): decide quale servizio aggiuntivo si propone oltre
+      // alla relazione tecnica. Le regole stanno in src/lib/gara-settore.ts.
+      ...PROPRIETA_SETTORE_ESTRAZIONE,
       importo: {
         type: "number",
         description:
@@ -190,7 +194,7 @@ const EXTRACTION_TOOL = {
         },
       },
     },
-    required: ["criteri_valutazione", "requisiti", "limiti_formattazione"],
+    required: ["criteri_valutazione", "requisiti", "limiti_formattazione", "settore_gara"],
   },
 };
 
@@ -381,6 +385,7 @@ export async function extractGaraData(
       scadenza_ora?: string;
       proroga_termini?: string;
       scadenza_originaria?: string;
+      settore_gara?: string;
       importo?: number;
       criteri_valutazione: string;
       requisiti: string;
@@ -509,6 +514,11 @@ export async function extractGaraData(
       .update({ proroga_stato: decisioneScadenza.proroga_stato, scadenza_originaria: decisioneScadenza.scadenza_originaria, scadenza_manuale: decisioneScadenza.scadenza_manuale })
       .eq("id", garaId);
     if (erroreProroga && !schemaAssente(erroreProroga)) console.error("Errore salvataggio della proroga dei termini:", erroreProroga.message);
+
+    // Settore della gara (colonna della migrazione 0103), in un aggiornamento a parte per la stessa ragione: se non c'è ancora, tutto il resto è
+    // già salvato. Si riscrive a ogni analisi (vale l'ultima): una risposta mancante o non valida lascia la gara «non classificata» (null).
+    const { error: erroreSettore } = await supabase.from("gare").update({ settore: normalizzaSettore(result.settore_gara) }).eq("id", garaId);
+    if (erroreSettore && !schemaAssente(erroreSettore)) console.error("Errore salvataggio del settore della gara:", erroreSettore.message);
 
     // Chiave di dedup sul timestamp appena scritto: una rianalisi
     // successiva (nuovo estrazione_aggiornata_il) genera di nuovo una

@@ -17,6 +17,7 @@ import { generaPianoLavoro, leggiPianiGara, urlScaricoPiano } from "@/lib/piano-
 import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
 import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
 import { leggiDirittiPianoLavoro } from "@/lib/piano-lavoro-diritti";
+import { MESSAGGIO_PIANO_LAVORO_SOLO_PULIZIE, normalizzaSettore, proponePianoLavoro } from "@/lib/gara-settore";
 import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
 
 // Piano di lavoro di una gara: genera l'Excel, lo scarica e lo acquista. La generazione e il download sono aperti al titolare e all'Ufficio Gare
@@ -45,6 +46,10 @@ export async function generaPianoLavoroGara(_prevState: PianoLavoroState, formDa
   if (!gara) return { error: "Gara non trovata." };
   // colonna della migrazione 0095: se non c'è, nessuna proroga
   const { data: proroga } = await supabase.from("gare").select("proroga_stato").eq("id", garaId).maybeSingle<{ proroga_stato: string | null }>();
+  // Settore (migrazione 0103): una gara che l'analisi ha riconosciuto di un altro genere di servizio non genera il piano di lavoro. Non classificata
+  // (analizzata prima della funzione, o colonna assente) = come prima.
+  const { data: settoreRiga } = await supabase.from("gare").select("settore").eq("id", garaId).maybeSingle<{ settore: string | null }>();
+  if (!proponePianoLavoro(normalizzaSettore(settoreRiga?.settore))) return { error: MESSAGGIO_PIANO_LAVORO_SOLO_PULIZIE };
 
   const diritto = await dirittoGaraPerAccount({ contesto, user, garaId });
   const admin = createAdminClient();
@@ -132,6 +137,10 @@ export async function acquistaPianoLavoro(_prevState: AcquistoPianoLavoroState, 
   if (!gara) return { error: "Gara non trovata." };
   // colonna della migrazione 0095: se non c'è, nessuna proroga
   const { data: proroga } = await supabase.from("gare").select("proroga_stato").eq("id", garaId).maybeSingle<{ proroga_stato: string | null }>();
+  // Settore (migrazione 0103): non si fa pagare il piano di lavoro di una gara che l'analisi ha riconosciuto di un altro genere di servizio.
+  // Non classificata (analizzata prima della funzione, o colonna assente) = come prima. Il controllo viene PRIMA di qualsiasi pagamento.
+  const { data: settoreRiga } = await supabase.from("gare").select("settore").eq("id", garaId).maybeSingle<{ settore: string | null }>();
+  if (!proponePianoLavoro(normalizzaSettore(settoreRiga?.settore))) return { error: MESSAGGIO_PIANO_LAVORO_SOLO_PULIZIE };
 
   const { disponibile, piani } = await leggiPianiGara(admin, garaId);
   if (!disponibile) return { error: "Il piano di lavoro non è ancora disponibile: l'aggiornamento è in corso." };

@@ -6,7 +6,8 @@ import { PIANI, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getStripePriceIdOfferta } from "@/lib/omnia-ai-stripe-prices";
 import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { venditaAbbonamentoPianoLavoroAttiva } from "@/lib/piano-lavoro-offerta";
+import { MESSAGGIO_ABBONAMENTO_PIANO_LAVORO_NON_OFFERTO } from "@/lib/piano-lavoro-testi";
 import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
 import { etichettaOfferta, interpretaDestinazione, tipoCambioOfferta, type OffertaAbbonamento } from "@/lib/piano-lavoro-offerta-calcoli";
 import { createHash } from "crypto";
@@ -85,7 +86,7 @@ async function validaRichiestaCambioPiano(
   // Il piano di lavoro si AGGIUNGE solo se è in vendita e solo subito (un cambio che decorre dal rinnovo non può portare l'accettazione delle
   // avvertenze): chi passa a un piano inferiore e vuole anche il piano di lavoro prima cambia piano, poi lo aggiunge. Tenerlo o toglierlo si può sempre.
   if (destinazione.pianoLavoro && !offertaAttuale.pianoLavoro) {
-    if (!(await venditaPianoLavoroAttiva())) return { error: "Il piano di lavoro nell'abbonamento non è ancora disponibile." };
+    if (!(await venditaAbbonamentoPianoLavoroAttiva())) return { error: MESSAGGIO_ABBONAMENTO_PIANO_LAVORO_NON_OFFERTO };
     if (tipo !== "upgrade") return { error: "Per aggiungere il piano di lavoro passa prima al piano che vuoi, poi aggiungilo." };
   }
 

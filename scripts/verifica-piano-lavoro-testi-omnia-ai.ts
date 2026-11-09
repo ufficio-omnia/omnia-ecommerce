@@ -71,7 +71,7 @@ async function main() {
       "opzione dell'abbonamento e aggiunta a un abbonamento attivo: stessa casella (testoAccettazioneCompleta), stessa descrizione, stessa pagina delle condizioni, senza copie",
       /testoAccettazioneCompleta\(/.test(opzione) && /testoAccettazioneCompleta\(/.test(cambio) && /\{OPZIONE_ABBONAMENTO_DESCRIZIONE\}/.test(opzione) && !/Dichiaro di aver letto/.test(opzione + cambio) && /PERCORSO_CONDIZIONI_PIANO_LAVORO/.test(opzione) && /PERCORSO_CONDIZIONI_PIANO_LAVORO/.test(cambio) && /PERCORSO_CONDIZIONI_PIANO_LAVORO/.test(pannello),
     );
-    atteso("pagina dei piani: la riga sotto ogni piano viene dai testi condivisi (due parti, la prima con il prezzo in evidenza)", /partiRigaPianoLavoroPerPiano\(/.test(vistaPiani) && /\{opzione\.evidenza\}/.test(vistaPiani) && /\{opzione\.seguito\}/.test(vistaPiani) && !/Con il piano di lavoro Excel/.test(vistaPiani));
+    atteso("pagina dei piani: nessuna riga del piano di lavoro sotto i piani e nessun testo scritto a mano (il piano di lavoro sta nella sezione per categoria, dai testi condivisi)", !/partiRigaPianoLavoroPerPiano|\{opzione\./.test(vistaPiani) && !/Con il piano di lavoro Excel/.test(vistaPiani) && /ServiziPerCategoria/.test(vistaPiani));
     atteso("le tre interfacce mostrano le clausole intere (dalla stessa fonte che si hasha), non un riassunto", [pannello, opzione, cambio].every((s) => /CLAUSOLE_PIANO_LAVORO\.map/.test(s) && /\{c\.testo\}/.test(s)));
 
     uguale(
@@ -112,27 +112,28 @@ async function main() {
     const banda = leggi("src/app/site-omnia-ai/piani/piano-lavoro-banda.tsx");
     const vista = leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
     const pagina = leggi("src/app/site-omnia-ai/piani/page.tsx");
+    // (09/11/2026: il piano di lavoro NON si compra con l'abbonamento: sotto i piani non c'è più nessuna riga né supplemento; il piano di lavoro si
+    // presenta nella sezione per categoria, con il solo prezzo della singola gara, letto dalla console; solo «Abbonati» dipende dalla vendita)
     atteso(
-      "pagina dei piani: la riga sotto ogni piano e la fascia si vedono SEMPRE (come i prezzi dei piani), con i prezzi letti dalla console; solo «Abbonati» dipende dalla vendita",
-      /<PianoLavoroBanda prezzoSingolaGaraCentesimi=\{prezzoSingolaGaraCentesimi\} surplus=\{surplusPianoLavoro\} \/>/.test(vista) &&
-        !/surplusPianoLavoro &&|prezzoSingolaGaraCentesimi !== null|surplusPianoLavoro \?/.test(vista) &&
-        /leggiSurplusPianoLavoro\(\)/.test(pagina) &&
+      "pagina dei piani: nessuna riga né supplemento del piano di lavoro sotto i piani; la sezione per categoria si vede SEMPRE con il prezzo della singola gara letto dalla console; solo «Abbonati» dipende dalla vendita",
+      /<ServiziPerCategoria prezzoSingolaGara=\{formatEuro\(prezzoSingolaGaraCentesimi\)\} \/>/.test(vista) &&
+        !/partiRigaPianoLavoroPerPiano|surplusPianoLavoro|omnia-prezzo-opzione|PianoLavoroBanda|piano-lavoro-banda/.test(vista) &&
+        !/leggiSurplusPianoLavoro|surplusSeInVendita|surplusPianoLavoro/.test(pagina) &&
         /leggiPrezzoPianoLavoro\(\)/.test(pagina) &&
-        !/surplusSeInVendita/.test(pagina) &&
         /\{vendita && \(\s*<Link className="omnia-btn omnia-btn-p" href=\{`\/abbonati\/\$\{p\.slug\}`\}>/.test(vista) &&
-        /surplusPianoLavoro: Record<PianoSlug, number>;/.test(vista) &&
         /prezzoSingolaGaraCentesimi: number;/.test(vista),
     );
-    atteso("fascia dei piani: i prezzi non sono scritti a mano (vengono dalle stesse letture del checkout), il testo dal modulo condiviso, con il collegamento alle condizioni", !/\d+ ?€/.test(banda.replace(/\/\/.*$/gm, "")) && /BANDA_PIANO_LAVORO/.test(banda) && /formatEuro\(prezzoSingolaGaraCentesimi\)/.test(banda) && /formatEuro\(surplus\.starter\)/.test(banda) && /PERCORSO_CONDIZIONI_PIANO_LAVORO/.test(banda));
+    // (la vecchia fascia non è più in pagina ma il file resta: si controlla ancora che non contenga prezzi scritti a mano)
+    atteso("fascia dei piani (non più in pagina): i prezzi non sono scritti a mano (vengono dalle stesse letture del checkout), il testo dal modulo condiviso, con il collegamento alle condizioni", !/\d+ ?€/.test(banda.replace(/\/\/.*$/gm, "")) && /BANDA_PIANO_LAVORO/.test(banda) && /formatEuro\(prezzoSingolaGaraCentesimi\)/.test(banda) && /formatEuro\(surplus\.starter\)/.test(banda) && /PERCORSO_CONDIZIONI_PIANO_LAVORO/.test(banda));
     atteso("fascia dei piani: dice che è un dimensionamento di partenza e non un preventivo e non promette nulla sull'esito della gara", /non un preventivo/.test(BANDA_PIANO_LAVORO.nota) && !/aggiudic|vincer|punteggio/i.test(JSON.stringify(BANDA_PIANO_LAVORO)));
-    uguale("la riga sotto ogni piano", rigaPianoLavoroPerPiano("150,00"), "Con il piano di lavoro Excel: +150,00 € al mese. Per ogni gara inclusa nel piano un Excel con formule attive, costruito dai documenti di gara.");
+    uguale("la riga sotto ogni piano (testo conservato nel modulo, non più mostrato nella pagina)", rigaPianoLavoroPerPiano("150,00"), "Con il piano di lavoro Excel: +150,00 € al mese. Per ogni gara inclusa nel piano un Excel con formule attive, costruito dai documenti di gara.");
     uguale(
       "la riga sotto ogni piano: la parte in evidenza è quella con il prezzo, il resto non ha cifre",
       [partiRigaPianoLavoroPerPiano("350,00").evidenza, /\d/.test(partiRigaPianoLavoroPerPiano("350,00").seguito)],
       ["Con il piano di lavoro Excel: +350,00 € al mese.", false],
     );
     const css = leggi("src/app/site-omnia-ai/omnia-ai.css");
-    atteso("la riga sotto ogni piano ha il suo stile (separata dall'elenco, prezzo in evidenza)", /\.omnia-prezzo-opzione \{/.test(css) && /\.omnia-prezzo-opzione strong \{/.test(css) && /className="omnia-prezzo-opzione"/.test(vista));
+    atteso("la sezione per categoria ha i suoi stili (menu, contenuto della scelta, badge di stato, due schede) e la pagina dei piani non usa più la riga sotto ogni piano", /\.omnia-servizi-menu \{/.test(css) && /\.omnia-servizi-esito \{/.test(css) && /\.omnia-servizi-stato \{/.test(css) && /\.omnia-revisione-punti\.due \{/.test(css) && !/className="omnia-prezzo-opzione"/.test(vista));
   }
 
   // ═════ 3 bis. home, «Come funziona» e domande frequenti ═════
@@ -158,7 +159,7 @@ async function main() {
     atteso("testi di home, domanda frequente e «Come funziona»: nessuna cifra in euro (i prezzi stanno solo nei piani)", !/\d+(?:[.,]\d+)? ?€|€ ?\d/.test(sito) && !/\beuro\b/i.test(sito));
     atteso("testi di home, domanda frequente e «Come funziona»: nessuna promessa sull'esito della gara, nessun «preventivo» promesso, il dimensionamento è dichiarato di partenza", !/aggiudic|vincer|garantit|certific/i.test(sito) && /non un preventivo/.test(SITO_HOME_PIANO_LAVORO.nota) && /non un preventivo/.test(SITO_COME_FUNZIONA_PIANO_LAVORO.nota) && /non un preventivo/.test(SITO_FAQ_PIANO_LAVORO.risposta));
     atteso("testi di home, domanda frequente e «Come funziona»: non nominano altre gare, clienti o stazioni appaltanti", !/\b(smac|donnafugata|ipc|fimap|asl|comune di|azienda ospedaliera)\b/i.test(sito));
-    atteso("la domanda frequente dice le due vie (singola gara e abbonamento con supplemento) e rimanda ai piani per i prezzi", /singola gara/.test(SITO_FAQ_PIANO_LAVORO.risposta) && /abbonamento/.test(SITO_FAQ_PIANO_LAVORO.risposta) && /pagina dei piani/.test(SITO_FAQ_PIANO_LAVORO.risposta) && /quadratura con il monte ore dichiarato dal bando/.test(SITO_FAQ_PIANO_LAVORO.risposta));
+    atteso("la domanda frequente dice che si compra SOLO dentro la singola gara (nessun abbonamento con supplemento), che vale per le gare di pulizia, e rimanda ai piani per il prezzo", /singola gara/.test(SITO_FAQ_PIANO_LAVORO.risposta) && !/abbonamento|supplemento/i.test(SITO_FAQ_PIANO_LAVORO.risposta) && /gare di servizi di pulizia/.test(SITO_FAQ_PIANO_LAVORO.risposta) && /pagina dei piani/.test(SITO_FAQ_PIANO_LAVORO.risposta) && /quadratura con il monte ore dichiarato dal bando/.test(SITO_FAQ_PIANO_LAVORO.risposta) && !/abbonamento/i.test(SITO_HOME_PIANO_LAVORO.nota) && /gare di servizi di pulizia/.test(SITO_HOME_PIANO_LAVORO.guida) && /gare di servizi di pulizia/.test(SITO_COME_FUNZIONA_PIANO_LAVORO.guida));
     atteso("il modulo dei testi resta senza dipendenze di server anche con le sezioni del sito (le pagine pubbliche sono statiche)", !/^import /m.test(testi));
 
     const data = (percorso: string) => new RegExp(`\\{ path: "${percorso}", lastModified: "([0-9-]+)" \\}`).exec(sitemap)?.[1] ?? "";

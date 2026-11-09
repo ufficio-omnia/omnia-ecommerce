@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { ABBONAMENTO_PIANO_LAVORO_OFFERTO } from "@/lib/piano-lavoro-testi";
 import { chiaveSurplusPianoLavoro, prezzoConPianoLavoro, surplusDaImpostazioni } from "@/lib/piano-lavoro-offerta-calcoli";
 
 // L'abbonamento con il piano di lavoro: letture (lato server) del supplemento mensile e dei prezzi che il cliente vede. Come per il catalogo
@@ -23,11 +24,19 @@ export async function leggiSurplusPianoLavoro(client?: SupabaseClient): Promise<
   }
 }
 
-// I supplementi da mostrare nei moduli di acquisto, o null se l'opzione non è in vendita (interruttore della console + chiave Stripe reale,
-// oppure prova in locale): il checkout lo riverifica comunque.
+// L'opzione «piano di lavoro» DENTRO L'ABBONAMENTO si offre? No, finché ABBONAMENTO_PIANO_LAVORO_OFFERTO è spento (decisione del 09/11/2026: il piano
+// di lavoro si compra solo dentro la singola gara). Se un domani si riaccende, resta la regola di prima: interruttore della console + chiave Stripe
+// reale (o prova in locale). È QUI il punto unico che pagine di acquisto, moduli di cambio piano e azioni sul server usano per l'abbonamento; l'acquisto
+// della singola gara usa invece venditaPianoLavoroAttiva e non ne è toccato.
+export async function venditaAbbonamentoPianoLavoroAttiva(client?: SupabaseClient): Promise<boolean> {
+  if (!ABBONAMENTO_PIANO_LAVORO_OFFERTO) return false;
+  return venditaPianoLavoroAttiva(client);
+}
+
+// I supplementi da mostrare nei moduli di acquisto, o null se l'opzione non è in vendita nell'abbonamento: il checkout lo riverifica comunque.
 export async function surplusSeInVendita(client?: SupabaseClient): Promise<Record<PianoSlug, number> | null> {
   const db = client ?? createAdminClient();
-  return (await venditaPianoLavoroAttiva(db)) ? await leggiSurplusPianoLavoro(db) : null;
+  return (await venditaAbbonamentoPianoLavoroAttiva(db)) ? await leggiSurplusPianoLavoro(db) : null;
 }
 
 export type OffertaConPianoLavoro = {

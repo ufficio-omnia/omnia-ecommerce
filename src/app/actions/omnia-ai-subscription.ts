@@ -13,8 +13,8 @@ import {
 import { getRequestMeta } from "@/lib/legal-acceptance";
 import { createHash } from "crypto";
 import { getStripePrezzoAttivoOfferta } from "@/lib/omnia-ai-stripe-prices";
-import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
-import { leggiSurplusPianoLavoro } from "@/lib/piano-lavoro-offerta";
+import { leggiSurplusPianoLavoro, venditaAbbonamentoPianoLavoroAttiva } from "@/lib/piano-lavoro-offerta";
+import { MESSAGGIO_ABBONAMENTO_PIANO_LAVORO_NON_OFFERTO } from "@/lib/piano-lavoro-testi";
 import { prezzoConPianoLavoro } from "@/lib/piano-lavoro-offerta-calcoli";
 import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
@@ -56,10 +56,12 @@ export async function startOmniaAiSubscriptionCheckout(
 
   const admin = createAdminClient();
 
-  // Abbonamento con il piano di lavoro: opzione del modulo, riverificata QUI (la vendita deve essere accesa, le avvertenze accettate).
+  // Abbonamento con il piano di lavoro: opzione del modulo, riverificata QUI. Oggi NON si offre (decisione del 09/11/2026: il piano di lavoro si
+  // compra solo dentro la singola gara): chi la chiede comunque, con un modulo costruito a mano, riceve un errore e non parte nessun pagamento.
+  // Se un domani si riaccende, valgono la vendita accesa e le avvertenze accettate.
   const pianoLavoro = formData.get("pianoLavoro") === "on";
   if (pianoLavoro) {
-    if (!(await venditaPianoLavoroAttiva(admin))) return { error: "Il piano di lavoro nell'abbonamento non è ancora disponibile." };
+    if (!(await venditaAbbonamentoPianoLavoroAttiva(admin))) return { error: MESSAGGIO_ABBONAMENTO_PIANO_LAVORO_NON_OFFERTO };
     if (formData.get("acceptPianoLavoro") !== "on") return { error: "Per aggiungere il piano di lavoro devi accettare le avvertenze sul servizio." };
   }
 

@@ -20,6 +20,8 @@ import { leggiContestoRevisione } from "@/lib/omnia-ai-revisione";
 import { calcolaPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 import PianoLavoroPanel from "./piano-lavoro-panel";
+import FoodMenuPanel from "./food-menu-panel";
+import { normalizzaSettore, proponeFoodMenu, proponePianoLavoro } from "@/lib/gara-settore";
 import { leggiPianiGara } from "@/lib/piano-lavoro-gara";
 import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
 import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
@@ -148,6 +150,11 @@ export default async function GaraPage({
 
   // Ora della scadenza scritta a mano dal cliente (migrazione 0102), in una lettura a parte: senza la colonna nessuna ora risulta «a mano».
   const { data: oraManualeRaw } = await supabase.from("gare").select("scadenza_ora_manuale").eq("id", id).maybeSingle<{ scadenza_ora_manuale: boolean | null }>();
+
+  // Settore della gara (migrazione 0103), in una lettura a parte: senza la colonna (o per una gara analizzata prima) il settore è «non classificato»
+  // e la scheda si comporta come prima. Decide quale servizio aggiuntivo si propone oltre alla relazione tecnica (src/lib/gara-settore.ts).
+  const { data: settoreRaw } = await supabase.from("gare").select("settore").eq("id", id).maybeSingle<{ settore: string | null }>();
+  const settore = normalizzaSettore(settoreRaw?.settore);
 
   // Colonna avvisi_economici non ancora creata (migrazione 0070): senza
   // questo ripiego la query intera fallirebbe e la chat apparirebbe vuota.
@@ -333,7 +340,11 @@ export default async function GaraPage({
 
       <ExtractionSection garaId={gara.id} estrazione={{ ...gara, scadenza_ora: contestoRevisione?.gara.scadenza_ora ?? null, scadenza_ora_manuale: Boolean(oraManualeRaw?.scadenza_ora_manuale) }} proroga={prorogaRaw ?? null} pianoAttuale={subscriptionAttiva?.plan ?? null} inProva={statoAccesso.stato === "prova"} ufficioGare={ufficioGare} />
 
-      {pianoLavoroDisponibile && (gara.estrazione_stato === "completata" || pianiLavoro.length > 0) && <PianoLavoroPanel garaId={gara.id} piani={pianiLavoro} diritto={dirittoPianoLavoro} offerta={offertaPianoLavoro} ritorno={interpretaRitornoPagamento(ritornoPianoLavoro)} privacyVersione={documentiLegaliPianoLavoro?.privacyPolicy.version ?? null} />}
+      {/* Il servizio aggiuntivo giusto per questa gara, deciso dall'analisi dei documenti: il piano di lavoro per le gare di pulizia (anche per quelle non
+          ancora classificate, come prima, e per chi ha già dei piani generati: non si toglie niente di ciò che c'è), «OMNIA FOOD MENU» (sta arrivando)
+          per la ristorazione collettiva, nulla per gli altri settori. */}
+      {gara.estrazione_stato === "completata" && proponeFoodMenu(settore) && <FoodMenuPanel />}
+      {pianoLavoroDisponibile && (gara.estrazione_stato === "completata" || pianiLavoro.length > 0) && (proponePianoLavoro(settore) || pianiLavoro.length > 0) && <PianoLavoroPanel garaId={gara.id} piani={pianiLavoro} diritto={dirittoPianoLavoro} offerta={offertaPianoLavoro} ritorno={interpretaRitornoPagamento(ritornoPianoLavoro)} privacyVersione={documentiLegaliPianoLavoro?.privacyPolicy.version ?? null} />}
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
 
