@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CAMPO_TURNSTILE } from "@/lib/turnstile-calcoli";
+import { useTemaEffettivo } from "@/components/omnia-ai/use-tema";
 
 // Riquadro anti-bot di Cloudflare Turnstile da mettere DENTRO un modulo: scrive il gettone nel campo nascosto
 // «cf-turnstile-response», che il server legge con verificaFormUmano (lib/turnstile.ts). Senza la chiave pubblica
@@ -46,7 +47,10 @@ function caricaScript(): Promise<void> {
   return window.__caricamentoTurnstile;
 }
 
-export default function TurnstileCampo({ resetKey, tema = "auto" }: { resetKey?: unknown; tema?: "auto" | "light" | "dark" }) {
+// tema: «light»/«dark»/«auto» sono i temi di Cloudflare; «sito» segue il tema scelto dal visitatore su omnia-ai.it (scuro o chiaro).
+export default function TurnstileCampo({ resetKey, tema = "auto" }: { resetKey?: unknown; tema?: "auto" | "light" | "dark" | "sito" }) {
+  const temaDelSito = useTemaEffettivo();
+  const temaReale: "auto" | "light" | "dark" = tema === "sito" ? (temaDelSito === "chiaro" ? "light" : "dark") : tema;
   const chiaveSito = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const contenitore = useRef<HTMLDivElement>(null);
   const campo = useRef<HTMLInputElement>(null);
@@ -61,7 +65,7 @@ export default function TurnstileCampo({ resetKey, tema = "auto" }: { resetKey?:
         if (annullato || !contenitore.current || !window.turnstile || idRiquadro.current) return;
         idRiquadro.current = window.turnstile.render(contenitore.current, {
           sitekey: chiaveSito,
-          theme: tema,
+          theme: temaReale,
           language: "it",
           appearance: "always",
           size: "flexible",
@@ -84,7 +88,7 @@ export default function TurnstileCampo({ resetKey, tema = "auto" }: { resetKey?:
       if (idRiquadro.current && window.turnstile) window.turnstile.remove(idRiquadro.current);
       idRiquadro.current = null;
     };
-  }, [chiaveSito, tema]);
+  }, [chiaveSito, temaReale]);
 
   // Dopo ogni invio il gettone è già stato usato: se ne chiede uno nuovo.
   useEffect(() => {

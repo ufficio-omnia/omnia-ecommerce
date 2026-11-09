@@ -34,7 +34,7 @@ export default function RegistratiForm() {
           />
         </div>
 
-        <TurnstileCampo resetKey={state} tema="dark" />
+        <TurnstileCampo resetKey={state} tema="sito" />
 
         {state.error && <p className="omnia-esito errore">{state.error}</p>}
 
