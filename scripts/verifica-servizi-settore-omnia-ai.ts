@@ -121,6 +121,7 @@ async function main() {
   atteso("le schede dei piani non hanno più la riga del piano di lavoro (+X € al mese) né il supplemento", !/partiRigaPianoLavoroPerPiano|omnia-prezzo-opzione|surplusPianoLavoro|opzione\./.test(vista) && !/Con il piano di lavoro Excel|al mese\./.test(senzaCommenti(vista)));
   atteso("«Abbonati» e «Richiedi la demo» delle schede sono rimasti come prima", /\{vendita && \(\s*<Link className="omnia-btn omnia-btn-p" href=\{`\/abbonati\/\$\{p\.slug\}`\}>/.test(vista) && /Richiedi la demo/.test(vista));
   atteso("il vecchio componente della fascia resta nel codice (lavoro non cancellato) ma non è più usato in nessuna pagina", fs.existsSync(path.join(radice, "src/app/site-omnia-ai/piani/piano-lavoro-banda.tsx")) && !/piano-lavoro-banda|PianoLavoroBanda/.test(senzaCommenti(vista)) && /NON PIÙ USATA/.test(leggi("src/app/site-omnia-ai/piani/piano-lavoro-banda.tsx")));
+  atteso("da telefono le due schede del piano di lavoro vanno in colonna come le tre degli altri riquadri, senza toccare la regola già esistente delle tre schede", /@media \(max-width: 900px\) \{[\s\S]*?\.omnia-revisione-punti \{\s*grid-template-columns: 1fr;\s*\}\s*\.omnia-revisione-punti\.due \{\s*grid-template-columns: 1fr;\s*\}/.test(leggi("src/app/site-omnia-ai/omnia-ai.css")));
   atteso("il testo della vecchia fascia (con la scheda «Nell'abbonamento») resta nel modulo dei testi, non cancellato", BANDA_PIANO_LAVORO.punti.abbonamento.titolo === "Nell'abbonamento");
 
   // ═════ 4. L'abbonamento al piano di lavoro è spento, ovunque ═════

@@ -1211,7 +1211,9 @@ li {
   .omnia-revisione {
     padding: 28px 22px;
   }
-  .omnia-revisione-punti,
+  .omnia-revisione-punti {
+    grid-template-columns: 1fr;
+  }
   .omnia-revisione-punti.due {
     grid-template-columns: 1fr;
   }
