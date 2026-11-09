@@ -234,7 +234,7 @@ function main() {
   atteso("migrazione 0095: ricarica lo schema di PostgREST", /notify pgrst, 'reload schema'/.test(migrazione));
 
   const registro = leggi("scripts/verifica-ufficio-gare-lavoro-omnia-ai.ts");
-  atteso("impostaScadenzaGara è nel registro delle azioni dell'account (titolare e Ufficio Gare)", /"gara-extraction\.ts": \["extractGaraData", "impostaScadenzaGara"\]/.test(registro));
+  atteso("impostaScadenzaGara e impostaOraScadenzaGara sono nel registro delle azioni dell'account (titolare e Ufficio Gare)", /"gara-extraction\.ts": \["extractGaraData", "impostaScadenzaGara", "impostaOraScadenzaGara"\]/.test(registro));
 
   if (fallimenti.length > 0) {
     console.log(`\n${fallimenti.length} controlli falliti:\n- ${fallimenti.join("\n- ")}`);
