@@ -5,8 +5,12 @@ import { REVISIONE, testoRegoleUrgenza } from "@/lib/omnia-ai-revisione-calcoli"
 // (tabella omnia_ai_revisioni). Se si cambia anche una sola parola si aumenta la versione.
 //
 // BOZZA: il testo va fatto verificare dal legale dell'azienda prima di venderlo per davvero.
+//
+// Versione 2 (2026-11-09): l'art. 5 non dice più che senza l'ora di scadenza «si intendono le 23:59»: nessun'ora si presume. L'ora la
+// scrivono i documenti di gara o, se non la riportano, il cliente; senza l'ora la richiesta non si può inviare. Le richieste già
+// pagate restano registrate con la versione 1 e la loro impronta.
 
-export const VERSIONE_CONDIZIONI_REVISIONE = 1;
+export const VERSIONE_CONDIZIONI_REVISIONE = 2;
 
 export type ClausolaRevisione = { numero: number; titolo: string; testo: string; specifica: boolean };
 
@@ -44,7 +48,7 @@ export const CLAUSOLE_REVISIONE: ClausolaRevisione[] = [
     numero: 5,
     titolo: "Corrispettivo e pagamento",
     specifica: false,
-    testo: `Il corrispettivo è determinato automaticamente dal sistema in base al numero di pagine: da ${e(REVISIONE.prezzoBaseCentesimi)} per relazioni fino a ${REVISIONE.pagineBase} pagine a ${e(REVISIONE.prezzoMassimoCentesimi)} per ${REVISIONE.pagineMassimo} pagine o più, in proporzione tra i due estremi. Le pagine sono quelle prescritte dal disciplinare di gara oppure, se il disciplinare non indica un limite, quelle della Relazione tecnica finale generata da OMNIA AI. Le ore alla scadenza si contano dal momento della richiesta fino alla data e all'ora di scadenza indicate nel bando (le 23:59 di quel giorno se l'ora non è indicata). ${testoRegoleUrgenza()} Gli importi sono IVA inclusa. Il pagamento è anticipato, con carta tramite Stripe.`,
+    testo: `Il corrispettivo è determinato automaticamente dal sistema in base al numero di pagine: da ${e(REVISIONE.prezzoBaseCentesimi)} per relazioni fino a ${REVISIONE.pagineBase} pagine a ${e(REVISIONE.prezzoMassimoCentesimi)} per ${REVISIONE.pagineMassimo} pagine o più, in proporzione tra i due estremi. Le pagine sono quelle prescritte dal disciplinare di gara oppure, se il disciplinare non indica un limite, quelle della Relazione tecnica finale generata da OMNIA AI. Le ore alla scadenza si contano dal momento della richiesta fino alla data e all'ora di scadenza risultanti dai documenti di gara o, quando i documenti non riportano l'ora, indicate dal cliente; senza l'ora esatta della scadenza la richiesta non può essere inviata. ${testoRegoleUrgenza()} Gli importi sono IVA inclusa. Il pagamento è anticipato, con carta tramite Stripe.`,
   },
   {
     numero: 6,

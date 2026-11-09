@@ -146,6 +146,65 @@ const SCENARI: Scenario[] = [
     ],
     atteso: { stato: "nessuna", scadenza: "2026-11-10", ora: "12:00", originaria: null },
   },
+  // ── L'ORA della scadenza (09/11/2026): mai presunta, mai ereditata dal bando per una data prorogata; se non è scritta resta «null»
+  //    e la inserisce il cliente. Un'ora SCRITTA (anche «23:59») invece va letta.
+  {
+    nome: "M. proroga con la NUOVA data ma SENZA l'ora (il bando aveva le 12:00): l'ora NON si eredita",
+    docs: [
+      BANDO,
+      { nome: "avviso-proroga-solo-data.pdf", caricato: "2026-10-20T14:35:00Z", testo: ["COMUNE DI VALLEVERDE", "AVVISO DI PROROGA DEI TERMINI", "Si comunica che il termine per la presentazione delle offerte e' prorogato al giorno 24/11/2026. Restano invariate le altre condizioni previste dal disciplinare di gara."].join("\n") },
+    ],
+    atteso: { stato: "con_nuova_data", scadenza: "2026-11-24", ora: null, originaria: "2026-11-10" },
+  },
+  {
+    nome: "N. DETERMINA con la proroga e la nuova data SENZA l'ora, tra molti documenti (il bando aveva le 12:00)",
+    docs: [
+      { ...BANDO, testo: BANDO.testo + "\n" + CLAUSOLA_MALFUNZIONAMENTO },
+      ...CONTORNO.slice(0, 5),
+      { nome: "DeterminaDirigenziale_Originale_503_2026.pdf", caricato: "2026-10-22T11:00:00Z", testo: ["COMUNE DI VALLEVERDE - DETERMINA DIRIGENZIALE N. 503 DEL 22/10/2026", "Oggetto: chiarimenti e proroga dei termini.", "DETERMINA", "1) di prendere atto dei chiarimenti pubblicati;", "2) di prorogare il termine per la presentazione delle offerte al giorno 27/11/2026;", "3) di pubblicare il presente atto sulla piattaforma."].join("\n") },
+    ],
+    atteso: { stato: "con_nuova_data", scadenza: "2026-11-27", ora: null, originaria: "2026-11-10" },
+  },
+  {
+    nome: "O. bando SENZA l'ora di scadenza, con altri orari nei documenti (seduta, sopralluogo): nessuna ora di scadenza",
+    docs: [
+      {
+        nome: "disciplinare-senza-ora.pdf",
+        caricato: "2026-10-01T08:00:00Z",
+        testo: [
+          "COMUNE DI VALLEVERDE - Stazione appaltante",
+          "DISCIPLINARE DI GARA - Procedura aperta per l'affidamento del servizio di pulizia degli immobili comunali",
+          "CIG 8123456AB1 - Importo a base d'asta: Euro 480.000,00",
+          "Art. 12 - Termine di presentazione delle offerte: le offerte devono pervenire, a pena di esclusione, entro il giorno 10/11/2026 tramite la piattaforma telematica.",
+          "Art. 13 - Apertura delle buste: la prima seduta pubblica si terra' il giorno 12/11/2026 alle ore 10:00.",
+          "Art. 15 - Sopralluogo: obbligatorio, da effettuare entro il 28/10/2026 dalle ore 9:00 alle ore 13:00.",
+          "Orari di apertura degli uffici: 8:00-18:00.",
+        ].join("\n"),
+      },
+    ],
+    atteso: { stato: "nessuna", scadenza: "2026-11-10", ora: null, originaria: null },
+  },
+  {
+    nome: "P. bando SENZA l'ora e proroga con la nuova data SENZA l'ora: nessuna ora",
+    docs: [
+      { nome: "disciplinare-senza-ora.pdf", caricato: "2026-10-01T08:00:00Z", testo: ["COMUNE DI VALLEVERDE - Stazione appaltante", "DISCIPLINARE DI GARA - servizio di pulizia", "Art. 12 - Le offerte devono pervenire entro il giorno 10/11/2026 tramite la piattaforma telematica.", "Art. 13 - Prima seduta pubblica il 12/11/2026 alle ore 10:00."].join("\n") },
+      { nome: "avviso-proroga-solo-data.pdf", caricato: "2026-10-20T14:35:00Z", testo: ["AVVISO DI PROROGA", "Il termine per la presentazione delle offerte, fissato al 10/11/2026, e' prorogato al 24/11/2026."].join("\n") },
+    ],
+    atteso: { stato: "con_nuova_data", scadenza: "2026-11-24", ora: null, originaria: "2026-11-10" },
+  },
+  {
+    nome: "Q. proroga che scrive ESPLICITAMENTE «entro le ore 23:59» (un'ora scritta si legge, anche 23:59)",
+    docs: [
+      BANDO,
+      { nome: "avviso-proroga-2359.pdf", caricato: "2026-10-20T14:35:00Z", testo: ["COMUNE DI VALLEVERDE", "AVVISO DI PROROGA DEI TERMINI", "Il termine per la presentazione delle offerte e' prorogato: le offerte dovranno pervenire entro le ore 23:59 del giorno 24/11/2026."].join("\n") },
+    ],
+    atteso: { stato: "con_nuova_data", scadenza: "2026-11-24", ora: "23:59", originaria: "2026-11-10" },
+  },
+  {
+    nome: "R. bando che scrive ESPLICITAMENTE «entro le ore 23:59»: l'ora scritta si legge",
+    docs: [{ ...BANDO, testo: BANDO.testo.replace("entro le ore 12:00 del giorno 10/11/2026", "entro le ore 23:59 del giorno 10/11/2026") }],
+    atteso: { stato: "nessuna", scadenza: "2026-11-10", ora: "23:59", originaria: null },
+  },
 ];
 
 async function creaPdf(testo: string): Promise<Buffer> {

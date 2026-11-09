@@ -22,6 +22,7 @@ import {
   PROPRIETA_SCADENZA_ESTRAZIONE,
   decidiScadenza,
   puoModificareScadenza,
+  valutaInserimentoOra,
   validaScadenzaManuale,
   type ScadenzaEsistente,
 } from "@/lib/gara-proroga";
@@ -440,6 +441,10 @@ export async function extractGaraData(
       erroreScadenzaEsistente || !scadenzaEsistenteRiga
         ? null
         : { scadenza: scadenzaEsistenteRiga.scadenza, scadenza_ora: scadenzaEsistenteRiga.scadenza_ora, scadenza_manuale: Boolean(scadenzaEsistenteRiga.scadenza_manuale) };
+    // L'ora scritta a mano dal cliente (migrazione 0102), in una lettura a parte: se la colonna non c'è ancora, la data a mano e la
+    // proroga funzionano come prima e nessuna ora risulta «a mano».
+    const { data: oraManualeRiga } = await supabase.from("gare").select("scadenza_ora_manuale").eq("id", garaId).maybeSingle<{ scadenza_ora_manuale: boolean | null }>();
+    if (scadenzaEsistente) scadenzaEsistente.scadenza_ora_manuale = Boolean(oraManualeRiga?.scadenza_ora_manuale);
     const esitoMirato = await secondoPassaggio;
     const decisioneScadenza = decidiScadenza(unisciEsitiProroga(result, esitoMirato), scadenzaEsistente);
 
@@ -492,6 +497,10 @@ export async function extractGaraData(
     // ancora i dati estratti qui sopra sono già al sicuro e non si perdono. Senza una data non c'è ora.
     const { error: erroreOraScadenza } = await supabase.from("gare").update({ scadenza_ora: decisioneScadenza.scadenza_ora }).eq("id", garaId);
     if (erroreOraScadenza && !schemaAssente(erroreOraScadenza)) console.error("Errore salvataggio ora di scadenza:", erroreOraScadenza.message);
+
+    // Se l'ora è quella scritta dal cliente (migrazione 0102), in un aggiornamento a parte per la stessa ragione.
+    const { error: erroreOraManuale } = await supabase.from("gare").update({ scadenza_ora_manuale: decisioneScadenza.scadenza_ora_manuale }).eq("id", garaId);
+    if (erroreOraManuale && !schemaAssente(erroreOraManuale)) console.error("Errore salvataggio del segno «ora inserita a mano»:", erroreOraManuale.message);
 
     // Esito sulla proroga, scadenza originaria e «data a mano» (colonne della migrazione 0095), in un aggiornamento a parte per la
     // stessa ragione: se non ci sono ancora, tutto il resto è già salvato.
@@ -575,12 +584,81 @@ export async function impostaScadenzaGara(
     console.error("Errore salvataggio della scadenza a mano:", erroreScrittura.message);
     return { error: "Non sono riuscito a salvare la scadenza. Riprova." };
   }
-  // L'ora in un aggiornamento a parte, come in extractGaraData (la colonna è della migrazione 0091); senza ora si intendono le 23:59.
+  // L'ora in un aggiornamento a parte, come in extractGaraData (la colonna è della migrazione 0091). Senza ora resta «non indicata»: non si
+  // presume nessun orario. Se l'ora c'è l'ha scritta il cliente (segno della migrazione 0102, anch'esso a parte).
   const { error: erroreOra } = await supabase.from("gare").update({ scadenza_ora: esito.ora }).eq("id", garaId);
   if (erroreOra && !schemaAssente(erroreOra)) console.error("Errore salvataggio dell'ora di scadenza a mano:", erroreOra.message);
+  const { error: erroreOraManuale } = await supabase.from("gare").update({ scadenza_ora_manuale: esito.ora !== null }).eq("id", garaId);
+  if (erroreOraManuale && !schemaAssente(erroreOraManuale)) console.error("Errore salvataggio del segno «ora inserita a mano»:", erroreOraManuale.message);
 
+  revalidaPaginePerScadenza(garaId);
+  return { ok: true };
+}
+
+function revalidaPaginePerScadenza(garaId: string) {
   revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
+  revalidatePath(`/dashboard/omnia-ai/gare/${garaId}/revisione`);
   revalidatePath("/dashboard/omnia-ai/gare");
   revalidatePath("/dashboard/omnia-ai");
+}
+
+// Il cliente scrive a mano L'ORA della scadenza quando i documenti non la riportano (del bando o della proroga): OMNIA AI non la presume
+// né la deduce. Valgono le stesse regole dell'altro modulo, riviste dal database e non dal browser: l'ora si può scrivere solo se
+// manca (o se l'ha già scritta il cliente: correzione), mai sopra un'ora trovata nei documenti; solo con una data di scadenza; e nel
+// caso «proroga senza nuova data» ora e data si scrivono insieme con impostaScadenzaGara. Vale per il titolare e per l'Ufficio Gare
+// (è lavoro di gara). Una nuova analisi la conserva solo finché la data resta la stessa (decidiScadenza).
+export async function impostaOraScadenzaGara(
+  _prevState: ScadenzaState,
+  formData: FormData,
+): Promise<ScadenzaState> {
+  const supabase = await createClient();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
+
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
+  if (accessoNegato) return { error: accessoNegato };
+
+  const garaId = String(formData.get("garaId") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(garaId)) return { error: "Gara non valida." };
+
+  // La RLS ("gare_all_own") garantisce che questa select restituisca la gara solo se è dell'account.
+  const { data: gara, error: erroreLettura } = await supabase.from("gare").select("id, scadenza").eq("id", garaId).maybeSingle<{ id: string; scadenza: string | null }>();
+  if (erroreLettura) {
+    console.error("Errore lettura della gara per l'ora di scadenza:", erroreLettura.message);
+    return { error: "Non sono riuscito a leggere la gara. Riprova." };
+  }
+  if (!gara) return { error: "Gara non trovata." };
+
+  // Le colonne della proroga (0095), dell'ora (0091) e del segno «a mano» (0102) si leggono a parte: senza la 0102 l'ora a mano non si
+  // può salvare, perché la prossima analisi la cancellerebbe senza che nessuno lo sappia.
+  const { data: prorogaRiga } = await supabase.from("gare").select("proroga_stato").eq("id", garaId).maybeSingle<{ proroga_stato: string | null }>();
+  const { data: oraRiga } = await supabase.from("gare").select("scadenza_ora").eq("id", garaId).maybeSingle<{ scadenza_ora: string | null }>();
+  const { data: manualeRiga, error: erroreManuale } = await supabase.from("gare").select("scadenza_ora_manuale").eq("id", garaId).maybeSingle<{ scadenza_ora_manuale: boolean | null }>();
+  if (erroreManuale) {
+    if (schemaAssente(erroreManuale)) return { error: "Questa funzione non è ancora attiva. Riprova più tardi." };
+    console.error("Errore lettura del segno «ora inserita a mano»:", erroreManuale.message);
+    return { error: "Non sono riuscito a leggere la gara. Riprova." };
+  }
+
+  // Tutte le regole (proroga senza data, data assente, ora dei documenti, ora valida) in valutaInserimentoOra, sui dati riletti qui.
+  const esito = valutaInserimentoOra({
+    scadenza: gara.scadenza,
+    scadenza_ora: oraRiga?.scadenza_ora ?? null,
+    scadenza_ora_manuale: manualeRiga?.scadenza_ora_manuale ?? false,
+    proroga_stato: prorogaRiga?.proroga_stato ?? null,
+    ora: formData.get("ora"),
+  });
+  if (!esito.ok) return { error: esito.errore };
+
+  // ora e segno «a mano» nello STESSO aggiornamento: o si salvano insieme o niente
+  const { error: erroreScrittura } = await supabase.from("gare").update({ scadenza_ora: esito.ora, scadenza_ora_manuale: true }).eq("id", garaId);
+  if (erroreScrittura) {
+    if (schemaAssente(erroreScrittura)) return { error: "Questa funzione non è ancora attiva. Riprova più tardi." };
+    console.error("Errore salvataggio dell'ora di scadenza a mano:", erroreScrittura.message);
+    return { error: "Non sono riuscito a salvare l'ora. Riprova." };
+  }
+
+  revalidaPaginePerScadenza(garaId);
   return { ok: true };
 }

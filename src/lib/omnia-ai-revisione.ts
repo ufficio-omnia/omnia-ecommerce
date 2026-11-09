@@ -6,7 +6,8 @@ import { normalizzaOraScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 // che avvia il pagamento: la STESSA risposta per tutte e tre, così quello che il cliente vede è quello che
 // il server poi controlla.
 
-// scadenza_ora: l'ora indicata dal bando («HH:MM»), se c'è (migrazione 0091); null = non indicata (23:59)
+// scadenza_ora: l'ora della scadenza («HH:MM»), scritta nei documenti o inserita dal cliente, se c'è (migrazione 0091); null = non indicata
+// (nessun'ora si presume: senza l'ora il prezzo della revisione non si calcola)
 export type GaraRevisione = { id: string; titolo: string; scadenza: string | null; scadenza_ora: string | null; limite_pagine_totale: number | null };
 
 export type RelazioneFinale = { messaggioId: string; fileNome: string; filePath: string; pagineStimate: number | null; creataIl: string };

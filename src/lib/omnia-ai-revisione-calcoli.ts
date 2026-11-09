@@ -52,9 +52,9 @@ export function prezzoBasePerPagine(pagine: number): number {
 
 // ───── urgenza ─────
 
-// La scadenza è il giorno (sempre) e l'ora (se il bando la indica): quando l'ora manca si intende 23:59 di
-// quel giorno, ora di Roma.
-export const ORA_SCADENZA_PREDEFINITA = "23:59";
+// La scadenza è il giorno e l'ora, ora di Roma. L'ora la scrivono i documenti di gara oppure, quando i documenti non la riportano, il
+// cliente. NESSUN'ora si presume o si deduce (nemmeno 23:59): senza l'ora esatta le ore alla scadenza non si calcolano e la revisione
+// non si può richiedere (calcolaPrezzoRevisione).
 
 // «HH:MM» (anche «H:MM» o «HH:MM:SS», come arriva dalla colonna time del database) → «HH:MM»; altro → null.
 export function normalizzaOraScadenza(ora: string | null | undefined): string | null {
@@ -75,12 +75,14 @@ function offsetRomaMinuti(istante: Date): number {
   return m[1] === "-" ? -minuti : minuti;
 }
 
-// L'istante della scadenza: la data e l'ora indicate (ora di Roma). Senza ora, le 23:59:59 di quel giorno.
+// L'istante della scadenza: la data e l'ora indicate (ora di Roma). Senza un'ora valida NON c'è un istante (null): non si presume
+// nessun orario, nemmeno la fine del giorno.
 export function istanteScadenza(data: string | null | undefined, ora?: string | null): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((data ?? "").slice(0, 10));
   if (!m) return null;
   const oraNormale = normalizzaOraScadenza(ora);
-  const [h, min, sec] = oraNormale ? [Number(oraNormale.slice(0, 2)), Number(oraNormale.slice(3, 5)), 0] : [23, 59, 59];
+  if (!oraNormale) return null;
+  const [h, min, sec] = [Number(oraNormale.slice(0, 2)), Number(oraNormale.slice(3, 5)), 0];
   const parete = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), h, min, sec);
   if (!Number.isFinite(parete)) return null;
   // l'ora di Roma si converte in UTC con la differenza in vigore in QUELL'istante (ora legale compresa);
@@ -90,9 +92,9 @@ export function istanteScadenza(data: string | null | undefined, ora?: string | 
   return new Date(istante);
 }
 
-// Fine del giorno (23:59:59, ora di Roma): la scadenza di una gara che non indica l'ora.
-export function fineGiornoRoma(data: string | null | undefined): Date | null {
-  return istanteScadenza(data, null);
+// La data di oggi a Roma come «AAAA-MM-GG» (l'ora del server può essere un'altra).
+function dataDiOggiARoma(adesso: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(adesso);
 }
 
 export function oreAllaScadenza(scadenza: string | null | undefined, adesso: Date, ora?: string | null): number | null {
@@ -102,7 +104,8 @@ export function oreAllaScadenza(scadenza: string | null | undefined, adesso: Dat
 
 export type Urgenza =
   | { tipo: "nessuna"; percentuale: 0 }
-  // la gara non ha una scadenza registrata: nessuna maggiorazione
+  // la gara non ha una scadenza registrata: nessuna maggiorazione (con la data ma senza l'ora il prezzo non si calcola: vedi
+  // calcolaPrezzoRevisione)
   | { tipo: "sconosciuta"; percentuale: 0 }
   | { tipo: "maggiorazione"; percentuale: 25 | 50 }
   | { tipo: "non_gestibile"; percentuale: 0 }
@@ -126,14 +129,18 @@ export type PrezzoRevisione = {
   maggiorazioneCentesimi: number;
   totaleCentesimi: number;
   scadenza: string | null;
-  // l'ora indicata dal bando («HH:MM»); null = non indicata (si è usato 23:59)
+  // l'ora della scadenza («HH:MM»), scritta nei documenti o inserita dal cliente; null solo se la gara non ha nemmeno la data
   scadenzaOra: string | null;
   oreAllaScadenza: number | null;
 };
 
 export type EsitoPrezzoRevisione =
   | { ok: true; prezzo: PrezzoRevisione }
-  | { ok: false; motivo: "non_gestibile" | "scaduta" | "pagine_non_determinabili"; messaggio: string };
+  | { ok: false; motivo: "non_gestibile" | "scaduta" | "pagine_non_determinabili" | "ora_scadenza_mancante"; messaggio: string };
+
+// La scadenza ha la data ma non l'ora: l'urgenza (e quindi il prezzo) dipende dalle ore che mancano, e un'ora non si presume.
+export const MESSAGGIO_ORA_SCADENZA_MANCANTE =
+  "Per calcolare il prezzo serve l'ora esatta della scadenza della gara. Nei documenti non è indicata e OMNIA AI non ne presume nessuna: scrivila qui sotto, se la conosci, e potrai richiedere la revisione.";
 
 export const MESSAGGIO_NON_GESTIBILE = `Questa gara scade tra meno di ${REVISIONE.oreMinimePerGestire} ore: non può essere gestita da consulenti umani per scadenza troppo ravvicinata.`;
 export const MESSAGGIO_SCADUTA = "La scadenza di questa gara è già passata: non è possibile richiedere la revisione umana.";
@@ -141,12 +148,19 @@ export const MESSAGGIO_PAGINE_NON_DETERMINABILI = "Non riesco a stabilire il num
 
 export function calcolaPrezzoRevisione(i: {
   scadenza: string | null | undefined;
-  // ora di scadenza indicata dal bando, se c'è
+  // ora di scadenza scritta nei documenti o inserita dal cliente, se c'è
   scadenzaOra?: string | null;
   limitePagineDisciplinare: number | null | undefined;
   pagineStimateRelazione: number | null | undefined;
   adesso: Date;
 }): EsitoPrezzoRevisione {
+  // Data senza ora: non si calcola niente (mai «le 23:59»). Con la data che non si legge, o senza data, resta com'era (urgenza sconosciuta).
+  const dataScadenza = /^\d{4}-\d{2}-\d{2}$/.test(String(i.scadenza ?? "").slice(0, 10)) ? String(i.scadenza).slice(0, 10) : null;
+  if (dataScadenza && !normalizzaOraScadenza(i.scadenzaOra)) {
+    // un giorno già finito (ieri o prima) è passato a qualunque ora: per dirlo non serve l'ora, e non la si chiede
+    if (dataScadenza < dataDiOggiARoma(i.adesso)) return { ok: false, motivo: "scaduta", messaggio: MESSAGGIO_SCADUTA };
+    return { ok: false, motivo: "ora_scadenza_mancante", messaggio: MESSAGGIO_ORA_SCADENZA_MANCANTE };
+  }
   const ore = oreAllaScadenza(i.scadenza, i.adesso, i.scadenzaOra);
   const urgenza = urgenzaPerOre(ore);
   if (urgenza.tipo === "scaduta") return { ok: false, motivo: "scaduta", messaggio: MESSAGGIO_SCADUTA };
@@ -198,7 +212,7 @@ export function validaContattiRevisione(i: { nome: unknown; email: unknown; cell
   return { ok: true, valori: { nome, email, cellulare } };
 }
 
-// «20/10/2026» oppure «20/10/2026 ore 12:00» (l'ora solo se il bando la indica).
+// «20/10/2026» oppure «20/10/2026 ore 12:00» (l'ora solo se c'è: scritta nei documenti o inserita dal cliente).
 export function testoScadenza(scadenza: string | null | undefined, ora?: string | null): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((scadenza ?? "").slice(0, 10));
   if (!m) return null;
