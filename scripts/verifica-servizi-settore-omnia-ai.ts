@@ -57,7 +57,7 @@ async function main() {
   console.log("\n--- Schema dell'analisi: il modello decide il settore dall'oggetto dell'appalto ---");
   const P = PROPRIETA_SETTORE_ESTRAZIONE.settore_gara;
   uguale("il campo è un elenco chiuso dei tre settori", [P.type, [...P.enum]], ["string", ["pulizie", "ristorazione_collettiva", "altro"]]);
-  atteso("la descrizione decide dall'OGGETTO PRINCIPALE, dice cos'è ciascun settore (CPV compresi), che i servizi accessori non contano e che nel dubbio è «altro»", /OGGETTO PRINCIPALE/.test(P.description) && /'pulizie'/.test(P.description) && /'ristorazione_collettiva'/.test(P.description) && /'altro'/.test(P.description) && /909xxxxx/.test(P.description) && /55xxxxxx/.test(P.description) && /Nel dubbio rispondi 'altro'/.test(P.description) && /servizi accessori/.test(P.description) && /nessuno dei due citati è chiaramente quello principale/.test(P.description));
+  atteso("la descrizione decide dall'OGGETTO PRINCIPALE, dice cos'è ciascun settore (CPV compresi), che i servizi accessori non contano e che nel dubbio è «altro»", /OGGETTO PRINCIPALE/.test(P.description) && /'pulizie'/.test(P.description) && /'ristorazione_collettiva'/.test(P.description) && /'altro'/.test(P.description) && /909xxxxx/.test(P.description) && /55xxxxxx/.test(P.description) && /Nel dubbio rispondi 'altro'/.test(P.description) && /servizi accessori/.test(P.description) && /nessuno dei due citati è chiaramente quello principale/.test(P.description) && /NON sono 'pulizie' lo spazzamento stradale, la raccolta dei rifiuti e l'igiene urbana \(sono 'altro'\)/.test(P.description));
   const estrazione = leggi("src/app/actions/gara-extraction.ts");
   atteso("l'analisi dei documenti usa lo schema del settore e lo chiede sempre (campo obbligatorio dello strumento)", /\.\.\.PROPRIETA_SETTORE_ESTRAZIONE,/.test(estrazione) && /required: \["criteri_valutazione", "requisiti", "limiti_formattazione", "settore_gara"\]/.test(estrazione) && /settore_gara\?: string;/.test(estrazione));
   const principale = estrazione.slice(estrazione.indexOf(".update({\n        stazione_appaltante"), estrazione.indexOf("estrazione_aggiornata_il: estrazioneAggiornataIl,"));
@@ -106,7 +106,7 @@ async function main() {
   const verde = disegna("verde");
   const tVerde = testoDi(verde);
   atteso("una categoria «in lavorazione»: «Stiamo lavorando» con il suo testo; nessun servizio, nessun prezzo", tVerde.includes(IN_LAVORAZIONE.stato) && tVerde.includes(IN_LAVORAZIONE.titolo) && tVerde.includes(IN_LAVORAZIONE.testo) && !/Piano di lavoro|OMNIA FOOD MENU|€|Abbonati/.test(tVerde));
-  uguale("un valore iniziale che non è nel menu vale «nessuna scelta»", disegna("inventata").includes("<h3"), false);
+  atteso("un valore iniziale che non è nel menu vale «nessuna scelta»: stesso identico disegno di quando non si è scelto niente (segnaposto selezionato, nessun contenuto)", disegna("inventata") === vuoto && disegna("") === vuoto && !disegna("inventata").includes("<h3"));
   atteso("ogni categoria «in lavorazione» mostra «Stiamo lavorando»", CATEGORIE_SERVIZI.filter((c) => c.stato === "in_lavorazione").every((c) => testoDi(disegna(c.valore)).includes(IN_LAVORAZIONE.titolo)));
 
   const sezione = leggi("src/app/site-omnia-ai/piani/servizi-per-categoria.tsx");
