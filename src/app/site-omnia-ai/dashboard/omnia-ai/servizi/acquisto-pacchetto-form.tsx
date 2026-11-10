@@ -16,13 +16,17 @@ export default function AcquistoPacchettoForm({
   prezzoCentesimi,
   privacyVersione,
   aperto,
+  offertaId,
 }: {
   servizio: ServizioPacchetto;
   quantita: number;
   prezzoCentesimi: number;
   privacyVersione: number | null;
   aperto: boolean;
+  // l'offerta dedicata al cliente, se il pacchetto è quello: il server rilegge quantità e prezzo dall'offerta
+  offertaId?: string;
 }) {
+  const suffisso = offertaId ? `offerta-${offertaId}` : String(quantita);
   const [stato, formAction, inCorso] = useActionState(acquistaPacchettoServizio, statoIniziale);
   const [accetta, setAccetta] = useState(false);
   const [approva, setApprova] = useState(false);
@@ -34,6 +38,7 @@ export default function AcquistoPacchettoForm({
     <form action={formAction} style={{ marginTop: 14 }}>
       <input type="hidden" name="servizio" value={servizio} />
       <input type="hidden" name="quantita" value={quantita} />
+      {offertaId && <input type="hidden" name="offertaId" value={offertaId} />}
       <input type="hidden" name="prezzoMostratoCentesimi" value={prezzo} />
 
       <details open={aperto}>
@@ -72,8 +77,8 @@ export default function AcquistoPacchettoForm({
       </details>
 
       <div className="omnia-check-riga">
-        <input id={`accettaCondizioni-${quantita}`} name="accettaCondizioni" type="checkbox" checked={accetta} onChange={(e) => setAccetta(e.target.checked)} required />
-        <label htmlFor={`accettaCondizioni-${quantita}`}>
+        <input id={`accettaCondizioni-${suffisso}`} name="accettaCondizioni" type="checkbox" checked={accetta} onChange={(e) => setAccetta(e.target.checked)} required />
+        <label htmlFor={`accettaCondizioni-${suffisso}`}>
           Dichiaro di aver letto e accettato le condizioni del pacchetto (versione {VERSIONE_CONDIZIONI_PACCHETTI}) e le avvertenze sul piano di lavoro (versione{" "}
           {VERSIONE_CONDIZIONI_PIANO_LAVORO}) e di aver preso visione della{" "}
           {privacyVersione ? (
@@ -87,8 +92,8 @@ export default function AcquistoPacchettoForm({
         </label>
       </div>
       <div className="omnia-check-riga">
-        <input id={`accettaClausole-${quantita}`} name="accettaClausole" type="checkbox" checked={approva} onChange={(e) => setApprova(e.target.checked)} required />
-        <label htmlFor={`accettaClausole-${quantita}`}>
+        <input id={`accettaClausole-${suffisso}`} name="accettaClausole" type="checkbox" checked={approva} onChange={(e) => setApprova(e.target.checked)} required />
+        <label htmlFor={`accettaClausole-${suffisso}`}>
           Dichiaro di approvare specificamente, ai sensi di legge, le clausole n. {CLAUSOLE_SPECIFICHE_PACCHETTI.map((c) => c.numero).join(", ")} del pacchetto (
           {CLAUSOLE_SPECIFICHE_PACCHETTI.map((c) => c.titolo.toLowerCase()).join("; ")}) e le clausole n. {CLAUSOLE_SPECIFICHE_PIANO_LAVORO.map((c) => c.numero).join(", ")} delle avvertenze sul
           piano di lavoro ({CLAUSOLE_SPECIFICHE_PIANO_LAVORO.map((c) => c.titolo.toLowerCase()).join("; ")}).

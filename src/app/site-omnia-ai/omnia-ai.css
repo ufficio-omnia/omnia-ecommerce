@@ -3085,6 +3085,21 @@ li {
   padding: 7px 0;
   border-top: 1px solid var(--bordo);
 }
+.omnia-pacchetto-concessione {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(var(--verde-rgb), 0.35);
+  border-radius: 10px;
+  background: rgba(var(--verde-rgb), 0.08);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.omnia-pacchetto-concessione p {
+  margin: 0;
+}
+.omnia-pacchetto-concessione .omnia-pacchetto-nota {
+  margin-top: 6px;
+}
 @media (max-width: 760px) {
   .omnia-pacchetti-griglia {
     grid-template-columns: 1fr;

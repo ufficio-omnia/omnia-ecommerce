@@ -210,10 +210,13 @@ export default function PianoLavoroPanel({
       {offerta.stato === "acquistabile" && pacchetto.proposta && !inCorso && !pending && (
         <p className="omnia-messaggio-stato avviso" style={{ marginTop: 14 }}>
           <strong>
-            Lavori su più gare di pulizie? Con un pacchetto: {testoUnita(pacchetto.proposta.quantita, "piano_lavoro")} a {formattaEuro(pacchetto.proposta.prezzoCentesimi)} (IVA inclusa), {formattaEuro(pacchetto.proposta.perUnitaCentesimi)} l&apos;uno.
+            {pacchetto.proposta.offertaId ? `${TESTI_PACCHETTI.offertaDedicata}: ` : "Lavori su più gare di pulizie? Con un pacchetto: "}
+            {testoUnita(pacchetto.proposta.quantita, "piano_lavoro")} a {formattaEuro(pacchetto.proposta.prezzoCentesimi)} (IVA inclusa), {formattaEuro(pacchetto.proposta.perUnitaCentesimi)} l&apos;uno.
           </strong>{" "}
           {TESTI_PACCHETTI.dettaglioPacchetto}{" "}
-          <Link href="/dashboard/omnia-ai/servizi?servizio=piano_lavoro">Vedi i pacchetti</Link>
+          <Link href={pacchetto.proposta.offertaId ? `/dashboard/omnia-ai/servizi?servizio=piano_lavoro&offerta=${pacchetto.proposta.offertaId}` : "/dashboard/omnia-ai/servizi?servizio=piano_lavoro"}>
+            {pacchetto.proposta.offertaId ? "Vedi l'offerta" : "Vedi i pacchetti"}
+          </Link>
         </p>
       )}
       {offerta.stato === "solo_titolare" && !inCorso && !pending && (

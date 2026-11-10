@@ -99,6 +99,7 @@ export function avvisaTitolareAcquistoPacchetto({
   emailUfficioGare,
   servizio,
   quantita,
+  offertaId = null,
 }: {
   admin: SupabaseClient;
   titolareId: string;
@@ -106,14 +107,17 @@ export function avvisaTitolareAcquistoPacchetto({
   emailUfficioGare: string;
   servizio: ServizioPacchetto;
   quantita: number;
+  // l'offerta dedicata al cliente da cui viene la richiesta (vuoto = un pacchetto dell'elenco)
+  offertaId?: string | null;
 }): Promise<EsitoAvviso> {
   return avvisaTitolare({
     admin,
     titolareId,
     membroId,
     tipo: "acquisto_pacchetto",
-    chiave: chiaveAvviso("acquisto_pacchetto", `${servizio}:${quantita}`),
-    costruisci: () => emailAvvisoAcquistoPacchetto({ emailUfficioGare, servizio, quantita }),
+    // una al giorno per ogni pacchetto dell'elenco (servizio e quantità) e per ogni offerta dedicata (il suo id)
+    chiave: chiaveAvviso("acquisto_pacchetto", offertaId ? `offerta:${offertaId}` : `${servizio}:${quantita}`),
+    costruisci: () => emailAvvisoAcquistoPacchetto({ emailUfficioGare, servizio, quantita, dedicato: offertaId !== null }),
   });
 }
 

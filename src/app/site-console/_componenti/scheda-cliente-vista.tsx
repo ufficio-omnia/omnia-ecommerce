@@ -6,8 +6,9 @@ import { eAnonimizzato, etichettaAccettazione, etichettaDocumento, type Accettaz
 import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlCliente } from "../azioni/utenti";
 import { modificaGareGratuite, resetPasswordCliente } from "../azioni/utenti-console";
 import { creaOffertaPilot, revocaOffertaPilot } from "../azioni/pilot";
-import { rettificaPacchettiCliente } from "../azioni/pacchetti";
-import { ETICHETTA_MOVIMENTO, SERVIZI, SERVIZI_PACCHETTO, testoUnita, type MovimentoTipo } from "@/lib/pacchetti-servizi-calcoli";
+import { creaOffertaDedicataCliente, rettificaPacchettiCliente, revocaOffertaDedicataCliente } from "../azioni/pacchetti";
+import { ETICHETTA_STATO_OFFERTA, revocabile } from "@/lib/console/offerte-calcoli";
+import { ETICHETTA_MOVIMENTO, LIMITI_OFFERTA, SERVIZI, SERVIZI_PACCHETTO, formattaEuro as formattaEuroPacchetto, testoUnita, type MovimentoTipo } from "@/lib/pacchetti-servizi-calcoli";
 import type { PilotCliente } from "@/lib/console/pilot";
 import { GARE_PILOT_MAX, statoOffertaPilot, testoGareIncluse, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
@@ -831,6 +832,87 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                     <input className="cn-input" id="motivo-pacchetti" name="motivo" required minLength={2} maxLength={300} placeholder="es. regalo per un disservizio" />
                   </div>
                 </ModuloAzione>
+
+                <h3 className="cn-sottotitolo" style={{ marginTop: 16 }}>
+                  Offerte dedicate a questo cliente
+                </h3>
+                {!s.pacchetti.offerte.disponibile ? (
+                  <p className="cn-nota-inline">Le offerte dedicate sono disponibili dopo la migrazione 0105.</p>
+                ) : (
+                  <>
+                    {s.pacchetti.offerte.elenco.length === 0 ? (
+                      <p className="cn-vuoto">Nessuna offerta dedicata.</p>
+                    ) : (
+                      <div className="cn-scorri">
+                        <table className="cn-tab">
+                          <thead>
+                            <tr>
+                              <th>Pacchetto</th>
+                              <th className="num">Prezzo</th>
+                              <th>Valida fino al</th>
+                              <th>Stato</th>
+                              <th>Azione</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {s.pacchetti.offerte.elenco.map((o) => (
+                              <tr key={o.id}>
+                                <td className="cn-cella-doppia">
+                                  {SERVIZI[o.servizio].nome}: {testoUnita(o.quantita, o.servizio)}
+                                  <small>
+                                    creata il {formattaDataOra(o.creataIl)} da {o.creataDa}
+                                  </small>
+                                  {o.nota && <small>Nota: {o.nota}</small>}
+                                </td>
+                                <td className="num">{formattaEuroPacchetto(o.prezzoCentesimi)}</td>
+                                <td>{o.scadeIl ? formattaData(o.scadeIl) : "senza scadenza"}</td>
+                                <td>
+                                  <Badge tono={o.stato === "attiva" || o.stato === "acquistata" ? "ok" : "neutro"}>{ETICHETTA_STATO_OFFERTA[o.stato]}</Badge>
+                                </td>
+                                <td>
+                                  {revocabile(o.stato) && (
+                                    <ModuloAzione azione={revocaOffertaDedicataCliente} campi={{ id: o.id }} etichetta="Revoca" etichettaInCorso="Revoco…" messaggioOk="Revocata.">
+                                      <></>
+                                    </ModuloAzione>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p className="cn-nota-inline" style={{ margin: "10px 0" }}>
+                      Crea un pacchetto privato a prezzo e numero decisi da te: lo vede solo questo cliente (e il suo Ufficio Gare), si compra una volta sola ed è visibile solo con la vendita accesa. Prezzo totale IVA inclusa.
+                    </p>
+                    <ModuloAzione azione={creaOffertaDedicataCliente} campi={{ email: s.utente.email, servizio: "piano_lavoro" }} etichetta="Crea l'offerta dedicata" etichettaInCorso="Creo…" messaggioOk="Offerta creata: il cliente la vede nella sua area." variante="primario" svuota classe="cn-modulo-linea">
+                      <div>
+                        <label className="cn-etichetta" htmlFor="quantita-offerta">
+                          Quanti piani di lavoro
+                        </label>
+                        <input className="cn-input" id="quantita-offerta" name="quantita" inputMode="numeric" required placeholder={`da ${LIMITI_OFFERTA.quantitaMinima} a ${LIMITI_OFFERTA.quantitaMassima}`} style={{ maxWidth: 150 }} autoComplete="off" />
+                      </div>
+                      <div>
+                        <label className="cn-etichetta" htmlFor="prezzo-offerta">
+                          Prezzo totale in euro (IVA inclusa)
+                        </label>
+                        <input className="cn-input" id="prezzo-offerta" name="prezzo" inputMode="decimal" required placeholder="es. 450" style={{ maxWidth: 150 }} autoComplete="off" />
+                      </div>
+                      <div>
+                        <label className="cn-etichetta" htmlFor="scadenza-offerta">
+                          Valida fino al (facoltativo)
+                        </label>
+                        <input className="cn-input" id="scadenza-offerta" name="scadeIl" type="date" />
+                      </div>
+                      <div>
+                        <label className="cn-etichetta" htmlFor="nota-offerta">
+                          Nota interna (facoltativa)
+                        </label>
+                        <input className="cn-input" id="nota-offerta" name="nota" maxLength={LIMITI_OFFERTA.notaMassima} placeholder="il cliente non la vede" />
+                      </div>
+                    </ModuloAzione>
+                  </>
+                )}
               </>
             )}
           </div>

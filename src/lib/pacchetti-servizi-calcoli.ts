@@ -173,6 +173,85 @@ export function trovaPacchetto(catalogo: PacchettoCatalogo[], quantita: unknown)
   return typeof q === "number" ? (catalogo.find((p) => p.quantita === q) ?? null) : null;
 }
 
+// ───── offerte dedicate: pacchetti privati a prezzo e quantità decisi dalla console per UN cliente ─────
+
+export const LIMITI_OFFERTA = { quantitaMinima: 1, quantitaMassima: 1000, prezzoMinimoCentesimi: 100, prezzoMassimoCentesimi: 10_000_000, notaMassima: 300 } as const;
+
+// Un'offerta dedicata come la vede il cliente (la nota interna della console non c'è mai).
+export type OffertaDedicata = { id: string; servizio: ServizioPacchetto; quantita: number; prezzoCentesimi: number; scadeIl: string | null };
+
+export type StatoOfferta = "attiva" | "acquistata" | "revocata";
+
+// La riga del database
+export type RigaOfferta = {
+  id: string;
+  user_id: string;
+  servizio: ServizioPacchetto;
+  quantita: number;
+  prezzo_centesimi: number;
+  scade_il: string | null;
+  nota: string | null;
+  stato: StatoOfferta;
+  creata_il: string;
+  creata_da_email: string;
+  chiusa_il: string | null;
+  chiusa_da_email: string | null;
+  acquisto_id: string | null;
+};
+
+// Si può comprare adesso? Attiva e non scaduta (l'ultimo giorno incluso). `oggi` è il giorno di Roma (AAAA-MM-GG).
+export function offertaAcquistabile(r: Pick<RigaOfferta, "stato" | "scade_il">, oggi: string): boolean {
+  return r.stato === "attiva" && (!r.scade_il || r.scade_il >= oggi);
+}
+
+export function daRigaOfferta(r: Pick<RigaOfferta, "id" | "servizio" | "quantita" | "prezzo_centesimi" | "scade_il">): OffertaDedicata {
+  return { id: r.id, servizio: r.servizio, quantita: r.quantita, prezzoCentesimi: r.prezzo_centesimi, scadeIl: r.scade_il };
+}
+
+export type NuovaOffertaValori = { email: string; servizio: ServizioPacchetto; quantita: number; prezzoCentesimi: number; scadeIl: string | null; nota: string | null };
+
+const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+// I campi del modulo della console, come arrivano: si controlla tutto qui (il server non si fida del browser). `oggi`: giorno di Roma (AAAA-MM-GG).
+export function validaNuovaOfferta(
+  input: { email: string; servizio: string; quantita: string; prezzoEuro: string; scadeIl: string; nota: string },
+  oggi: string,
+): { ok: true; valori: NuovaOffertaValori } | { ok: false; errore: string } {
+  const email = input.email.trim().toLowerCase();
+  if (email === "") return { ok: false, errore: "Scrivi l'email del cliente (il titolare dell'account)." };
+  if (email.length > 254 || !FORMATO_EMAIL.test(email)) return { ok: false, errore: "L'email del cliente non è valida." };
+
+  if (!eServizioPacchetto(input.servizio)) return { ok: false, errore: "Scegli il servizio." };
+  if (!SERVIZI[input.servizio].disponibile) return { ok: false, errore: `${SERVIZI[input.servizio].nome} non è ancora disponibile: non si possono fare offerte.` };
+
+  const q = input.quantita.trim();
+  if (!/^\d{1,5}$/.test(q)) return { ok: false, errore: "La quantità dev'essere un numero intero." };
+  const quantita = Number(q);
+  if (quantita < LIMITI_OFFERTA.quantitaMinima || quantita > LIMITI_OFFERTA.quantitaMassima) return { ok: false, errore: `La quantità dev'essere tra ${LIMITI_OFFERTA.quantitaMinima} e ${LIMITI_OFFERTA.quantitaMassima}.` };
+
+  const prezzoCentesimi = euroInCentesimi(input.prezzoEuro);
+  if (prezzoCentesimi === null) return { ok: false, errore: "Il prezzo dev'essere un importo in euro (per esempio 450 oppure 449,90), IVA inclusa." };
+  if (prezzoCentesimi < LIMITI_OFFERTA.prezzoMinimoCentesimi || prezzoCentesimi > LIMITI_OFFERTA.prezzoMassimoCentesimi) return { ok: false, errore: "Il prezzo dev'essere tra 1 € e 100.000 €." };
+
+  const scadenza = input.scadeIl.trim();
+  let scadeIl: string | null = null;
+  if (scadenza !== "") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(scadenza) || Number.isNaN(new Date(`${scadenza}T00:00:00Z`).getTime())) return { ok: false, errore: "La data di scadenza non è valida." };
+    if (scadenza < oggi) return { ok: false, errore: "La data di scadenza è già passata." };
+    scadeIl = scadenza;
+  }
+
+  const nota = input.nota.trim();
+  if (nota.length > LIMITI_OFFERTA.notaMassima) return { ok: false, errore: `La nota è troppo lunga (massimo ${LIMITI_OFFERTA.notaMassima} caratteri).` };
+
+  return { ok: true, valori: { email, servizio: input.servizio, quantita, prezzoCentesimi, scadeIl, nota: nota === "" ? null : nota } };
+}
+
+// «31/12/2026»
+export function dataItaliana(iso: string): string {
+  return iso.split("-").reverse().join("/");
+}
+
 // ───── cosa si offre a chi guarda ─────
 
 export type OffertaPacchetti =
@@ -185,40 +264,53 @@ export type OffertaPacchetti =
   // l'Ufficio Gare vede i pacchetti, ma compra solo il titolare: «Acquista» manda al titolare una email
   | { stato: "solo_titolare"; pacchetti: PacchettoCatalogo[] };
 
-export function valutaOffertaPacchetti(c: { servizio: ServizioPacchetto; titolare: boolean; venditaAttiva: boolean; catalogo: PacchettoCatalogo[] }): OffertaPacchetti {
+// `haOfferte`: il cliente ha almeno un'offerta dedicata attiva (si vende anche con l'elenco pubblico vuoto).
+export function valutaOffertaPacchetti(c: { servizio: ServizioPacchetto; titolare: boolean; venditaAttiva: boolean; catalogo: PacchettoCatalogo[]; haOfferte?: boolean }): OffertaPacchetti {
   if (!SERVIZI[c.servizio].disponibile) return { stato: "in_arrivo" };
-  if (!c.venditaAttiva || c.catalogo.length === 0) return { stato: "nessuna" };
+  if (!c.venditaAttiva || (c.catalogo.length === 0 && !c.haOfferte)) return { stato: "nessuna" };
   return c.titolare ? { stato: "acquistabile", pacchetti: c.catalogo } : { stato: "solo_titolare", pacchetti: c.catalogo };
 }
 
 // ───── quali servizi compaiono nella home ─────
 
-export type ServizioInHome = { servizio: ServizioPacchetto; motivo: "settore" | "saldo" | "acquisti" };
+export type ServizioInHome = { servizio: ServizioPacchetto; motivo: "settore" | "saldo" | "acquisti" | "offerta" };
 
 // Compare il servizio dei settori che l'azienda tratta davvero (almeno una gara di quel genere; una gara non ancora classificata conta come
 // pulizie, come per la scheda della gara) e, in ogni caso, quello di cui ha già un saldo o degli acquisti: i soldi già spesi si vedono sempre.
 // Nessuna gara e nessun saldo = nulla.
-export function serviziPerLaHome(c: { settoriGare: (Settore | null)[]; saldi: Partial<Record<ServizioPacchetto, number>>; acquisti: Partial<Record<ServizioPacchetto, number>> }): ServizioInHome[] {
+export function serviziPerLaHome(c: {
+  settoriGare: (Settore | null)[];
+  saldi: Partial<Record<ServizioPacchetto, number>>;
+  acquisti: Partial<Record<ServizioPacchetto, number>>;
+  // quante offerte dedicate attive ha il cliente, per servizio (un'offerta riservata a lui si vede sempre, anche senza gare di quel settore)
+  offerte?: Partial<Record<ServizioPacchetto, number>>;
+}): ServizioInHome[] {
   const risultato: ServizioInHome[] = [];
   for (const servizio of SERVIZI_PACCHETTO) {
     const trattaIlSettore = c.settoriGare.some((s) => (servizio === "piano_lavoro" ? proponePianoLavoro(s) : proponeFoodMenu(s)));
     if (trattaIlSettore) risultato.push({ servizio, motivo: "settore" });
     else if ((c.saldi[servizio] ?? 0) > 0) risultato.push({ servizio, motivo: "saldo" });
     else if ((c.acquisti[servizio] ?? 0) > 0) risultato.push({ servizio, motivo: "acquisti" });
+    else if ((c.offerte?.[servizio] ?? 0) > 0) risultato.push({ servizio, motivo: "offerta" });
   }
   return risultato;
 }
 
-export type PacchettoConConvenienza = PacchettoCatalogo & { perUnitaCentesimi: number; risparmioCentesimi: number | null };
+// `offertaId` e `scadeIl` solo per le offerte dedicate (riservate al cliente); assenti per i pacchetti dell'elenco pubblico.
+export type PacchettoConConvenienza = PacchettoCatalogo & { perUnitaCentesimi: number; risparmioCentesimi: number | null; offertaId?: string; scadeIl?: string | null };
 
 export type SchedaServizio = {
   servizio: ServizioPacchetto;
   motivo: ServizioInHome["motivo"];
   // unità residue dell'account
   saldo: number;
+  // l'account ha avuto delle unità (almeno una riga di saldo, anche a zero) o ha già comprato: serve a dire «esaurito» solo a chi le ha finite
+  haAvutoUnita: boolean;
   offerta: OffertaPacchetti;
-  // i pacchetti da mostrare (solo se si possono comprare o richiedere)
+  // i pacchetti da mostrare (solo se si possono comprare o richiedere): prima le offerte dedicate al cliente, poi quelli dell'elenco
   pacchetti: PacchettoConConvenienza[];
+  // concessioni gratuite attive della console, già raccontate in una riga (solo per il piano di lavoro)
+  concessioni: string[];
 };
 
 // Cosa mostrano la home e la pagina dei servizi: una scheda per ogni servizio che l'azienda tratta (o di cui ha già un saldo), tolte quelle senza
@@ -231,18 +323,33 @@ export function costruisciSchede(c: {
   venditaAttiva: boolean;
   cataloghi: Partial<Record<ServizioPacchetto, PacchettoCatalogo[]>>;
   prezzoSingolo: Partial<Record<ServizioPacchetto, number | null>>;
+  // le offerte dedicate attive e non scadute di QUESTO cliente (già filtrate)
+  offerte?: OffertaDedicata[];
+  // le concessioni gratuite attive, già raccontate, per servizio
+  concessioni?: Partial<Record<ServizioPacchetto, string[]>>;
 }): SchedaServizio[] {
   const schede: SchedaServizio[] = [];
-  for (const { servizio, motivo } of serviziPerLaHome({ settoriGare: c.settoriGare, saldi: c.saldi, acquisti: c.acquisti })) {
+  const offerte = c.offerte ?? [];
+  const offerteDi = (servizio: ServizioPacchetto) => offerte.filter((o) => o.servizio === servizio);
+  const conteggioOfferte: Partial<Record<ServizioPacchetto, number>> = {};
+  for (const o of offerte) conteggioOfferte[o.servizio] = (conteggioOfferte[o.servizio] ?? 0) + 1;
+  for (const { servizio, motivo } of serviziPerLaHome({ settoriGare: c.settoriGare, saldi: c.saldi, acquisti: c.acquisti, offerte: conteggioOfferte })) {
     const saldo = c.saldi[servizio] ?? 0;
-    const offerta = valutaOffertaPacchetti({ servizio, titolare: c.titolare, venditaAttiva: c.venditaAttiva, catalogo: c.cataloghi[servizio] ?? [] });
-    if (offerta.stato === "nessuna" && saldo === 0) continue;
+    const haAvutoUnita = c.saldi[servizio] !== undefined || (c.acquisti[servizio] ?? 0) > 0;
+    const concessioni = c.concessioni?.[servizio] ?? [];
+    const proprie = offerteDi(servizio);
+    const offerta = valutaOffertaPacchetti({ servizio, titolare: c.titolare, venditaAttiva: c.venditaAttiva, catalogo: c.cataloghi[servizio] ?? [], haOfferte: proprie.length > 0 });
+    if (offerta.stato === "nessuna" && saldo === 0 && concessioni.length === 0) continue;
     const singolo = c.prezzoSingolo[servizio] ?? null;
-    const pacchetti =
+    const conConvenienza = (p: PacchettoCatalogo) => (singolo === null ? { perUnitaCentesimi: Math.round(p.prezzoCentesimi / p.quantita), risparmioCentesimi: null } : convenienzaPacchetto(p, singolo));
+    const pacchetti: PacchettoConConvenienza[] =
       offerta.stato === "acquistabile" || offerta.stato === "solo_titolare"
-        ? offerta.pacchetti.map((p) => ({ ...p, ...(singolo === null ? { perUnitaCentesimi: Math.round(p.prezzoCentesimi / p.quantita), risparmioCentesimi: null } : convenienzaPacchetto(p, singolo)) }))
+        ? [
+            ...proprie.map((o) => ({ quantita: o.quantita, prezzoCentesimi: o.prezzoCentesimi, ...conConvenienza(o), offertaId: o.id, scadeIl: o.scadeIl })),
+            ...offerta.pacchetti.map((p) => ({ ...p, ...conConvenienza(p) })),
+          ]
         : [];
-    schede.push({ servizio, motivo, saldo, offerta, pacchetti });
+    schede.push({ servizio, motivo, saldo, haAvutoUnita, offerta, pacchetti, concessioni });
   }
   return schede;
 }
@@ -252,13 +359,17 @@ export function costruisciSchede(c: {
 export type PacchettoNellaGara = {
   saldo: number;
   garaGiaConsumata: boolean;
-  proposta: { quantita: number; prezzoCentesimi: number; perUnitaCentesimi: number } | null;
+  // offertaId: la proposta è un'offerta dedicata al cliente (non un pacchetto dell'elenco)
+  proposta: { quantita: number; prezzoCentesimi: number; perUnitaCentesimi: number; offertaId?: string } | null;
 };
 
-// Il pacchetto che costa meno per ogni unità (a parità, il più grande). null = nessun pacchetto in vendita.
-export function proponiPacchettoPiuConveniente(catalogo: PacchettoCatalogo[]): PacchettoNellaGara["proposta"] {
-  let migliore: PacchettoCatalogo | null = null;
-  for (const p of catalogo) {
+// Il pacchetto che costa meno per ogni unità, tra quelli dell'elenco e le offerte dedicate al cliente (a parità, l'offerta dedicata, poi il più grande).
+// null = niente da proporre.
+export function proponiPacchettoPiuConveniente(catalogo: PacchettoCatalogo[], offerte: OffertaDedicata[] = []): PacchettoNellaGara["proposta"] {
+  type Candidato = PacchettoCatalogo & { offertaId?: string };
+  const candidati: Candidato[] = [...offerte.map((o) => ({ quantita: o.quantita, prezzoCentesimi: o.prezzoCentesimi, offertaId: o.id })), ...catalogo];
+  let migliore: Candidato | null = null;
+  for (const p of candidati) {
     if (!migliore) migliore = p;
     else {
       const a = p.prezzoCentesimi / p.quantita;
@@ -266,7 +377,9 @@ export function proponiPacchettoPiuConveniente(catalogo: PacchettoCatalogo[]): P
       if (a < b || (a === b && p.quantita > migliore.quantita)) migliore = p;
     }
   }
-  return migliore ? { quantita: migliore.quantita, prezzoCentesimi: migliore.prezzoCentesimi, perUnitaCentesimi: Math.round(migliore.prezzoCentesimi / migliore.quantita) } : null;
+  return migliore
+    ? { quantita: migliore.quantita, prezzoCentesimi: migliore.prezzoCentesimi, perUnitaCentesimi: Math.round(migliore.prezzoCentesimi / migliore.quantita), ...(migliore.offertaId ? { offertaId: migliore.offertaId } : {}) }
+    : null;
 }
 
 // ───── il saldo e il diritto alla generazione ─────
@@ -293,6 +406,12 @@ export const TESTI_PACCHETTI = {
   dettaglioPacchetto: "Non scadono: si esauriscono man mano che li usi, anche in più mesi. Si perdono se l'abbonamento cessa.",
   saldoEtichetta: "Ti restano",
   saldoZero: "Nessun piano di lavoro residuo",
+  // chi non ha mai avuto unità non ha «finito» nulla
+  nessunPacchetto: "Non hai pacchetti attivi",
+  offertaDedicata: "Offerta dedicata a te",
+  validaFinoAl: (iso: string) => `valida fino al ${dataItaliana(iso)}`,
+  concessioneEtichetta: "Concessione gratuita",
+  concessioneNota: "Per le gare coperte dalla concessione il piano di lavoro non consuma il pacchetto.",
   pacchettoPagato: "Pagamento ricevuto: sto aggiungendo i piani di lavoro al tuo saldo. Se non li vedi, aggiorna la pagina tra qualche istante.",
   pacchettoAnnullato: "Pagamento annullato: non è stato addebitato nulla.",
   soloTitolareNota: "Il pacchetto lo acquista e lo paga l'amministratore dell'azienda: premendo «Acquista» gli arriva una email con la tua richiesta.",
@@ -375,6 +494,8 @@ export type RigaAcquistoPacchetto = Pick<RigaAcquistoPianoLavoro, "id" | "user_i
   stato: "in_attesa_pagamento" | "pagata";
   accreditata_il: string | null;
   livemode: boolean;
+  // l'offerta dedicata da cui viene l'acquisto (colonna della migrazione 0105: assente prima, vuota per i pacchetti dell'elenco)
+  offerta_id?: string | null;
 };
 
 export type MovimentoTipo = "acquisto" | "consumo" | "riaccredito" | "rettifica" | "estinzione";

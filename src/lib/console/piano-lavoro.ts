@@ -25,9 +25,11 @@ import {
 import { SERVIZI, interpretaCatalogoPacchetti, type PacchettoCatalogo } from "@/lib/pacchetti-servizi-calcoli";
 import { leggiPrezziConsole } from "./prezzi";
 import { inBlocchi } from "./costi";
+import { leggiOfferteDedicateConsole, type OfferteDedicateConsole } from "./offerte";
 
 // Dati della pagina «Piano di lavoro e pacchetti» della console: la vendita (UN interruttore, per la singola gara e per i pacchetti), il prezzo della
-// singola gara, i pacchetti prepagati in vendita (migrazione 0104), la regola per gli utenti in prova e le concessioni gratuite.
+// singola gara, i pacchetti prepagati in vendita (migrazione 0104), le offerte dedicate a un cliente (migrazione 0105), la regola per gli utenti in prova
+// e le concessioni gratuite.
 // I supplementi mensili per avere il piano di lavoro nell'abbonamento NON si vendono più (decisione del 09/11/2026): restano nel codice
 // (leggiPianiAbbonamentoConsole, usata solo dall'azione «Allinea i prezzi su Stripe») ma non sono più in pagina né legati alla vendita.
 // Da chiamare solo dopo richiediAdminPagina() / richiediAdminAzione().
@@ -75,6 +77,8 @@ export type DatiPianoLavoroConsole = {
   // false = manca la migrazione 0101 (concessioni gratuite)
   concessioniDisponibili: boolean;
   concessioni: ConcessioneConsole[];
+  // offerte dedicate a un cliente (migrazione 0105); disponibile=false = manca la migrazione
+  offerte: OfferteDedicateConsole;
 };
 
 // L'elenco salvato dalla console è un JSON valido (anche «[]» o uguale a quello di partenza)? Allora è una scelta della console, non il valore di partenza.
@@ -161,6 +165,9 @@ export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole>
   if (concessioniQ.error && !schemaAssente(concessioniQ.error)) console.error("Console: lettura delle concessioni fallita", concessioniQ.error.message);
   const righe = concessioniQ.error ? [] : (concessioniQ.data ?? []);
 
+  // Le offerte dedicate: senza la migrazione 0105 non ci sono (la pagina lo dice, senza errori).
+  const offerte = await leggiOfferteDedicateConsole({ limite: 200 });
+
   let emailUtente = new Map<string, string>();
   const usate = new Map<string, Set<string>>();
   if (righe.length > 0) {
@@ -195,6 +202,7 @@ export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole>
     pacchettiDisponibili,
     unitaResidue: saldiQ.error ? null : (saldiQ.data ?? []).reduce((somma, r) => somma + Math.max(0, Number(r.saldo) || 0), 0),
     concessioniDisponibili,
+    offerte,
     concessioni: righe.map((r) => ({
       id: r.id,
       utente: emailUtente.get(r.user_id) ?? "(cliente non trovato)",

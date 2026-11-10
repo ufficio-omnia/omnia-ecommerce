@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediAdminAzione } from "@/lib/console/accesso";
 import { MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO, MESSAGGIO_E_UN_UFFICIO_GARE, leggiTitolareDelMembro } from "@/lib/console/ufficio-gare";
-import { rettificaPacchetti } from "@/lib/pacchetti-servizi";
-import { SERVIZI, eServizioPacchetto } from "@/lib/pacchetti-servizi-calcoli";
+import { giornoRoma } from "@/lib/omnia-ai-catalogo-calcoli";
+import { creaOffertaDedicata, rettificaPacchetti, revocaOffertaDedicata } from "@/lib/pacchetti-servizi";
+import { SERVIZI, eServizioPacchetto, validaNuovaOfferta } from "@/lib/pacchetti-servizi-calcoli";
 
 // Pacchetti prepagati di servizi aggiuntivi, dalla console: aggiungere o correggere le unità di un cliente (un regalo è una rettifica positiva con un
-// motivo). Ogni azione parte da richiediAdminAzione(). La variazione la fa una funzione SQL (migrazione 0104) che mette il registro e il saldo
+// motivo) e creare o revocare le OFFERTE DEDICATE (pacchetti privati, a prezzo e quantità decisi qui, che vede solo quel cliente). Ogni azione parte da
+// richiediAdminAzione(). La variazione la fa una funzione SQL (migrazione 0104) che mette il registro e il saldo
 // nella stessa transazione e non lascia scendere il saldo sotto zero. Le unità si perdono comunque alla cessazione dell'abbonamento, come i crediti.
 
 export type StatoPacchettiConsole = { errore?: string; ok?: boolean; avviso?: string };
@@ -57,6 +59,63 @@ export async function rettificaPacchettiCliente(_stato: StatoPacchettiConsole, f
   if (!esito.ok) return { errore: esito.errore };
 
   // il nuovo saldo si vede nel pannello, che si aggiorna da solo
+  revalidatePath("/site-console", "layout");
+  return { ok: true };
+}
+
+// Crea un'offerta dedicata: «10 piani di lavoro a 450 €, IVA inclusa, fino al 31/12» riservata a UN cliente (il titolare). La vede solo lui (e il suo
+// Ufficio Gare, che con «Acquista» avvisa il titolare), si compra una volta sola, e vale solo con la vendita accesa. Qui non si incassa e non si scrive
+// a nessuno: l'offerta compare nell'area del cliente. Il servizio è fisso nella pagina ma si riconvalida qui (validaNuovaOfferta).
+export async function creaOffertaDedicataCliente(_stato: StatoPacchettiConsole, formData: FormData): Promise<StatoPacchettiConsole> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+
+  const esito = validaNuovaOfferta(
+    {
+      email: String(formData.get("email") ?? ""),
+      servizio: String(formData.get("servizio") ?? ""),
+      quantita: String(formData.get("quantita") ?? ""),
+      prezzoEuro: String(formData.get("prezzo") ?? ""),
+      scadeIl: String(formData.get("scadeIl") ?? ""),
+      nota: String(formData.get("nota") ?? ""),
+    },
+    giornoRoma(new Date()),
+  );
+  if (!esito.ok) return { errore: esito.errore };
+  const { valori } = esito;
+
+  const admin = createAdminClient();
+  const { data: utente, error: erroreUtente } = await admin.from("users").select("id").eq("email", valori.email).maybeSingle<{ id: string }>();
+  if (erroreUtente) {
+    console.error("Console: lettura del cliente per l'offerta dedicata fallita", erroreUtente.message);
+    return { errore: "Lettura del cliente non riuscita." };
+  }
+  if (!utente) return { errore: "Nessun cliente con questo indirizzo email." };
+
+  // l'offerta è del titolare: a un Ufficio Gare non si dedica nulla, e se il controllo non riesce non si crea nulla
+  const titolareDelMembro = await leggiTitolareDelMembro(utente.id, admin);
+  if (titolareDelMembro === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+  if (titolareDelMembro) return { errore: MESSAGGIO_E_UN_UFFICIO_GARE };
+
+  const creata = await creaOffertaDedicata(admin, { userId: utente.id, valori, daEmail: sessione.email });
+  if (!creata.ok) return { errore: creata.errore };
+
+  revalidatePath("/site-console", "layout");
+  return { ok: true };
+}
+
+// Revoca un'offerta finché è attiva: sparisce subito dall'area del cliente. Una già comprata non si tocca (le unità sono nel suo saldo).
+export async function revocaOffertaDedicataCliente(_stato: StatoPacchettiConsole, formData: FormData): Promise<StatoPacchettiConsole> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!UUID.test(id)) return { errore: "Offerta non valida." };
+
+  const esito = await revocaOffertaDedicata(createAdminClient(), id, sessione.email);
+  if (esito === "errore") return { errore: "Revoca non riuscita. Riprova." };
+  if (esito === "non_attiva") return { errore: "L'offerta non è più attiva (già acquistata o revocata): non c'è nulla da revocare." };
+
   revalidatePath("/site-console", "layout");
   return { ok: true };
 }

@@ -14,9 +14,10 @@ export const metadata: Metadata = { title: "Servizi aggiuntivi — OMNIA AI" };
 
 const dataOra = (iso: string) => new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-// Servizi aggiuntivi a pacchetto (piano di lavoro e, in arrivo, OMNIA FOOD MENU): le unità residue, i pacchetti in vendita con il modulo d'acquisto e lo
-// storico dei movimenti. Pagina del TITOLARE: l'Ufficio Gare vede i pacchetti nella home e con «Acquista» gli manda una email, ma paga solo lui.
-export default async function ServiziAggiuntiviPage({ searchParams }: { searchParams: Promise<{ servizio?: string; quantita?: string; pacchetto?: string }> }) {
+// Servizi aggiuntivi a pacchetto (piano di lavoro e, in arrivo, OMNIA FOOD MENU): le unità residue, le concessioni gratuite, le offerte dedicate al
+// cliente, i pacchetti in vendita con il modulo d'acquisto e lo storico dei movimenti. Pagina del TITOLARE: l'Ufficio Gare vede i pacchetti nella
+// home e con «Acquista» gli manda una email, ma paga solo lui.
+export default async function ServiziAggiuntiviPage({ searchParams }: { searchParams: Promise<{ servizio?: string; quantita?: string; offerta?: string; pacchetto?: string }> }) {
   const supabase = await createClient();
   const sessione = await richiediTitolarePagina();
   if (!sessione) return null;
@@ -27,6 +28,7 @@ export default async function ServiziAggiuntiviPage({ searchParams }: { searchPa
   const ritorno = query.pacchetto === "pagato" || query.pacchetto === "annullato" ? query.pacchetto : null;
   const servizioAperto = eServizioPacchetto(query.servizio) ? query.servizio : null;
   const quantitaAperta = Number(query.quantita);
+  const offertaAperta = typeof query.offerta === "string" ? query.offerta : null;
 
   const statoAccesso = await getOmniaAiAccessState(accountId, admin);
   const attivo = statoAccesso.stato === "attivo";
@@ -74,7 +76,14 @@ export default async function ServiziAggiuntiviPage({ searchParams }: { searchPa
             <span className="omnia-eyebrow" id={`titolo-${s.servizio}`}>
               {s.servizio === "food_menu" ? FOOD_MENU.nome : SERVIZI[s.servizio].nome}
             </span>
-            {s.offerta.stato === "in_arrivo" ? <span className="omnia-badge ambra">{FOOD_MENU.stato}</span> : <span className={`omnia-badge ${s.saldo > 0 ? "verde" : "ambra"}`}>{s.saldo > 0 ? `${s.saldo} residui` : "Esaurito"}</span>}
+            {s.offerta.stato === "in_arrivo" ? (
+              <span className="omnia-badge ambra">{FOOD_MENU.stato}</span>
+            ) : s.saldo > 0 ? (
+              <span className="omnia-badge verde">{`${s.saldo} residu${s.saldo === 1 ? "o" : "i"}`}</span>
+            ) : s.haAvutoUnita ? (
+              // «Esaurito» solo a chi ha avuto delle unità e le ha finite
+              <span className="omnia-badge ambra">Esaurito</span>
+            ) : null}
           </div>
           <p className="omnia-pacchetto-testo">{s.servizio === "food_menu" ? FOOD_MENU.testo : SERVIZI[s.servizio].descrizione}</p>
           {s.offerta.stato === "in_arrivo" && <p className="omnia-pacchetto-nota">{TESTI_PACCHETTI.foodMenuArrivo}</p>}
@@ -85,24 +94,47 @@ export default async function ServiziAggiuntiviPage({ searchParams }: { searchPa
                 <>
                   {TESTI_PACCHETTI.saldoEtichetta} <strong>{s.saldo}</strong> {s.saldo === 1 ? SERVIZI[s.servizio].unitaSingolare : SERVIZI[s.servizio].unitaPlurale}
                 </>
-              ) : (
+              ) : s.haAvutoUnita ? (
                 TESTI_PACCHETTI.saldoZero
+              ) : (
+                TESTI_PACCHETTI.nessunPacchetto
               )}
             </p>
           )}
 
+          {s.concessioni.length > 0 && (
+            <div className="omnia-pacchetto-concessione">
+              {s.concessioni.map((testo) => (
+                <p key={testo}>
+                  <strong>{TESTI_PACCHETTI.concessioneEtichetta}:</strong> {testo}
+                </p>
+              ))}
+              <p className="omnia-pacchetto-nota">{TESTI_PACCHETTI.concessioneNota}</p>
+            </div>
+          )}
+
           {s.pacchetti.map((p) => (
-            <div className="omnia-pacchetto-scheda" key={p.quantita} style={{ marginTop: 14 }} id={`${s.servizio}-${p.quantita}`}>
+            <div className="omnia-pacchetto-scheda" key={p.offertaId ?? p.quantita} style={{ marginTop: 14 }} id={p.offertaId ? `offerta-${p.offertaId}` : `${s.servizio}-${p.quantita}`}>
               <div className="omnia-pacchetto-riga-testo">
+                {p.offertaId && <span className="omnia-badge verde">{TESTI_PACCHETTI.offertaDedicata}</span>}
+                {p.offertaId && " "}
                 <strong>
                   {testoUnita(p.quantita, s.servizio)} — {formattaEuro(p.prezzoCentesimi)}
                 </strong>{" "}
                 (IVA inclusa)
                 <small>
-                  {formattaEuro(p.perUnitaCentesimi)} l&apos;uno{p.risparmioCentesimi ? ` · risparmi ${formattaEuro(p.risparmioCentesimi)} rispetto all'acquisto per singola gara` : ""}. {TESTI_PACCHETTI.dettaglioPacchetto}
+                  {formattaEuro(p.perUnitaCentesimi)} l&apos;uno{p.risparmioCentesimi ? ` · risparmi ${formattaEuro(p.risparmioCentesimi)} rispetto all'acquisto per singola gara` : ""}
+                  {p.offertaId && p.scadeIl ? ` · ${TESTI_PACCHETTI.validaFinoAl(p.scadeIl)}` : ""}. {TESTI_PACCHETTI.dettaglioPacchetto}
                 </small>
               </div>
-              <AcquistoPacchettoForm servizio={s.servizio} quantita={p.quantita} prezzoCentesimi={p.prezzoCentesimi} privacyVersione={privacyVersione} aperto={servizioAperto === s.servizio && quantitaAperta === p.quantita} />
+              <AcquistoPacchettoForm
+                servizio={s.servizio}
+                quantita={p.quantita}
+                prezzoCentesimi={p.prezzoCentesimi}
+                privacyVersione={privacyVersione}
+                offertaId={p.offertaId}
+                aperto={p.offertaId ? offertaAperta === p.offertaId : servizioAperto === s.servizio && quantitaAperta === p.quantita}
+              />
             </div>
           ))}
 
