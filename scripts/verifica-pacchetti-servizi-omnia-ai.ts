@@ -20,18 +20,22 @@ import {
   CLAUSOLE_SPECIFICHE_PACCHETTI,
   ETICHETTA_MOVIMENTO,
   LIMITI_CATALOGO,
+  LIMITI_OFFERTA,
   SERVIZI,
   SERVIZI_PACCHETTO,
   TESTI_PACCHETTI,
   VERSIONE_CONDIZIONI_PACCHETTI,
   convenienzaPacchetto,
   costruisciSchede,
+  daRigaOfferta,
+  dataItaliana,
   dirittoDaPacchetto,
   eServizioPacchetto,
   euroInCentesimi,
   formattaEuro,
   interpretaCatalogoPacchetti,
   interpretaEsitoConsumo,
+  offertaAcquistabile,
   proponiPacchettoPiuConveniente,
   serializzaCatalogoPacchetti,
   serviziPerLaHome,
@@ -39,14 +43,23 @@ import {
   testoUnita,
   trovaPacchetto,
   validaCatalogoDaModulo,
+  validaNuovaOfferta,
   valutaOffertaPacchetti,
   type SchedaServizio,
 } from "../src/lib/pacchetti-servizi-calcoli";
 import { aperturaSviluppoAttiva, valutaDirittoPiano, type ContestoDirittoPiano } from "../src/lib/piano-lavoro-gara-calcoli";
 import type { Settore } from "../src/lib/gara-settore";
 import {
+  chiudiOffertaAcquistata,
   consumaUnita,
   contaAcquistiPacchetti,
+  creaOffertaDedicata,
+  leggiConcessioniPerScheda,
+  leggiOfferteAttive,
+  leggiOfferteConsole,
+  leggiOffertaPerAcquisto,
+  revocaOffertaDedicata,
+  risolviPacchetto,
   estinguiPacchetti,
   leggiMovimentiPacchetti,
   pacchettiDisponibili,
@@ -95,7 +108,7 @@ type Esito = { data: unknown; error: { code?: string; message: string } | null }
 
 class Interrogazione implements PromiseLike<Esito> {
   private filtri: ((r: Riga) => boolean)[] = [];
-  private operazione: "select" | "update" = "select";
+  private operazione: "select" | "update" | "insert" = "select";
   private dati: Riga | null = null;
   private massimo = Infinity;
   private singolo = false;
@@ -110,6 +123,19 @@ class Interrogazione implements PromiseLike<Esito> {
   update(d: Riga) {
     this.operazione = "update";
     this.dati = d;
+    return this;
+  }
+  insert(d: Riga) {
+    this.operazione = "insert";
+    this.dati = d;
+    return this;
+  }
+  in(c: string, valori: unknown[]) {
+    this.filtri.push((r) => valori.includes(r[c]));
+    return this;
+  }
+  single() {
+    this.singolo = true;
     return this;
   }
   eq(c: string, v: unknown) {
@@ -136,6 +162,11 @@ class Interrogazione implements PromiseLike<Esito> {
   private esegui(): Esito {
     if (this.assenti.includes(this.nome)) return { data: null, error: { code: "42P01", message: `relation "${this.nome}" does not exist` } };
     const tabella = (this.db[this.nome] ??= []);
+    if (this.operazione === "insert") {
+      const riga: Riga = { id: `inserita-${tabella.length + 1}`, ...this.dati };
+      tabella.push(riga);
+      return { data: this.singolo ? riga : [riga], error: null };
+    }
     let trovate = tabella.filter((r) => this.filtri.every((f) => f(r)));
     if (this.ordinamento) trovate = this.ordinamento(trovate);
     trovate = trovate.slice(0, this.massimo);
@@ -312,6 +343,44 @@ async function main() {
   atteso("ogni tipo di movimento ha la sua etichetta leggibile", ["acquisto", "consumo", "riaccredito", "rettifica", "estinzione"].every((t) => (ETICHETTA_MOVIMENTO as Record<string, string>)[t]?.length > 3));
 
   // ═════ 2. il diritto alla generazione ═════
+  console.log("\n--- Offerte dedicate: validazione e regole ---");
+  const oggiRoma = "2026-11-10";
+  const modulo = { email: " Cliente@Pulizie.IT ", servizio: "piano_lavoro", quantita: "10", prezzoEuro: "450", scadeIl: "2026-12-31", nota: " accordo commerciale " };
+  uguale("offerta valida: email in minuscolo, prezzo in centesimi, scadenza e nota senza spazi", validaNuovaOfferta(modulo, oggiRoma), { ok: true, valori: { email: "cliente@pulizie.it", servizio: "piano_lavoro", quantita: 10, prezzoCentesimi: 45000, scadeIl: "2026-12-31", nota: "accordo commerciale" } });
+  uguale("senza scadenza né nota restano vuote; la quantità può essere 1; prezzo con la virgola", validaNuovaOfferta({ ...modulo, quantita: "1", prezzoEuro: "70,50", scadeIl: "", nota: "  " }, oggiRoma), { ok: true, valori: { email: "cliente@pulizie.it", servizio: "piano_lavoro", quantita: 1, prezzoCentesimi: 7050, scadeIl: null, nota: null } });
+  uguale("la scadenza di oggi è valida (ultimo giorno incluso)", validaNuovaOfferta({ ...modulo, scadeIl: oggiRoma }, oggiRoma).ok, true);
+  const erroreOfferta = (c: Partial<typeof modulo>) => {
+    const e = validaNuovaOfferta({ ...modulo, ...c }, oggiRoma);
+    return e.ok ? null : e.errore;
+  };
+  atteso("email vuota, senza chiocciola, senza dominio o lunghissima rifiutate", !!erroreOfferta({ email: "  " }) && !!erroreOfferta({ email: "cliente.pulizie.it" }) && !!erroreOfferta({ email: "cliente@pulizie" }) && !!erroreOfferta({ email: `${"a".repeat(250)}@x.it` }));
+  atteso("servizio sconosciuto o non ancora disponibile (OMNIA FOOD MENU) rifiutato", !!erroreOfferta({ servizio: "altro" }) && /non è ancora disponibile/.test(erroreOfferta({ servizio: "food_menu" }) ?? ""));
+  atteso("quantità zero, enorme, decimale o non numerica rifiutata", !!erroreOfferta({ quantita: "0" }) && !!erroreOfferta({ quantita: String(LIMITI_OFFERTA.quantitaMassima + 1) }) && !!erroreOfferta({ quantita: "1,5" }) && !!erroreOfferta({ quantita: "dieci" }) && !!erroreOfferta({ quantita: "" }));
+  atteso("prezzo non valido, zero, negativo o enorme rifiutato", !!erroreOfferta({ prezzoEuro: "gratis" }) && !!erroreOfferta({ prezzoEuro: "0" }) && !!erroreOfferta({ prezzoEuro: "-5" }) && !!erroreOfferta({ prezzoEuro: "200000" }) && !!erroreOfferta({ prezzoEuro: "" }));
+  atteso("scadenza passata, inventata o in formato sbagliato rifiutata", !!erroreOfferta({ scadeIl: "2026-11-09" }) && !!erroreOfferta({ scadeIl: "2026-02-31" }) && !!erroreOfferta({ scadeIl: "31/12/2026" }));
+  atteso("nota troppo lunga rifiutata", !!erroreOfferta({ nota: "x".repeat(LIMITI_OFFERTA.notaMassima + 1) }) && validaNuovaOfferta({ ...modulo, nota: "x".repeat(LIMITI_OFFERTA.notaMassima) }, oggiRoma).ok);
+  const attiva = { stato: "attiva" as const, scade_il: null };
+  uguale("offerta acquistabile: attiva, senza scadenza o con scadenza non passata (anche oggi); non se scaduta, acquistata o revocata", [offertaAcquistabile(attiva, oggiRoma), offertaAcquistabile({ ...attiva, scade_il: oggiRoma }, oggiRoma), offertaAcquistabile({ ...attiva, scade_il: "2026-11-09" }, oggiRoma), offertaAcquistabile({ stato: "acquistata", scade_il: null }, oggiRoma), offertaAcquistabile({ stato: "revocata", scade_il: null }, oggiRoma)], [true, true, false, false, false]);
+  uguale("al cliente arrivano solo id, servizio, quantità, prezzo e scadenza (mai la nota interna)", daRigaOfferta({ id: "o1", servizio: "piano_lavoro", quantita: 10, prezzo_centesimi: 45000, scade_il: "2026-12-31", nota: "segreto", user_id: U1 } as Parameters<typeof daRigaOfferta>[0]), { id: "o1", servizio: "piano_lavoro", quantita: 10, prezzoCentesimi: 45000, scadeIl: "2026-12-31" });
+  uguale("dataItaliana", dataItaliana("2026-12-31"), "31/12/2026");
+
+  const offerteCliente = [{ id: "of1", servizio: "piano_lavoro" as const, quantita: 10, prezzoCentesimi: 45000, scadeIl: "2026-12-31" }];
+  uguale("l'offerta dedicata compare PER PRIMA, con id e scadenza, poi i pacchetti dell'elenco; prezzo per unità e risparmio calcolati come per gli altri", schede({ offerte: offerteCliente })[0].pacchetti.map((p) => [p.offertaId ?? null, p.quantita, p.prezzoCentesimi, p.perUnitaCentesimi, p.risparmioCentesimi, p.scadeIl ?? null]), [["of1", 10, 45000, 4500, 30000, "2026-12-31"], [null, 5, 30000, 6000, 7500, null], [null, 10, 55000, 5500, 20000, null]]);
+  uguale("l'offerta dedicata si vende anche con l'elenco pubblico vuoto (resta solo lei)", schede({ offerte: offerteCliente, cataloghi: { piano_lavoro: [] } })[0].pacchetti.map((p) => p.offertaId ?? null), ["of1"]);
+  uguale("vendita spenta: nemmeno l'offerta dedicata si offre", schede({ offerte: offerteCliente, venditaAttiva: false }), []);
+  uguale("un cliente con un'offerta dedicata ma senza gare di pulizie vede comunque la scheda (motivo «offerta»)", schede({ settoriGare: ["altro"], offerte: offerteCliente }).map((x) => [x.servizio, x.motivo]), [["piano_lavoro", "offerta"]]);
+  uguale("senza offerte la scheda è quella di prima", schede({ offerte: [] })[0].pacchetti.map((p) => p.offertaId ?? null), [null, null]);
+  uguale("Ufficio Gare: la stessa scheda, «solo titolare» (l'offerta si compra solo dal titolare)", schede({ titolare: false, offerte: offerteCliente })[0].offerta.stato, "solo_titolare");
+  atteso("l'offerta di un servizio non compare nell'altro: OMNIA FOOD MENU resta «in arrivo» e senza pacchetti, mentre il piano di lavoro mostra la sua offerta", (() => { const due = schede({ settoriGare: ["ristorazione_collettiva"], offerte: offerteCliente }); return due.find((x) => x.servizio === "food_menu")?.pacchetti.length === 0 && due.find((x) => x.servizio === "food_menu")?.offerta.stato === "in_arrivo" && due.find((x) => x.servizio === "piano_lavoro")?.pacchetti.some((p) => p.offertaId === "of1") === true; })());
+  uguale("serviziPerLaHome: l'offerta dedicata fa comparire il servizio, ma settore, saldo e acquisti hanno la precedenza", [serviziPerLaHome({ settoriGare: [], saldi: {}, acquisti: {}, offerte: { piano_lavoro: 1 } }).map((x) => x.motivo), serviziPerLaHome({ settoriGare: ["pulizie"], saldi: {}, acquisti: {}, offerte: { piano_lavoro: 1 } }).map((x) => x.motivo), serviziPerLaHome({ settoriGare: [], saldi: { piano_lavoro: 2 }, acquisti: {}, offerte: { piano_lavoro: 1 } }).map((x) => x.motivo)], [["offerta"], ["settore"], ["saldo"]]);
+  uguale("chi non ha mai avuto unità: haAvutoUnita falso; con una riga di saldo (anche a zero) o con un acquisto: vero", [schede()[0].haAvutoUnita, schede({ saldi: { piano_lavoro: 0 } })[0].haAvutoUnita, schede({ acquisti: { piano_lavoro: 1 } })[0].haAvutoUnita, schede({ saldi: { piano_lavoro: 3 } })[0].haAvutoUnita], [false, true, true, true]);
+  const concessioniTesto = ["Fino a 20 gare, fino al 31/12/2026 — usate 1 su 20"];
+  uguale("le concessioni gratuite stanno nella scheda del piano di lavoro, e la scheda compare anche senza saldo e con la vendita spenta (è una cosa del cliente)", schede({ concessioni: { piano_lavoro: concessioniTesto }, venditaAttiva: false }).map((x) => [x.concessioni, x.pacchetti.length]), [[concessioniTesto, 0]]);
+  uguale("senza concessioni l'elenco è vuoto", schede()[0].concessioni, []);
+  uguale("proposta in gara: l'offerta dedicata più conveniente vince, e porta il suo id", [proponiPacchettoPiuConveniente(catalogo, offerteCliente)?.offertaId, proponiPacchettoPiuConveniente(catalogo, offerteCliente)?.perUnitaCentesimi], ["of1", 4500]);
+  uguale("proposta in gara: un'offerta meno conveniente dell'elenco non vince; a parità vince l'offerta", [proponiPacchettoPiuConveniente(catalogo, [{ ...offerteCliente[0], prezzoCentesimi: 90000 }])?.offertaId ?? null, proponiPacchettoPiuConveniente([{ quantita: 10, prezzoCentesimi: 45000 }], offerteCliente)?.offertaId], [null, "of1"]);
+  uguale("proposta in gara senza offerte: come prima", proponiPacchettoPiuConveniente(catalogo)?.offertaId ?? null, null);
+
   console.log("\n--- Il pacchetto nell'ordine delle fonti del piano di lavoro ---");
   const adesso = new Date("2026-11-10T10:00:00Z");
   const contesto = (extra: Partial<ContestoDirittoPiano> = {}): ContestoDirittoPiano => ({ analisiCompleta: true, garaUsabile: true, piani: [], prorogaStato: null, concessioneId: null, abbonamentoCopreGara: false, provaGratuita: false, acquistoPagato: false, aperturaSviluppo: false, adesso, ...extra });
@@ -373,6 +442,76 @@ async function main() {
 
   uguale("pacchettiDisponibili: con le tabelle sì, senza la migrazione 0104 no (nulla si offre e nulla si compra)", [await pacchettiDisponibili(fintoAdmin({ omnia_ai_pacchetti_saldi: [] })), await pacchettiDisponibili(fintoAdmin({}, ["omnia_ai_pacchetti_saldi"]))], [true, false]);
 
+  console.log("\n--- Offerte dedicate: database ---");
+  const OF1 = "ccccccc1-cccc-4ccc-8ccc-cccccccccc01";
+  const riga = (extra: Riga = {}): Riga => ({ id: OF1, user_id: U1, servizio: "piano_lavoro", quantita: 10, prezzo_centesimi: 45000, scade_il: "2099-12-31", nota: "interna", stato: "attiva", creata_il: "2026-11-09T10:00:00Z", creata_da_email: "admin@x.it", chiusa_il: null, chiusa_da_email: null, acquisto_id: null, ...extra });
+  const dbOfferte = (): Db => ({
+    omnia_ai_pacchetti_offerte: [
+      riga(),
+      riga({ id: "ccccccc2-cccc-4ccc-8ccc-cccccccccc02", scade_il: "2020-01-01" }),
+      riga({ id: "ccccccc3-cccc-4ccc-8ccc-cccccccccc03", stato: "acquistata" }),
+      riga({ id: "ccccccc4-cccc-4ccc-8ccc-cccccccccc04", stato: "revocata" }),
+      riga({ id: "ccccccc5-cccc-4ccc-8ccc-cccccccccc05", user_id: U2 }),
+    ],
+    users: [{ id: U1, email: "uno@x.it" }, { id: U2, email: "due@x.it" }],
+  });
+  uguale("leggiOfferteAttive: solo le attive e non scadute di QUESTO cliente, senza la nota interna", await leggiOfferteAttive(fintoAdmin(dbOfferte()), U1), [{ id: OF1, servizio: "piano_lavoro", quantita: 10, prezzoCentesimi: 45000, scadeIl: "2099-12-31" }]);
+  uguale("leggiOfferteAttive: un altro cliente non vede le offerte del primo", (await leggiOfferteAttive(fintoAdmin(dbOfferte()), U2)).map((o) => o.id), ["ccccccc5-cccc-4ccc-8ccc-cccccccccc05"]);
+  uguale("leggiOfferteAttive: senza la migrazione 0105 nessuna offerta (e nessun errore)", await spegniErrori(() => leggiOfferteAttive(fintoAdmin({}, ["omnia_ai_pacchetti_offerte"]), U1)), []);
+  const perAcquisto = async (utente: string, id: string, db: Db = dbOfferte()) => (await leggiOffertaPerAcquisto(fintoAdmin(db), utente, id))?.id ?? null;
+  uguale("leggiOffertaPerAcquisto: la propria offerta valida sì; l'offerta di un altro, scaduta, già acquistata, revocata, inesistente o con un id che non è un id: no", [await perAcquisto(U1, OF1), await perAcquisto(U2, OF1), await perAcquisto(U1, "ccccccc2-cccc-4ccc-8ccc-cccccccccc02"), await perAcquisto(U1, "ccccccc3-cccc-4ccc-8ccc-cccccccccc03"), await perAcquisto(U1, "ccccccc4-cccc-4ccc-8ccc-cccccccccc04"), await perAcquisto(U1, "ccccccc9-cccc-4ccc-8ccc-cccccccccc09"), await perAcquisto(U1, "' or 1=1 --"), await perAcquisto(U1, "")], [OF1, null, null, null, null, null, null, null]);
+  uguale("leggiOffertaPerAcquisto: senza la migrazione 0105 nessuna offerta", await spegniErrori(() => leggiOffertaPerAcquisto(fintoAdmin({}, ["omnia_ai_pacchetti_offerte"]), U1, OF1)), null);
+  const risolvi = (offertaId: string, quantita: unknown, utente = U1, servizio: "piano_lavoro" | "food_menu" = "piano_lavoro") => risolviPacchetto(fintoAdmin(dbOfferte()), { accountId: utente, servizio, offertaId, quantita });
+  uguale("risolviPacchetto: con l'offerta dedicata quantità e prezzo sono QUELLI DELL'OFFERTA (la quantità arrivata dal browser non conta)", await risolvi(OF1, "999"), { quantita: 10, prezzoCentesimi: 45000, offertaId: OF1 });
+  uguale("risolviPacchetto: l'offerta di un altro cliente, o di un altro servizio, non si compra e NON ricade sull'elenco pubblico", [await risolvi(OF1, "5", U2), await risolvi(OF1, "5", U1, "food_menu")], [null, null]);
+  uguale("risolviPacchetto: senza offerta vale l'elenco pubblico (quantità in vendita, prezzo dell'elenco); una quantità che non c'è no", [await risolvi("", "5"), await risolvi("", 5), await risolvi("", "7"), await risolvi("", null)], [{ quantita: 5, prezzoCentesimi: 30000, offertaId: null }, { quantita: 5, prezzoCentesimi: 30000, offertaId: null }, null, null]);
+  {
+    const db = dbOfferte();
+    const admin = fintoAdmin(db);
+    await chiudiOffertaAcquistata(admin, OF1, "acq-1");
+    const o = db.omnia_ai_pacchetti_offerte[0];
+    atteso("chiudiOffertaAcquistata: l'offerta diventa «acquistata», con l'acquisto e la data", o.stato === "acquistata" && o.acquisto_id === "acq-1" && typeof o.chiusa_il === "string");
+    await chiudiOffertaAcquistata(admin, OF1, "acq-2");
+    atteso("chiudiOffertaAcquistata: un evento rimandato non riscrive l'acquisto già registrato", o.acquisto_id === "acq-1");
+    const revocata = db.omnia_ai_pacchetti_offerte[3];
+    await chiudiOffertaAcquistata(admin, revocata.id as string, "acq-3");
+    atteso("chiudiOffertaAcquistata: un'offerta già revocata non diventa «acquistata»", revocata.stato === "revocata" && revocata.acquisto_id === null);
+    await spegniErrori(() => chiudiOffertaAcquistata(fintoAdmin({}, ["omnia_ai_pacchetti_offerte"]), OF1, "acq-4"));
+    atteso("chiudiOffertaAcquistata: senza la migrazione 0105 non solleva errori", true);
+  }
+  {
+    const db = dbOfferte();
+    const admin = fintoAdmin(db);
+    const creata = await creaOffertaDedicata(admin, { userId: U2, valori: { servizio: "piano_lavoro", quantita: 3, prezzoCentesimi: 21000, scadeIl: null, nota: "prova" }, daEmail: "admin@x.it" });
+    const nuova = db.omnia_ai_pacchetti_offerte[db.omnia_ai_pacchetti_offerte.length - 1];
+    atteso("creaOffertaDedicata: scrive utente, servizio, quantità, prezzo, scadenza, nota e chi l'ha creata (lo stato parte da «attiva» per il database)", creata.ok && nuova.user_id === U2 && nuova.quantita === 3 && nuova.prezzo_centesimi === 21000 && nuova.scade_il === null && nuova.nota === "prova" && nuova.creata_da_email === "admin@x.it" && nuova.stato === undefined);
+    const senza = await spegniErrori(() => creaOffertaDedicata(fintoAdmin({}, ["omnia_ai_pacchetti_offerte"]), { userId: U2, valori: { servizio: "piano_lavoro", quantita: 3, prezzoCentesimi: 21000, scadeIl: null, nota: null }, daEmail: "a@x.it" }));
+    atteso("creaOffertaDedicata: senza la migrazione 0105 dice che manca (nessuna eccezione)", !senza.ok && /0105/.test(senza.errore));
+    uguale("revocaOffertaDedicata: un'offerta attiva si revoca (con chi e quando); una seconda volta, o una già acquistata, no", [await revocaOffertaDedicata(admin, OF1, "admin@x.it"), await revocaOffertaDedicata(admin, OF1, "admin@x.it"), await revocaOffertaDedicata(admin, "ccccccc3-cccc-4ccc-8ccc-cccccccccc03", "admin@x.it")], ["revocata", "non_attiva", "non_attiva"]);
+    atteso("revocaOffertaDedicata: l'offerta revocata ha la data e l'email di chi l'ha revocata; quella acquistata non è stata toccata", db.omnia_ai_pacchetti_offerte[0].stato === "revocata" && db.omnia_ai_pacchetti_offerte[0].chiusa_da_email === "admin@x.it" && db.omnia_ai_pacchetti_offerte[2].stato === "acquistata" && db.omnia_ai_pacchetti_offerte[2].chiusa_da_email === null);
+  }
+  {
+    const lista = await leggiOfferteConsole(fintoAdmin(dbOfferte()));
+    atteso("leggiOfferteConsole: tutte le offerte (anche chiuse) con l'email del cliente, dalla più recente", lista.disponibile && lista.offerte.length === 5 && lista.offerte.find((o) => o.user_id === U1)?.cliente_email === "uno@x.it" && lista.offerte.find((o) => o.user_id === U2)?.cliente_email === "due@x.it");
+    const unCliente = await leggiOfferteConsole(fintoAdmin(dbOfferte()), { perUtente: U2 });
+    uguale("leggiOfferteConsole: per un cliente solo le sue", unCliente.offerte.map((o) => o.user_id), [U2]);
+    uguale("leggiOfferteConsole: senza la migrazione 0105 «non disponibile», nessun errore", await spegniErrori(() => leggiOfferteConsole(fintoAdmin({}, ["omnia_ai_pacchetti_offerte"]))), { disponibile: false, offerte: [] });
+  }
+  {
+    const db: Db = {
+      omnia_ai_piano_lavoro_concessioni: [
+        { id: "k1", user_id: U1, tipo: "tutte", gare_massime: 20, scade_il: "2099-12-31", attiva: true, gara_titolo: null, creata_il: "2026-11-01" },
+        { id: "k2", user_id: U1, tipo: "gara", gare_massime: null, scade_il: null, attiva: true, gara_titolo: "Pulizie Aosta", creata_il: "2026-11-02" },
+        { id: "k3", user_id: U1, tipo: "tutte", gare_massime: null, scade_il: null, attiva: false, gara_titolo: null, creata_il: "2026-11-03" },
+        { id: "k4", user_id: U1, tipo: "tutte", gare_massime: 5, scade_il: "2020-01-01", attiva: true, gara_titolo: null, creata_il: "2026-11-04" },
+        { id: "k5", user_id: U2, tipo: "tutte", gare_massime: 5, scade_il: null, attiva: true, gara_titolo: null, creata_il: "2026-11-05" },
+      ],
+      gara_piani_lavoro: [{ gara_id: GARA, concessione_id: "k1", stato: "pronto" }, { gara_id: GARA, concessione_id: "k1", stato: "pronto" }, { gara_id: GARA2, concessione_id: "k1", stato: "errore" }],
+    };
+    uguale("leggiConcessioniPerScheda: solo le attive, non scadute, di QUESTO cliente, raccontate in una riga; le gare usate si contano una volta e non quelle in errore", await leggiConcessioniPerScheda(fintoAdmin(db), U1), ["Fino a 20 gare, fino al 31/12/2099 — usate 1 su 20", "Solo la gara «Pulizie Aosta»"]);
+    uguale("leggiConcessioniPerScheda: un cliente senza concessioni, o senza la migrazione 0101, non ha nulla", [await leggiConcessioniPerScheda(fintoAdmin(db), "nessuno"), await spegniErrori(() => leggiConcessioniPerScheda(fintoAdmin({}, ["omnia_ai_piano_lavoro_concessioni"]), U1))], [[], []]);
+  }
+
   console.log("\n--- Il webhook: le unità si accreditano una volta sola ---");
   const rigaAttesa = (extra: Riga = {}): Riga => ({ id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", user_id: U1, servizio: "piano_lavoro", quantita: 5, prezzo_centesimi: 30000, stato: "in_attesa_pagamento", stripe_session_id: "cs_1", stripe_payment_intent_id: null, pagata_il: null, importo_pagato_centesimi: null, accreditata_il: null, livemode: true, ...extra });
   const sessione = (extra: Partial<SessionePagamentoPacchetto> = {}): SessionePagamentoPacchetto => ({ id: "cs_1", payment_status: "paid", payment_intent: "pi_1", amount_total: 30000, livemode: true, customer_details: { name: "Pulizie Srl", email: "a@x.it" } as SessionePagamentoPacchetto["customer_details"], customer_email: "a@x.it", metadata: { tipo: "omnia_ai_pacchetto", acquistoId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", userId: U1, servizio: "piano_lavoro", quantita: "5" }, ...extra });
@@ -423,6 +562,21 @@ async function main() {
     atteso("utente non più presente: pagamento registrato, nessuna unità inventata, l'email all'ufficio lo segnala", e.esito === "registrato" && (db.omnia_ai_pacchetti_saldi ?? []).length === 0 && n.chiamate[0]?.accreditoMancante === true);
   }
   {
+    // un acquisto che viene da un'offerta dedicata la chiude, una volta sola; senza offerta nulla cambia
+    const db: Db = { omnia_ai_pacchetti_acquisti: [rigaAttesa({ offerta_id: "of-1" })], omnia_ai_pacchetti_saldi: [], omnia_ai_pacchetti_offerte: [{ id: "of-1", stato: "attiva", acquisto_id: null }] };
+    const e = await registraPagamentoPacchetto({ admin: fintoAdmin(db, [], funzioniSql()), sessione: sessione(), eventoId: "evt_o1", notifica: nuovaNotifica().notifica });
+    const o = db.omnia_ai_pacchetti_offerte[0];
+    atteso("pagamento di un'offerta dedicata: le unità vanno nel saldo e l'offerta diventa «acquistata» con l'acquisto", e.esito === "registrato" && (db.omnia_ai_pacchetti_saldi[0]?.saldo as number) === 5 && o.stato === "acquistata" && o.acquisto_id === "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", JSON.stringify({ e, o }));
+    await registraPagamentoPacchetto({ admin: fintoAdmin(db, [], funzioniSql()), sessione: sessione(), eventoId: "evt_o1", notifica: nuovaNotifica().notifica });
+    atteso("evento rimandato: il saldo resta 5 e l'offerta resta com'è", (db.omnia_ai_pacchetti_saldi[0].saldo as number) === 5 && o.stato === "acquistata");
+    const dbSenza: Db = { omnia_ai_pacchetti_acquisti: [rigaAttesa()], omnia_ai_pacchetti_saldi: [], omnia_ai_pacchetti_offerte: [{ id: "of-1", stato: "attiva", acquisto_id: null }] };
+    await registraPagamentoPacchetto({ admin: fintoAdmin(dbSenza, [], funzioniSql()), sessione: sessione(), eventoId: "evt_o2", notifica: nuovaNotifica().notifica });
+    atteso("un acquisto di un pacchetto dell'elenco non chiude nessuna offerta", dbSenza.omnia_ai_pacchetti_offerte[0].stato === "attiva");
+    const dbErrore: Db = { omnia_ai_pacchetti_acquisti: [rigaAttesa({ offerta_id: "of-1" })], omnia_ai_pacchetti_offerte: [{ id: "of-1", stato: "attiva", acquisto_id: null }] };
+    const fallito = await spegniErrori(() => registraPagamentoPacchetto({ admin: fintoAdmin(dbErrore, [], {}), sessione: sessione(), eventoId: "evt_o3", notifica: nuovaNotifica().notifica }));
+    atteso("se l'accredito non riesce l'offerta NON si chiude (il cliente deve poter ritentare, Stripe riprova)", fallito.esito === "errore" && dbErrore.omnia_ai_pacchetti_offerte[0].stato === "attiva");
+  }
+  {
     const casi: [string, Db, Partial<SessionePagamentoPacchetto>, string][] = [
       ["sessione non pagata", { omnia_ai_pacchetti_acquisti: [rigaAttesa()] }, { payment_status: "unpaid" }, "non_pagata"],
       ["acquisto senza id nei metadata", { omnia_ai_pacchetti_acquisti: [rigaAttesa()] }, { metadata: { tipo: "omnia_ai_pacchetto" } }, "acquisto_id_mancante"],
@@ -451,7 +605,7 @@ async function main() {
   atteso("acquisto: la prima cosa è la guardia del titolare", /^export async function acquistaPacchettoServizio\([^)]*\)[^{]*\{\n\s*const guardia = await richiediTitolareAzione\(\);\n\s*if \(!guardia\.ok\) return \{ error: guardia\.errore \};/.test(acq));
   atteso("acquisto: non rilegge la sessione per conto suo", !acq.includes("auth.getUser()"));
   atteso("acquisto: solo con abbonamento attivo (come i crediti: si estinguono con la cessazione), prima di tutto il resto", pos("hasActiveSubscription(contesto.accountId)") !== -1 && pos("hasActiveSubscription") < pos("venditaPacchettiAttiva") && pos("hasActiveSubscription") < pos("insert("));
-  atteso("acquisto: servizio valido e già disponibile, vendita accesa, pacchetto tra quelli in vendita, TUTTO prima di registrare e di andare a Stripe", pos("eServizioPacchetto(servizioGrezzo)") !== -1 && pos("SERVIZI[servizio].disponibile") !== -1 && pos("venditaPacchettiAttiva(admin)") < pos("insert(") && pos("trovaPacchetto(catalogo") < pos("insert(") && pos("insert(") < pos("checkout.sessions.create"));
+  atteso("acquisto: servizio valido e già disponibile, vendita accesa, pacchetto (dell'elenco o offerta dedicata del cliente) riletto dal server, TUTTO prima di registrare e di andare a Stripe", pos("eServizioPacchetto(servizioGrezzo)") !== -1 && pos("SERVIZI[servizio].disponibile") !== -1 && pos("venditaPacchettiAttiva(admin)") !== -1 && pos("risolviPacchetto(admin") !== -1 && pos("venditaPacchettiAttiva(admin)") < pos("insert(") && pos("risolviPacchetto(admin") < pos("insert(") && pos("insert(") < pos("checkout.sessions.create"));
   atteso("acquisto: il prezzo si rilegge dal server e quello arrivato dal browser serve solo a accorgersi di un cambio", pos("mostrato !== pacchetto.prezzoCentesimi") !== -1 && pos("prezzoAggiornatoCentesimi: pacchetto.prezzoCentesimi") !== -1 && pos("unit_amount: pacchetto.prezzoCentesimi") !== -1 && !/unit_amount: (mostrato|Number\(formData)/.test(acq));
   atteso("acquisto: due accettazioni esplicite (condizioni + privacy, clausole specifiche) controllate prima del pagamento", pos('formData.get("accettaCondizioni") !== "on"') !== -1 && pos('formData.get("accettaClausole") !== "on"') !== -1 && pos('formData.get("accettaClausole")') < pos("insert("));
   atteso("acquisto: si registrano versione e impronta delle condizioni del pacchetto E delle avvertenze del servizio, con data, IP, browser e privacy", ["condizioni_versione: VERSIONE_CONDIZIONI_PACCHETTI", "condizioni_hash: impronta(testoCanonicoCondizioniPacchetti())", "servizio_condizioni_versione: VERSIONE_CONDIZIONI_PIANO_LAVORO", "servizio_condizioni_hash: impronta(testoCanonicoCondizioniPianoLavoro())", "accettato_il:", "accept_ip: ip", "accept_user_agent:", "privacy_versione:"].every((s) => acq.includes(s)));
@@ -462,7 +616,7 @@ async function main() {
   const ric = corpoFunzione(azioni, "richiediAcquistoPacchetto");
   atteso("richiesta: parte dalla guardia dell'account (titolare o Ufficio Gare) e ammette solo l'Ufficio Gare", ric.includes("await richiediAccountAzione()") && ric.includes('contesto.ruolo !== "ufficio_gare") return { error:'));
   atteso("richiesta: non apre mai un pagamento e non scrive acquisti né saldi", !/stripe|checkout|redirect\(|pacchetti_acquisti|pacchetti_saldi|insert\(/i.test(senzaCommenti(ric)));
-  atteso("richiesta: controlla abbonamento, vendita accesa e pacchetto in vendita PRIMA di avvisare", ric.indexOf("accessoNegatoPerAccount") < ric.indexOf("avvisaTitolareAcquistoPacchetto(") && ric.indexOf("venditaPacchettiAttiva") < ric.indexOf("avvisaTitolareAcquistoPacchetto(") && ric.indexOf("trovaPacchetto(") < ric.indexOf("avvisaTitolareAcquistoPacchetto("));
+  atteso("richiesta: controlla abbonamento, vendita accesa e pacchetto in vendita (o offerta dedicata del cliente) PRIMA di avvisare", ric.indexOf("accessoNegatoPerAccount") !== -1 && ric.indexOf("accessoNegatoPerAccount") < ric.indexOf("avvisaTitolareAcquistoPacchetto(") && ric.indexOf("venditaPacchettiAttiva") !== -1 && ric.indexOf("venditaPacchettiAttiva") < ric.indexOf("avvisaTitolareAcquistoPacchetto(") && ric.indexOf("risolviPacchetto(admin") !== -1 && ric.indexOf("risolviPacchetto(admin") < ric.indexOf("avvisaTitolareAcquistoPacchetto("));
   atteso("richiesta: l'avviso va al titolare dell'account effettivo, da chi ha premuto", ric.includes("titolareId: contesto.accountId") && ric.includes("membroId: contesto.userId") && ric.includes("emailUfficioGare: user.email"));
   atteso("richiesta: un errore dell'avviso non si presenta come successo", ric.includes('if (avviso === "non_riuscito") return { error:') && ric.includes('avviso === "gia_inviato_oggi"'));
 
@@ -491,6 +645,21 @@ async function main() {
   const pannello = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/piano-lavoro-panel.tsx");
   atteso("riquadro della gara: con un'unità da consumare il pulsante lo dice, manda la conferma e chiede conferma", pannello.includes('name="usaPacchetto" value="1"') && pannello.includes("window.confirm(`${TESTI_PACCHETTI.confermaUsoUnita}") && /usa 1 dei tuoi \$\{pacchetto\.saldo\}/.test(pannello));
   atteso("riquadro della gara: la proposta del pacchetto sta accanto all'acquisto singolo e porta alla pagina dei servizi", pannello.includes("pacchetto.proposta") && pannello.includes("/dashboard/omnia-ai/servizi?servizio=piano_lavoro"));
+  atteso("acquisto: l'offerta dedicata arriva dall'id (mai da quantità o prezzo del browser), si registra nell'acquisto e nei metadata solo se c'è", acq.includes('String(formData.get("offertaId") ?? "").trim()') && acq.includes("...(pacchetto.offertaId ? { offerta_id: pacchetto.offertaId } : {})") && acq.includes("...(pacchetto.offertaId ? { offertaId: pacchetto.offertaId } : {})") && /unit_amount: pacchetto\.prezzoCentesimi/.test(acq) && !/unit_amount: (mostrato|Number\()/.test(acq));
+  atteso("richiesta dell'Ufficio Gare: l'offerta dedicata si rilegge dal database per il cliente e l'avviso porta il suo id", ric.includes('String(formData.get("offertaId") ?? "").trim()') && ric.includes("offertaId: pacchetto.offertaId") && ric.includes("accountId: contesto.accountId"));
+  const libOfferte = leggi("src/lib/pacchetti-servizi.ts");
+  const corpoOfferta = libOfferte.slice(libOfferte.indexOf("export async function leggiOffertaPerAcquisto"), libOfferte.indexOf("export async function chiudiOffertaAcquistata"));
+  atteso("un'offerta si compra solo se è del cliente che compra (condizione sul cliente nella lettura) e ancora acquistabile", /\.eq\("id", offertaId\)\.eq\("user_id", accountId\)/.test(corpoOfferta) && corpoOfferta.includes("offertaAcquistabile(data"));
+  atteso("risolviPacchetto: con un'offerta indicata non ricade mai sull'elenco pubblico", /if \(offertaId !== ""\) \{[\s\S]*?return offerta && offerta\.servizio === servizio \? \{[^}]*\} : null;\s*\}/.test(libOfferte));
+  atteso("la chiusura dell'offerta è condizionata allo stato «attiva» (un evento rimandato non la riscrive)", /\.update\(\{ stato: "acquistata"[\s\S]*?\}\)\s*\.eq\("id", offertaId\)\s*\.eq\("stato", "attiva"\)/.test(libOfferte));
+  atteso("la revoca è condizionata allo stato «attiva» (un'offerta già comprata non si revoca)", /\.update\(\{ stato: "revocata"[\s\S]*?\}\)\s*\.eq\("id", offertaId\)\s*\.eq\("stato", "attiva"\)/.test(libOfferte));
+  atteso("la nota interna non arriva mai al cliente: le letture per il cliente non la passano", !/nota/.test(libOfferte.slice(libOfferte.indexOf("export async function leggiOfferteAttive"), libOfferte.indexOf("export async function leggiOffertaPerAcquisto")).replace(/COLONNE_OFFERTA/g, "")) && /export function daRigaOfferta[\s\S]*?\{ id: r\.id, servizio: r\.servizio, quantita: r\.quantita, prezzoCentesimi: r\.prezzo_centesimi, scadeIl: r\.scade_il \}/.test(leggi("src/lib/pacchetti-servizi-calcoli.ts")));
+  const mig105 = leggi("supabase/migrations/0105_pacchetti_offerte_dedicate.sql").replace(/--.*$/gm, "");
+  atteso("migrazione 0105: tabella delle offerte con la sicurezza a livello di riga attiva e NESSUN permesso ai clienti", mig105.includes("create table if not exists public.omnia_ai_pacchetti_offerte") && mig105.includes("alter table public.omnia_ai_pacchetti_offerte enable row level security") && !/to (authenticated|anon)/.test(mig105) && /grant select, insert, update on public\.omnia_ai_pacchetti_offerte to service_role/.test(mig105) && !/grant [^;]*delete[^;]* on public\.omnia_ai_pacchetti_offerte/.test(mig105));
+  atteso("migrazione 0105: stati, quantità e prezzo con i loro limiti; l'acquisto ricorda l'offerta; additiva e idempotente", /stato text not null default 'attiva' check \(stato in \('attiva', 'acquistata', 'revocata'\)\)/.test(mig105) && /quantita integer not null check \(quantita between 1 and 10000\)/.test(mig105) && /prezzo_centesimi integer not null check \(prezzo_centesimi > 0\)/.test(mig105) && /add column if not exists offerta_id uuid references public\.omnia_ai_pacchetti_offerte \(id\) on delete set null/.test(mig105) && !/drop |truncate |delete from /i.test(mig105));
+  const compoServizi = leggi("src/components/omnia-ai/servizi-per-le-gare.tsx");
+  atteso("la home: l'offerta dedicata ha il suo badge, il collegamento con l'id dell'offerta e, per l'Ufficio Gare, l'id nel modulo che avvisa", compoServizi.includes("TESTI_PACCHETTI.offertaDedicata") && compoServizi.includes("&offerta=${p.offertaId}") && compoServizi.includes("offertaId={p.offertaId}"));
+  atteso("la pagina dei servizi apre il modulo dell'offerta indicata e lo manda con il suo id", leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/page.tsx").includes("offertaAperta === p.offertaId") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/page.tsx").includes("offertaId={p.offertaId}") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/acquisto-pacchetto-form.tsx").includes('name="offertaId" value={offertaId}'));
   const diritti = leggi("src/lib/piano-lavoro-diritti.ts");
   atteso("diritti letti dal server: il pacchetto si legge insieme alle altre fonti", diritti.includes('leggiStatoPacchettoGara(admin, accountId, "piano_lavoro", garaId)') && diritti.includes("pacchettoSaldo: pacchetto.saldo"));
 
@@ -531,9 +700,11 @@ async function main() {
   atteso("pagamento di prova: oggetto con la dicitura di prova", /prova/i.test(emailClientePacchettoAcquistato({ prova: true, servizio: "piano_lavoro", quantita: 5, importoCentesimi: 30000, pagataIl: adesso, linkServizi: "https://x.it" }).oggetto));
   const avviso = emailAvvisoAcquistoPacchetto({ emailUfficioGare: "gare@pulizie.it", servizio: "piano_lavoro", quantita: 5 });
   atteso("avviso al titolare: chi lo chiede, quale pacchetto, link ai servizi, MAI un prezzo", /gare@pulizie\.it/.test(testoDi(avviso.html)) && /5 piani di lavoro/.test(avviso.oggetto) && avviso.html.includes("/dashboard/omnia-ai/servizi") && !/€|euro|\d+,\d\d/.test(testoDi(avviso.html)) && !/€/.test(avviso.oggetto));
+  const avvisoDedicato = emailAvvisoAcquistoPacchetto({ emailUfficioGare: "gare@pulizie.it", servizio: "piano_lavoro", quantita: 10, dedicato: true });
+  atteso("avviso per un'offerta dedicata: lo dice (oggetto e testo), dà la quantità e non nomina prezzi", /dedicato a voi/.test(avvisoDedicato.oggetto) && /10 piani di lavoro/.test(avvisoDedicato.oggetto) && /dedicato a voi/.test(testoDi(avvisoDedicato.html)) && !/€|euro|\d+,\d\d/.test(testoDi(avvisoDedicato.html)) && !/dedicato/.test(avviso.oggetto));
   atteso("avviso al titolare: una al giorno per servizio e quantità (la chiave li distingue), la quota resta una in tutto", chiaveAvviso("acquisto_pacchetto", "piano_lavoro:5") === "piano_lavoro:5" && chiaveAvviso("acquisto_pacchetto", "piano_lavoro:10") !== chiaveAvviso("acquisto_pacchetto", "piano_lavoro:5") && chiaveAvviso("quota_esaurita", "x") === "" && chiaveAvviso("revisione_richiesta", "g1") === "g1");
   const avvisi = leggi("src/lib/omnia-ai-ufficio-gare-avvisi.ts");
-  atteso("avvisi: il pacchetto usa lo stesso meccanismo (riga unica del giorno nel database), non un limite scritto nel codice", /tipo: "acquisto_pacchetto",\n\s*chiave: chiaveAvviso\("acquisto_pacchetto", `\$\{servizio\}:\$\{quantita\}`\)/.test(avvisi));
+  atteso("avvisi: il pacchetto usa lo stesso meccanismo (riga unica del giorno nel database), con una chiave per ogni pacchetto dell'elenco e per ogni offerta dedicata", /tipo: "acquisto_pacchetto",\n\s*\/\/[^\n]*\n\s*chiave: chiaveAvviso\("acquisto_pacchetto", offertaId \? `offerta:\$\{offertaId\}` : `\$\{servizio\}:\$\{quantita\}`\)/.test(avvisi));
 
   // ═════ 5. la migrazione come testo ═════
   console.log("\n--- Migrazione 0104 (testo) ---");
@@ -579,8 +750,19 @@ async function main() {
   const testoDue = testoDi(htmlDue);
   atteso("pulizie E ristorazione: compaiono entrambi, OMNIA FOOD MENU «Sta arrivando» e senza acquisto", /Piano di lavoro/.test(testoDue) && /OMNIA FOOD MENU/.test(testoDue) && /Sta arrivando/.test(testoDue) && !/FOOD MENU[^]*Acquista/.test(testoDue.slice(testoDue.indexOf("OMNIA FOOD MENU"))), testoDue.slice(0, 300));
   atteso("nessuna scheda: la sezione non compare affatto", disegna([], true) === "");
-  atteso("esaurito: badge «Esaurito» e «Nessun piano di lavoro residuo»", /Esaurito/.test(testoDi(disegna(schede(), true))) && /Nessun piano di lavoro residuo/.test(testoDi(disegna(schede(), true))));
+  const htmlNuovo = testoDi(disegna(schede(), true));
+  atteso("chi non ha mai avuto unità NON vede «Esaurito»: vede «Non hai pacchetti attivi», senza badge", !/Esaurito/.test(htmlNuovo) && /Non hai pacchetti attivi/.test(htmlNuovo) && !/Nessun piano di lavoro residuo/.test(htmlNuovo));
+  const htmlFinito = testoDi(disegna(schede({ saldi: { piano_lavoro: 0 } }), true));
+  atteso("chi ha avuto delle unità e le ha finite vede «Esaurito» e «Nessun piano di lavoro residuo»", /Esaurito/.test(htmlFinito) && /Nessun piano di lavoro residuo/.test(htmlFinito) && !/Non hai pacchetti attivi/.test(htmlFinito));
   atteso("il saldo al singolare: «1 residuo»", /1 residuo\b/.test(testoDi(disegna(schede({ saldi: { piano_lavoro: 1 } }), true))));
+
+  const htmlOfferta = disegna(schede({ offerte: offerteCliente, concessioni: { piano_lavoro: ["Fino a 20 gare, fino al 31/12/2026 — usate 1 su 20"] } }), true);
+  const testoOfferta = testoDi(htmlOfferta);
+  atteso("titolare: l'offerta dedicata ha il badge, il prezzo, il prezzo per unità, la scadenza e porta alla pagina con il suo id", /Offerta dedicata a te/.test(testoOfferta) && /10 piani di lavoro — 450 €/.test(testoOfferta) && /45 € l'uno/.test(testoOfferta) && /valida fino al 31\/12\/2026/.test(testoOfferta) && htmlOfferta.includes("servizio=piano_lavoro&amp;offerta=of1"), testoOfferta.slice(0, 500));
+  atteso("titolare: la concessione gratuita è scritta chiara («Concessione gratuita: Fino a 20 gare…, usate 1 su 20») con la nota che non consuma il pacchetto, e nessun «Esaurito»", /Concessione gratuita: Fino a 20 gare, fino al 31\/12\/2026 — usate 1 su 20/.test(testoOfferta) && /non consuma il pacchetto/.test(testoOfferta) && !/Esaurito/.test(testoOfferta));
+  const htmlOffertaUfficio = disegna(schede({ titolare: false, offerte: offerteCliente }), false);
+  atteso("Ufficio Gare: l'offerta dedicata ha «Acquista» che avvisa (modulo con l'id dell'offerta), senza collegamenti alla pagina dei pagamenti", htmlOffertaUfficio.includes('name="offertaId" value="of1"') && htmlOffertaUfficio.includes("<form") && !htmlOffertaUfficio.includes("/dashboard/omnia-ai/servizi"));
+  atteso("un pacchetto dell'elenco non porta nessun id d'offerta nel suo modulo", !disegna(schede({ titolare: false }), false).includes('name="offertaId"'));
 
   console.log("\n--- Testi ---");
   atteso("l'uso di un'unità si dice chiaro: quante ne restano dopo, e che è l'ultima", /te ne resteranno 2/.test(TESTI_PACCHETTI.usaUnitaNota(3)) && /ultimo piano di lavoro/.test(TESTI_PACCHETTI.usaUnitaNota(1)));

@@ -1,16 +1,19 @@
+import Link from "next/link";
 import type { ClienteConcessione, DatiPianoLavoroConsole, RicercaCliente } from "@/lib/console/piano-lavoro";
+import { ETICHETTA_STATO_OFFERTA, revocabile } from "@/lib/console/offerte-calcoli";
 import { formattaGiorno } from "@/lib/omnia-ai-catalogo-calcoli";
 import { modalitaChiaveStripe } from "@/lib/omnia-ai-vendita";
-import { APPROVAZIONE_LEGALE_PACCHETTI, LIMITI_CATALOGO, NOTA_CONSOLE_CONDIZIONI_PACCHETTI, convenienzaPacchetto, testoUnita } from "@/lib/pacchetti-servizi-calcoli";
+import { APPROVAZIONE_LEGALE_PACCHETTI, LIMITI_CATALOGO, LIMITI_OFFERTA, NOTA_CONSOLE_CONDIZIONI_PACCHETTI, SERVIZI, convenienzaPacchetto, testoUnita } from "@/lib/pacchetti-servizi-calcoli";
 import { ETICHETTA_POLITICA_PROVA, POLITICHE_PROVA, descriviConcessione } from "@/lib/piano-lavoro-offerta-calcoli";
 import { NOTA_CONSOLE_TESTI } from "@/lib/piano-lavoro-testi";
 import { creaConcessionePianoLavoro, impostaPoliticaProvaPianoLavoro, impostaVenditaPianoLavoro, revocaConcessionePianoLavoro, salvaCatalogoPacchettiPianoLavoro, salvaPrezzoSingoloPianoLavoro } from "../azioni/piano-lavoro";
+import { creaOffertaDedicataCliente, revocaOffertaDedicataCliente } from "../azioni/pacchetti";
 import { Badge, Pannello } from "./elementi";
 import { formattaDataOra, formattaEuro } from "./formati";
 import ModuloAzione from "./modulo-azione";
 
 // Pagina «Piano di lavoro e pacchetti»: la vendita (un interruttore solo, per la singola gara e per i pacchetti), il prezzo della singola gara, i pacchetti
-// prepagati, la regola per gli utenti in prova e le concessioni gratuite. Il piano di lavoro NON si vende più nell'abbonamento: il pannello dei
+// prepagati, le offerte dedicate a un cliente, la regola per gli utenti in prova e le concessioni gratuite. Il piano di lavoro NON si vende più nell'abbonamento: il pannello dei
 // supplementi mensili non è più in pagina (il codice resta). Ciò che si scrive qui vale per i NUOVI acquisti: chi ha già pagato mantiene il suo
 // diritto, le sue unità e il suo prezzo.
 
@@ -173,6 +176,91 @@ export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati
             Fino a {LIMITI_CATALOGO.pacchettiMassimi} pacchetti, da {LIMITI_CATALOGO.quantitaMinima} a {LIMITI_CATALOGO.quantitaMassima} piani ciascuno; le righe vuote si ignorano e non si possono avere due pacchetti con la stessa quantità. <strong>Se le lasci tutte vuote non si vende nessun
             pacchetto.</strong> Chi ha già comprato mantiene le sue unità e il prezzo pagato.
           </p>
+        </div>
+      </Pannello>
+
+      <Pannello titolo={`Offerte dedicate (${dati.offerte.elenco.filter((o) => o.stato === "attiva").length} attive)`}>
+        <div className="cn-pannello-corpo">
+          <p style={{ marginBottom: 10 }}>
+            Un&apos;offerta dedicata è un pacchetto <strong>privato</strong>, con il prezzo e il numero di piani di lavoro che decidi tu per <strong>un cliente preciso</strong> (il titolare dell&apos;account). La vede solo lui, e il suo Ufficio Gare, che con
+            «Acquista» avvisa il titolare: <strong>non compare nell&apos;elenco pubblico</strong> dei pacchetti. Si compra <strong>una volta sola</strong>; finché non è stata comprata la puoi revocare; la scadenza è facoltativa (vale l&apos;ultimo giorno).
+            Prezzo IVA inclusa. Vale <strong>solo con la vendita accesa</strong> e con l&apos;abbonamento attivo del cliente. Le unità comprate funzionano come quelle di ogni pacchetto: non scadono, si usano una per gara, si perdono se l&apos;abbonamento cessa.
+          </p>
+
+          {!dati.offerte.disponibile ? (
+            <p className="cn-esito avviso" role="alert">
+              Disponibile dopo la migrazione 0105 (offerte dedicate): finché non è eseguita non si possono creare offerte.
+            </p>
+          ) : (
+            <>
+              <ModuloAzione azione={creaOffertaDedicataCliente} campi={{ servizio: "piano_lavoro" }} etichetta="Crea l'offerta" etichettaInCorso="Creo…" messaggioOk="Offerta creata: il cliente la vede nella sua area." variante="primario" svuota>
+                <input className="cn-input" type="email" name="email" required placeholder="Email del titolare" aria-label="Email del cliente a cui è riservata l'offerta" maxLength={254} autoComplete="off" style={{ maxWidth: 260 }} />
+                <input className="cn-input" name="quantita" inputMode="numeric" required placeholder="Quanti piani" aria-label="Quanti piani di lavoro" style={{ maxWidth: 120 }} autoComplete="off" />
+                <input className="cn-input" name="prezzo" inputMode="decimal" required placeholder="Prezzo in euro" aria-label="Prezzo totale in euro, IVA inclusa" style={{ maxWidth: 140 }} autoComplete="off" />
+                <input className="cn-input" name="scadeIl" type="date" aria-label="Valida fino al (vuoto = senza scadenza)" />
+                <input className="cn-input cn-testo" name="nota" placeholder="Nota interna (facoltativa, il cliente non la vede)" aria-label="Nota interna" maxLength={LIMITI_OFFERTA.notaMassima} />
+              </ModuloAzione>
+              <p className="cn-nota-inline" style={{ marginTop: 10 }}>
+                Da {LIMITI_OFFERTA.quantitaMinima} a {LIMITI_OFFERTA.quantitaMassima} piani; il prezzo è il totale dell&apos;offerta, non per piano (da 1 € a 100.000 €). Il confronto con il prezzo della singola gara ({euro(dati.prezzoSingoloCentesimi)}) è nella tabella.
+              </p>
+
+              {dati.offerte.elenco.length === 0 ? (
+                <p className="cn-vuoto">Nessuna offerta dedicata creata.</p>
+              ) : (
+                <div className="cn-scorri" style={{ marginTop: 14 }}>
+                  <table className="cn-tab">
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Pacchetto</th>
+                        <th className="num">Prezzo</th>
+                        <th className="num">Per unità</th>
+                        <th className="num">Risparmio sul prezzo di {euro(dati.prezzoSingoloCentesimi)} a gara</th>
+                        <th>Valida fino al</th>
+                        <th>Stato</th>
+                        <th>Azione</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dati.offerte.elenco.map((o) => {
+                        const c = convenienzaPacchetto({ quantita: o.quantita, prezzoCentesimi: o.prezzoCentesimi }, dati.prezzoSingoloCentesimi);
+                        return (
+                          <tr key={o.id}>
+                            <td className="cn-cella-doppia">
+                              {o.cliente ? <Link href={`/utenti/${o.userId}`}>{o.cliente}</Link> : "(cliente non trovato)"}
+                              <small>
+                                creata il {formattaDataOra(o.creataIl)} da {o.creataDa}
+                              </small>
+                              {o.nota && <small>Nota: {o.nota}</small>}
+                            </td>
+                            <td>
+                              {SERVIZI[o.servizio].nome}: {testoUnita(o.quantita, o.servizio)}
+                            </td>
+                            <td className="num">{euro(o.prezzoCentesimi)}</td>
+                            <td className="num">{euro(c.perUnitaCentesimi)}</td>
+                            <td className="num">{c.risparmioCentesimi ? euro(c.risparmioCentesimi) : "nessuno"}</td>
+                            <td>{o.scadeIl ? formattaGiorno(o.scadeIl) : "senza scadenza"}</td>
+                            <td>
+                              <Badge tono={o.stato === "attiva" || o.stato === "acquistata" ? "ok" : "neutro"}>{ETICHETTA_STATO_OFFERTA[o.stato]}</Badge>
+                              {o.stato === "revocata" && o.chiusaIl && <small style={{ display: "block" }}>il {formattaDataOra(o.chiusaIl)}{o.chiusaDa ? ` da ${o.chiusaDa}` : ""}</small>}
+                              {o.stato === "acquistata" && o.chiusaIl && <small style={{ display: "block" }}>il {formattaDataOra(o.chiusaIl)}</small>}
+                            </td>
+                            <td>
+                              {revocabile(o.stato) && (
+                                <ModuloAzione azione={revocaOffertaDedicataCliente} campi={{ id: o.id }} etichetta="Revoca" etichettaInCorso="Revoco…" messaggioOk="Revocata.">
+                                  <></>
+                                </ModuloAzione>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </Pannello>
 

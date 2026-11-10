@@ -7,12 +7,14 @@ import type { ServizioPacchetto } from "@/lib/pacchetti-servizi-calcoli";
 const statoIniziale: RichiestaPacchettoState = {};
 
 // «Acquista» dell'Ufficio Gare: NON compra nulla, avvisa il titolare con un'email (una al giorno per pacchetto). Il server controlla tutto.
-export default function RichiestaPacchettoForm({ servizio, quantita }: { servizio: ServizioPacchetto; quantita: number }) {
+// `offertaId`: l'offerta dedicata al cliente, se il pacchetto è quello (il server la rilegge e verifica che sia di questo cliente).
+export default function RichiestaPacchettoForm({ servizio, quantita, offertaId }: { servizio: ServizioPacchetto; quantita: number; offertaId?: string }) {
   const [stato, formAction, inCorso] = useActionState(richiediAcquistoPacchetto, statoIniziale);
   return (
     <form action={formAction} className="omnia-pacchetto-azione">
       <input type="hidden" name="servizio" value={servizio} />
       <input type="hidden" name="quantita" value={quantita} />
+      {offertaId && <input type="hidden" name="offertaId" value={offertaId} />}
       <button type="submit" className="omnia-btn omnia-btn-p omnia-btn-piccolo" disabled={inCorso}>
         {inCorso ? "Avviso l'amministratore…" : "Acquista"}
       </button>

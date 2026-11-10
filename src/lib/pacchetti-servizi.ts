@@ -11,16 +11,24 @@ import {
   eServizioPacchetto,
   interpretaCatalogoPacchetti,
   costruisciSchede,
+  daRigaOfferta,
   interpretaEsitoConsumo,
+  offertaAcquistabile,
+  trovaPacchetto,
   type EsitoConsumo,
   type MovimentoTipo,
+  type NuovaOffertaValori,
+  type OffertaDedicata,
   type PacchettoCatalogo,
   type RigaAcquistoPacchetto,
+  type RigaOfferta,
   type SchedaServizio,
   type ServizioPacchetto,
   type StatoPacchetto,
 } from "@/lib/pacchetti-servizi-calcoli";
 import { normalizzaSettore, type Settore } from "@/lib/gara-settore";
+import { giornoRoma } from "@/lib/omnia-ai-catalogo-calcoli";
+import { descriviConcessione } from "@/lib/piano-lavoro-offerta-calcoli";
 
 // Pacchetti prepagati dei servizi aggiuntivi: letture e scritture lato server. Le regole pure stanno in pacchetti-servizi-calcoli.ts; le variazioni
 // del saldo sono funzioni SQL atomiche (migrazione 0104). Tutto è tollerante alla migrazione non ancora eseguita: senza le tabelle nessun saldo,
@@ -108,6 +116,148 @@ export async function leggiDirittoPacchetto(admin: SupabaseClient, accountId: st
   return { ...stato, ...dirittoDaPacchetto(stato) };
 }
 
+// ───── offerte dedicate (migrazione 0105) ─────
+
+const COLONNE_OFFERTA = "id, user_id, servizio, quantita, prezzo_centesimi, scade_il, nota, stato, creata_il, creata_da_email, chiusa_il, chiusa_da_email, acquisto_id";
+
+// Le offerte dedicate di QUESTO cliente che si possono comprare adesso (attive e non scadute). Senza la migrazione 0105: nessuna.
+export async function leggiOfferteAttive(admin: SupabaseClient, accountId: string): Promise<OffertaDedicata[]> {
+  const { data, error } = await admin.from("omnia_ai_pacchetti_offerte").select(COLONNE_OFFERTA).eq("user_id", accountId).eq("stato", "attiva").order("creata_il", { ascending: true }).returns<RigaOfferta[]>();
+  if (error) {
+    if (!schemaAssente(error)) console.error("Pacchetti: lettura delle offerte dedicate non riuscita", error.message);
+    return [];
+  }
+  const oggi = giornoRoma(new Date());
+  return (data ?? []).filter((r) => eServizioPacchetto(r.servizio) && offertaAcquistabile(r, oggi)).map(daRigaOfferta);
+}
+
+// Un'offerta che QUESTO cliente può comprare adesso, oppure null (non è sua, è già stata comprata o revocata, è scaduta, non esiste). Serve all'acquisto
+// e alla richiesta dell'Ufficio Gare: il prezzo e la quantità sono sempre quelli dell'offerta nel database.
+export async function leggiOffertaPerAcquisto(admin: SupabaseClient, accountId: string, offertaId: string): Promise<OffertaDedicata | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(offertaId)) return null;
+  const { data, error } = await admin.from("omnia_ai_pacchetti_offerte").select(COLONNE_OFFERTA).eq("id", offertaId).eq("user_id", accountId).maybeSingle<RigaOfferta>();
+  if (error) {
+    if (!schemaAssente(error)) console.error("Pacchetti: lettura dell'offerta dedicata non riuscita", error.message);
+    return null;
+  }
+  if (!data || !eServizioPacchetto(data.servizio) || !offertaAcquistabile(data, giornoRoma(new Date()))) return null;
+  return daRigaOfferta(data);
+}
+
+// Il pacchetto che il cliente vuole comprare (o chiedere): un'offerta dedicata SUA (offertaId) oppure uno dell'elenco in vendita (quantità). Mai
+// ciò che arriva dal browser: quantità e prezzo sono quelli dell'offerta o dell'elenco, riletti ora. null = non c'è (più).
+export async function risolviPacchetto(
+  admin: SupabaseClient,
+  { accountId, servizio, offertaId, quantita }: { accountId: string; servizio: ServizioPacchetto; offertaId: string; quantita: unknown },
+): Promise<{ quantita: number; prezzoCentesimi: number; offertaId: string | null } | null> {
+  if (offertaId !== "") {
+    const offerta = await leggiOffertaPerAcquisto(admin, accountId, offertaId);
+    return offerta && offerta.servizio === servizio ? { quantita: offerta.quantita, prezzoCentesimi: offerta.prezzoCentesimi, offertaId: offerta.id } : null;
+  }
+  const dellElenco = trovaPacchetto(await leggiCatalogoPacchetti(servizio, admin), quantita);
+  return dellElenco ? { quantita: dellElenco.quantita, prezzoCentesimi: dellElenco.prezzoCentesimi, offertaId: null } : null;
+}
+
+// Dopo il pagamento: l'offerta diventa «acquistata» (una volta sola: la condizione sullo stato evita che un evento rimandato la riscriva).
+export async function chiudiOffertaAcquistata(admin: SupabaseClient, offertaId: string, acquistoId: string): Promise<void> {
+  const { error } = await admin
+    .from("omnia_ai_pacchetti_offerte")
+    .update({ stato: "acquistata", chiusa_il: new Date().toISOString(), acquisto_id: acquistoId })
+    .eq("id", offertaId)
+    .eq("stato", "attiva");
+  if (error && !schemaAssente(error)) console.error("Pacchetti: offerta dedicata non segnata come acquistata", offertaId, error.message);
+}
+
+export type OffertaConsole = RigaOfferta & { cliente_email: string | null };
+
+// Per la console: le offerte dedicate (anche chiuse), dalla più recente, con l'email del cliente. `perUtente`: solo quelle di un cliente.
+export async function leggiOfferteConsole(admin: SupabaseClient, opzioni: { perUtente?: string; limite?: number } = {}): Promise<{ disponibile: boolean; offerte: OffertaConsole[] }> {
+  let q = admin.from("omnia_ai_pacchetti_offerte").select(COLONNE_OFFERTA).order("creata_il", { ascending: false }).limit(opzioni.limite ?? 100);
+  if (opzioni.perUtente) q = q.eq("user_id", opzioni.perUtente);
+  const { data, error } = await q.returns<RigaOfferta[]>();
+  if (error) {
+    if (!schemaAssente(error)) console.error("Console: lettura delle offerte dedicate non riuscita", error.message);
+    return { disponibile: false, offerte: [] };
+  }
+  const righe = data ?? [];
+  const ids = [...new Set(righe.map((r) => r.user_id))];
+  const email = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: utenti } = await admin.from("users").select("id, email").in("id", ids).returns<{ id: string; email: string | null }[]>();
+    for (const u of utenti ?? []) if (u.email) email.set(u.id, u.email);
+  }
+  return { disponibile: true, offerte: righe.map((r) => ({ ...r, cliente_email: email.get(r.user_id) ?? null })) };
+}
+
+// Crea un'offerta dedicata (la console l'ha già validata con validaNuovaOfferta e ha già trovato il titolare).
+export async function creaOffertaDedicata(
+  admin: SupabaseClient,
+  { userId, valori, daEmail }: { userId: string; valori: Omit<NuovaOffertaValori, "email">; daEmail: string },
+): Promise<{ ok: true; id: string } | { ok: false; errore: string }> {
+  const { data, error } = await admin
+    .from("omnia_ai_pacchetti_offerte")
+    .insert({ user_id: userId, servizio: valori.servizio, quantita: valori.quantita, prezzo_centesimi: valori.prezzoCentesimi, scade_il: valori.scadeIl, nota: valori.nota, creata_da_email: daEmail })
+    .select("id")
+    .single<{ id: string }>();
+  if (error || !data) {
+    if (schemaAssente(error)) return { ok: false, errore: "Le offerte dedicate non sono ancora disponibili: manca la migrazione 0105." };
+    console.error("Console: creazione dell'offerta dedicata non riuscita", error?.message);
+    return { ok: false, errore: "Creazione dell'offerta non riuscita. Riprova." };
+  }
+  return { ok: true, id: data.id };
+}
+
+// Revoca un'offerta finché è attiva (una già comprata non si tocca). Restituisce se ha davvero revocato qualcosa.
+export async function revocaOffertaDedicata(admin: SupabaseClient, offertaId: string, daEmail: string): Promise<"revocata" | "non_attiva" | "errore"> {
+  const { data, error } = await admin
+    .from("omnia_ai_pacchetti_offerte")
+    .update({ stato: "revocata", chiusa_il: new Date().toISOString(), chiusa_da_email: daEmail })
+    .eq("id", offertaId)
+    .eq("stato", "attiva")
+    .select("id")
+    .maybeSingle<{ id: string }>();
+  if (error) {
+    console.error("Console: revoca dell'offerta dedicata non riuscita", error.message);
+    return "errore";
+  }
+  return data ? "revocata" : "non_attiva";
+}
+
+// ───── concessioni gratuite, raccontate al cliente ─────
+
+type RigaConcessioneScheda = { id: string; tipo: "tutte" | "gara"; gara_titolo: string | null; gare_massime: number | null; scade_il: string | null };
+
+// Le concessioni gratuite attive e non scadute del cliente, ognuna in una riga («Fino a 20 gare, fino al 31/12/2026 — usate 1 su 20»), così la scheda
+// del piano di lavoro spiega perché lo si può generare anche senza pacchetto. Senza la migrazione 0101: nessuna.
+export async function leggiConcessioniPerScheda(admin: SupabaseClient, accountId: string): Promise<string[]> {
+  const { data, error } = await admin
+    .from("omnia_ai_piano_lavoro_concessioni")
+    .select("id, tipo, gara_titolo, gare_massime, scade_il")
+    .eq("user_id", accountId)
+    .eq("attiva", true)
+    .order("creata_il", { ascending: true })
+    .returns<RigaConcessioneScheda[]>();
+  if (error) {
+    if (!schemaAssente(error)) console.error("Pacchetti: lettura delle concessioni non riuscita", error.message);
+    return [];
+  }
+  const oggi = giornoRoma(new Date());
+  const valide = (data ?? []).filter((c) => !c.scade_il || c.scade_il >= oggi);
+  if (valide.length === 0) return [];
+
+  // le gare già coperte da ciascuna concessione con un numero massimo
+  const conLimite = valide.filter((c) => c.tipo === "tutte" && c.gare_massime !== null).map((c) => c.id);
+  const usate: Record<string, Set<string>> = {};
+  if (conLimite.length > 0) {
+    const { data: piani } = await admin.from("gara_piani_lavoro").select("gara_id, concessione_id").in("concessione_id", conLimite).in("stato", ["in_corso", "pronto"]).returns<{ gara_id: string; concessione_id: string }[]>();
+    for (const r of piani ?? []) (usate[r.concessione_id] ??= new Set()).add(r.gara_id);
+  }
+  return valide.map((c) => {
+    const base = descriviConcessione(c);
+    return c.tipo === "tutte" && c.gare_massime !== null ? `${base} — usate ${usate[c.id]?.size ?? 0} su ${c.gare_massime}` : base;
+  });
+}
+
 // Tutto ciò che serve per mostrare i servizi a chi guarda (home e pagina dei servizi), letto lato server con la chiave di servizio e sempre
 // sull'account effettivo (il titolare). `settoriGare`: i settori delle gare dell'account (null = non ancora classificata).
 export async function leggiSchedeServizi({
@@ -121,12 +271,14 @@ export async function leggiSchedeServizi({
   titolare: boolean;
   settoriGare: (Settore | null)[];
 }): Promise<SchedaServizio[]> {
-  const [{ saldi, disponibile }, acquisti, venditaAttiva, catalogoPianoLavoro, prezzoPianoLavoro] = await Promise.all([
+  const [{ saldi, disponibile }, acquisti, venditaAttiva, catalogoPianoLavoro, prezzoPianoLavoro, offerte, concessioniPianoLavoro] = await Promise.all([
     leggiSaldiConStato(admin, accountId),
     contaAcquistiPacchetti(admin, accountId),
     venditaPacchettiAttiva(admin),
     leggiCatalogoPacchetti("piano_lavoro", admin),
     leggiPrezzoSingoloServizio("piano_lavoro", admin),
+    leggiOfferteAttive(admin, accountId),
+    leggiConcessioniPerScheda(admin, accountId),
   ]);
   return costruisciSchede({
     settoriGare,
@@ -137,6 +289,9 @@ export async function leggiSchedeServizi({
     venditaAttiva: venditaAttiva && disponibile,
     cataloghi: { piano_lavoro: catalogoPianoLavoro },
     prezzoSingolo: { piano_lavoro: prezzoPianoLavoro },
+    // le offerte dedicate e le concessioni: ciò che il cliente ha di suo (senza le tabelle, nulla)
+    offerte,
+    concessioni: { piano_lavoro: concessioniPianoLavoro },
   });
 }
 
@@ -313,6 +468,9 @@ export async function registraPagamentoPacchetto({
   }
   const accreditoMancante = esitoAccredito === "senza_utente";
   if (accreditoMancante) console.error("Webhook Stripe (pacchetto): utente non più presente, unità non accreditate", acquistoId);
+
+  // Se veniva da un'offerta dedicata, quella si chiude (una volta sola, mai bloccante: le unità sono già nel saldo).
+  if (acquisto.offerta_id) await chiudiOffertaAcquistata(admin, acquisto.offerta_id, acquisto.id);
 
   await notifica({ admin, livemode: sessione.livemode, eventoId, acquisto, sessione, accreditoMancante });
   return { esito: registrato ? "registrato" : "gia_registrato" };

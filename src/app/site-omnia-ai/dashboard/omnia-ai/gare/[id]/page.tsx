@@ -25,7 +25,7 @@ import { normalizzaSettore, proponeFoodMenu, proponePianoLavoro } from "@/lib/ga
 import { leggiPianiGara } from "@/lib/piano-lavoro-gara";
 import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
 import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
-import { leggiCatalogoPacchetti, pacchettiDisponibili } from "@/lib/pacchetti-servizi";
+import { leggiCatalogoPacchetti, leggiOfferteAttive, pacchettiDisponibili } from "@/lib/pacchetti-servizi";
 import { proponiPacchettoPiuConveniente, type PacchettoNellaGara } from "@/lib/pacchetti-servizi-calcoli";
 import { leggiDirittiPianoLavoro } from "@/lib/piano-lavoro-diritti";
 import { interpretaRitornoPagamento, valutaOffertaAcquisto } from "@/lib/piano-lavoro-acquisto-calcoli";
@@ -235,7 +235,7 @@ export default async function GaraPage({
   const pacchettoPianoLavoro: PacchettoNellaGara = {
     saldo: dirittiPianoLavoro.pacchettoSaldo,
     garaGiaConsumata: dirittiPianoLavoro.pacchettoGaraConsumata,
-    proposta: offertaPianoLavoro.stato === "acquistabile" && (await pacchettiDisponibili(adminPianoLavoro)) ? proponiPacchettoPiuConveniente(await leggiCatalogoPacchetti("piano_lavoro", adminPianoLavoro)) : null,
+    proposta: offertaPianoLavoro.stato === "acquistabile" && (await pacchettiDisponibili(adminPianoLavoro)) ? proponiPacchettoPiuConveniente(await leggiCatalogoPacchetti("piano_lavoro", adminPianoLavoro), await leggiOfferteAttive(adminPianoLavoro, contesto.accountId)) : null,
   };
 
   const chunkCountPerDocumento = new Map<string, number>();

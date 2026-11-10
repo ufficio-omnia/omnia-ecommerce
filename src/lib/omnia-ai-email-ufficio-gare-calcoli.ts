@@ -54,15 +54,16 @@ export const URL_SERVIZI = `${OMNIA_AI_BASE_URL}/dashboard/omnia-ai/servizi`;
 
 // L'Ufficio Gare ha premuto «Acquista» su un pacchetto di un servizio aggiuntivo: AL TITOLARE, al massimo una al giorno per pacchetto.
 // Niente prezzo (come le altre): lo vede nella pagina, prima di confermare.
-export function emailAvvisoAcquistoPacchetto(d: { emailUfficioGare: string; servizio: ServizioPacchetto; quantita: number }): EmailPronta {
+export function emailAvvisoAcquistoPacchetto(d: { emailUfficioGare: string; servizio: ServizioPacchetto; quantita: number; dedicato?: boolean }): EmailPronta {
   const nome = SERVIZI[d.servizio].nome;
   const unita = testoUnita(d.quantita, d.servizio);
-  const corpo = `<p>L'Ufficio Gare (${esc(d.emailUfficioGare)}) vorrebbe che acquistassi il pacchetto <strong>${esc(nome)}: ${esc(unita)}</strong>.</p>
+  const dedicato = d.dedicato ? " dedicato a voi" : "";
+  const corpo = `<p>L'Ufficio Gare (${esc(d.emailUfficioGare)}) vorrebbe che acquistassi il pacchetto${dedicato} <strong>${esc(nome)}: ${esc(unita)}</strong>.</p>
 <p>Il pacchetto lo acquisti e lo paghi tu: dalla tua area riservata vedi il prezzo e le condizioni prima di confermare. Le unità non scadono: si esauriscono man mano che l'azienda le usa, e le possono usare sia tu sia l'Ufficio Gare.</p>
 ${pulsante("Vai ai servizi aggiuntivi", URL_SERVIZI)}
 <p style="color:#6b7280;font-size:13px;">Ti scriviamo al massimo una volta al giorno per ogni pacchetto.</p>`;
   return {
-    oggetto: `Il tuo Ufficio Gare chiede un pacchetto: ${nome}, ${unita}`,
+    oggetto: `Il tuo Ufficio Gare chiede un pacchetto${dedicato}: ${nome}, ${unita}`,
     html: cornice({ titolo: "Pacchetto richiesto dal tuo Ufficio Gare", corpo, prova: false, piede: PIEDE_CLIENTE }),
   };
 }

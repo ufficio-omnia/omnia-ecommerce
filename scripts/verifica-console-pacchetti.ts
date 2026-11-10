@@ -1,15 +1,16 @@
 // Autotest della console per i pacchetti prepagati di servizi aggiuntivi (piano di lavoro e, in arrivo, OMNIA FOOD MENU): ricavi, da fatturare, scheda
-// cliente con la rettifica del saldo, editor dei pacchetti, interruttore di vendita sciolto dall'abbonamento, tolleranza alla migrazione 0104
-// non ancora eseguita. Gratuito, nessun database né rete (client finti e controlli sul testo dei sorgenti): gira nel livello 1, quindi in prebuild.
+// cliente con la rettifica del saldo, editor dei pacchetti, offerte dedicate a un cliente (pacchetti privati a prezzo e numero decisi dalla console),
+// interruttore di vendita sciolto dall'abbonamento, tolleranza alle migrazioni 0104 e 0105 non ancora eseguite. Gratuito, nessun database né rete (client finti e controlli sul testo dei sorgenti): gira nel livello 1, quindi in prebuild.
 import fs from "fs";
 import path from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calcolaPeriodo } from "../src/lib/console/periodo";
 import { aggregaRicavi, type FonteRicavo, type VoceRicavo } from "../src/lib/console/ricavi-calcoli";
 import { descrizionePacchettoRiga, descrizionePianoLavoroRiga } from "../src/lib/console/fatturazione-calcoli";
-import { rettificaPacchetti } from "../src/lib/pacchetti-servizi";
+import { creaOffertaDedicata, leggiOfferteConsole, rettificaPacchetti, revocaOffertaDedicata } from "../src/lib/pacchetti-servizi";
+import { daRigaConsole, revocabile, statoOffertaConsole } from "../src/lib/console/offerte-calcoli";
 import { COLONNA_DATA_PER_FONTE, TABELLA_PER_FONTE, percorsoFatturaPagamento } from "../src/lib/omnia-ai-pagamenti";
-import { CATALOGO_PREDEFINITO, LIMITI_CATALOGO, SERVIZI, interpretaCatalogoPacchetti, serializzaCatalogoPacchetti, validaCatalogoDaModulo } from "../src/lib/pacchetti-servizi-calcoli";
+import { CATALOGO_PREDEFINITO, LIMITI_CATALOGO, LIMITI_OFFERTA, SERVIZI, daRigaOfferta, interpretaCatalogoPacchetti, serializzaCatalogoPacchetti, validaCatalogoDaModulo, validaNuovaOfferta, type RigaOfferta } from "../src/lib/pacchetti-servizi-calcoli";
 
 const fallimenti: string[] = [];
 function atteso(nome: string, ok: boolean, dettaglio = "") {
@@ -184,7 +185,7 @@ async function main() {
     const azioni = leggi("src/app/site-console/azioni/pacchetti.ts");
     atteso("il file è «use server» e non esporta altro che funzioni asincrone e tipi", azioni.startsWith('"use server"') && !/^export (const|let|var|function) /m.test(azioni));
     const funzioni = azioni.split(/^export async function /m).slice(1);
-    uguale("l'unica azione è la rettifica", funzioni.map((f) => f.split("(")[0]), ["rettificaPacchettiCliente"]);
+    uguale("le azioni sono la rettifica del saldo e le due delle offerte dedicate (crea, revoca)", funzioni.map((f) => f.split("(")[0]), ["rettificaPacchettiCliente", "creaOffertaDedicataCliente", "revocaOffertaDedicataCliente"]);
     const r = corpoFunzione(azioni, "rettificaPacchettiCliente");
     atteso("parte da richiediAdminAzione, prima di leggere il modulo e di toccare il database", /^export async function rettificaPacchettiCliente\([^)]*\)[^{]*\{\n\s*const sessione = await richiediAdminAzione\(\);\n\s*if \(!sessione\) return \{ errore: "Non autorizzato\." \};/.test(r));
     atteso("controlla cliente (uuid), servizio (elenco chiuso, solo se in vendita), variazione intera e non zero, motivo di almeno due caratteri", /UUID\.test\(userId\)/.test(r) && /eServizioPacchetto\(servizio\)/.test(r) && /\.disponibile\)/.test(r) && /\^\[\+-\]\?\\d\{1,4\}\$/.test(r) && /delta === 0/.test(r) && /VARIAZIONE_MASSIMA/.test(r) && /motivo\.length < 2/.test(r) && /motivo\.length > 300/.test(r));
@@ -228,6 +229,201 @@ async function main() {
     atteso("i dati di prova della barra contano anche i pacchetti pagati in modalità test (tabella assente = nessun dato)", /from\("omnia_ai_pacchetti_acquisti"\)\.select\("pagata_il"\)\.eq\("stato", "pagata"\)\.eq\("livemode", false\)/.test(prova) && /pacchetti\.error \? \[\]/.test(prova));
     const costi = leggi("src/lib/console/costi.ts") + leggi("src/lib/console/costi-calcoli.ts");
     atteso("costi e margini non includono i pacchetti (come le revisioni e i piani di lavoro singoli)", !/omnia_ai_pacchetti/.test(costi));
+  }
+
+  // ═════ 4b. offerte dedicate ═════
+  console.log("--- Offerte dedicate: stato, validazione ---");
+  const oggi = "2026-11-10";
+  const riga = (o: Partial<RigaOfferta & { cliente_email: string | null }> = {}): RigaOfferta & { cliente_email: string | null } => ({
+    id: "22222222-2222-4222-8222-222222222222",
+    user_id: ID,
+    servizio: "piano_lavoro",
+    quantita: 10,
+    prezzo_centesimi: 45000,
+    scade_il: null,
+    nota: "accordo con il commerciale",
+    stato: "attiva",
+    creata_il: "2026-11-09T10:00:00Z",
+    creata_da_email: "admin@x.it",
+    chiusa_il: null,
+    chiusa_da_email: null,
+    acquisto_id: null,
+    cliente_email: "cliente@x.it",
+    ...o,
+  });
+  {
+    uguale("un'offerta attiva senza scadenza è «attiva»", statoOffertaConsole(riga(), oggi), "attiva");
+    uguale("l'ultimo giorno è incluso: scade oggi = ancora «attiva»", statoOffertaConsole(riga({ scade_il: oggi }), oggi), "attiva");
+    uguale("scaduta ieri = «scaduta» (non sembra comprabile)", statoOffertaConsole(riga({ scade_il: "2026-11-09" }), oggi), "scaduta");
+    uguale("una già acquistata resta «acquistata» anche con la data passata", statoOffertaConsole(riga({ stato: "acquistata", scade_il: "2026-01-01" }), oggi), "acquistata");
+    uguale("una revocata resta «revocata»", statoOffertaConsole(riga({ stato: "revocata" }), oggi), "revocata");
+    uguale("si può revocare solo finché non è stata comprata o revocata (anche se è scaduta di data)", (["attiva", "scaduta", "acquistata", "revocata"] as const).map(revocabile), [true, true, false, false]);
+    const v = daRigaConsole(riga({ scade_il: "2026-12-31" }), oggi);
+    uguale("la riga del database diventa quella della console, con il cliente e la nota interna", [v.id, v.cliente, v.quantita, v.prezzoCentesimi, v.scadeIl, v.nota, v.stato, v.creataDa], ["22222222-2222-4222-8222-222222222222", "cliente@x.it", 10, 45000, "2026-12-31", "accordo con il commerciale", "attiva", "admin@x.it"]);
+    uguale("un cliente non trovato resta null (la pagina scrive «cliente non trovato»)", daRigaConsole(riga({ cliente_email: null }), oggi).cliente, null);
+  }
+  {
+    const modulo = (o: Partial<Parameters<typeof validaNuovaOfferta>[0]> = {}) => ({ email: " Cliente@X.IT ", servizio: "piano_lavoro", quantita: "10", prezzoEuro: "450,00", scadeIl: "2026-12-31", nota: "  accordo  ", ...o });
+    uguale(
+      "un'offerta valida: email in minuscolo, prezzo in centesimi, nota ripulita",
+      validaNuovaOfferta(modulo(), oggi),
+      { ok: true, valori: { email: "cliente@x.it", servizio: "piano_lavoro", quantita: 10, prezzoCentesimi: 45000, scadeIl: "2026-12-31", nota: "accordo" } },
+    );
+    uguale("scadenza e nota facoltative: restano null", (() => { const r = validaNuovaOfferta(modulo({ scadeIl: "", nota: "  " }), oggi); return r.ok ? [r.valori.scadeIl, r.valori.nota] : null; })(), [null, null]);
+    atteso("la scadenza di oggi è ammessa (l'ultimo giorno è incluso)", validaNuovaOfferta(modulo({ scadeIl: oggi }), oggi).ok);
+    atteso("una sola unità e il massimo sono ammessi (l'offerta dedicata può essere anche di un solo piano)", validaNuovaOfferta(modulo({ quantita: String(LIMITI_OFFERTA.quantitaMinima) }), oggi).ok && validaNuovaOfferta(modulo({ quantita: String(LIMITI_OFFERTA.quantitaMassima) }), oggi).ok && LIMITI_OFFERTA.quantitaMinima === 1);
+    const rifiuti: [string, Partial<Parameters<typeof validaNuovaOfferta>[0]>][] = [
+      ["email vuota", { email: "  " }],
+      ["email senza chiocciola", { email: "cliente.x.it" }],
+      ["email troppo lunga", { email: `${"a".repeat(250)}@x.it` }],
+      ["servizio inventato", { servizio: "altro" }],
+      ["servizio non ancora disponibile (OMNIA FOOD MENU «sta arrivando»)", { servizio: "food_menu" }],
+      ["quantità zero", { quantita: "0" }],
+      ["quantità oltre il massimo", { quantita: String(LIMITI_OFFERTA.quantitaMassima + 1) }],
+      ["quantità non intera", { quantita: "2,5" }],
+      ["quantità vuota", { quantita: "" }],
+      ["prezzo non numerico", { prezzoEuro: "tanto" }],
+      ["prezzo con le migliaia o il simbolo", { prezzoEuro: "1.000,00 €" }],
+      ["prezzo sotto 1 euro", { prezzoEuro: "0,50" }],
+      ["prezzo oltre il massimo", { prezzoEuro: "100001" }],
+      ["prezzo vuoto", { prezzoEuro: "" }],
+      ["scadenza già passata", { scadeIl: "2026-11-09" }],
+      ["scadenza in un formato strano", { scadeIl: "31/12/2026" }],
+      ["scadenza impossibile", { scadeIl: "2026-13-45" }],
+      ["nota troppo lunga", { nota: "x".repeat(LIMITI_OFFERTA.notaMassima + 1) }],
+    ];
+    for (const [nome, extra] of rifiuti) atteso(`rifiutato: ${nome}`, !validaNuovaOfferta(modulo(extra), oggi).ok);
+  }
+
+  console.log("--- Offerte dedicate: libreria con un database finto ---");
+  {
+    type RigaDb = Record<string, unknown>;
+    type Esito = { data: unknown; error: { code?: string; message: string } | null };
+    class Q implements PromiseLike<Esito> {
+      private filtri: ((r: RigaDb) => boolean)[] = [];
+      private op: "select" | "insert" | "update" = "select";
+      private dati: RigaDb | null = null;
+      private massimo = Infinity;
+      private ordine: ((r: RigaDb[]) => RigaDb[]) | null = null;
+      private singolo = false;
+      constructor(private nome: string, private db: Record<string, RigaDb[]>, private assenti: string[]) {}
+      select() { return this; }
+      insert(d: RigaDb) { this.op = "insert"; this.dati = d; return this; }
+      update(d: RigaDb) { this.op = "update"; this.dati = d; return this; }
+      eq(c: string, v: unknown) { this.filtri.push((r) => r[c] === v); return this; }
+      in(c: string, valori: unknown[]) { this.filtri.push((r) => valori.includes(r[c])); return this; }
+      order(c: string, o?: { ascending?: boolean }) { this.ordine = (r) => [...r].sort((a, b) => String(a[c]).localeCompare(String(b[c])) * (o?.ascending === false ? -1 : 1)); return this; }
+      limit(n: number) { this.massimo = n; return this; }
+      returns() { return this; }
+      single() { this.singolo = true; return this; }
+      maybeSingle() { this.singolo = true; return this; }
+      private esegui(): Esito {
+        if (this.assenti.includes(this.nome)) return { data: null, error: { code: "42P01", message: `relation "${this.nome}" does not exist` } };
+        const tabella = (this.db[this.nome] ??= []);
+        if (this.op === "insert") {
+          const nuova = { id: `nuova-${tabella.length + 1}`, stato: "attiva", ...this.dati };
+          tabella.push(nuova);
+          return { data: this.singolo ? { id: nuova.id } : [nuova], error: null };
+        }
+        let trovate = tabella.filter((r) => this.filtri.every((f) => f(r)));
+        if (this.op === "update") for (const r of trovate) Object.assign(r, this.dati);
+        if (this.ordine) trovate = this.ordine(trovate);
+        trovate = trovate.slice(0, this.massimo);
+        return { data: this.singolo ? (trovate[0] ?? null) : trovate, error: null };
+      }
+      then<A = Esito, B = never>(ok?: ((v: Esito) => A | PromiseLike<A>) | null, ko?: ((r: unknown) => B | PromiseLike<B>) | null): PromiseLike<A | B> {
+        return Promise.resolve(this.esegui()).then(ok, ko);
+      }
+    }
+    const finto = (db: Record<string, RigaDb[]>, assenti: string[] = []) => ({ from: (nome: string) => new Q(nome, db, assenti) }) as unknown as SupabaseClient;
+    const zitto = async <T,>(f: () => Promise<T>): Promise<T> => {
+      const vecchio = console.error;
+      console.error = () => {};
+      try {
+        return await f();
+      } finally {
+        console.error = vecchio;
+      }
+    };
+
+    // creazione
+    const db: Record<string, RigaDb[]> = { omnia_ai_pacchetti_offerte: [], users: [{ id: ID, email: "cliente@x.it" }] };
+    const creata = await creaOffertaDedicata(finto(db), { userId: ID, valori: { servizio: "piano_lavoro", quantita: 10, prezzoCentesimi: 45000, scadeIl: "2026-12-31", nota: "accordo" }, daEmail: "admin@x.it" });
+    atteso("creaOffertaDedicata: restituisce l'id e scrive le colonne giuste (cliente, servizio, quantità, prezzo in centesimi, scadenza, nota, chi la crea)", creata.ok && JSON.stringify(Object.keys(db.omnia_ai_pacchetti_offerte[0]).sort()) === JSON.stringify(["creata_da_email", "id", "nota", "prezzo_centesimi", "quantita", "scade_il", "servizio", "stato", "user_id"]) && db.omnia_ai_pacchetti_offerte[0].user_id === ID && db.omnia_ai_pacchetti_offerte[0].prezzo_centesimi === 45000 && db.omnia_ai_pacchetti_offerte[0].creata_da_email === "admin@x.it", JSON.stringify(db.omnia_ai_pacchetti_offerte));
+    const senzaTabella = await zitto(() => creaOffertaDedicata(finto({}, ["omnia_ai_pacchetti_offerte"]), { userId: ID, valori: { servizio: "piano_lavoro", quantita: 10, prezzoCentesimi: 45000, scadeIl: null, nota: null }, daEmail: "admin@x.it" }));
+    atteso("senza la migrazione 0105 la creazione non cade: dice che manca la 0105", !senzaTabella.ok && /0105/.test(senzaTabella.errore));
+
+    // revoca: solo le attive
+    const idAttiva = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const dbRevoca: Record<string, RigaDb[]> = {
+      omnia_ai_pacchetti_offerte: [
+        { id: idAttiva, stato: "attiva" },
+        { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", stato: "acquistata" },
+        { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", stato: "revocata" },
+      ],
+    };
+    uguale("revocare un'offerta attiva: «revocata», con data e chi l'ha fatto", [await revocaOffertaDedicata(finto(dbRevoca), idAttiva, "admin@x.it"), dbRevoca.omnia_ai_pacchetti_offerte[0].stato, dbRevoca.omnia_ai_pacchetti_offerte[0].chiusa_da_email, typeof dbRevoca.omnia_ai_pacchetti_offerte[0].chiusa_il], ["revocata", "revocata", "admin@x.it", "string"]);
+    uguale("revocarla di nuovo: «non_attiva», nessuna modifica", await revocaOffertaDedicata(finto(dbRevoca), idAttiva, "altro@x.it"), "non_attiva");
+    uguale("una già acquistata NON si revoca (le unità sono nel saldo del cliente)", [await revocaOffertaDedicata(finto(dbRevoca), "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "admin@x.it"), dbRevoca.omnia_ai_pacchetti_offerte[1].stato], ["non_attiva", "acquistata"]);
+    uguale("un'offerta che non esiste: «non_attiva»", await revocaOffertaDedicata(finto(dbRevoca), "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "admin@x.it"), "non_attiva");
+    uguale("senza la migrazione 0105 la revoca dà «errore» senza cadere", await zitto(() => revocaOffertaDedicata(finto({}, ["omnia_ai_pacchetti_offerte"]), idAttiva, "admin@x.it")), "errore");
+
+    // lettura per la console
+    const dbLettura: Record<string, RigaDb[]> = {
+      omnia_ai_pacchetti_offerte: [
+        { id: "o1", user_id: ID, servizio: "piano_lavoro", quantita: 10, prezzo_centesimi: 45000, stato: "attiva", creata_il: "2026-11-01T10:00:00Z" },
+        { id: "o2", user_id: ID, servizio: "piano_lavoro", quantita: 5, prezzo_centesimi: 20000, stato: "revocata", creata_il: "2026-11-05T10:00:00Z" },
+        { id: "o3", user_id: "altro-utente", servizio: "piano_lavoro", quantita: 3, prezzo_centesimi: 9000, stato: "attiva", creata_il: "2026-11-03T10:00:00Z" },
+      ],
+      users: [{ id: ID, email: "cliente@x.it" }, { id: "altro-utente", email: "altro@x.it" }],
+    };
+    const tutte = await leggiOfferteConsole(finto(dbLettura));
+    uguale("la console legge tutte le offerte, dalla più recente, con l'email del cliente", [tutte.disponibile, tutte.offerte.map((o) => [o.id, o.cliente_email])], [true, [["o2", "cliente@x.it"], ["o3", "altro@x.it"], ["o1", "cliente@x.it"]]]);
+    uguale("la scheda legge solo le offerte di quel cliente", (await leggiOfferteConsole(finto(dbLettura), { perUtente: ID })).offerte.map((o) => o.id), ["o2", "o1"]);
+    uguale("senza la migrazione 0105: nessuna offerta e «disponibile: false», senza errori", await zitto(() => leggiOfferteConsole(finto({}, ["omnia_ai_pacchetti_offerte"]))), { disponibile: false, offerte: [] });
+  }
+
+  console.log("--- Offerte dedicate: azioni, pagina, scheda ---");
+  {
+    const azioni = leggi("src/app/site-console/azioni/pacchetti.ts");
+    const crea = corpoFunzione(azioni, "creaOffertaDedicataCliente");
+    const revoca = corpoFunzione(azioni, "revocaOffertaDedicataCliente");
+    atteso("creazione: parte da richiediAdminAzione, prima di leggere il modulo e di toccare il database", /^export async function creaOffertaDedicataCliente\([^)]*\)[^{]*\{\n\s*const sessione = await richiediAdminAzione\(\);\n\s*if \(!sessione\) return \{ errore: "Non autorizzato\." \};/.test(crea));
+    atteso("creazione: valida tutto con validaNuovaOfferta (giorno di Roma) PRIMA di leggere il database", /validaNuovaOfferta\(/.test(crea) && /giornoRoma\(new Date\(\)\)/.test(crea) && /if \(!esito\.ok\) return \{ errore: esito\.errore \};/.test(crea) && crea.indexOf("validaNuovaOfferta(") < crea.indexOf("createAdminClient()"));
+    atteso("creazione: legge i sei campi del modulo (email, servizio, quantità, prezzo, scadenza, nota)", ["email", "servizio", "quantita", "prezzo", "scadeIl", "nota"].every((c) => crea.includes(`formData.get("${c}")`)));
+    atteso("creazione: il cliente si cerca per email normalizzata nella tabella degli utenti; non trovato = errore chiaro, nessuna offerta", /\.from\("users"\)\.select\("id"\)\.eq\("email", valori\.email\)/.test(crea) && /if \(!utente\) return \{ errore: "Nessun cliente con questo indirizzo email\." \}/.test(crea));
+    atteso("creazione: un Ufficio Gare non riceve offerte e, se il controllo non riesce, non si crea nulla (PRIMA di scrivere)", /leggiTitolareDelMembro\(utente\.id, admin\);\n\s*if \(titolareDelMembro === "errore"\) return \{ errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO \};\n\s*if \(titolareDelMembro\) return \{ errore: MESSAGGIO_E_UN_UFFICIO_GARE \};/.test(crea) && crea.indexOf("leggiTitolareDelMembro") < crea.indexOf("creaOffertaDedicata("));
+    atteso("creazione: scrive SOLO con la libreria (nessuna scrittura diretta), con l'email dell'admin e il cliente trovato", /creaOffertaDedicata\(admin, \{ userId: utente\.id, valori, daEmail: sessione\.email \}\)/.test(crea) && !/\.(insert|update|upsert|delete)\(/.test(crea));
+    atteso("creazione: il servizio non si fida del browser (riconvalidato da validaNuovaOfferta), il prezzo è quello digitato dall'admin, mai letto da altro", !/prezzoMostrato|searchParams|headers\(/.test(crea));
+    atteso("creazione: ricarica la console dopo aver creato", /revalidatePath\("\/site-console", "layout"\);\n\s*return \{ ok: true \};/.test(crea));
+    atteso("revoca: parte da richiediAdminAzione, controlla che l'id sia un uuid e usa la libreria", /^export async function revocaOffertaDedicataCliente\([^)]*\)[^{]*\{\n\s*const sessione = await richiediAdminAzione\(\);\n\s*if \(!sessione\) return \{ errore: "Non autorizzato\." \};/.test(revoca) && /UUID\.test\(id\)/.test(revoca) && /revocaOffertaDedicata\(createAdminClient\(\), id, sessione\.email\)/.test(revoca));
+    atteso("revoca: «non attiva» (già comprata o revocata) e «errore» danno un messaggio, non un successo", /esito === "errore"\) return \{ errore:/.test(revoca) && /esito === "non_attiva"\) return \{ errore:/.test(revoca) && !/\.(insert|update|upsert|delete)\(/.test(revoca));
+    atteso("nessuna delle due azioni incassa, apre un pagamento o scrive al cliente (l'offerta compare nella sua area)", !/stripe|checkout|sendEmail|inviaEmail|resend/i.test(crea + revoca));
+
+    const lib = leggi("src/lib/pacchetti-servizi.ts");
+    atteso("la revoca nel database è condizionata allo stato «attiva» (una già comprata non si tocca) e registra chi e quando", /\.update\(\{ stato: "revocata", chiusa_il: new Date\(\)\.toISOString\(\), chiusa_da_email: daEmail \}\)\s*\.eq\("id", offertaId\)\s*\.eq\("stato", "attiva"\)/.test(lib));
+
+    const vista = leggi("src/app/site-console/_componenti/piano-lavoro-vista.tsx");
+    const libPdl2 = leggi("src/lib/console/piano-lavoro.ts");
+    atteso("la pagina legge le offerte dedicate (senza la migrazione 0105 non cade) e le passa alla vista", /offerte: OfferteDedicateConsole;/.test(libPdl2) && /leggiOfferteDedicateConsole\(\{ limite: 200 \}\)/.test(libPdl2) && /^\s+offerte,$/m.test(libPdl2));
+    const lettura = leggi("src/lib/console/offerte.ts");
+    atteso("la lettura per la console usa la chiave di servizio e la libreria, e lo stato «scaduta» si calcola col giorno di Roma", /createAdminClient\(\)/.test(lettura) && /leggiOfferteConsole\(/.test(lettura) && /giornoRoma\(new Date\(\)\)/.test(lettura) && /daRigaConsole\(o, oggi\)/.test(lettura));
+    atteso("la vista ha il pannello «Offerte dedicate» con il modulo (email, quantità, prezzo, scadenza, nota) e l'azione di creazione, servizio fisso", /Offerte dedicate \(\$\{dati\.offerte\.elenco\.filter/.test(vista) && /azione=\{creaOffertaDedicataCliente\} campi=\{\{ servizio: "piano_lavoro" \}\}/.test(vista) && ["email", "quantita", "prezzo", "scadeIl", "nota"].every((c) => new RegExp(`name="${c}"`).test(vista.slice(vista.indexOf("Offerte dedicate (")))));
+    atteso("la vista spiega: la vede solo quel cliente, non compare nell'elenco pubblico, si compra una volta sola, vale solo con la vendita accesa", /La vede solo lui/.test(vista.replace(/\s+/g, " ").replace(/\s?\n\s?/g, " ")) && /non compare nell&apos;elenco pubblico/.test(vista.replace(/\s+/g, " ")) && /una volta sola/.test(vista) && /solo con la vendita accesa/.test(vista));
+    atteso("la tabella mostra cliente, pacchetto, prezzo, prezzo per unità, risparmio sul prezzo singolo, scadenza, stato e nota", /<th>Cliente<\/th>/.test(vista.slice(vista.indexOf("Offerte dedicate ("))) && /convenienzaPacchetto\(\{ quantita: o\.quantita, prezzoCentesimi: o\.prezzoCentesimi \}, dati\.prezzoSingoloCentesimi\)/.test(vista) && /Valida fino al/.test(vista) && /ETICHETTA_STATO_OFFERTA\[o\.stato\]/.test(vista) && /Nota: \{o\.nota\}/.test(vista));
+    atteso("«Revoca» compare solo sulle offerte che si possono ancora revocare", /\{revocabile\(o\.stato\) && \(\s*<ModuloAzione azione=\{revocaOffertaDedicataCliente\} campi=\{\{ id: o\.id \}\}/.test(vista));
+    atteso("senza la migrazione 0105 la pagina dice «Disponibile dopo la migrazione 0105», senza modulo e senza errori", /!dati\.offerte\.disponibile \? \(\s*<p className="cn-esito avviso" role="alert">\s*Disponibile dopo la migrazione 0105/.test(vista));
+    atteso("l'etichetta «scaduta» e «acquistata» distinguono le offerte non più comprabili", /scaduta: "scaduta"/.test(leggi("src/lib/console/offerte-calcoli.ts")) && /acquistata: "acquistata"/.test(leggi("src/lib/console/offerte-calcoli.ts")));
+
+    const lib2 = leggi("src/lib/console/utenti.ts");
+    atteso("la scheda legge le offerte dedicate di QUESTO cliente (senza la migrazione 0105 nessuna, dichiarato)", /leggiOfferteDedicateConsole\(\{ perUtente: id, limite: 50 \}\)/.test(lib2) && /offerte: offerteDedicate,/.test(lib2) && /offerte: OfferteDedicateConsole;/.test(lib2));
+    const scheda = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
+    const pannelloScheda = scheda.slice(scheda.indexOf("Pacchetti prepagati di servizi aggiuntivi"), scheda.indexOf("Prova gratuita e account creato dalla console"));
+    atteso("la scheda mostra le offerte del cliente con stato e «Revoca» sulle revocabili", /Offerte dedicate a questo cliente/.test(pannelloScheda) && /s\.pacchetti\.offerte\.elenco\.map\(\(o\) =>/.test(pannelloScheda) && /\{revocabile\(o\.stato\) && \(\s*<ModuloAzione azione=\{revocaOffertaDedicataCliente\} campi=\{\{ id: o\.id \}\}/.test(pannelloScheda));
+    atteso("il modulo della scheda ha l'email del cliente già compilata e NON modificabile (campo nascosto), servizio fisso, e quantità e prezzo obbligatori", /azione=\{creaOffertaDedicataCliente\} campi=\{\{ email: s\.utente\.email, servizio: "piano_lavoro" \}\}/.test(pannelloScheda) && /name="quantita"[^>]*required/.test(pannelloScheda) && /name="prezzo"[^>]*required/.test(pannelloScheda) && !/name="email"/.test(pannelloScheda));
+    atteso("per un Ufficio Gare nessun modulo (il pannello intero è sostituito dal messaggio) e senza la migrazione 0105 la scheda lo dice", /\{eMembro \? \(\s*<p className="cn-nota-inline">\{MESSAGGIO_E_UN_UFFICIO_GARE\}<\/p>\s*\) : !s\.pacchetti\.disponibile/.test(pannelloScheda) && /\{!s\.pacchetti\.offerte\.disponibile \? \(\s*<p className="cn-nota-inline">Le offerte dedicate sono disponibili dopo la migrazione 0105\.<\/p>/.test(pannelloScheda));
+    atteso("la scheda mostra anche la nota interna dell'offerta (solo in console)", /\{o\.nota && <small>Nota: \{o\.nota\}<\/small>\}/.test(pannelloScheda));
+    uguale("la nota interna NON arriva al cliente: l'offerta come la vede lui non ha nemmeno il campo", Object.keys(daRigaOfferta(riga({ nota: "segreta" }))).sort(), ["id", "prezzoCentesimi", "quantita", "scadeIl", "servizio"]);
   }
 
   // ═════ 5. sicurezza della console ═════

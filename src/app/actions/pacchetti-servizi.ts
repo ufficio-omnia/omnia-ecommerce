@@ -13,7 +13,7 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { richiediAccountAzione, richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
 import { accessoNegatoPerAccount } from "@/lib/omnia-ai-account-lavoro";
 import { avvisaTitolareAcquistoPacchetto } from "@/lib/omnia-ai-ufficio-gare-avvisi";
-import { leggiCatalogoPacchetti, pacchettiDisponibili, venditaPacchettiAttiva } from "@/lib/pacchetti-servizi";
+import { pacchettiDisponibili, risolviPacchetto, venditaPacchettiAttiva } from "@/lib/pacchetti-servizi";
 import {
   SERVIZI,
   TESTI_PACCHETTI,
@@ -21,7 +21,6 @@ import {
   eServizioPacchetto,
   testoCanonicoCondizioniPacchetti,
   testoUnita,
-  trovaPacchetto,
 } from "@/lib/pacchetti-servizi-calcoli";
 import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
 
@@ -53,9 +52,10 @@ export async function acquistaPacchettoServizio(_prevState: AcquistoPacchettoSta
   const admin = createAdminClient();
   if (!(await venditaPacchettiAttiva(admin)) || !(await pacchettiDisponibili(admin))) return { error: "L'acquisto dei pacchetti non è ancora disponibile." };
 
-  const catalogo = await leggiCatalogoPacchetti(servizio, admin);
-  const pacchetto = trovaPacchetto(catalogo, formData.get("quantita"));
-  if (!pacchetto) return { error: "Questo pacchetto non è più in vendita: ricarica la pagina per vedere quelli attuali." };
+  // un'offerta dedicata al cliente (offertaId) oppure un pacchetto dell'elenco: quantità e prezzo si rileggono qui, mai dal browser
+  const offertaId = String(formData.get("offertaId") ?? "").trim();
+  const pacchetto = await risolviPacchetto(admin, { accountId: contesto.accountId, servizio, offertaId, quantita: formData.get("quantita") });
+  if (!pacchetto) return { error: offertaId ? "Questa offerta non è più disponibile (già acquistata, scaduta o revocata): ricarica la pagina." : "Questo pacchetto non è più in vendita: ricarica la pagina per vedere quelli attuali." };
   const mostrato = Number(formData.get("prezzoMostratoCentesimi"));
   if (mostrato !== pacchetto.prezzoCentesimi) return { error: "Il prezzo è stato aggiornato. Controlla il nuovo importo e conferma di nuovo.", prezzoAggiornatoCentesimi: pacchetto.prezzoCentesimi };
 
@@ -81,6 +81,8 @@ export async function acquistaPacchettoServizio(_prevState: AcquistoPacchettoSta
       privacy_documento_id: documenti?.privacyPolicy.id ?? null,
       privacy_versione: documenti?.privacyPolicy.version ?? null,
       livemode: !process.env.STRIPE_SECRET_KEY_OMNIA_AI?.startsWith("sk_test_"),
+      // la colonna è della migrazione 0105: si scrive solo per le offerte dedicate (il resto funziona anche senza)
+      ...(pacchetto.offertaId ? { offerta_id: pacchetto.offertaId } : {}),
     })
     .select("id")
     .single<{ id: string }>();
@@ -94,7 +96,7 @@ export async function acquistaPacchettoServizio(_prevState: AcquistoPacchettoSta
   const origin = await getOmniaAiRequestOrigin();
   const stripe = createStripeClient("omnia-ai");
   const unita = testoUnita(pacchetto.quantita, servizio);
-  const metadata = { tipo: "omnia_ai_pacchetto", acquistoId: acquisto.id, userId: contesto.accountId, servizio, quantita: String(pacchetto.quantita) };
+  const metadata = { tipo: "omnia_ai_pacchetto", acquistoId: acquisto.id, userId: contesto.accountId, servizio, quantita: String(pacchetto.quantita), ...(pacchetto.offertaId ? { offertaId: pacchetto.offertaId } : {}) };
 
   let sessione;
   try {
@@ -109,7 +111,7 @@ export async function acquistaPacchettoServizio(_prevState: AcquistoPacchettoSta
           price_data: {
             currency: "eur",
             product_data: {
-              name: `OMNIA AI — Pacchetto ${SERVIZI[servizio].nome}: ${unita}`,
+              name: `OMNIA AI — Pacchetto ${SERVIZI[servizio].nome}: ${unita}${pacchetto.offertaId ? " (offerta dedicata)" : ""}`,
               description: `${unita}, una per gara. Non scadono: si esauriscono man mano che le usi. Si perdono se l'abbonamento cessa.`,
             },
             unit_amount: pacchetto.prezzoCentesimi,
@@ -157,9 +159,10 @@ export async function richiediAcquistoPacchetto(_prevState: RichiestaPacchettoSt
 
   const admin = createAdminClient();
   if (!(await venditaPacchettiAttiva(admin)) || !(await pacchettiDisponibili(admin))) return { error: TESTI_PACCHETTI.venditaSpenta };
-  // si avvisa solo per un pacchetto davvero in vendita
-  const pacchetto = trovaPacchetto(await leggiCatalogoPacchetti(servizio, admin), formData.get("quantita"));
-  if (!pacchetto) return { error: "Questo pacchetto non è più in vendita: ricarica la pagina." };
+  // si avvisa solo per un pacchetto davvero in vendita, oppure per un'offerta dedicata a QUESTO cliente ancora valida
+  const offertaId = String(formData.get("offertaId") ?? "").trim();
+  const pacchetto = await risolviPacchetto(admin, { accountId: contesto.accountId, servizio, offertaId, quantita: formData.get("quantita") });
+  if (!pacchetto) return { error: offertaId ? "Questa offerta non è più disponibile: ricarica la pagina." : "Questo pacchetto non è più in vendita: ricarica la pagina." };
 
   const avviso = await avvisaTitolareAcquistoPacchetto({
     admin,
@@ -168,6 +171,7 @@ export async function richiediAcquistoPacchetto(_prevState: RichiestaPacchettoSt
     emailUfficioGare: user.email,
     servizio,
     quantita: pacchetto.quantita,
+    offertaId: pacchetto.offertaId,
   });
   if (avviso === "non_riuscito") return { error: TESTI_PACCHETTI.avvisoNonRiuscito };
   return { success: avviso === "gia_inviato_oggi" ? TESTI_PACCHETTI.avvisoGiaInviato : TESTI_PACCHETTI.avvisoInviato };

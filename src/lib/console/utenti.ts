@@ -5,6 +5,7 @@ import { statoAbbonamento, type StatoAbbonamento } from "./abbonamenti-calcoli";
 import { normalizzaPianoSlug } from "@/lib/omnia-ai-plans";
 import { leggiLegameUfficioGare, type LegameUfficioGare } from "./ufficio-gare";
 import { leggiPresenze } from "./presenza";
+import { leggiOfferteDedicateConsole, type OfferteDedicateConsole } from "./offerte";
 import {
   costruisciRigheUtenti,
   statoProvaAbbonamento,
@@ -174,6 +175,8 @@ export type PacchettiScheda = {
   saldi: { servizio: string; saldo: number }[];
   acquisti: AcquistoPacchettoScheda[];
   movimenti: MovimentoPacchettoScheda[];
+  // offerte dedicate a questo cliente (migrazione 0105): senza la migrazione `disponibile` è false e non si propone nulla
+  offerte: OfferteDedicateConsole;
 };
 export type MessaggioScheda = { id: string; mittente: "cliente" | "admin"; testo: string; creatoIl: string };
 
@@ -326,6 +329,8 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
     if (q.error && !schemaAssente(q.error)) console.error("Console: lettura dei pacchetti del cliente fallita", q.error.message);
   }
   const pacchettiDisponibili = !pacchettiAcqQ.error && !pacchettiSaldiQ.error && !pacchettiMovQ.error;
+  // Le offerte dedicate di questo cliente (migrazione 0105): senza la tabella nessuna, e la scheda lo dice.
+  const offerteDedicate = await leggiOfferteDedicateConsole({ perUtente: id, limite: 50 });
 
   const [authUtente, aziendaQ, saldoQ, messaggiQ, documentiQ] = await Promise.all([
     admin.auth.admin.getUserById(id),
@@ -477,6 +482,7 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
             eseguitoDa: m.eseguito_da,
           }))
         : [],
+      offerte: offerteDedicate,
     },
     incassi: incassiDisponibili
       ? ((incassiQ.data ?? []) as { id: string; tipo: string; importo_lordo_centesimi: number; pagato_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((i) => ({
