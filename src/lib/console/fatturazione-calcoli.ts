@@ -1,5 +1,6 @@
 import { dataRoma } from "./giorni-lavorativi";
 import { giorniTra } from "./periodo";
+import { eServizioPacchetto, testoUnita } from "@/lib/pacchetti-servizi-calcoli";
 
 // Calcoli puri (nessun database) per la pagina "Da fatturare": importi, dati di
 // fatturazione del cliente, testo da copiare, esportazione CSV.
@@ -12,7 +13,7 @@ import { giorniTra } from "./periodo";
 export type StatoFattura = "da_fatturare" | "fatturata" | "non_dovuta";
 export const STATI_FATTURA: StatoFattura[] = ["da_fatturare", "fatturata", "non_dovuta"];
 
-export type FonteRiga = "incasso" | "crediti" | "revisione" | "piano_lavoro";
+export type FonteRiga = "incasso" | "crediti" | "revisione" | "piano_lavoro" | "pacchetto";
 
 // Giorni dall'incasso oltre i quali la riga è segnalata. È il termine ORDINARIO
 // indicativo per l'emissione della fattura immediata, non un consiglio fiscale:
@@ -154,7 +155,7 @@ export function risolviDatiFatturazione(profilo: ProfiloFatturazione | null, sna
 // ───── Riga dell'elenco ─────
 
 export type RigaFatturazione = {
-  // "incasso:<uuid>", "crediti:<uuid>" o "revisione:<uuid>": identifica la riga nella tabella giusta
+  // "incasso:<uuid>", "crediti:<uuid>", "revisione:<uuid>", "piano_lavoro:<uuid>" o "pacchetto:<uuid>": identifica la riga nella tabella giusta
   chiave: string;
   fonte: FonteRiga;
   // istante dell'incasso
@@ -217,6 +218,11 @@ export function descrizioneRevisioneRiga(garaTitolo: string, pagine: number, mag
 
 export function descrizionePianoLavoroRiga(garaTitolo: string): string {
   return `Piano di lavoro della gara — ${garaTitolo}`;
+}
+
+// «Pacchetto di servizi aggiuntivi: 5 piani di lavoro» (un servizio sconosciuto non fa cadere la riga: si scrive com'è)
+export function descrizionePacchettoRiga(servizio: string, quantita: number): string {
+  return `Pacchetto di servizi aggiuntivi: ${eServizioPacchetto(servizio) ? testoUnita(quantita, servizio) : `${quantita} unità (${servizio})`}`;
 }
 
 export function descrizioneCrediti(pacchetto: string, crediti: number): string {

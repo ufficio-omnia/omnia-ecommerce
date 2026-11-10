@@ -116,7 +116,7 @@ async function main() {
   atteso("ogni voce del menu dell'Ufficio Gare è una pagina che può aprire", VOCI_MENU_UFFICIO_GARE.every((v) => percorsoConsentito("ufficio_gare", v.href)));
   atteso(
     "nel menu del titolare compaiono le voci di sempre più «Ufficio Gare»",
-    ["Dashboard", "Gare", "Documenti aziendali", "Profilo azienda", "Abbonamento", "Pagamenti e fatture", "Documenti contrattuali", "Ufficio Gare", "Impostazioni"].every((l, i) => VOCI_MENU_TITOLARE[i]?.label === l) && VOCI_MENU_TITOLARE.length === 9,
+    ["Dashboard", "Gare", "Documenti aziendali", "Profilo azienda", "Abbonamento", "Servizi aggiuntivi", "Pagamenti e fatture", "Documenti contrattuali", "Ufficio Gare", "Impostazioni"].every((l, i) => VOCI_MENU_TITOLARE[i]?.label === l) && VOCI_MENU_TITOLARE.length === 10,
   );
   atteso("vociMenuPer sceglie il menu giusto", vociMenuPer("ufficio_gare") === VOCI_MENU_UFFICIO_GARE && vociMenuPer("titolare") === VOCI_MENU_TITOLARE);
   // ogni cartella dell'area riservata è o aperta all'Ufficio Gare o nel menu del titolare (nessuna pagina "dimenticata")

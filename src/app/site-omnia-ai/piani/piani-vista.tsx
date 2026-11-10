@@ -1,26 +1,24 @@
 import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
-import { PIANI_ORDINE, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI_ORDINE, formatEuro, formatEuroCifra } from "@/lib/omnia-ai-plans";
 import { testoOfferta, type Catalogo as CatalogoTipo } from "@/lib/omnia-ai-catalogo-calcoli";
 import RevisioneBanda from "./revisione-banda";
-import PianoLavoroBanda from "./piano-lavoro-banda";
-import { partiRigaPianoLavoroPerPiano } from "@/lib/piano-lavoro-testi";
+import ServiziPerCategoria from "./servizi-per-categoria";
 
 // La pagina dei piani, senza accesso ai dati: la pagina (page.tsx) legge catalogo, condizioni e se la
 // vendita è visibile, e li passa qui. Separata per poterla mostrare con la vendita accesa in anteprima.
-// `surplusPianoLavoro`: il supplemento mensile del piano di lavoro per ogni piano; `prezzoSingolaGaraCentesimi`: il prezzo del piano di lavoro di una
-// singola gara. Si mostrano SEMPRE, come i prezzi dei piani (il pulsante «Abbonati», invece, solo con la vendita accesa): li legge la pagina dalla console.
+// `prezzoSingolaGaraCentesimi`: il prezzo del piano di lavoro di una singola gara (letto dalla console), mostrato nella sezione «cosa puoi elaborare
+// in una gara oltre alla relazione tecnica». Il piano di lavoro NON si acquista con l'abbonamento (decisione del 09/11/2026): sulle schede dei piani non
+// c'è più nessuna opzione né prezzo aggiuntivo, e la sezione dei servizi non ha nessun «Abbonati».
 export default function PianiVista({
   catalogo,
   condizioniUrl,
   vendita,
-  surplusPianoLavoro,
   prezzoSingolaGaraCentesimi,
 }: {
   catalogo: CatalogoTipo;
   condizioniUrl: string;
   vendita: boolean;
-  surplusPianoLavoro: Record<PianoSlug, number>;
   prezzoSingolaGaraCentesimi: number;
 }) {
   return (
@@ -39,7 +37,6 @@ export default function PianiVista({
           {PIANI_ORDINE.map((slug) => {
             // prezzi e sconti dal catalogo (modificabili dalla console), mai dalla costante del codice
             const p = catalogo[slug];
-            const opzione = partiRigaPianoLavoroPerPiano(formatEuroCifra(surplusPianoLavoro[slug]));
             return (
               <div key={p.slug} className={`omnia-prezzo${p.inEvidenza ? " in-evidenza" : ""}`}>
                 <b>{p.nome}</b>
@@ -60,12 +57,6 @@ export default function PianiVista({
                     <li key={v}>{v}</li>
                   ))}
                 </ul>
-                {/* Il piano di lavoro, sotto ogni piano: possibilità e prezzo che si aggiunge. */}
-                <div className="omnia-prezzo-opzione">
-                  <p>
-                    <strong>{opzione.evidenza}</strong> {opzione.seguito}
-                  </p>
-                </div>
                 {/* «Abbonati» (verso /abbonati/[piano], pagamento diretto) compare solo con la vendita accesa
                     in console E la chiave Stripe reale (vedi lib/omnia-ai-vendita.ts): nessun visitatore deve
                     arrivare a un pagamento che non può davvero completare. */}
@@ -86,9 +77,10 @@ export default function PianiVista({
           })}
         </div>
 
-        <RevisioneBanda />
+        {/* Cosa si può elaborare dentro una gara oltre alla relazione tecnica, per categoria: solo dentro la singola gara, mai con l'abbonamento. */}
+        <ServiziPerCategoria prezzoSingolaGara={formatEuro(prezzoSingolaGaraCentesimi)} />
 
-        <PianoLavoroBanda prezzoSingolaGaraCentesimi={prezzoSingolaGaraCentesimi} surplus={surplusPianoLavoro} />
+        <RevisioneBanda />
 
         <p className="micro" style={{ marginTop: 32 }}>
           Le gare incluse si azzerano ad ogni rinnovo e non si cumulano. Se non bastano, puoi

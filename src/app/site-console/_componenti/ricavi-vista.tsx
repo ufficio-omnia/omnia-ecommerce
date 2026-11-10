@@ -94,11 +94,12 @@ export default function RicaviVista({
           valore={formattaEuro(t.ecommerceNetto)}
           dettaglio={`${formattaIntero(t.ecommerceOrdini)} ordini pagati · ${formattaEuro(t.ecommerceLordo)} lordi`}
         />
-        <Tessera etichetta="OMNIA AI" valore={formattaEuro(t.omniaAiNetto)} dettaglio={`Abbonamenti, crediti, revisioni e piani di lavoro · ${formattaEuro(t.omniaAiLordo)} lordi`} />
+        <Tessera etichetta="OMNIA AI" valore={formattaEuro(t.omniaAiNetto)} dettaglio={`Abbonamenti, crediti, revisioni, piani di lavoro e pacchetti · ${formattaEuro(t.omniaAiLordo)} lordi`} />
         <Tessera etichetta="Abbonamenti AI" valore={formattaEuro(t.abbonamentiNetto)} dettaglio={`${formattaIntero(t.incassiAbbonamento)} incassi (primi pagamenti, rinnovi, conguagli)`} />
         <Tessera etichetta="Crediti AI" valore={formattaEuro(t.creditiNetto)} dettaglio={`${formattaIntero(t.acquistiCrediti)} acquisti`} />
         <Tessera etichetta="Revisioni umane" valore={formattaEuro(t.revisioniNetto)} dettaglio={`${formattaIntero(t.acquistiRevisione)} ${t.acquistiRevisione === 1 ? "richiesta pagata" : "richieste pagate"}`} />
         <Tessera etichetta="Piani di lavoro" valore={formattaEuro(t.pianiLavoroNetto)} dettaglio={`${formattaIntero(t.acquistiPianoLavoro)} ${t.acquistiPianoLavoro === 1 ? "acquisto pagato" : "acquisti pagati"}`} />
+        <Tessera etichetta="Pacchetti di servizi" valore={formattaEuro(t.pacchettiNetto)} dettaglio={`${formattaIntero(t.acquistiPacchetto)} ${t.acquistiPacchetto === 1 ? "pacchetto pagato" : "pacchetti pagati"} · contano al pagamento, non all'uso`} />
       </div>
 
       <div className="cn-sezione">
@@ -113,6 +114,7 @@ export default function RicaviVista({
                   <th className="num">Crediti AI</th>
                   <th className="num">Revisioni umane</th>
                   <th className="num">Piani di lavoro</th>
+                  <th className="num">Pacchetti</th>
                   <th className="num">Totale</th>
                   <th style={{ width: "22%" }}></th>
                 </tr>
@@ -126,13 +128,14 @@ export default function RicaviVista({
                     <td className="num">{formattaEuro(m.crediti)}</td>
                     <td className="num">{formattaEuro(m.revisioni)}</td>
                     <td className="num">{formattaEuro(m.pianiLavoro)}</td>
+                    <td className="num">{formattaEuro(m.pacchetti)}</td>
                     <td className="num">
                       <strong>{formattaEuro(m.totale)}</strong>
                     </td>
                     <td>
                       <div className="cn-barra-ricavi" aria-hidden="true">
                         <span className="e" style={{ width: `${(m.ecommerce / massimoMese) * 100}%` }} />
-                        <span className="a" style={{ width: `${((m.abbonamenti + m.crediti + m.revisioni + m.pianiLavoro) / massimoMese) * 100}%` }} />
+                        <span className="a" style={{ width: `${((m.abbonamenti + m.crediti + m.revisioni + m.pianiLavoro + m.pacchetti) / massimoMese) * 100}%` }} />
                       </div>
                     </td>
                   </tr>
@@ -147,6 +150,7 @@ export default function RicaviVista({
                     <td className="num">{formattaEuro(t.creditiNetto)}</td>
                     <td className="num">{formattaEuro(t.revisioniNetto)}</td>
                     <td className="num">{formattaEuro(t.pianiLavoroNetto)}</td>
+                    <td className="num">{formattaEuro(t.pacchettiNetto)}</td>
                     <td className="num">{formattaEuro(t.netto)}</td>
                     <td></td>
                   </tr>
@@ -217,7 +221,7 @@ export default function RicaviVista({
               {riepilogo.ivaStimata ? ": è il caso di questi dati, Stripe non separa l'IVA" : ""}.
             </li>
             <li>
-              <strong>OMNIA AI:</strong> incassi degli abbonamenti (fatture Stripe pagate) più i crediti acquistati. I rinnovi mensili compaiono da quando l&apos;evento <code>invoice.paid</code> è attivo su Stripe; i pagamenti precedenti si recuperano con lo script di backfill.
+              <strong>OMNIA AI:</strong> incassi degli abbonamenti (fatture Stripe pagate) più i crediti, le revisioni umane, i piani di lavoro e i pacchetti di servizi acquistati (un pacchetto è un ricavo quando si paga, non quando le sue unità vengono usate né quando si perdono alla cessazione). I rinnovi mensili compaiono da quando l&apos;evento <code>invoice.paid</code> è attivo su Stripe; i pagamenti precedenti si recuperano con lo script di backfill.
             </li>
             <li>
               <strong>Dati di prova:</strong> gli incassi e i crediti pagati sull&apos;account Stripe in modalità test non sono denaro e restano fuori dai totali, salvo che tu li includa.

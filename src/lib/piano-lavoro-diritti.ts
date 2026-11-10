@@ -3,6 +3,7 @@ import { getOmniaAiAccessState, type OmniaAiAccessState } from "@/lib/omnia-ai-a
 import { giornoRoma } from "@/lib/omnia-ai-catalogo-calcoli";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { leggiAcquistoPagato } from "@/lib/piano-lavoro-acquisto";
+import { leggiStatoPacchettoGara } from "@/lib/pacchetti-servizi";
 import { CHIAVE_POLITICA_PROVA, interpretaPoliticaProva, scegliConcessione, type PoliticaProva, type RigaConcessione } from "@/lib/piano-lavoro-offerta-calcoli";
 import type { ContestoDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
 
@@ -10,9 +11,12 @@ import type { ContestoDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
 // valutaDirittoPiano. È l'unico punto che lo fa: lo usano la pagina della gara, l'azione che genera e quella che acquista, così quello che
 // il cliente vede è quello che il server controlla.
 //
-// Tutto è tollerante alle migrazioni non eseguite (0097 acquisti, 0101 abbonamento e concessioni): ciò che manca = nessun diritto da lì.
+// Tutto è tollerante alle migrazioni non eseguite (0097 acquisti, 0101 abbonamento e concessioni, 0104 pacchetti): ciò che manca = nessun diritto da lì.
 
 export type DirittiPianoLavoro = Pick<ContestoDirittoPiano, "concessioneId" | "abbonamentoCopreGara" | "provaGratuita" | "acquistoPagato"> & {
+  // pacchetto prepagato (migrazione 0104): le unità residue e se questa gara ha già consumato la sua
+  pacchettoSaldo: number;
+  pacchettoGaraConsumata: boolean;
   // l'account è in prova e la console ha deciso che per lui il piano di lavoro non è disponibile (nemmeno da comprare)
   provaBloccata: boolean;
   inProva: boolean;
@@ -106,14 +110,17 @@ export async function leggiDirittiPianoLavoro({
 }): Promise<DirittiPianoLavoro> {
   const stato = statoAccesso ?? (await getOmniaAiAccessState(accountId, admin));
   const inProva = stato.stato === "prova";
-  const [acquistoPagato, abbonamentoCopreGara, concessioneId, politica] = await Promise.all([
+  const [acquistoPagato, abbonamentoCopreGara, concessioneId, politica, pacchetto] = await Promise.all([
     leggiAcquistoPagato(admin, accountId, garaId),
     abbonamentoCopreLaGara(admin, accountId, garaId),
     concessioneCheCopreLaGara(admin, accountId, garaId),
     inProva ? leggiPoliticaProva(admin) : Promise.resolve<PoliticaProva>("acquisto"),
+    leggiStatoPacchettoGara(admin, accountId, "piano_lavoro", garaId),
   ]);
   return {
     acquistoPagato,
+    pacchettoSaldo: pacchetto.saldo,
+    pacchettoGaraConsumata: pacchetto.garaGiaConsumata,
     abbonamentoCopreGara,
     concessioneId,
     provaGratuita: inProva && politica === "gratis",

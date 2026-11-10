@@ -6,6 +6,8 @@ import { eAnonimizzato, etichettaAccettazione, etichettaDocumento, type Accettaz
 import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlCliente } from "../azioni/utenti";
 import { modificaGareGratuite, resetPasswordCliente } from "../azioni/utenti-console";
 import { creaOffertaPilot, revocaOffertaPilot } from "../azioni/pilot";
+import { rettificaPacchettiCliente } from "../azioni/pacchetti";
+import { ETICHETTA_MOVIMENTO, SERVIZI, SERVIZI_PACCHETTO, testoUnita, type MovimentoTipo } from "@/lib/pacchetti-servizi-calcoli";
 import type { PilotCliente } from "@/lib/console/pilot";
 import { GARE_PILOT_MAX, statoOffertaPilot, testoGareIncluse, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
@@ -704,6 +706,134 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
               </table>
             </div>
           )}
+        </Pannello>
+      </div>
+
+      {/* ───── Pacchetti prepagati di servizi aggiuntivi (migrazione 0104) ───── */}
+      <div className="cn-sezione">
+        <Pannello titolo={`Pacchetti di servizi (${s.pacchetti.acquisti.length} acquistati)`}>
+          <div className="cn-pannello-corpo">
+            {eMembro ? (
+              <p className="cn-nota-inline">{MESSAGGIO_E_UN_UFFICIO_GARE}</p>
+            ) : !s.pacchetti.disponibile ? (
+              <p className="cn-nota-inline">I pacchetti non sono disponibili: manca la migrazione 0104 oppure la lettura non è riuscita.</p>
+            ) : (
+              <>
+                <dl className="cn-dl">
+                  {SERVIZI_PACCHETTO.filter((servizio) => SERVIZI[servizio].disponibile).map((servizio) => (
+                    <div key={servizio}>
+                      <dt>Unità residue: {SERVIZI[servizio].nome.toLowerCase()}</dt>
+                      <dd className="mono">{formattaIntero(s.pacchetti.saldi.find((r) => r.servizio === servizio)?.saldo ?? 0)}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="cn-nota" style={{ marginTop: 8 }}>
+                  Le unità non scadono: si esauriscono man mano che il cliente le usa (una per gara). Se l&apos;abbonamento cessa le unità che restano si perdono, come i crediti: anche quelle che regali da qui.
+                </p>
+
+                <h3 className="cn-sottotitolo" style={{ marginTop: 16 }}>
+                  Acquisti pagati
+                </h3>
+                {s.pacchetti.acquisti.length === 0 ? (
+                  <p className="cn-vuoto">Nessun pacchetto acquistato.</p>
+                ) : (
+                  <div className="cn-scorri">
+                    <table className="cn-tab">
+                      <thead>
+                        <tr>
+                          <th>Data</th>
+                          <th>Pacchetto</th>
+                          <th className="num">Importo lordo</th>
+                          <th>Fattura</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.pacchetti.acquisti.map((p) => (
+                          <tr key={p.id}>
+                            <td className="mono">{formattaData(p.data)}</td>
+                            <td>
+                              {SERVIZI_PACCHETTO.includes(p.servizio as never) ? `${SERVIZI[p.servizio as keyof typeof SERVIZI].nome}: ${testoUnita(p.quantita, p.servizio as keyof typeof SERVIZI)}` : `${p.servizio}: ${p.quantita}`}
+                              {p.prova && (
+                                <>
+                                  {" "}
+                                  <Badge tono="avviso">prova</Badge>
+                                </>
+                              )}
+                            </td>
+                            <td className="num">{formattaEuro(p.lordo)}</td>
+                            <td>{p.statoFattura === "fatturata" ? `fatturata${p.numeroFattura ? ` ${p.numeroFattura}` : ""}` : p.statoFattura === "non_dovuta" ? "non dovuta" : "da fatturare"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <h3 className="cn-sottotitolo" style={{ marginTop: 16 }}>
+                  Ultimi movimenti
+                </h3>
+                {s.pacchetti.movimenti.length === 0 ? (
+                  <p className="cn-vuoto">Nessun movimento.</p>
+                ) : (
+                  <div className="cn-scorri">
+                    <table className="cn-tab">
+                      <thead>
+                        <tr>
+                          <th>Data</th>
+                          <th>Movimento</th>
+                          <th className="num">Unità</th>
+                          <th className="num">Saldo dopo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.pacchetti.movimenti.map((m) => (
+                          <tr key={m.id}>
+                            <td className="mono">{formattaDataOra(m.data)}</td>
+                            <td className="cn-cella-doppia">
+                              {ETICHETTA_MOVIMENTO[m.tipo as MovimentoTipo] ?? m.tipo}
+                              {m.garaTitolo ? ` — ${m.garaTitolo}` : ""}
+                              {(m.motivo || m.eseguitoDa) && (
+                                <small>
+                                  {m.motivo ?? ""}
+                                  {m.eseguitoDa ? ` (${m.eseguitoDa})` : ""}
+                                </small>
+                              )}
+                            </td>
+                            <td className="num">
+                              {m.delta > 0 ? "+" : ""}
+                              {m.delta}
+                            </td>
+                            <td className="num">{m.saldoDopo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <h3 className="cn-sottotitolo" style={{ marginTop: 16 }}>
+                  Rettifica il saldo
+                </h3>
+                <p className="cn-nota-inline" style={{ marginBottom: 10 }}>
+                  Aggiungi (numero positivo: un regalo, un rimborso in unità) o togli (numero negativo: una correzione) piani di lavoro. Il motivo è obbligatorio e resta nel registro dei movimenti con la tua email; il saldo non può scendere sotto zero.
+                </p>
+                <ModuloAzione azione={rettificaPacchettiCliente} campi={{ userId: s.utente.id, servizio: "piano_lavoro" }} etichetta="Applica la rettifica" etichettaInCorso="Applico…" messaggioOk="Rettifica registrata." variante="primario" svuota classe="cn-modulo-linea">
+                  <div>
+                    <label className="cn-etichetta" htmlFor="delta-pacchetti">
+                      Piani di lavoro (+ aggiunge, − toglie)
+                    </label>
+                    <input className="cn-input" id="delta-pacchetti" name="delta" inputMode="numeric" required placeholder="es. 2 oppure -1" style={{ maxWidth: 150 }} autoComplete="off" />
+                  </div>
+                  <div>
+                    <label className="cn-etichetta" htmlFor="motivo-pacchetti">
+                      Motivo (obbligatorio)
+                    </label>
+                    <input className="cn-input" id="motivo-pacchetti" name="motivo" required minLength={2} maxLength={300} placeholder="es. regalo per un disservizio" />
+                  </div>
+                </ModuloAzione>
+              </>
+            )}
+          </div>
         </Pannello>
       </div>
 

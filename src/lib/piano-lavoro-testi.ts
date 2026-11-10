@@ -7,6 +7,14 @@
 // APPROVATI dal legale dell'azienda il 6 novembre 2026 (clausole versione 1). Il testo che si ACCETTA (le sei clausole, con versione e impronta
 // registrate) sta in piano-lavoro-acquisto-calcoli.ts: cambiarne una parola vuol dire aumentare la versione E farla approvare di nuovo.
 
+// ───── l'abbonamento con il piano di lavoro: SPENTO (decisione dell'utente, 09/11/2026) ─────
+// Il piano di lavoro (e i servizi aggiuntivi che verranno) si compra SOLO dentro la singola gara, mai con l'abbonamento. Tutto il lavoro fatto
+// sull'opzione nell'abbonamento (prezzi Stripe, moduli, azioni, console, webhook) resta nel codice ma non si offre: questo è l'interruttore. Con
+// «false» la pagina dei piani non lo nomina, i moduli d'acquisto e di cambio piano non lo mostrano e le azioni sul server rifiutano di AGGIUNGERLO
+// (chi lo ha già lo conserva: tenerlo o toglierlo resta possibile). Per riaccenderlo basta metterlo a true (e ripristinare i testi della pagina).
+export const ABBONAMENTO_PIANO_LAVORO_OFFERTO: boolean = false;
+export const MESSAGGIO_ABBONAMENTO_PIANO_LAVORO_NON_OFFERTO = "Il piano di lavoro non si acquista con l'abbonamento: lo trovi dentro la singola gara.";
+
 export const PERCORSO_CONDIZIONI_PIANO_LAVORO = "/condizioni-piano-lavoro";
 export const TITOLO_CONDIZIONI_PIANO_LAVORO = "Condizioni del servizio «Piano di lavoro»";
 export const DESCRIZIONE_CONDIZIONI_PIANO_LAVORO = "Condizioni del servizio «Piano di lavoro» di OMNIA AI: un Excel con formule attive, costruito dai documenti di gara, per ogni gara.";
@@ -83,6 +91,7 @@ export const NOTA_FONTE_DIRITTO = {
   concessione: "Concesso da OMNIA AI: per questa gara non ha costi per te.",
   prova: "Incluso gratuitamente durante la prova.",
   acquisto: "Acquistato per questa gara.",
+  pacchetto: "Dal tuo pacchetto: per questa gara hai già usato un piano di lavoro, la seconda generazione non ne consuma un altro.",
 } as const;
 
 // ───── la pagina dei piani ─────
@@ -105,7 +114,7 @@ export function rigaPianoLavoroPerPiano(supplementoFormattato: string): string {
 
 export const SITO_HOME_PIANO_LAVORO = {
   titolo: "Dai documenti di gara anche il piano di lavoro.",
-  guida: "Oltre alla relazione tecnica, per ogni gara OMNIA AI costruisce un Excel con formule attive: il punto di partenza per dimensionare il servizio.",
+  guida: "Oltre alla relazione tecnica, per le gare di servizi di pulizia OMNIA AI costruisce un Excel con formule attive: il punto di partenza per dimensionare il servizio.",
   punti: [
     "Monte ore per sede e per tipologia di ambiente",
     "Organico per livello contrattuale",
@@ -113,19 +122,19 @@ export const SITO_HOME_PIANO_LAVORO = {
     "Macchinari e attrezzature, con prezzi standard di mercato da sostituire con quelli dei tuoi fornitori",
     "Formule attive: cambi un valore e tutti i fogli si aggiornano",
   ],
-  nota: "È un dimensionamento di partenza, non un preventivo. Lo compri per la singola gara oppure lo includi nell'abbonamento.",
+  nota: "È un dimensionamento di partenza, non un preventivo. Lo compri dentro la singola gara, quando ti serve.",
   collegamento: "Vedi i piani e il prezzo",
 } as const;
 
 export const SITO_FAQ_PIANO_LAVORO = {
   domanda: "Genera anche il piano di lavoro?",
   risposta:
-    "Sì. Oltre alla relazione tecnica in Word, per ogni gara OMNIA AI può costruire un piano di lavoro in Excel con formule attive: monte ore per sede, organico per livello, quadratura con il monte ore dichiarato dal bando, macchinari e attrezzature. È un dimensionamento di partenza, non un preventivo: le rese sono ipotesi da validare e i prezzi dei macchinari sono standard di mercato, da sostituire con quelli dei tuoi fornitori. Lo compri per la singola gara oppure lo includi nell'abbonamento con un supplemento mensile: i prezzi sono nella pagina dei piani.",
+    "Sì, per le gare di servizi di pulizia. Oltre alla relazione tecnica in Word, OMNIA AI può costruire un piano di lavoro in Excel con formule attive: monte ore per sede, organico per livello, quadratura con il monte ore dichiarato dal bando, macchinari e attrezzature. È un dimensionamento di partenza, non un preventivo: le rese sono ipotesi da validare e i prezzi dei macchinari sono standard di mercato, da sostituire con quelli dei tuoi fornitori. Lo compri dentro la singola gara: il prezzo è nella pagina dei piani.",
 } as const;
 
 export const SITO_COME_FUNZIONA_PIANO_LAVORO = {
   titolo: "E poi, il piano di lavoro",
-  guida: "Dagli stessi documenti OMNIA AI costruisce anche un Excel con formule attive, da cui partire per dimensionare il servizio.",
+  guida: "Per le gare di servizi di pulizia, dagli stessi documenti OMNIA AI costruisce anche un Excel con formule attive, da cui partire per dimensionare il servizio.",
   passi: [
     {
       titolo: "Legge superfici, frequenze e personale",
@@ -145,5 +154,5 @@ export const SITO_COME_FUNZIONA_PIANO_LAVORO = {
     },
   ],
   nota: "È un dimensionamento di partenza, non un preventivo.",
-  collegamento: "Prezzi e opzioni nella pagina dei piani",
+  collegamento: "Il prezzo nella pagina dei piani",
 } as const;

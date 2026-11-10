@@ -1,5 +1,6 @@
 import { calcolaPianoLavoro, elencoAnomalie, elencoDatiMancanti } from "@/lib/piano-lavoro-calcoli";
 import type { PianoLavoroDati } from "@/lib/piano-lavoro-dati";
+import { dirittoDaPacchetto } from "@/lib/pacchetti-servizi-calcoli";
 
 // Piano di lavoro dentro la gara: le regole PURE (nessun database, nessuna rete), provate da scripts/verifica-piano-lavoro-gara-omnia-ai.ts.
 //   - chi può generare e quando (una generazione per gara; una seconda solo con una proroga dei termini; un errore non conta);
@@ -11,8 +12,8 @@ export type StatoPiano = "in_corso" | "pronto" | "errore";
 
 // Da dove viene il diritto alla generazione, in ordine di precedenza (prima le fonti gratuite): una concessione dalla console, l'abbonamento
 // che include il piano di lavoro (per le gare incluse nel piano), la prova gratuita decisa dalla console, l'acquisto singolo della gara,
-// le prove in locale.
-export type FonteDiritto = "concessione" | "abbonamento" | "prova" | "acquisto" | "sviluppo";
+// un'unità del pacchetto prepagato (si consuma una sola volta per gara), le prove in locale.
+export type FonteDiritto = "concessione" | "abbonamento" | "prova" | "acquisto" | "pacchetto" | "sviluppo";
 
 export type RiepilogoPiano = {
   oreTotali: number;
@@ -64,7 +65,9 @@ export const MESSAGGI_PIANO = {
 
 export type EsitoDirittoPiano =
   // concessioneId: solo per la fonte «concessione» (la riga del piano ricorda quale)
-  | { ok: true; versione: 1 | 2; fonte: FonteDiritto; riprova: boolean; concessioneId: string | null }
+  // consumaUnita: solo per la fonte «pacchetto» e solo se questa gara non ha ancora consumato la sua unità (la seconda generazione per la proroga
+  // e la ripetizione dopo un errore non ne consumano un'altra)
+  | { ok: true; versione: 1 | 2; fonte: FonteDiritto; riprova: boolean; concessioneId: string | null; consumaUnita: boolean }
   | { ok: false; motivo: "analisi_non_completata" | "gara_bloccata" | "gia_in_corso" | "versioni_esaurite" | "non_attivo"; messaggio: string };
 
 export type ContestoDirittoPiano = {
@@ -83,6 +86,9 @@ export type ContestoDirittoPiano = {
   provaGratuita: boolean;
   // esiste un acquisto singolo PAGATO per questa gara (un pagamento confermato da Stripe)
   acquistoPagato: boolean;
+  // pacchetto prepagato: le unità residue dell'account e se questa gara ha già consumato la sua (assenti = nessun pacchetto)
+  pacchettoSaldo?: number;
+  pacchettoGaraConsumata?: boolean;
   // apertura per le prove in locale (mai in produzione)
   aperturaSviluppo: boolean;
   adesso: Date;
@@ -115,14 +121,28 @@ export function valutaDirittoPiano(c: ContestoDirittoPiano): EsitoDirittoPiano {
   if (pronti >= VERSIONI_MASSIME) return { ok: false, motivo: "versioni_esaurite", messaggio: MESSAGGI_PIANO.versioniEsaurite };
   if (pronti === 1 && !prorogaPresente(c.prorogaStato)) return { ok: false, motivo: "versioni_esaurite", messaggio: MESSAGGI_PIANO.versioniEsaurite };
 
-  // la fonte registrata è quella vera: prima le gratuite (concessione, abbonamento, prova), poi l'acquisto, per ultima l'apertura di sviluppo
-  const fonte: FonteDiritto | null = c.concessioneId ? "concessione" : c.abbonamentoCopreGara ? "abbonamento" : c.provaGratuita ? "prova" : c.acquistoPagato ? "acquisto" : c.aperturaSviluppo ? "sviluppo" : null;
+  // la fonte registrata è quella vera: prima le gratuite (concessione, abbonamento, prova), poi l'acquisto della gara (già pagato: non si consuma
+  // un'unità del pacchetto per una gara pagata), poi il pacchetto, per ultima l'apertura di sviluppo
+  const pacchetto = dirittoDaPacchetto({ saldo: c.pacchettoSaldo ?? 0, garaGiaConsumata: c.pacchettoGaraConsumata ?? false });
+  const fonte: FonteDiritto | null = c.concessioneId
+    ? "concessione"
+    : c.abbonamentoCopreGara
+      ? "abbonamento"
+      : c.provaGratuita
+        ? "prova"
+        : c.acquistoPagato
+          ? "acquisto"
+          : pacchetto.ha
+            ? "pacchetto"
+            : c.aperturaSviluppo
+              ? "sviluppo"
+              : null;
   if (!fonte) return { ok: false, motivo: "non_attivo", messaggio: MESSAGGI_PIANO.nonAttivo };
 
   const versione = (pronti + 1) as 1 | 2;
   // la versione si riprova se l'ultimo tentativo è finito in errore o è rimasto interrotto
   const riprova = c.piani.some((p) => p.versione === versione && (p.stato === "errore" || generazioneInterrotta(p, c.adesso)));
-  return { ok: true, versione, fonte, riprova, concessioneId: fonte === "concessione" ? c.concessioneId : null };
+  return { ok: true, versione, fonte, riprova, concessioneId: fonte === "concessione" ? c.concessioneId : null, consumaUnita: fonte === "pacchetto" && pacchetto.consumaUnita };
 }
 
 // ───── riepilogo conservato con il file ─────

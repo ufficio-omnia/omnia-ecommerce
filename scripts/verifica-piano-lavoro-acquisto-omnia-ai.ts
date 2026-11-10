@@ -222,7 +222,7 @@ async function main() {
     uguale("il titolare senza diritto e con la vendita accesa può comprare, con il prezzo", valutaOffertaAcquisto(base), { stato: "acquistabile", prezzoCentesimi: 7500 });
     uguale("l'Ufficio Gare vede che serve l'acquisto ma non compra", valutaOffertaAcquisto({ ...base, titolare: false }), { stato: "solo_titolare", prezzoCentesimi: 7500 });
     uguale("vendita spenta: nessuna offerta", valutaOffertaAcquisto({ ...base, venditaAttiva: false }), { stato: "nessuna" });
-    uguale("chi può già generare non compra", valutaOffertaAcquisto({ ...base, diritto: { ok: true, versione: 1, fonte: "acquisto", riprova: false, concessioneId: null } }), { stato: "nessuna" });
+    uguale("chi può già generare non compra", valutaOffertaAcquisto({ ...base, diritto: { ok: true, versione: 1, fonte: "acquisto", riprova: false, concessioneId: null, consumaUnita: false } }), { stato: "nessuna" });
     uguale(
       "se pagare non cambierebbe nulla non si offre: analisi non finita, gara bloccata, già in corso, versioni esaurite",
       (["analisi_non_completata", "gara_bloccata", "gia_in_corso", "versioni_esaurite"] as const).map((motivo) => valutaOffertaAcquisto({ ...base, diritto: { ok: false, motivo, messaggio: "x" } }).stato),

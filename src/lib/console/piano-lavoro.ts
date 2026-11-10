@@ -22,11 +22,14 @@ import {
   type PoliticaProva,
   type StatoPrezzoOfferta,
 } from "@/lib/piano-lavoro-offerta-calcoli";
+import { SERVIZI, interpretaCatalogoPacchetti, type PacchettoCatalogo } from "@/lib/pacchetti-servizi-calcoli";
 import { leggiPrezziConsole } from "./prezzi";
 import { inBlocchi } from "./costi";
 
-// Dati della pagina «Piano di lavoro» della console: la vendita (interruttore), il prezzo della singola gara, i supplementi mensili per avere il
-// piano di lavoro nell'abbonamento con lo stato dei loro prezzi su Stripe, la regola per gli utenti in prova e le concessioni gratuite.
+// Dati della pagina «Piano di lavoro e pacchetti» della console: la vendita (UN interruttore, per la singola gara e per i pacchetti), il prezzo della
+// singola gara, i pacchetti prepagati in vendita (migrazione 0104), la regola per gli utenti in prova e le concessioni gratuite.
+// I supplementi mensili per avere il piano di lavoro nell'abbonamento NON si vendono più (decisione del 09/11/2026): restano nel codice
+// (leggiPianiAbbonamentoConsole, usata solo dall'azione «Allinea i prezzi su Stripe») ma non sono più in pagina né legati alla vendita.
 // Da chiamare solo dopo richiediAdminPagina() / richiediAdminAzione().
 
 export type PianoLavoroPianoConsole = {
@@ -62,11 +65,27 @@ export type DatiPianoLavoroConsole = {
   prezzoSingoloCentesimi: number;
   prezzoSingoloModificato: boolean;
   politicaProva: PoliticaProva;
-  piani: PianoLavoroPianoConsole[];
-  // false = manca la migrazione 0101 (concessioni e colonne dell'abbonamento)
+  // pacchetti prepagati in vendita adesso (quelli della console, o quelli di partenza se non ne ha mai salvati)
+  pacchetti: PacchettoCatalogo[];
+  pacchettiDiPartenza: boolean;
+  // false = manca la migrazione 0104 (acquisti, saldi e movimenti dei pacchetti): senza, i pacchetti non si possono né vendere né usare
+  pacchettiDisponibili: boolean;
+  // unità ancora da usare, in tutti i saldi dei clienti (null = non leggibili)
+  unitaResidue: number | null;
+  // false = manca la migrazione 0101 (concessioni gratuite)
   concessioniDisponibili: boolean;
   concessioni: ConcessioneConsole[];
 };
+
+// L'elenco salvato dalla console è un JSON valido (anche «[]» o uguale a quello di partenza)? Allora è una scelta della console, non il valore di partenza.
+function elencoSalvatoValido(valore: string | undefined): boolean {
+  if (valore === undefined) return false;
+  try {
+    return Array.isArray(JSON.parse(valore));
+  } catch {
+    return false;
+  }
+}
 
 async function leggiImpostazioni(chiavi: string[]): Promise<Map<string, string>> {
   const { data, error } = await createAdminClient().from("console_impostazioni").select("chiave, valore").in("chiave", chiavi).returns<{ chiave: string; valore: string }[]>();
@@ -77,15 +96,11 @@ async function leggiImpostazioni(chiavi: string[]): Promise<Map<string, string>>
   return new Map((data ?? []).map((r) => [r.chiave, r.valore]));
 }
 
-export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole> {
-  const admin = createAdminClient();
-  const chiaveStripe = process.env.STRIPE_SECRET_KEY_OMNIA_AI;
-  const modalitaStripe = modalitaChiaveStripe(chiaveStripe);
-
-  const [impostazioni, prezzi] = await Promise.all([
-    leggiImpostazioni([CHIAVE_VENDITA_PIANO_LAVORO, CHIAVE_PREZZO_PIANO_LAVORO, CHIAVE_POLITICA_PROVA, ...PIANI_ORDINE.map(chiaveSurplusPianoLavoro)]),
-    leggiPrezziConsole(),
-  ]);
+// I prezzi dell'abbonamento con il piano di lavoro (listino + supplemento) e il loro stato su Stripe. NON è più nella pagina: serve solo all'azione
+// «Allinea i prezzi su Stripe», che resta nel codice. Una lettura sola di Stripe per i tre piani.
+export async function leggiPianiAbbonamentoConsole(): Promise<PianoLavoroPianoConsole[]> {
+  const modalitaStripe = modalitaChiaveStripe(process.env.STRIPE_SECRET_KEY_OMNIA_AI);
+  const [impostazioni, prezzi] = await Promise.all([leggiImpostazioni(PIANI_ORDINE.map(chiaveSurplusPianoLavoro)), leggiPrezziConsole()]);
 
   // I prezzi Stripe dell'offerta con il piano di lavoro: una lettura sola per i tre piani.
   const importoStripe = new Map<string, number | null>();
@@ -100,7 +115,7 @@ export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole>
     }
   }
 
-  const piani: PianoLavoroPianoConsole[] = PIANI_ORDINE.map((slug) => {
+  return PIANI_ORDINE.map((slug) => {
     const listino = prezzi.piani.find((p) => p.slug === slug)?.listinoCentesimi ?? PIANI[slug].prezzoCentesimi;
     const salvato = impostazioni.get(chiaveSurplusPianoLavoro(slug));
     const surplus = interpretaSurplus(salvato, slug);
@@ -116,9 +131,22 @@ export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole>
       stripe: stripeLetto ? { stato: statoPrezzoOfferta(atteso, importo), importoCentesimi: importo } : { stato: "errore", importoCentesimi: null },
     };
   });
+}
+
+export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole> {
+  const admin = createAdminClient();
+  const impostazioni = await leggiImpostazioni([CHIAVE_VENDITA_PIANO_LAVORO, CHIAVE_PREZZO_PIANO_LAVORO, CHIAVE_POLITICA_PROVA, SERVIZI.piano_lavoro.chiaveCatalogo]);
+  const modalitaStripe = modalitaChiaveStripe(process.env.STRIPE_SECRET_KEY_OMNIA_AI);
 
   const prezzoSalvato = impostazioni.get(CHIAVE_PREZZO_PIANO_LAVORO);
   const prezzoSingolo = interpretaPrezzoPianoLavoro(prezzoSalvato);
+
+  // I pacchetti: l'elenco in vendita e, se la migrazione 0104 c'è, quante unità i clienti hanno ancora da usare.
+  const salvato = impostazioni.get(SERVIZI.piano_lavoro.chiaveCatalogo);
+  const pacchetti = interpretaCatalogoPacchetti("piano_lavoro", salvato);
+  const saldiQ = await admin.from("omnia_ai_pacchetti_saldi").select("saldo").eq("servizio", "piano_lavoro").limit(5000).returns<{ saldo: number }[]>();
+  const pacchettiDisponibili = !saldiQ.error;
+  if (saldiQ.error && !schemaAssente(saldiQ.error)) console.error("Console: lettura dei saldi dei pacchetti fallita", saldiQ.error.message);
 
   // Le concessioni: senza la migrazione 0101 non ci sono.
   const concessioniQ = await admin
@@ -161,7 +189,11 @@ export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole>
     prezzoSingoloCentesimi: prezzoSingolo,
     prezzoSingoloModificato: prezzoSingolo !== PREZZO_PIANO_LAVORO.predefinitoCentesimi,
     politicaProva: interpretaPoliticaProva(impostazioni.get(CHIAVE_POLITICA_PROVA)),
-    piani,
+    pacchetti,
+    // «di partenza» = nessun elenco salvato, o illeggibile: si vendono i pacchetti del codice
+    pacchettiDiPartenza: !elencoSalvatoValido(salvato),
+    pacchettiDisponibili,
+    unitaResidue: saldiQ.error ? null : (saldiQ.data ?? []).reduce((somma, r) => somma + Math.max(0, Number(r.saldo) || 0), 0),
     concessioniDisponibili,
     concessioni: righe.map((r) => ({
       id: r.id,

@@ -1,10 +1,12 @@
 import { PIEDE_CLIENTE, cornice, esc, pulsante, type EmailPronta } from "@/lib/omnia-ai-email-eventi-calcoli";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
+import { SERVIZI, testoUnita, type ServizioPacchetto } from "@/lib/pacchetti-servizi-calcoli";
 
 // Le email dell'Ufficio Gare. Testi e struttura qui (puri, provabili); l'invio sta in omnia-ai-ufficio-gare.ts.
 //   1) invito: all'Ufficio Gare, con il link per scegliere la password
 //   2) gare finite o abbonamento non attivo: AL TITOLARE, automatica, al massimo una al giorno
 //   3) revisione umana richiesta: AL TITOLARE, quando l'Ufficio Gare preme il pulsante
+//   4) pacchetto di un servizio aggiuntivo richiesto: AL TITOLARE, quando l'Ufficio Gare preme «Acquista»
 // Nessun prezzo: cambiano (sconti, offerte) e le email non devono mai promettere una cifra.
 
 export const URL_ABBONAMENTO = `${OMNIA_AI_BASE_URL}/dashboard/omnia-ai/abbonamento`;
@@ -45,6 +47,23 @@ ${pulsante("Vai all'abbonamento", URL_ABBONAMENTO)}
       prova: false,
       piede: PIEDE_CLIENTE,
     }),
+  };
+}
+
+export const URL_SERVIZI = `${OMNIA_AI_BASE_URL}/dashboard/omnia-ai/servizi`;
+
+// L'Ufficio Gare ha premuto «Acquista» su un pacchetto di un servizio aggiuntivo: AL TITOLARE, al massimo una al giorno per pacchetto.
+// Niente prezzo (come le altre): lo vede nella pagina, prima di confermare.
+export function emailAvvisoAcquistoPacchetto(d: { emailUfficioGare: string; servizio: ServizioPacchetto; quantita: number }): EmailPronta {
+  const nome = SERVIZI[d.servizio].nome;
+  const unita = testoUnita(d.quantita, d.servizio);
+  const corpo = `<p>L'Ufficio Gare (${esc(d.emailUfficioGare)}) vorrebbe che acquistassi il pacchetto <strong>${esc(nome)}: ${esc(unita)}</strong>.</p>
+<p>Il pacchetto lo acquisti e lo paghi tu: dalla tua area riservata vedi il prezzo e le condizioni prima di confermare. Le unità non scadono: si esauriscono man mano che l'azienda le usa, e le possono usare sia tu sia l'Ufficio Gare.</p>
+${pulsante("Vai ai servizi aggiuntivi", URL_SERVIZI)}
+<p style="color:#6b7280;font-size:13px;">Ti scriviamo al massimo una volta al giorno per ogni pacchetto.</p>`;
+  return {
+    oggetto: `Il tuo Ufficio Gare chiede un pacchetto: ${nome}, ${unita}`,
+    html: cornice({ titolo: "Pacchetto richiesto dal tuo Ufficio Gare", corpo, prova: false, piede: PIEDE_CLIENTE }),
   };
 }
 

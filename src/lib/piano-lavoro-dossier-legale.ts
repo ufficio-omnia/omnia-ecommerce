@@ -186,7 +186,7 @@ export function costruisciDossier(adesso: Date = new Date()): Dossier {
               "Pagina dei piani, fascia «Piano di lavoro» (si vede sempre)",
               `${BANDA_PIANO_LAVORO.etichetta} — ${BANDA_PIANO_LAVORO.titolo} ${BANDA_PIANO_LAVORO.testo} ${BANDA_PIANO_LAVORO.punti.singola.titolo}: ${BANDA_PIANO_LAVORO.punti.singola.dettaglio("«prezzo»")}. ${BANDA_PIANO_LAVORO.punti.abbonamento.titolo}: ${BANDA_PIANO_LAVORO.punti.abbonamento.dettaglio("«supplemento Starter»")}. ${BANDA_PIANO_LAVORO.punti.formule.titolo}: ${BANDA_PIANO_LAVORO.punti.formule.dettaglio}. ${BANDA_PIANO_LAVORO.nota}`,
             ],
-            ["Nota nella gara, a seconda di come si ha il diritto", (["abbonamento", "concessione", "prova", "acquisto"] as const).map((k) => `${k}: «${NOTA_FONTE_DIRITTO[k]}»`).join("\n")],
+            ["Nota nella gara, a seconda di come si ha il diritto", (["abbonamento", "concessione", "prova", "acquisto", "pacchetto"] as const).map((k) => `${k}: «${NOTA_FONTE_DIRITTO[k]}»`).join("\n")],
             ["Messaggi nella gara quando non si può generare", Object.values(MESSAGGI_PIANO).join("\n")],
             [
               "Home, sezione «Dai documenti di gara anche il piano di lavoro» (senza prezzi; il pulsante porta alla pagina dei piani)",

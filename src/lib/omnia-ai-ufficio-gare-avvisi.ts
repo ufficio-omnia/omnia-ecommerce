@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { chiaveAvviso, eAvvisoGiaInviato, type MotivoQuotaFinita, type TipoAvvisoTitolare } from "@/lib/omnia-ai-account-calcoli";
-import { emailAvvisoGareFinite, emailAvvisoRevisioneRichiesta } from "@/lib/omnia-ai-email-ufficio-gare-calcoli";
+import { emailAvvisoAcquistoPacchetto, emailAvvisoGareFinite, emailAvvisoRevisioneRichiesta } from "@/lib/omnia-ai-email-ufficio-gare-calcoli";
+import type { ServizioPacchetto } from "@/lib/pacchetti-servizi-calcoli";
 import type { EmailPronta } from "@/lib/omnia-ai-email-eventi-calcoli";
 
 // Le email che l'Ufficio Gare fa partire verso il titolare. Il limite «al massimo una al giorno» NON sta nel
@@ -87,6 +88,32 @@ export function avvisaTitolareQuotaFinita({
     tipo: "quota_esaurita",
     chiave: chiaveAvviso("quota_esaurita"),
     costruisci: () => emailAvvisoGareFinite({ emailUfficioGare, motivo }),
+  });
+}
+
+// L'Ufficio Gare ha premuto «Acquista» su un pacchetto: una email al giorno per ogni servizio e quantità. Il titolare è l'unico che può pagare.
+export function avvisaTitolareAcquistoPacchetto({
+  admin,
+  titolareId,
+  membroId,
+  emailUfficioGare,
+  servizio,
+  quantita,
+}: {
+  admin: SupabaseClient;
+  titolareId: string;
+  membroId: string;
+  emailUfficioGare: string;
+  servizio: ServizioPacchetto;
+  quantita: number;
+}): Promise<EsitoAvviso> {
+  return avvisaTitolare({
+    admin,
+    titolareId,
+    membroId,
+    tipo: "acquisto_pacchetto",
+    chiave: chiaveAvviso("acquisto_pacchetto", `${servizio}:${quantita}`),
+    costruisci: () => emailAvvisoAcquistoPacchetto({ emailUfficioGare, servizio, quantita }),
   });
 }
 

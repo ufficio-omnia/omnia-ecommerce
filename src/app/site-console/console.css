@@ -1674,3 +1674,10 @@ a.cn-nav-voce:hover {
     padding: 0;
   }
 }
+
+/* Titoletto dentro un pannello (per esempio nei pacchetti della scheda cliente). */
+.cn-sottotitolo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cn-secondario);
+}

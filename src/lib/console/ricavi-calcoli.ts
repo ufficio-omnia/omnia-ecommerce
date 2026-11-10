@@ -4,7 +4,9 @@ import { aggiungiGiorni, type Periodo } from "./periodo";
 // Calcoli puri (nessun database) dei ricavi per dominio e per mese.
 //
 // DUE DOMINI. "ecommerce" = ordini pagati di app.omniaitalia.com; "omnia_ai" =
-// incassi degli abbonamenti (fatture Stripe pagate) più i crediti acquistati.
+// incassi degli abbonamenti (fatture Stripe pagate) più i crediti, le revisioni umane,
+// i piani di lavoro e i pacchetti di servizi aggiuntivi acquistati. Ogni fonte ha il suo ramo
+// esplicito in aggregaRicavi: una fonte senza ramo finirebbe tra gli abbonamenti.
 //
 // COMPETENZA = DATA DI INCASSO. Un ordine con carta vale dal giorno dell'ordine;
 // un bonifico dal giorno in cui l'admin ha confermato l'accredito (orders.paid_at).
@@ -21,7 +23,7 @@ import { aggiungiGiorni, type Periodo } from "./periodo";
 // sempre quanto è stato escluso.
 
 export type DominioRicavo = "ecommerce" | "omnia_ai";
-export type FonteRicavo = "ordine" | "abbonamento" | "crediti" | "revisione" | "piano_lavoro";
+export type FonteRicavo = "ordine" | "abbonamento" | "crediti" | "revisione" | "piano_lavoro" | "pacchetto";
 
 export type VoceRicavo = {
   dominio: DominioRicavo;
@@ -51,6 +53,8 @@ export type MeseRicavi = {
   revisioni: number;
   // acquisti singoli del piano di lavoro di una gara
   pianiLavoro: number;
+  // pacchetti prepagati di servizi aggiuntivi (piani di lavoro...): contano come ricavo quando si pagano, non quando si usano
+  pacchetti: number;
   totale: number;
 };
 
@@ -66,10 +70,12 @@ export type TotaliRicavi = {
   creditiNetto: number;
   revisioniNetto: number;
   pianiLavoroNetto: number;
+  pacchettiNetto: number;
   incassiAbbonamento: number;
   acquistiCrediti: number;
   acquistiRevisione: number;
   acquistiPianoLavoro: number;
+  acquistiPacchetto: number;
 };
 
 export type RiepilogoRicavi = {
@@ -96,10 +102,10 @@ function mesiDelPeriodo(periodo: Periodo): string[] {
 }
 
 export function aggregaRicavi(voci: VoceRicavo[], periodo: Periodo, aliquotaIva: number, includiProva: boolean): RiepilogoRicavi {
-  const mesi = new Map<string, MeseRicavi>(mesiDelPeriodo(periodo).map((m) => [m, { mese: m, ecommerce: 0, abbonamenti: 0, crediti: 0, revisioni: 0, pianiLavoro: 0, totale: 0 }]));
+  const mesi = new Map<string, MeseRicavi>(mesiDelPeriodo(periodo).map((m) => [m, { mese: m, ecommerce: 0, abbonamenti: 0, crediti: 0, revisioni: 0, pianiLavoro: 0, pacchetti: 0, totale: 0 }]));
   const totali: TotaliRicavi = {
     lordo: 0, netto: 0, ecommerceLordo: 0, ecommerceNetto: 0, ecommerceOrdini: 0,
-    omniaAiLordo: 0, omniaAiNetto: 0, abbonamentiNetto: 0, creditiNetto: 0, revisioniNetto: 0, pianiLavoroNetto: 0, incassiAbbonamento: 0, acquistiCrediti: 0, acquistiRevisione: 0, acquistiPianoLavoro: 0,
+    omniaAiLordo: 0, omniaAiNetto: 0, abbonamentiNetto: 0, creditiNetto: 0, revisioniNetto: 0, pianiLavoroNetto: 0, pacchettiNetto: 0, incassiAbbonamento: 0, acquistiCrediti: 0, acquistiRevisione: 0, acquistiPianoLavoro: 0, acquistiPacchetto: 0,
   };
   let provaVoci = 0;
   let provaLordo = 0;
@@ -145,6 +151,10 @@ export function aggregaRicavi(voci: VoceRicavo[], periodo: Periodo, aliquotaIva:
         totali.pianiLavoroNetto += netto;
         totali.acquistiPianoLavoro++;
         if (mese) mese.pianiLavoro += netto;
+      } else if (v.fonte === "pacchetto") {
+        totali.pacchettiNetto += netto;
+        totali.acquistiPacchetto++;
+        if (mese) mese.pacchetti += netto;
       } else {
         totali.abbonamentiNetto += netto;
         totali.incassiAbbonamento++;

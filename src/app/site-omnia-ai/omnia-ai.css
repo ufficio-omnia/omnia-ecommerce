@@ -1102,6 +1102,42 @@ li {
   text-align: left;
 }
 
+/* Sezione «cosa puoi elaborare in una gara oltre alla relazione tecnica» (pagina dei piani): menu a tendina per categoria e contenuto della scelta.
+   Stessa superficie della fascia «revisione umana»; il menu riusa .omnia-select. */
+.omnia-servizi-menu {
+  margin-top: 24px;
+  max-width: 460px;
+}
+.omnia-servizi-esito {
+  margin-top: 28px;
+}
+.omnia-servizi-esito:empty {
+  margin-top: 0;
+}
+.omnia-servizi-esito h3 {
+  margin-top: 10px;
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: clamp(20px, 2.6vw, 28px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.omnia-servizi-stato {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bordo-f);
+  background: var(--vetro);
+  color: var(--viola);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.omnia-revisione-punti.due {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 /* Modulo (richiedi la demo) */
 .omnia-modulo {
   max-width: 640px;
@@ -1176,6 +1212,9 @@ li {
     padding: 28px 22px;
   }
   .omnia-revisione-punti {
+    grid-template-columns: 1fr;
+  }
+  .omnia-revisione-punti.due {
     grid-template-columns: 1fr;
   }
   .omnia-campo-riga {
@@ -2956,4 +2995,101 @@ li {
   border-top: 1px solid var(--bordo);
   font-size: 14px;
   color: var(--fioco);
+}
+
+/* Servizi aggiuntivi a pacchetto (home e pagina «Servizi aggiuntivi»): una scheda per servizio, con i pacchetti in elenco. */
+.omnia-pacchetti-griglia {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+}
+.omnia-pacchetto-scheda {
+  padding: 18px 20px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: rgba(var(--pannello-rgb), 0.5);
+}
+.omnia-pacchetto-scheda h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.omnia-pacchetto-testata {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.omnia-pacchetto-testo {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--testo-2);
+}
+.omnia-pacchetto-saldo {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+.omnia-pacchetto-saldo strong {
+  font-size: 22px;
+}
+.omnia-pacchetto-riga {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bordo);
+}
+.omnia-pacchetto-riga-testo {
+  min-width: 0;
+  font-size: 14px;
+}
+.omnia-pacchetto-riga-testo small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-pacchetto-azione {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.omnia-pacchetto-esito {
+  margin: 0;
+  max-width: 320px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+.omnia-pacchetto-nota {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--fioco);
+  line-height: 1.55;
+}
+.omnia-pacchetto-movimenti {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.omnia-pacchetto-movimenti li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--bordo);
+}
+@media (max-width: 760px) {
+  .omnia-pacchetti-griglia {
+    grid-template-columns: 1fr;
+  }
+  .omnia-pacchetto-azione {
+    align-items: flex-start;
+  }
 }

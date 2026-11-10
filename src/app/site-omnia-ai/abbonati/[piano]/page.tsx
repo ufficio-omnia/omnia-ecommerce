@@ -10,8 +10,7 @@ import { PIANI, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { getCatalogoPiani } from "@/lib/omnia-ai-catalogo";
 import { testoOfferta } from "@/lib/omnia-ai-catalogo-calcoli";
 import AbbonatiPianoForm from "./abbonati-piano-form";
-import { venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
-import { getOffertePianoLavoro } from "@/lib/piano-lavoro-offerta";
+import { getOffertePianoLavoro, venditaAbbonamentoPianoLavoroAttiva } from "@/lib/piano-lavoro-offerta";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 
 function isPianoSlug(value: string): value is PianoSlug {
@@ -68,8 +67,9 @@ export default async function AbbonatiPianoPage({
 
   const admin = createAdminClient();
   const legalDocuments = await getCurrentOmniaAiLegalDocuments(admin);
-  // L'opzione «piano di lavoro» compare solo se è in vendita (interruttore della console + chiave Stripe reale, o prova in locale)
-  const offertaConPianoLavoro = (await venditaPianoLavoroAttiva(admin)) ? (await getOffertePianoLavoro(admin))[piano] : null;
+  // L'opzione «piano di lavoro» nell'abbonamento NON si offre (decisione del 09/11/2026: il piano di lavoro si compra solo dentro la singola gara):
+  // il punto unico è venditaAbbonamentoPianoLavoroAttiva, spento da ABBONAMENTO_PIANO_LAVORO_OFFERTO.
+  const offertaConPianoLavoro = (await venditaAbbonamentoPianoLavoroAttiva(admin)) ? (await getOffertePianoLavoro(admin))[piano] : null;
 
   return (
     <PageShell>

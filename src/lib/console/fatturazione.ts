@@ -6,6 +6,7 @@ import {
   calcolaImporti,
   descrizioneCrediti,
   descrizioneIncasso,
+  descrizionePacchettoRiga,
   descrizionePianoLavoroRiga,
   descrizioneRevisioneRiga,
   snapshotDaDettagliStripe,
@@ -124,6 +125,24 @@ type PianoLavoroDb = DatiStato & {
 const COLONNE_PIANO_LAVORO =
   "id, user_id, gara_titolo, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stripe_session_id, stripe_payment_intent_id, dati_stripe, stato_fattura, numero_fattura, data_fattura, note_fattura, fattura_file_path";
 
+type PacchettoDb = DatiStato & {
+  id: string;
+  user_id: string | null;
+  servizio: string;
+  quantita: number;
+  prezzo_centesimi: number;
+  importo_pagato_centesimi: number | null;
+  pagata_il: string;
+  livemode: boolean;
+  stripe_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  dati_stripe: DettagliClienteStripe;
+};
+
+// Pacchetti di servizi aggiuntivi PAGATI (migrazione 0104): stato di fattura e PDF sono nella stessa migrazione.
+const COLONNE_PACCHETTO =
+  "id, user_id, servizio, quantita, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stripe_session_id, stripe_payment_intent_id, dati_stripe, stato_fattura, numero_fattura, data_fattura, note_fattura, fattura_file_path";
+
 type Risposta = { data: unknown; error: { code?: string; message: string } | null };
 
 export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}): Promise<FatturazioneLetta> {
@@ -179,6 +198,14 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
   }
   const pianiLavoro = pianiLavoroQ.error ? [] : ((pianiLavoroQ.data ?? []) as unknown as PianoLavoroDb[]);
 
+  // Pacchetti di servizi aggiuntivi pagati: senza la tabella (migrazione 0104 non eseguita) non ce ne sono.
+  const pacchettiQ = await admin.from("omnia_ai_pacchetti_acquisti").select(COLONNE_PACCHETTO).eq("stato", "pagata").order("pagata_il", { ascending: false }).limit(2000);
+  if (pacchettiQ.error && !schemaAssente(pacchettiQ.error)) {
+    console.error("Console: lettura pacchetti per la fatturazione fallita", pacchettiQ.error.message);
+    return { stato: "errore", messaggio: "Lettura degli acquisti dei pacchetti non riuscita." };
+  }
+  const pacchetti = pacchettiQ.error ? [] : ((pacchettiQ.data ?? []) as unknown as PacchettoDb[]);
+
   const [parametri, abbonamentiQ, ordiniQ] = await Promise.all([
     leggiParametriCalcolo(),
     admin.from("subscriptions").select("stripe_subscription_id, plan").not("stripe_subscription_id", "is", null).limit(5000),
@@ -186,7 +213,7 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
   ]);
 
   // Dati di fatturazione: il profilo azienda del cliente, completato da Stripe.
-  const idUtenti = [...new Set([...incassi.flatMap((i) => (i.user_id ? [i.user_id] : [])), ...crediti.map((c) => c.user_id), ...revisioni.flatMap((r) => (r.user_id ? [r.user_id] : [])), ...pianiLavoro.flatMap((p) => (p.user_id ? [p.user_id] : []))])];
+  const idUtenti = [...new Set([...incassi.flatMap((i) => (i.user_id ? [i.user_id] : [])), ...crediti.map((c) => c.user_id), ...revisioni.flatMap((r) => (r.user_id ? [r.user_id] : [])), ...pianiLavoro.flatMap((p) => (p.user_id ? [p.user_id] : [])), ...pacchetti.flatMap((p) => (p.user_id ? [p.user_id] : []))])];
   const [utenti, aziende] = await Promise.all([
     inBlocchi<{ id: string; email: string }>(idUtenti, (b) => admin.from("users").select("id, email").in("id", b)),
     inBlocchi<ProfiloFatturazione & { user_id: string }>(idUtenti, (b) =>
@@ -305,6 +332,27 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
     });
   }
 
+  for (const p of pacchetti) {
+    const { dati, cliente } = comune(p.user_id, snapshotDaDettagliStripe(p.dati_stripe));
+    righe.push({
+      chiave: `pacchetto:${p.id}`,
+      fonte: "pacchetto",
+      data: p.pagata_il,
+      descrizione: descrizionePacchettoRiga(p.servizio, num(p.quantita)),
+      userId: p.user_id,
+      cliente,
+      // il prezzo è IVA inclusa e Stripe non calcola l'imposta su questo pagamento: si scorpora con l'aliquota
+      importi: calcolaImporti(num(p.importo_pagato_centesimi ?? p.prezzo_centesimi) / 100, null, null, parametri.aliquotaIva),
+      prova: !p.livemode,
+      ...statoDi(p),
+      numeroRicevuta: null,
+      ricevutaUrl: null,
+      dati,
+      giorni: giorniDallIncasso(p.pagata_il, adesso),
+      idStripe: p.stripe_payment_intent_id ?? p.stripe_session_id,
+    });
+  }
+
   righe.sort((a, b) => b.data.localeCompare(a.data));
   const visibili = righe.filter((r) => includiProva || !r.prova);
 
@@ -335,11 +383,12 @@ export async function leggiFatturazione(opzioni: { includiProva?: boolean } = {}
 // Una lettura sola per richiesta.
 export const contaDaFatturare = cache(async (): Promise<{ n: number; lordo: number } | null> => {
   const admin = createAdminClient();
-  const [incassi, crediti, revisioni, pianiLavoro] = await Promise.all([
+  const [incassi, crediti, revisioni, pianiLavoro, pacchettiQ] = await Promise.all([
     admin.from("omnia_ai_incassi").select("importo_lordo_centesimi").eq("stato_fattura", "da_fatturare").eq("livemode", true).limit(5000),
     admin.from("omnia_ai_credit_purchases").select("importo_centesimi, stripe_session_id").eq("stato_fattura", "da_fatturare").limit(5000),
     admin.from("omnia_ai_revisioni").select("importo_pagato_centesimi, prezzo_totale_centesimi").eq("stato", "pagata").eq("stato_fattura", "da_fatturare").eq("livemode", true).limit(5000),
     admin.from("omnia_ai_piani_lavoro_acquisti").select("importo_pagato_centesimi, prezzo_centesimi").eq("stato", "pagata").eq("stato_fattura", "da_fatturare").eq("livemode", true).limit(5000),
+    admin.from("omnia_ai_pacchetti_acquisti").select("importo_pagato_centesimi, prezzo_centesimi").eq("stato", "pagata").eq("stato_fattura", "da_fatturare").eq("livemode", true).limit(5000),
   ]);
   // Senza la tabella degli incassi (0078) restano comunque i crediti. Qualunque
   // altro errore, compresa la colonna dello stato che manca (0079), vuol dire che
@@ -353,17 +402,22 @@ export const contaDaFatturare = cache(async (): Promise<{ n: number; lordo: numb
   // Senza la tabella dei piani di lavoro (0097) non ce ne sono; qualunque altro errore rende il conteggio inattendibile.
   const tabellaPianiAssente = pianiLavoro.error?.code === "PGRST205" || pianiLavoro.error?.code === "42P01";
   if (pianiLavoro.error && !tabellaPianiAssente) return null;
+  // Senza la tabella dei pacchetti (0104) non ce ne sono; qualunque altro errore rende il conteggio inattendibile.
+  const tabellaPacchettiAssente = pacchettiQ.error?.code === "PGRST205" || pacchettiQ.error?.code === "42P01";
+  if (pacchettiQ.error && !tabellaPacchettiAssente) return null;
+  const pacchettiReali = pacchettiQ.error ? [] : ((pacchettiQ.data ?? []) as { importo_pagato_centesimi: number | null; prezzo_centesimi: number }[]);
   const pianiReali = pianiLavoro.error ? [] : ((pianiLavoro.data ?? []) as { importo_pagato_centesimi: number | null; prezzo_centesimi: number }[]);
 
   const reali = ((crediti.data ?? []) as { importo_centesimi: number; stripe_session_id: string | null }[]).filter((c) => !(c.stripe_session_id ?? "").startsWith("cs_test_"));
   const incassiReali = incassi.error ? [] : ((incassi.data ?? []) as { importo_lordo_centesimi: number }[]);
   return {
-    n: incassiReali.length + reali.length + revisioniReali.length + pianiReali.length,
+    n: incassiReali.length + reali.length + revisioniReali.length + pianiReali.length + pacchettiReali.length,
     lordo:
       (incassiReali.reduce((s, i) => s + num(i.importo_lordo_centesimi), 0) +
         reali.reduce((s, c) => s + num(c.importo_centesimi), 0) +
         revisioniReali.reduce((s, r) => s + num(r.importo_pagato_centesimi ?? r.prezzo_totale_centesimi), 0) +
-        pianiReali.reduce((s, p) => s + num(p.importo_pagato_centesimi ?? p.prezzo_centesimi), 0)) /
+        pianiReali.reduce((s, p) => s + num(p.importo_pagato_centesimi ?? p.prezzo_centesimi), 0) +
+        pacchettiReali.reduce((s, p) => s + num(p.importo_pagato_centesimi ?? p.prezzo_centesimi), 0)) /
       100,
   };
 });
