@@ -293,6 +293,7 @@ Tutte opzionali: senza di esse il modulo funziona come prima e le integrazioni r
 | `DEMO_GA4_PROVA_EMAIL` | Una o più email di prova (separate da virgola), **solo su Vercel**: la «Prova reale GA4» (10.7) usa soltanto richieste confermate fatte con queste email. Senza (o vuota) la prova è spenta e non può inviare niente. |
 | `DEMO_ADS_IMPORT_ENABLED` | `1` per accendere la conversione Google Ads (parte in «solo verifica»). |
 | `DEMO_ADS_VALIDATE_ONLY` | Predefinito «solo verifica» (Google controlla ma non registra). **`0` = modalità reale.** |
+| `DEMO_ADS_REAL_FROM` | Data e ora **con fuso** (es. `2026-11-10T12:00:00Z`) da cui il **cron** in modalità reale può inviare conversioni vere: solo prenotazioni confermate dopo quella data. **Senza una data valida il cron in modalità reale non invia niente.** Non riguarda l'invio manuale dalla console (10.8). |
 | `DEMO_ADS_ALLOW_EMAIL_ONLY` | `1` per inviare anche le richieste senza identificativo di clic (solo email cifrata, richiede il consenso del modulo). Predefinito spento. |
 | `GOOGLE_ADS_CUSTOMER_ID` | ID dell'account Google Ads, 10 cifre senza trattini. |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Facoltativo: account manager da cui si accede, se diverso. |
@@ -390,6 +391,58 @@ Transizioni: `reserved` → `sent_unverified` / `rejected` / `uncertain` (scritt
 **Integrazione futura nel cron:** la prenotazione esclusiva (`riservaInvioGa4`, `registraEsitoInvio`, `idRichiesteRiservate` in `src/lib/demo-ga4-riserva.ts`) non dipende dalla prova: la colonna `origine`
 (`prova` / `cron`) è pensata perché il cron di produzione possa prenotare ogni richiesta prima di inviarla, chiudendo il margine che oggi resta (se Google risponde 2xx ma la scrittura di
 `ga4_sent_at` fallisce, dopo 10 minuti l'evento ripartirebbe). Non è stato fatto ora per non cambiare il funzionamento del cron; il test `verifica-demo-ga4-prova-omnia-ai.ts` copre le primitive.
+
+### 10.8 Invio reale a Google Ads: UNA conversione alla volta
+
+**Perché esiste (10/11/2026).** Il primo lead vero da un annuncio (Ascot Ristorazione) era «verificata (solo verifica)». Passare `DEMO_ADS_VALIDATE_ONLY` a `0` avrebbe fatto partire dal cron tutto ciò che è `ready`/`validated`/`failed`, e il codice di allora rimandava da solo anche gli esiti incerti (rete, tempo scaduto, 5xx) e non prenotava l'invio prima di chiamare Google. Ora vale quanto segue.
+
+**Stati di una conversione** (nessuna migrazione: sono le colonne di `demo_leads` che c'erano già):
+
+| Cosa si vede in console | `ads_import_status` | `ads_request_id` | Significato |
+|---|---|---|---|
+| non ancora inviata | `ready` / `validated` | — | Idonea. `validated` = Google ha accettato la richiesta in **sola verifica** (non registra niente). |
+| invio in corso | `sent` | — | L'invio è stato **prenotato** pochi minuti fa (meno di 5), la chiamata è in corso. |
+| **esito incerto** | `sent` | — | Rete caduta, tempo scaduto, 5xx, 429 ambiguo, risposta «ok» senza identificativo, oppure la funzione è morta durante la chiamata. Google **può** aver registrato la conversione. `ads_last_error` = `ESITO_INCERTO:<codice>`. **Mai rimandata da sola.** |
+| inviata, in elaborazione | `sent` | sì | Google ha ricevuto la richiesta; `requestStatus` = PROCESSING. |
+| accettata | `accepted` | sì | `requestStatus` = SUCCESS. |
+| rifiutata | `failed` | no | Google ha detto no in modo chiaro (4xx): niente registrato. Non si riprova da sola. |
+| rifiutata in elaborazione | `failed` | sì | `requestStatus` = FAILED / PARTIAL_SUCCESS (o oltre 48 ore in PROCESSING). Non si riprova da sola. |
+| quota superata | `failed` | no, con prossimo tentativo | Solo il cron e **solo** se Google lo dichiara in modo esplicito: stato HTTP 429 **e** codice `RESOURCE_EXHAUSTED` nel corpo. Google non ha elaborato niente: si riprova con le pause 10 min, 30 min, 2 h, 8 h, 24 h (6 tentativi in tutto). Un 429 senza quel codice (un intermediario, un corpo non leggibile) è **ambiguo** e conta come esito incerto. |
+
+**Come funziona l'invio** (`src/lib/demo-ads-invio.ts`, `demo-ads-data-manager.ts`, regole in `demo-ads-invio-calcoli.ts`):
+1. **Prima** di chiamare Google l'invio si **prenota** con una scrittura condizionata (stato letto, richiesta ancora confermata, nessun identificativo di richiesta): la richiesta passa a `sent`, il tentativo è contato, l'identificativo di transazione è scritto. Chi non ottiene la prenotazione non invia. Tre esecuzioni insieme producono **una** chiamata.
+2. UNA sola chiamata `events:ingest` con `validateOnly=false` (una richiesta che non lo dichiara non parte), con tempo massimo.
+3. L'esito si scrive sulla riga prenotata. Se la scrittura non riesce si riprova una volta; se non riesce ancora la richiesta resta `sent` senza identificativo = **esito incerto**, e la console mostra l'identificativo di Google (non è un dato personale) perché lo si possa controllare a mano.
+4. **Nessuna sovrascrittura:** ogni aggiornamento del cron (anche in «solo verifica») vale solo se la richiesta è ancora com'era quando l'ha letta (stesso stato, nessun identificativo di richiesta): se nel frattempo è stata prenotata o inviata, il giro non la tocca. Il cron in «solo verifica» prende solo le richieste `ready`, quindi non sfiora quelle prenotate, inviate, incerte, accettate o rifiutate.
+5. `requestStatus` si legge ad **ogni giro del cron, in qualunque modalità** (è una GET): SUCCESS → `accepted`; così funziona anche con il cron in «solo verifica». In console c'è anche «Controlla l'esito».
+6. **Conversion time** = ora della **prenotazione** sul calendario (`prima_prenotazione_il`, scritta una volta sola), in UTC, mai l'ora dell'appuntamento; **transactionId** = `omnia-demo-<id della richiesta>`: non cambia se la prenotazione si sposta o si annulla e si rifà.
+
+**Il cron in modalità reale** (`DEMO_ADS_VALIDATE_ONLY=0`) ora:
+- **non invia niente** senza `DEMO_ADS_REAL_FROM` (data e ora **con fuso**, es. `2026-11-10T12:00:00Z`; una sola data o un testo non valgono): è il freno contro l'invio in blocco di ciò che era già `ready`/`validated`;
+- invia solo richieste **confermate dopo** quella data, mai richieste con un identificativo di richiesta già assegnato, e al massimo **3 conversioni vere per giro**;
+- conta l'esito incerto a parte (`incerti`), non lo rimanda;
+- la console (riquadro «Sistema» e avvisi) segnala «modalità reale senza data minima».
+
+**Primo invio reale di una richiesta (procedura)** — console → DEMO e Google Ads → «Invio reale a Google Ads (una conversione)». Solo admin. **Non richiede di cambiare nessuna variabile**: l'invio manuale è una decisione separata e vale anche con il cron in «solo verifica».
+1. Premere «Mostra le conversioni Google Ads (sola lettura)». Si vede, per ogni richiesta, la fase, i consensi, l'identificativo di clic (solo il tipo), e per quelle inviabili **ciò che partirebbe**: ora della conversione, transazione, se c'è l'email, il consenso comunicato a Google. Account e azione compaiono solo con le **ultime tre cifre**: devono essere quelli giusti.
+2. «Prepara l'invio di questa richiesta» e digitare la frase esatta, **specifica della richiesta**: `INVIA 1 CONVERSIONE REALE <primi 8 caratteri dell'id>` (per Ascot: `INVIA 1 CONVERSIONE REALE 52dc0adc`).
+3. «Invia 1 conversione REALE a Google Ads»: una sola chiamata. Il risultato dice in che fase è finita (in elaborazione, incerta, rifiutata) e riporta l'identificativo di richiesta.
+4. Dopo qualche minuto: «Controlla l'esito» (una GET su `requestStatus`): SUCCESS → `accepted`. Il cron lo farebbe da solo entro 10 minuti.
+5. In **Google Ads** → Obiettivi → Conversioni → «OMNIA AI - DEMO prenotata»: la conversione compare **dopo alcune ore** (Google la mostra per **data della conversione**, non del clic). Guardare anche Campagne → colonna «Conversioni». Prerequisiti dell'azione: tipo «importazione dai clic», stato attivo.
+
+**Se l'esito è incerto** (la console lo dice in rosso): NON rimandare. Controllare in Google Ads se la conversione c'è (dopo alcune ore):
+- c'è → `update demo_leads set ads_import_status = 'accepted', ads_last_error = null where id = '<id>' and ads_import_status = 'sent' and ads_request_id is null;`
+- dopo 24 ore non c'è e si decide di rimandare → `update demo_leads set ads_import_status = 'validated', ads_last_error = null, ads_sent_at = null, ads_attempts = 0 where id = '<id>' and ads_import_status = 'sent' and ads_request_id is null;` e poi di nuovo l'invio dalla console. L'identificativo di transazione è lo stesso: se Google l'aveva registrata, riconosce il doppione (ma non è una garanzia da cui dipendere: per questo si controlla prima).
+
+**Dopo un rifiuto chiaro** (`failed`, nessun identificativo): risolto il motivo (codice in `ads_last_error`), l'invio dalla console è di nuovo possibile (con la frase). Per un `failed` **con** identificativo (elaborazione fallita) serve prima: `update demo_leads set ads_import_status = 'validated', ads_request_id = null, ads_last_error = null, ads_attempts = 0 where id = '<id>' and ads_import_status = 'failed';`.
+
+**Attivazione per le demo future** (dopo che la prima conversione è `accepted` e vista in Google Ads): su Vercel `DEMO_ADS_VALIDATE_ONLY=0` **e** `DEMO_ADS_REAL_FROM=<momento dell'attivazione, con fuso>`, poi un nuovo deploy (le variabili valgono dal deploy successivo). `DEMO_ADS_ALLOW_EMAIL_ONLY` resta spenta. Da quel momento il cron prenota e invia ogni nuova demo confermata, una per volta. Prima di accendere, controllare cosa verrebbe preso:
+`select id, created_at, prima_prenotazione_il, ads_import_status from demo_leads where booking_status = 'confirmed' and ads_import_status in ('ready','validated','failed') and ads_request_id is null and prima_prenotazione_il >= '<DEMO_ADS_REAL_FROM>';`
+`DEMO_GA4_MP_DEBUG` non c'entra: GA4 e Google Ads sono due passi indipendenti del cron.
+
+**Concorrenza:** la protezione vera sta nel database, non nel server: la prenotazione è un unico `UPDATE … WHERE` su `demo_leads` (stato letto, richiesta ancora confermata, stesso numero di tentativi, nessun identificativo di richiesta) che restituisce la riga solo a chi la ottiene. Postgres, sotto lock di riga, rivaluta la condizione per le scritture concorrenti: ne vince una sola, anche tra istanze Vercel diverse. I test provano 20 tentativi simultanei (prenotazioni, giri del cron, invii manuali e misti, anche con esito incerto) su un database finto che imita questa semantica; **non** sono stati provati sul database vero, perché avrebbe voluto dire scrivere su dati di produzione.
+
+**Limiti noti:** Google non dà una conferma immediata di attribuzione (solo `requestStatus` e i rapporti di Google Ads); non esiste un pulsante per risolvere un esito incerto (si fa con le istruzioni SQL qui sopra); i contatori «una alla volta» dell'azione valgono per istanza del server, ma la protezione vera sta nel database (prenotazione condizionata e blocco condiviso con il cron).
 
 ## 11. Regole di prudenza e bozza per l'informativa
 

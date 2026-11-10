@@ -825,7 +825,8 @@ async function main() {
     atteso("in «solo verifica» una richiesta già verificata non si rimanda a ogni esecuzione", ingerimenti(cf2).length === 0);
 
     // modalità reale
-    const envReale = { ...envAds, DEMO_ADS_VALIDATE_ONLY: "0" };
+    // la modalità reale del cron richiede una data minima valida (senza, non invia niente: vedi il test dedicato)
+    const envReale = { ...envAds, DEMO_ADS_VALIDATE_ONLY: "0", DEMO_ADS_REAL_FROM: "2026-11-01T00:00:00Z" };
     const cf3 = ambienteAds({ ingest: () => ({ status: 200, json: { requestId: "req-reale-1" } }) });
     const r3 = await inviaConversioniAds(db.comeClient(), envReale, ADESSO + 700_000, cf3.fetch);
     const l3 = db.da("demo_leads")[0];
@@ -841,7 +842,8 @@ async function main() {
     atteso("una conversione «accepted» non si rimanda MAI e non si ricontrolla (nessun doppione)", ingerimenti(cf6).length === 0 && stati(cf6).length === 0);
   }
   {
-    const envReale = { ...envAds, DEMO_ADS_VALIDATE_ONLY: "0" };
+    // la modalità reale del cron richiede una data minima valida (senza, non invia niente: vedi il test dedicato)
+    const envReale = { ...envAds, DEMO_ADS_VALIDATE_ONLY: "0", DEMO_ADS_REAL_FROM: "2026-11-01T00:00:00Z" };
     // elaborazione fallita / in corso / troppo lunga
     const dbF = dbCon({ leads: [pronto({ id: "lf" })] });
     const cfF = ambienteAds({ stato: () => ({ status: 200, json: { requestStatusPerDestination: [{ requestStatus: "FAILED", errorInfo: { errorCounts: [{ reason: "PROCESSING_ERROR_REASON_DUPLICATE_GCLID", recordCount: "1" }] } }] } }) });
@@ -861,25 +863,43 @@ async function main() {
     const rp2 = await inviaConversioniAds(dbP.comeClient(), envReale, ADESSO + 49 * 3_600_000, cfP.fetch);
     atteso("oltre 48 ore ancora «in corso»: passa a «failed» (TIMEOUT_ELABORAZIONE) per la verifica manuale", rp2.falliti === 1 && dbP.da("demo_leads")[0].ads_import_status === "failed" && dbP.da("demo_leads")[0].ads_last_error === "TIMEOUT_ELABORAZIONE");
 
-    // errori di rete / Google con nuovi tentativi
+    // ESITO INCERTO (5xx, rete, tempo scaduto, risposta senza id): la conversione può essere già stata registrata, quindi NON si rimanda mai da soli
     const dbE = dbCon({ leads: [pronto({ id: "le" })] });
-    let modo: "ko" | "ok" = "ko";
-    const cfE = ambienteAds({ ingest: () => (modo === "ko" ? { status: 500, json: { error: { status: "INTERNAL", message: "Mario.Rossi@esempio.it dettaglio" } } } : { status: 200, json: { requestId: "req-ok" } }) });
+    const cfE = ambienteAds({ ingest: () => ({ status: 500, json: { error: { status: "INTERNAL", message: "Mario.Rossi@esempio.it dettaglio" } } }) });
     const { log: logE } = await conLog(() => inviaConversioniAds(dbE.comeClient(), envReale, ADESSO, cfE.fetch));
     const le = dbE.da("demo_leads")[0];
-    atteso("errore di Google: «failed», un tentativo contato, prossimo tentativo tra 10 minuti, e dell'errore resta solo il codice (mai il messaggio)", le.ads_import_status === "failed" && le.ads_attempts === 1 && le.ads_next_attempt_at === new Date(ADESSO + 600_000).toISOString() && le.ads_last_error === "HTTP_500 INTERNAL" && !/Mario|esempio|dettaglio/i.test(`${le.ads_last_error}${logE}`), JSON.stringify(le));
-    const cfE2 = ambienteAds({ ingest: () => ({ status: 500 }) });
-    await inviaConversioniAds(dbE.comeClient(), envReale, ADESSO + 300_000, cfE2.fetch);
-    atteso("prima della pausa non si riprova", ingerimenti(cfE2).length === 0 && dbE.da("demo_leads")[0].ads_attempts === 1);
-    modo = "ok";
-    const cfE3 = ambienteAds({ ingest: () => ({ status: 200, json: { requestId: "req-ok" } }) });
-    await inviaConversioniAds(dbE.comeClient(), envReale, ADESSO + 650_000, cfE3.fetch);
-    atteso("dopo la pausa si riprova e, se va bene, diventa «sent» (secondo tentativo)", dbE.da("demo_leads")[0].ads_import_status === "sent" && dbE.da("demo_leads")[0].ads_attempts === 2 && dbE.da("demo_leads")[0].ads_last_error === null && dbE.da("demo_leads")[0].ads_next_attempt_at === null);
+    atteso("errore 5xx di Google: l'esito è INCERTO: resta «sent» SENZA identificativo di richiesta, un tentativo contato, nessun nuovo tentativo programmato, e dell'errore resta solo il codice (mai il messaggio)", le.ads_import_status === "sent" && le.ads_request_id === null && le.ads_attempts === 1 && le.ads_next_attempt_at === null && le.ads_last_error === "ESITO_INCERTO:HTTP_500 INTERNAL" && !/Mario|esempio|dettaglio/i.test(`${le.ads_last_error}${logE}`), JSON.stringify(le));
+    const cfE2 = ambienteAds({});
+    await inviaConversioniAds(dbE.comeClient(), envReale, ADESSO + 650_000, cfE2.fetch);
+    await inviaConversioniAds(dbE.comeClient(), envReale, ADESSO + 5 * 24 * 3_600_000, cfE2.fetch);
+    atteso("… e l'esito incerto NON si rimanda MAI, né dopo la pausa dei vecchi tentativi né dopo giorni; non si legge nemmeno requestStatus (non c'è un id)", ingerimenti(cfE2).length === 0 && stati(cfE2).length === 0 && dbE.da("demo_leads")[0].ads_import_status === "sent" && dbE.da("demo_leads")[0].ads_attempts === 1);
 
+    // quota superata (429): Google non ha elaborato niente, è l'UNICO caso in cui il cron riprova da solo
+    const dbQ = dbCon({ leads: [pronto({ id: "lq" })] });
+    const cfQ = ambienteAds({ ingest: () => ({ status: 429, json: { error: { status: "RESOURCE_EXHAUSTED" } } }) });
+    await inviaConversioniAds(dbQ.comeClient(), envReale, ADESSO, cfQ.fetch);
+    const lq = dbQ.da("demo_leads")[0];
+    atteso("quota superata (429): «failed», un tentativo contato, prossimo tentativo tra 10 minuti, nessun identificativo di richiesta", lq.ads_import_status === "failed" && lq.ads_attempts === 1 && lq.ads_request_id === null && lq.ads_next_attempt_at === new Date(ADESSO + 600_000).toISOString() && lq.ads_last_error === "HTTP_429 RESOURCE_EXHAUSTED", JSON.stringify(lq));
+    const cfQ2 = ambienteAds({});
+    await inviaConversioniAds(dbQ.comeClient(), envReale, ADESSO + 300_000, cfQ2.fetch);
+    atteso("prima della pausa non si riprova", ingerimenti(cfQ2).length === 0 && dbQ.da("demo_leads")[0].ads_attempts === 1);
+    const cfQ3 = ambienteAds({ ingest: () => ({ status: 200, json: { requestId: "req-quota-ok" } }) });
+    await inviaConversioniAds(dbQ.comeClient(), envReale, ADESSO + 650_000, cfQ3.fetch);
+    atteso("dopo la pausa si riprova e, se va bene, diventa «sent» con l'identificativo (secondo tentativo)", dbQ.da("demo_leads")[0].ads_import_status === "sent" && dbQ.da("demo_leads")[0].ads_attempts === 2 && dbQ.da("demo_leads")[0].ads_request_id === "req-quota-ok" && dbQ.da("demo_leads")[0].ads_last_error === null && dbQ.da("demo_leads")[0].ads_next_attempt_at === null);
+
+    // rifiuto CHIARO (4xx): niente registrato, ma non si riprova da soli (serve una persona)
+    const dbRif = dbCon({ leads: [pronto({ id: "lrif" })] });
+    const cfRif = ambienteAds({ ingest: () => ({ status: 400, json: { error: { status: "INVALID_ARGUMENT", message: "testo libero" } } }) });
+    await inviaConversioniAds(dbRif.comeClient(), envReale, ADESSO, cfRif.fetch);
+    await inviaConversioniAds(dbRif.comeClient(), envReale, ADESSO + 50_000_000, cfRif.fetch);
+    const lrif = dbRif.da("demo_leads")[0];
+    atteso("rifiuto chiaro (400): «failed» con il codice, nessun nuovo tentativo programmato, MAI riprovato da solo", ingerimenti(cfRif).length === 1 && lrif.ads_import_status === "failed" && lrif.ads_next_attempt_at === null && lrif.ads_request_id === null && lrif.ads_last_error === "HTTP_400 INVALID_ARGUMENT" && !/testo libero/.test(String(lrif.ads_last_error)), JSON.stringify(lrif));
+
+    // il tetto dei tentativi vale per la quota superata
     const dbM = dbCon({ leads: [pronto({ id: "lm" })] });
-    const cfM = ambienteAds({ ingest: () => ({ status: 503 }) });
+    const cfM = ambienteAds({ ingest: () => ({ status: 429, json: { error: { status: "RESOURCE_EXHAUSTED" } } }) });
     for (let i = 0; i < 9; i++) await inviaConversioniAds(dbM.comeClient(), envReale, ADESSO + i * 100_000_000, cfM.fetch);
-    atteso("dopo 6 tentativi falliti non si riprova più e la richiesta resta «failed»", ingerimenti(cfM).length === TENTATIVI_MASSIMI && dbM.da("demo_leads")[0].ads_import_status === "failed" && dbM.da("demo_leads")[0].ads_attempts === TENTATIVI_MASSIMI && dbM.da("demo_leads")[0].ads_next_attempt_at === null, String(ingerimenti(cfM).length));
+    atteso("dopo 6 tentativi non si riprova più e la richiesta resta «failed»", ingerimenti(cfM).length === TENTATIVI_MASSIMI && dbM.da("demo_leads")[0].ads_import_status === "failed" && dbM.da("demo_leads")[0].ads_attempts === TENTATIVI_MASSIMI && dbM.da("demo_leads")[0].ads_next_attempt_at === null, String(ingerimenti(cfM).length));
     const dbTetto = dbCon({ leads: [pronto({ id: "lt", ads_import_status: "failed", ads_attempts: TENTATIVI_MASSIMI, ads_next_attempt_at: new Date(ADESSO - 3_600_000).toISOString() })] });
     const cfTetto = ambienteAds({});
     await inviaConversioniAds(dbTetto.comeClient(), envReale, ADESSO, cfTetto.fetch);
@@ -888,13 +908,17 @@ async function main() {
     const cfSotto = ambienteAds({});
     await inviaConversioniAds(dbSotto.comeClient(), envReale, ADESSO, cfSotto.fetch);
     atteso("… mentre con 5 tentativi (uno meno del tetto) si riprova ancora una volta", ingerimenti(cfSotto).length === 1);
+
     const cfRete = (() => { const x = ambienteAds({}); return { ...x, fetch: (async (u: RequestInfo | URL, i?: RequestInit) => { if (String(u).includes("events:ingest")) throw new Error("rete"); return x.fetch(u, i); }) as typeof fetch }; })();
     const dbR = dbCon({ leads: [pronto({ id: "lr" })] });
     await inviaConversioniAds(dbR.comeClient(), envReale, ADESSO, cfRete.fetch);
-    atteso("errore di rete: «failed» con codice «RETE» e nuovo tentativo programmato, nessuna eccezione", dbR.da("demo_leads")[0].ads_import_status === "failed" && dbR.da("demo_leads")[0].ads_last_error === "RETE" && dbR.da("demo_leads")[0].ads_next_attempt_at !== null);
+    await inviaConversioniAds(dbR.comeClient(), envReale, ADESSO + 50_000_000, cfRete.fetch);
+    atteso("errore di rete: esito INCERTO (resta «sent» senza id, codice «RETE_O_TIMEOUT»), nessuna eccezione e MAI un secondo invio", dbR.da("demo_leads")[0].ads_import_status === "sent" && dbR.da("demo_leads")[0].ads_request_id === null && dbR.da("demo_leads")[0].ads_last_error === "ESITO_INCERTO:RETE_O_TIMEOUT" && dbR.da("demo_leads")[0].ads_next_attempt_at === null && dbR.da("demo_leads")[0].ads_attempts === 1);
     const dbSenzaId = dbCon({ leads: [pronto({ id: "ls" })] });
-    await inviaConversioniAds(dbSenzaId.comeClient(), envReale, ADESSO, ambienteAds({ ingest: () => ({ status: 200, json: {} }) }).fetch);
-    atteso("risposta senza identificativo di richiesta: «failed» (non si potrebbe verificare), senza riprovare", dbSenzaId.da("demo_leads")[0].ads_import_status === "failed" && dbSenzaId.da("demo_leads")[0].ads_last_error === "RISPOSTA_SENZA_ID_RICHIESTA" && dbSenzaId.da("demo_leads")[0].ads_next_attempt_at === null);
+    const cfSenzaId = ambienteAds({ ingest: () => ({ status: 200, json: {} }) });
+    await inviaConversioniAds(dbSenzaId.comeClient(), envReale, ADESSO, cfSenzaId.fetch);
+    await inviaConversioniAds(dbSenzaId.comeClient(), envReale, ADESSO + 50_000_000, cfSenzaId.fetch);
+    atteso("risposta «ok» senza identificativo di richiesta: esito INCERTO (la conversione può essere stata registrata), non si rimanda", ingerimenti(cfSenzaId).length === 1 && dbSenzaId.da("demo_leads")[0].ads_import_status === "sent" && dbSenzaId.da("demo_leads")[0].ads_last_error === "ESITO_INCERTO:RISPOSTA_SENZA_ID_RICHIESTA" && dbSenzaId.da("demo_leads")[0].ads_request_id === null);
 
     // chi NON deve mai partire
     const dbN = dbCon({
@@ -913,7 +937,7 @@ async function main() {
       consensi: { "n-noconsenso": { cookie: false, ads: false }, "n-noprivacy": { privacy: false } },
     });
     const cfN = ambienteAds({ stato: () => ({ status: 200, json: { requestStatusPerDestination: [{ requestStatus: "PROCESSING" }] } }) });
-    const rN = await inviaConversioniAds(dbN.comeClient(), envReale, ADESSO + 120_000, cfN.fetch);
+    const rN = await inviaConversioniAds(dbN.comeClient(), { ...envReale, DEMO_ADS_REAL_FROM: "2026-01-01T00:00:00Z" }, ADESSO + 120_000, cfN.fetch);
     const inviatiId = ingerimenti(cfN).map((c) => (JSON.parse(c.corpo ?? "{}") as { events: { transactionId: string }[] }).events[0].transactionId);
     atteso("non parte MAI la conversione di: richiesta non confermata, cancellata, sostituita, senza consenso nel registro, senza clic, oltre 90 giorni, già inviata, già accettata (e le richieste non confermate non vengono nemmeno prese in esame: i «saltati» sono solo i 4 con un motivo vero)", inviatiId.length === 0 && rN.saltati === 4, `${inviatiId.join(",")} saltati ${rN.saltati}`);
     const stN = (id: string) => dbN.da("demo_leads").find((r) => r.id === id)?.ads_import_status;
