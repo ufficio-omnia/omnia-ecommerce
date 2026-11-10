@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { leggiSchedeServizi, leggiSettoriGare } from "@/lib/pacchetti-servizi";
+import type { SchedaServizio } from "@/lib/pacchetti-servizi-calcoli";
+import ServiziPerLeGare from "@/components/omnia-ai/servizi-per-le-gare";
 import { getConsumoPeriodoCorrente } from "@/lib/omnia-ai-consumo-periodo";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { richiediAccountPagina } from "@/lib/omnia-ai-account-guardie";
@@ -59,6 +63,15 @@ export default async function OmniaAiHomePage() {
   const gare = gareRaw ?? [];
   const documenti = documentiRaw ?? [];
   const gareIds = gare.map((g) => g.id);
+
+  // «Servizi per le tue gare»: i servizi aggiuntivi (piano di lavoro, OMNIA FOOD MENU...) dei settori che l'azienda tratta, con le unità residue e i
+  // pacchetti. Il settore (migrazione 0103) si legge a parte: senza la colonna le gare risultano «non classificate» e contano come pulizie. Solo per chi
+  // ha l'abbonamento attivo (i pacchetti si estinguono con la cessazione, come i crediti). Tutto con la chiave di servizio e sull'account effettivo.
+  let schedeServizi: SchedaServizio[] = [];
+  if (statoAccesso.stato === "attivo") {
+    const settoriGare = gare.length > 0 ? await leggiSettoriGare(supabase, accountId) : [];
+    schedeServizi = await leggiSchedeServizi({ admin: createAdminClient(), accountId, titolare: !ufficioGare, settoriGare });
+  }
 
   const gareConDocumenti = new Set(documenti.map((d) => d.gara_id));
 
@@ -153,6 +166,7 @@ export default async function OmniaAiHomePage() {
       />
 
       <GareRecentiList gare={gareRighe} />
+      <ServiziPerLeGare schede={schedeServizi} titolare={!ufficioGare} />
       <CosaVuoiFareOggi ufficioGare={ufficioGare} />
       <AttivitaRecente voci={attivita} />
     </div>

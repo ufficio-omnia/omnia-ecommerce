@@ -15,6 +15,7 @@ const PUO = [
 ];
 const NON_PUO = [
   "Abbonamento, piani e acquisto di crediti",
+  "Pagare i pacchetti dei servizi aggiuntivi (può chiederli con «Acquista»: ti arriva un'email e li paghi tu)",
   "Pagamenti e fatture",
   "Profilo azienda e documenti aziendali",
   "Documenti contrattuali e impostazioni dell'account",

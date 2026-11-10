@@ -2996,3 +2996,100 @@ li {
   font-size: 14px;
   color: var(--fioco);
 }
+
+/* Servizi aggiuntivi a pacchetto (home e pagina «Servizi aggiuntivi»): una scheda per servizio, con i pacchetti in elenco. */
+.omnia-pacchetti-griglia {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+}
+.omnia-pacchetto-scheda {
+  padding: 18px 20px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: rgba(var(--pannello-rgb), 0.5);
+}
+.omnia-pacchetto-scheda h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.omnia-pacchetto-testata {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.omnia-pacchetto-testo {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--testo-2);
+}
+.omnia-pacchetto-saldo {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+.omnia-pacchetto-saldo strong {
+  font-size: 22px;
+}
+.omnia-pacchetto-riga {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bordo);
+}
+.omnia-pacchetto-riga-testo {
+  min-width: 0;
+  font-size: 14px;
+}
+.omnia-pacchetto-riga-testo small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-pacchetto-azione {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.omnia-pacchetto-esito {
+  margin: 0;
+  max-width: 320px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+.omnia-pacchetto-nota {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--fioco);
+  line-height: 1.55;
+}
+.omnia-pacchetto-movimenti {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.omnia-pacchetto-movimenti li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid var(--bordo);
+}
+@media (max-width: 760px) {
+  .omnia-pacchetti-griglia {
+    grid-template-columns: 1fr;
+  }
+  .omnia-pacchetto-azione {
+    align-items: flex-start;
+  }
+}

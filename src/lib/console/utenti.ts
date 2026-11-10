@@ -165,6 +165,16 @@ export type IncassoScheda = { id: string; data: string; tipo: string; lordo: num
 export type AcquistoCreditiScheda = { id: string; data: string; pacchetto: string; crediti: number; lordo: number; prova: boolean; statoFattura: string | null };
 export type RevisioneScheda = { id: string; data: string; garaTitolo: string; pagine: number; lordo: number; maggiorazione: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type PianoLavoroScheda = { id: string; data: string; garaTitolo: string; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
+// Pacchetti di servizi aggiuntivi del cliente (migrazione 0104): acquisti pagati, unità residue per servizio, ultimi movimenti.
+export type AcquistoPacchettoScheda = { id: string; data: string; servizio: string; quantita: number; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
+export type MovimentoPacchettoScheda = { id: string; data: string; servizio: string; tipo: string; delta: number; saldoDopo: number; garaTitolo: string | null; motivo: string | null; eseguitoDa: string | null };
+export type PacchettiScheda = {
+  // false = manca la migrazione 0104 (o la lettura non è riuscita): la scheda lo dice
+  disponibile: boolean;
+  saldi: { servizio: string; saldo: number }[];
+  acquisti: AcquistoPacchettoScheda[];
+  movimenti: MovimentoPacchettoScheda[];
+};
 export type MessaggioScheda = { id: string; mittente: "cliente" | "admin"; testo: string; creatoIl: string };
 
 export type ProfiloScheda = {
@@ -193,6 +203,8 @@ export type SchedaCliente =
       revisioni: RevisioneScheda[];
       // piani di lavoro acquistati e pagati (migrazione 0097)
       pianiLavoro: PianoLavoroScheda[];
+      // pacchetti prepagati di servizi aggiuntivi (migrazione 0104)
+      pacchetti: PacchettiScheda;
       incassi: IncassoScheda[];
       messaggi: MessaggioScheda[];
       // la tabella degli incassi / le colonne di stato fattura esistono (migrazioni 0078, 0079)
@@ -297,6 +309,23 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
     .eq("user_id", id)
     .eq("stato", "pagata")
     .order("pagata_il", { ascending: false });
+
+  // Pacchetti prepagati di servizi aggiuntivi: senza le tabelle (migrazione 0104) nessun saldo, nessun acquisto. Una lettura non riuscita per un altro
+  // motivo si dichiara (la scheda non fa credere che il saldo sia zero).
+  const [pacchettiAcqQ, pacchettiSaldiQ, pacchettiMovQ]: Risposta[] = await Promise.all([
+    admin
+      .from("omnia_ai_pacchetti_acquisti")
+      .select("id, servizio, quantita, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura")
+      .eq("user_id", id)
+      .eq("stato", "pagata")
+      .order("pagata_il", { ascending: false }),
+    admin.from("omnia_ai_pacchetti_saldi").select("servizio, saldo").eq("user_id", id),
+    admin.from("omnia_ai_pacchetti_movimenti").select("id, servizio, tipo, delta, saldo_dopo, gara_titolo, motivo, eseguito_da, creato_il").eq("user_id", id).order("creato_il", { ascending: false }).limit(30),
+  ]);
+  for (const q of [pacchettiAcqQ, pacchettiSaldiQ, pacchettiMovQ]) {
+    if (q.error && !schemaAssente(q.error)) console.error("Console: lettura dei pacchetti del cliente fallita", q.error.message);
+  }
+  const pacchettiDisponibili = !pacchettiAcqQ.error && !pacchettiSaldiQ.error && !pacchettiMovQ.error;
 
   const [authUtente, aziendaQ, saldoQ, messaggiQ, documentiQ] = await Promise.all([
     admin.auth.admin.getUserById(id),
@@ -420,6 +449,35 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
           statoFattura: p.stato_fattura ?? null,
           numeroFattura: p.numero_fattura ?? null,
         })),
+    pacchetti: {
+      disponibile: pacchettiDisponibili,
+      saldi: pacchettiDisponibili ? ((pacchettiSaldiQ.data ?? []) as { servizio: string; saldo: number }[]).map((r) => ({ servizio: r.servizio, saldo: Math.max(0, num(r.saldo)) })) : [],
+      acquisti: pacchettiDisponibili
+        ? ((pacchettiAcqQ.data ?? []) as { id: string; servizio: string; quantita: number; prezzo_centesimi: number; importo_pagato_centesimi: number | null; pagata_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((p) => ({
+            id: p.id,
+            data: p.pagata_il,
+            servizio: p.servizio,
+            quantita: num(p.quantita),
+            lordo: num(p.importo_pagato_centesimi ?? p.prezzo_centesimi) / 100,
+            prova: !p.livemode,
+            statoFattura: p.stato_fattura ?? null,
+            numeroFattura: p.numero_fattura ?? null,
+          }))
+        : [],
+      movimenti: pacchettiDisponibili
+        ? ((pacchettiMovQ.data ?? []) as { id: string; servizio: string; tipo: string; delta: number; saldo_dopo: number; gara_titolo: string | null; motivo: string | null; eseguito_da: string | null; creato_il: string }[]).map((m) => ({
+            id: m.id,
+            data: m.creato_il,
+            servizio: m.servizio,
+            tipo: m.tipo,
+            delta: num(m.delta),
+            saldoDopo: num(m.saldo_dopo),
+            garaTitolo: m.gara_titolo,
+            motivo: m.motivo,
+            eseguitoDa: m.eseguito_da,
+          }))
+        : [],
+    },
     incassi: incassiDisponibili
       ? ((incassiQ.data ?? []) as { id: string; tipo: string; importo_lordo_centesimi: number; pagato_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((i) => ({
           id: i.id,

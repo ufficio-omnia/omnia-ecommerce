@@ -87,7 +87,7 @@ async function main() {
       "il testo dice le cose che il servizio deve dire: dimensionamento di partenza e non preventivo, prezzi standard da sostituire, una generazione per gara e proroga, costo del lavoro escluso",
       /dimensionamento di partenza/.test(RIQUADRO_PIANO_PARTI.join("")) && /non un preventivo/.test(RIQUADRO_PIANO_PARTI.join("")) && /sostituire con quelli dei tuoi fornitori/.test(RIQUADRO_PIANO_PARTI.join("")) && /proroga dei termini/.test(OPZIONE_ABBONAMENTO_DESCRIZIONE) && /gare acquistate con i crediti/.test(OPZIONE_ABBONAMENTO_DESCRIZIONE) && /Il costo del lavoro non è compreso/.test(testoCanonicoCondizioniPianoLavoro()),
     );
-    atteso("le note per fonte coprono abbonamento, concessione, prova e acquisto", Object.keys(NOTA_FONTE_DIRITTO).sort().join() === "abbonamento,acquisto,concessione,prova");
+    atteso("le note per fonte coprono abbonamento, concessione, prova, acquisto e pacchetto", Object.keys(NOTA_FONTE_DIRITTO).sort().join() === "abbonamento,acquisto,concessione,pacchetto,prova");
   }
 
   // ═════ 2. la pagina pubblica delle condizioni ═════

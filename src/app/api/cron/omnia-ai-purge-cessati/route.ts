@@ -4,6 +4,7 @@ import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { collectGaraFilePaths, removeGaraFiles } from "@/lib/gara-storage";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { inviaPromemoriaPilot } from "@/lib/omnia-ai-pilot";
+import { estinguiPacchetti } from "@/lib/pacchetti-servizi";
 
 // Mezzanotte UTC del giorno corrente + offset: le colonne "scadenza"
 // coinvolte sono un date puro (gare.scadenza), confrontato per
@@ -95,6 +96,8 @@ export async function GET(request: NextRequest) {
       // impostazioni di riaddebito Stripe diverse da "Cancel the
       // subscription").
       await admin.from("credits").update({ balance: 0 }).eq("user_id", userId);
+      // Lo stesso per i pacchetti di servizi aggiuntivi (migrazione 0104): si perdono con la cessazione, come i crediti.
+      await estinguiPacchetti(admin, userId);
 
       const { error: stampError } = await admin
         .from("subscriptions")

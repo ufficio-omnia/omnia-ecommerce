@@ -3,7 +3,7 @@ import { richiediAdminPagina } from "@/lib/console/accesso";
 import { cercaClientePerConcessione, leggiPianoLavoroConsole } from "@/lib/console/piano-lavoro";
 import PianoLavoroVista from "../../_componenti/piano-lavoro-vista";
 
-export const metadata: Metadata = { title: "Piano di lavoro" };
+export const metadata: Metadata = { title: "Piano di lavoro e pacchetti" };
 
 // Il controllo admin sta qui oltre che nel layout: il layout non si riesegue nelle navigazioni interne.
 export default async function PaginaPianoLavoro({ searchParams }: { searchParams: Promise<{ cliente?: string }> }) {

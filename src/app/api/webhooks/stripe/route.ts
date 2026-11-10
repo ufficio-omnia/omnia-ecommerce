@@ -25,6 +25,7 @@ import {
 import { nuovoMetodoDaAbbonamento, nuovoMetodoDaCliente } from "@/lib/omnia-ai-email-eventi-calcoli";
 import { notificaRevisioneUmana, type RigaRevisione } from "@/lib/omnia-ai-email-revisione";
 import { registraPagamentoPianoLavoro } from "@/lib/piano-lavoro-acquisto";
+import { estinguiPacchetti, registraPagamentoPacchetto } from "@/lib/pacchetti-servizi";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -143,6 +144,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, eventoI
   // Acquisto singolo del piano di lavoro di una gara (pagamento una tantum): l'acquisto diventa «pagato» solo qui.
   if (session.metadata?.tipo === "omnia_ai_piano_lavoro") {
     await registraPagamentoPianoLavoro({ admin: createAdminClient(), sessione: session, eventoId });
+    return;
+  }
+
+  // Pacchetto prepagato di servizi aggiuntivi (pagamento una tantum): l'acquisto diventa «pagato» e le unità si accreditano solo qui.
+  // Se il database non risponde (registrazione o accredito non riusciti) si risponde 500 e Stripe riprova: l'accredito è idempotente.
+  if (session.metadata?.tipo === "omnia_ai_pacchetto") {
+    const esito = await registraPagamentoPacchetto({ admin: createAdminClient(), sessione: session, eventoId });
+    if (esito.esito === "errore") throw new Error(`Pacchetto non registrato (${esito.motivo ?? "errore"}): Stripe riprova`);
     return;
   }
 
@@ -829,6 +838,10 @@ async function handleOmniaAiSubscriptionDeleted(subscription: Stripe.Subscriptio
     if (creditiError) {
       console.error("Webhook Stripe (abbonamento AI): errore azzeramento crediti", creditiError);
     }
+
+    // Stessa regola per le unità residue dei pacchetti di servizi aggiuntivi (piani di lavoro...): si perdono con la cessazione, come i
+    // crediti. Mai un errore per chi chiama; il controllo giornaliero lo ripete come rete di sicurezza.
+    await estinguiPacchetti(admin, sub.user_id);
   }
 }
 

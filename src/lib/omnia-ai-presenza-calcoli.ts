@@ -19,7 +19,7 @@ export const DIMENSIONE_MASSIMA_CORPO = 1024;
 
 // ───── Sezioni ─────
 
-export type Sezione = "dashboard" | "gare" | "gara" | "documenti-aziendali" | "profilo-azienda" | "abbonamento" | "pagamenti" | "documenti-contrattuali" | "ufficio-gare" | "impostazioni" | "assistenza" | "altro";
+export type Sezione = "dashboard" | "gare" | "gara" | "documenti-aziendali" | "profilo-azienda" | "abbonamento" | "servizi" | "pagamenti" | "documenti-contrattuali" | "ufficio-gare" | "impostazioni" | "assistenza" | "altro";
 
 export const ETICHETTE_SEZIONE: Record<Sezione, string> = {
   dashboard: "Dashboard",
@@ -28,6 +28,7 @@ export const ETICHETTE_SEZIONE: Record<Sezione, string> = {
   "documenti-aziendali": "Documenti aziendali",
   "profilo-azienda": "Profilo azienda",
   abbonamento: "Abbonamento",
+  servizi: "Servizi aggiuntivi",
   pagamenti: "Pagamenti e fatture",
   "documenti-contrattuali": "Documenti contrattuali",
   "ufficio-gare": "Ufficio Gare",
@@ -52,6 +53,7 @@ export function sezioneDaPercorso(percorso: unknown): Sezione {
     case "documenti-aziendali":
     case "profilo-azienda":
     case "abbonamento":
+    case "servizi":
     case "pagamenti":
     case "documenti-contrattuali":
     case "ufficio-gare":

@@ -21,6 +21,7 @@ export const VOCI_MENU_TITOLARE: VoceMenu[] = [
   { href: `${RADICE_AREA}/documenti-aziendali`, label: "Documenti aziendali" },
   { href: `${RADICE_AREA}/profilo-azienda`, label: "Profilo azienda" },
   { href: `${RADICE_AREA}/abbonamento`, label: "Abbonamento" },
+  { href: `${RADICE_AREA}/servizi`, label: "Servizi aggiuntivi" },
   { href: `${RADICE_AREA}/pagamenti`, label: "Pagamenti e fatture" },
   { href: `${RADICE_AREA}/documenti-contrattuali`, label: "Documenti contrattuali" },
   { href: `${RADICE_AREA}/ufficio-gare`, label: "Ufficio Gare" },
@@ -174,12 +175,13 @@ export function giornoRoma(quando: Date): string {
   return FORMATO_GIORNO_ROMA.format(quando);
 }
 
-export type TipoAvvisoTitolare = "quota_esaurita" | "revisione_richiesta";
+export type TipoAvvisoTitolare = "quota_esaurita" | "revisione_richiesta" | "acquisto_pacchetto";
 
 // Chiave di unicità dell'avviso (con titolare, tipo e giorno): la quota è una al giorno in tutto;
-// la revisione una al giorno per ogni gara.
-export function chiaveAvviso(tipo: TipoAvvisoTitolare, garaId?: string | null): string {
-  return tipo === "revisione_richiesta" ? (garaId ?? "") : "";
+// la revisione una al giorno per ogni gara (il riferimento è l'id della gara); l'acquisto di un pacchetto una al giorno
+// per ogni servizio e quantità (il riferimento è «servizio:quantità»).
+export function chiaveAvviso(tipo: TipoAvvisoTitolare, riferimento?: string | null): string {
+  return tipo === "quota_esaurita" ? "" : (riferimento ?? "");
 }
 
 // Il codice errore con cui il database dice «esiste già una riga identica»: l'avviso di oggi è già partito.

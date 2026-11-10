@@ -22,7 +22,7 @@ import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 
 export type StatoAzioneFattura = { errore?: string };
 
-const CHIAVE = /^(incasso|crediti|revisione|piano_lavoro):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHIAVE = /^(incasso|crediti|revisione|piano_lavoro|pacchetto):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GIORNO = /^\d{4}-\d{2}-\d{2}$/;
 const TABELLE = TABELLA_PER_FONTE;
 const MASSIMO_RIGHE = 200;
@@ -55,7 +55,7 @@ function leggiModulo(formData: FormData, conNumero: boolean): Valori | string {
 // Aggiorna le righe indicate (chiavi "incasso:<uuid>" / "crediti:<uuid>"). Ritorna
 // il numero di righe aggiornate o un messaggio di errore.
 async function applica(chiavi: string[], v: Valori, userId: string, extra: Record<string, unknown> = {}): Promise<number | string> {
-  const perTabella: Record<keyof typeof TABELLE, string[]> = { incasso: [], crediti: [], revisione: [], piano_lavoro: [] };
+  const perTabella: Record<keyof typeof TABELLE, string[]> = { incasso: [], crediti: [], revisione: [], piano_lavoro: [], pacchetto: [] };
   for (const chiave of new Set(chiavi)) {
     if (!CHIAVE.test(chiave)) return "Riga non valida.";
     const [tipo, id] = chiave.split(":") as [keyof typeof TABELLE, string];
@@ -81,8 +81,8 @@ async function applica(chiavi: string[], v: Valori, userId: string, extra: Recor
         ...extra,
       })
       .in("id", ids);
-    // una revisione umana o un piano di lavoro si fatturano solo dopo il pagamento
-    const { data, error } = await (tipo === "revisione" || tipo === "piano_lavoro" ? richiesta.eq("stato", "pagata") : richiesta).select("id");
+    // una revisione umana, un piano di lavoro o un pacchetto si fatturano solo dopo il pagamento
+    const { data, error } = await (tipo === "revisione" || tipo === "piano_lavoro" || tipo === "pacchetto" ? richiesta.eq("stato", "pagata") : richiesta).select("id");
 
     if (error) {
       console.error("Console: aggiornamento stato fattura fallito", error.message);

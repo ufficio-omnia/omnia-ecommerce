@@ -91,6 +91,7 @@ export const NOTA_FONTE_DIRITTO = {
   concessione: "Concesso da OMNIA AI: per questa gara non ha costi per te.",
   prova: "Incluso gratuitamente durante la prova.",
   acquisto: "Acquistato per questa gara.",
+  pacchetto: "Dal tuo pacchetto: per questa gara hai già usato un piano di lavoro, la seconda generazione non ne consuma un altro.",
 } as const;
 
 // ───── la pagina dei piani ─────

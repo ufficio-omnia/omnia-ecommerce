@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { acquistaPianoLavoro, generaPianoLavoroGara, scaricaPianoLavoroGara, type AcquistoPianoLavoroState, type PianoLavoroState } from "@/app/actions/gara-piano-lavoro";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import ThinkingIndicator from "./thinking-indicator";
 import type { EsitoDirittoPiano, FonteDiritto, PianoRiga } from "@/lib/piano-lavoro-gara-calcoli";
 import { CLAUSOLE_PIANO_LAVORO, CLAUSOLE_SPECIFICHE_PIANO_LAVORO, VERSIONE_CONDIZIONI_PIANO_LAVORO, type OffertaAcquisto, type RitornoPagamento } from "@/lib/piano-lavoro-acquisto-calcoli";
+import { TESTI_PACCHETTI, formattaEuro, testoUnita, type PacchettoNellaGara } from "@/lib/pacchetti-servizi-calcoli";
 import { ACQUISTO_SINGOLO_DETTAGLIO, ETICHETTA_LINK_CONDIZIONI, NOTA_FONTE_DIRITTO, PERCORSO_CONDIZIONI_PIANO_LAVORO, RIQUADRO_PIANO_PARTI, TITOLO_AVVERTENZE_ACQUISTO, testoApprovazioneSpecifica } from "@/lib/piano-lavoro-testi";
 
 const statoIniziale: PianoLavoroState = {};
@@ -106,6 +108,7 @@ export default function PianoLavoroPanel({
   piani,
   diritto,
   offerta,
+  pacchetto,
   ritorno,
   privacyVersione,
 }: {
@@ -113,6 +116,7 @@ export default function PianoLavoroPanel({
   piani: PianoRiga[];
   diritto: EsitoDirittoPiano;
   offerta: OffertaAcquisto;
+  pacchetto: PacchettoNellaGara;
   ritorno: RitornoPagamento;
   privacyVersione: number | null;
 }) {
@@ -125,6 +129,8 @@ export default function PianoLavoroPanel({
   const riepilogo = ultimoPronto?.riepilogo ?? null;
   const puoGenerare = diritto.ok;
   const seconda = diritto.ok && diritto.versione === 2;
+  // Il diritto viene da un'unità del pacchetto che questa gara NON ha ancora usato: generare ne consuma una (il cliente lo conferma)
+  const consumaUnita = diritto.ok && diritto.fonte === "pacchetto" && diritto.consumaUnita;
 
   return (
     <section className="omnia-riquadro" style={{ marginTop: 24 }} aria-labelledby="piano-lavoro-titolo">
@@ -135,15 +141,20 @@ export default function PianoLavoroPanel({
         {puoGenerare && (
           <form action={formAction}>
             <input type="hidden" name="garaId" value={garaId} />
+            {consumaUnita && <input type="hidden" name="usaPacchetto" value="1" />}
             <button
               type="submit"
               disabled={pending}
               className="omnia-btn omnia-btn-p omnia-btn-piccolo"
               onClick={(e) => {
+                if (consumaUnita && !window.confirm(`${TESTI_PACCHETTI.confermaUsoUnita} ${TESTI_PACCHETTI.usaUnitaNota(pacchetto.saldo)}`)) {
+                  e.preventDefault();
+                  return;
+                }
                 if (seconda && !window.confirm("Generare la seconda versione del piano di lavoro (per la proroga dei termini)? È l'ultima possibile per questa gara.")) e.preventDefault();
               }}
             >
-              {pending ? "Generazione in corso..." : seconda ? "Genera la seconda versione (proroga)" : ultimoErrore && !ultimoPronto ? "Riprova a generare il piano" : "Genera il piano di lavoro"}
+              {pending ? "Generazione in corso..." : seconda ? "Genera la seconda versione (proroga)" : ultimoErrore && !ultimoPronto ? "Riprova a generare il piano" : consumaUnita ? `Genera — usa 1 dei tuoi ${pacchetto.saldo}` : "Genera il piano di lavoro"}
             </button>
           </form>
         )}
@@ -182,7 +193,12 @@ export default function PianoLavoroPanel({
         </p>
       )}
 
-      {diritto.ok && NOTA_FONTE[diritto.fonte] && !inCorso && !pending && <p className="omnia-riquadro-nota">{NOTA_FONTE[diritto.fonte]}</p>}
+      {diritto.ok && NOTA_FONTE[diritto.fonte] && !inCorso && !pending && !consumaUnita && <p className="omnia-riquadro-nota">{NOTA_FONTE[diritto.fonte]}</p>}
+      {consumaUnita && !inCorso && !pending && (
+        <p className="omnia-riquadro-nota">
+          Dal tuo pacchetto: ti restano {testoUnita(pacchetto.saldo, "piano_lavoro")}. {TESTI_PACCHETTI.usaUnitaNota(pacchetto.saldo)}
+        </p>
+      )}
 
       {ritorno === "annullato" && !diritto.ok && <p className="omnia-messaggio-stato avviso">Pagamento annullato: non è stato addebitato nulla.</p>}
       {ritorno === "pagato" && !diritto.ok && offerta.stato !== "nessuna" && (
@@ -191,6 +207,15 @@ export default function PianoLavoroPanel({
       {ritorno === "pagato" && diritto.ok && <p className="omnia-messaggio-stato successo">Pagamento confermato: puoi generare il piano di lavoro di questa gara.</p>}
 
       {offerta.stato === "acquistabile" && !inCorso && !pending && <AcquistoPianoLavoro garaId={garaId} prezzoCentesimi={offerta.prezzoCentesimi} privacyVersione={privacyVersione} />}
+      {offerta.stato === "acquistabile" && pacchetto.proposta && !inCorso && !pending && (
+        <p className="omnia-messaggio-stato avviso" style={{ marginTop: 14 }}>
+          <strong>
+            Lavori su più gare di pulizie? Con un pacchetto: {testoUnita(pacchetto.proposta.quantita, "piano_lavoro")} a {formattaEuro(pacchetto.proposta.prezzoCentesimi)} (IVA inclusa), {formattaEuro(pacchetto.proposta.perUnitaCentesimi)} l&apos;uno.
+          </strong>{" "}
+          {TESTI_PACCHETTI.dettaglioPacchetto}{" "}
+          <Link href="/dashboard/omnia-ai/servizi?servizio=piano_lavoro">Vedi i pacchetti</Link>
+        </p>
+      )}
       {offerta.stato === "solo_titolare" && !inCorso && !pending && (
         <p className="omnia-messaggio-stato avviso" style={{ marginTop: 12 }}>
           Il piano di lavoro di questa gara costa {prezzoEuro(offerta.prezzoCentesimi)} (IVA inclusa) e lo acquista il titolare dell&apos;account dalla pagina della gara. Una volta acquistato potrai generarlo anche tu.

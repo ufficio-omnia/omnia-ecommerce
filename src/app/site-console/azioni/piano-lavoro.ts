@@ -4,16 +4,18 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeClient } from "@/lib/stripe";
 import { richiediAdminAzione } from "@/lib/console/accesso";
-import { cercaClientePerConcessione, leggiPianoLavoroConsole } from "@/lib/console/piano-lavoro";
+import { cercaClientePerConcessione, leggiPianiAbbonamentoConsole } from "@/lib/console/piano-lavoro";
 import { allineaPrezziPianoLavoro } from "@/lib/console/piano-lavoro-stripe";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { giornoRoma, euroACentesimi } from "@/lib/omnia-ai-catalogo-calcoli";
 import { PIANI, PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import { modalitaChiaveStripe } from "@/lib/omnia-ai-vendita";
 import { CHIAVE_PREZZO_PIANO_LAVORO, CHIAVE_VENDITA_PIANO_LAVORO, PREZZO_PIANO_LAVORO } from "@/lib/piano-lavoro-acquisto-calcoli";
+import { LIMITI_CATALOGO, SERVIZI, serializzaCatalogoPacchetti, validaCatalogoDaModulo } from "@/lib/pacchetti-servizi-calcoli";
 import { CHIAVE_POLITICA_PROVA, LIMITI_SURPLUS, POLITICHE_PROVA, chiaveSurplusPianoLavoro, validaNuovaConcessione } from "@/lib/piano-lavoro-offerta-calcoli";
 
-// Piano di lavoro dalla console: vendita, prezzi, regola per gli utenti in prova, concessioni gratuite. Ogni azione parte da richiediAdminAzione().
+// Piano di lavoro dalla console: vendita (un solo interruttore: singola gara e pacchetti), prezzo della singola gara, pacchetti prepagati, regola per gli
+// utenti in prova, concessioni gratuite. Ogni azione parte da richiediAdminAzione().
 // Le impostazioni stanno in console_impostazioni (chiave/valore, già usata per la messa in vendita degli abbonamenti): nessuna migrazione.
 
 export type StatoPianoLavoro = { errore?: string; ok?: boolean; avviso?: string };
@@ -51,6 +53,7 @@ export async function salvaPrezzoSingoloPianoLavoro(_stato: StatoPianoLavoro, fo
   return { ok: true };
 }
 
+// NON PIÙ IN PAGINA (il piano di lavoro non si vende più in abbonamento, decisione del 09/11/2026): l'azione resta nel codice per non perdere il lavoro fatto.
 // I supplementi mensili: quanto si aggiunge al prezzo di ogni piano per avere il piano di lavoro nell'abbonamento. Per i nuovi abbonamenti
 // serve poi «Allinea i prezzi su Stripe»: finché non lo si fa il checkout con il piano di lavoro si ferma da solo (prezzo Stripe ≠ prezzo mostrato).
 export async function salvaSupplementiPianoLavoro(_stato: StatoPianoLavoro, formData: FormData): Promise<StatoPianoLavoro> {
@@ -71,17 +74,17 @@ export async function salvaSupplementiPianoLavoro(_stato: StatoPianoLavoro, form
   return { ok: true, avviso: "Supplementi salvati. Ora premi «Allinea i prezzi su Stripe» per applicarli ai nuovi abbonamenti (chi è già abbonato resta al suo prezzo)." };
 }
 
-// Crea (o aggiorna) su Stripe i prezzi dell'abbonamento con il piano di lavoro: listino + supplemento, uno per piano.
+// NON PIÙ IN PAGINA (vedi sopra). Crea (o aggiorna) su Stripe i prezzi dell'abbonamento con il piano di lavoro: listino + supplemento, uno per piano.
 export async function allineaPrezziStripePianoLavoro(): Promise<StatoPianoLavoro> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
 
   if (modalitaChiaveStripe(process.env.STRIPE_SECRET_KEY_OMNIA_AI) === "sconosciuta") return { errore: "La chiave Stripe di OMNIA AI manca o non è riconosciuta: nessun prezzo toccato." };
 
-  const dati = await leggiPianoLavoroConsole();
+  const piani = await leggiPianiAbbonamentoConsole();
   const esito = await allineaPrezziPianoLavoro(
     createStripeClient("omnia-ai"),
-    dati.piani.map((p) => ({ piano: p.slug, nome: p.nome, importoCentesimi: p.attesoCentesimi })),
+    piani.map((p) => ({ piano: p.slug, nome: p.nome, importoCentesimi: p.attesoCentesimi })),
   );
   if (esito.errore) return { errore: esito.errore };
 
@@ -94,8 +97,19 @@ export async function allineaPrezziStripePianoLavoro(): Promise<StatoPianoLavoro
   return { ok: true, avviso: `Prezzi su Stripe — ${parti.join("; ")}.` };
 }
 
-// Accende o spegne la vendita del piano di lavoro (acquisto della singola gara e opzione nell'abbonamento). Si accende solo se i prezzi
-// dell'abbonamento con il piano di lavoro sono allineati su Stripe (stessa regola della pagina, ricalcolata qui). Si spegne sempre.
+// La tabella degli acquisti dei pacchetti esiste (migrazione 0104)? «errore» = non so (nel dubbio non si accende).
+async function tabellaPacchettiPresente(): Promise<"si" | "no" | "errore"> {
+  const { error } = await createAdminClient().from("omnia_ai_pacchetti_acquisti").select("id", { count: "exact", head: true });
+  if (!error) return "si";
+  if (schemaAssente(error)) return "no";
+  console.error("Console: controllo della tabella dei pacchetti fallito", error.message);
+  return "errore";
+}
+
+// Accende o spegne la vendita dei servizi aggiuntivi: l'acquisto del piano di lavoro di una singola gara E i pacchetti (un interruttore solo).
+// NON dipende più dall'abbonamento con il piano di lavoro (che non si vende più) né dai prezzi su Stripe: i pagamenti una tantum usano un importo
+// scritto al momento del checkout. Si accende solo con la chiave Stripe riconosciuta e con la tabella dei pacchetti (migrazione 0104) presente,
+// altrimenti i clienti vedrebbero un pacchetto che non si può comprare. Si spegne sempre.
 export async function impostaVenditaPianoLavoro(_stato: StatoPianoLavoro, formData: FormData): Promise<StatoPianoLavoro> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
@@ -105,12 +119,9 @@ export async function impostaVenditaPianoLavoro(_stato: StatoPianoLavoro, formDa
 
   if (azione === "attiva") {
     if (modalitaChiaveStripe(process.env.STRIPE_SECRET_KEY_OMNIA_AI) === "sconosciuta") return { errore: "Non posso accendere la vendita: la chiave Stripe di OMNIA AI manca o non è riconosciuta." };
-    const dati = await leggiPianoLavoroConsole();
-    const nonAllineati = dati.piani.filter((p) => p.stripe.stato !== "allineato");
-    if (nonAllineati.length > 0) {
-      return { errore: `Non posso accendere la vendita: i prezzi Stripe con il piano di lavoro non sono allineati (${nonAllineati.map((p) => p.nome).join(", ")}). Premi «Allinea i prezzi su Stripe».` };
-    }
-    if (!dati.concessioniDisponibili) return { errore: "Non posso accendere la vendita: manca la migrazione 0101 (abbonamento con piano di lavoro e concessioni)." };
+    const pacchetti = await tabellaPacchettiPresente();
+    if (pacchetti === "no") return { errore: "Non posso accendere la vendita: manca la migrazione 0104 (pacchetti di servizi). Eseguila e riprova." };
+    if (pacchetti === "errore") return { errore: "Non posso accendere la vendita: il controllo della migrazione 0104 non è riuscito. Riprova." };
   }
 
   if (!(await salva([{ chiave: CHIAVE_VENDITA_PIANO_LAVORO, valore: azione === "attiva" ? "1" : "0" }], sessione.userId))) return { errore: "Salvataggio non riuscito." };
@@ -120,9 +131,28 @@ export async function impostaVenditaPianoLavoro(_stato: StatoPianoLavoro, formDa
     ok: true,
     avviso:
       azione === "attiva"
-        ? "Vendita accesa: l'acquisto del piano di lavoro di una gara e l'opzione nell'abbonamento sono visibili ai clienti (solo con la chiave Stripe reale)."
-        : "Vendita sospesa: l'acquisto e l'opzione non sono più visibili. Chi ha già pagato mantiene il suo diritto.",
+        ? "Vendita accesa: l'acquisto del piano di lavoro di una gara e i pacchetti sono visibili ai clienti (solo con la chiave Stripe reale)."
+        : "Vendita sospesa: l'acquisto e i pacchetti non sono più visibili. Chi ha già pagato mantiene il suo diritto e le sue unità.",
   };
+}
+
+// L'elenco dei pacchetti prepagati di piani di lavoro in vendita: quantità e prezzo (IVA inclusa). Le righe vuote si ignorano; un elenco vuoto vuol dire
+// «nessun pacchetto in vendita». Vale per i NUOVI acquisti: chi ha già pagato mantiene le sue unità e il prezzo che ha pagato.
+export async function salvaCatalogoPacchettiPianoLavoro(_stato: StatoPianoLavoro, formData: FormData): Promise<StatoPianoLavoro> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+
+  const righe = Array.from({ length: LIMITI_CATALOGO.pacchettiMassimi }, (_, i) => ({
+    quantita: String(formData.get(`quantita_${i + 1}`) ?? ""),
+    prezzoEuro: String(formData.get(`prezzo_${i + 1}`) ?? ""),
+  }));
+  const esito = validaCatalogoDaModulo(righe);
+  if (!esito.ok) return { errore: esito.errore };
+
+  if (!(await salva([{ chiave: SERVIZI.piano_lavoro.chiaveCatalogo, valore: serializzaCatalogoPacchetti(esito.catalogo) }], sessione.userId))) return { errore: "Salvataggio non riuscito." };
+
+  ricarica();
+  return esito.catalogo.length === 0 ? { ok: true, avviso: "Salvato: nessun pacchetto in vendita. I clienti vedono solo l'acquisto della singola gara; chi ha già delle unità le usa." } : { ok: true };
 }
 
 // Che cosa fa il piano di lavoro per chi è in prova.

@@ -53,6 +53,7 @@ async function main() {
     "omnia-ai-account-settings.ts": ["updateAccountEmail", "updateAccountPassword"],
     "omnia-ai-revisione.ts": ["avviaRevisioneUmana"],
     "gara-piano-lavoro.ts": ["acquistaPianoLavoro"],
+    "pacchetti-servizi.ts": ["acquistaPacchettoServizio"],
     "omnia-ai-ufficio-gare.ts": ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"],
   };
   const LAVORO: Record<string, string[]> = {
@@ -64,6 +65,7 @@ async function main() {
     "assistenza-chat.ts": ["sendAssistenzaMessage", "richiediEscalationAssistenza"],
     "omnia-ai-stato-sistema.ts": ["getStatoElaborazioneGare"],
     "omnia-ai-revisione.ts": ["avvisaAmministratoreRevisione"],
+    "pacchetti-servizi.ts": ["richiediAcquistoPacchetto"],
   };
   // Fuori da questa regola, con la ragione: o non toccano dati dell'azienda, o sono dell'e-commerce, o l'Ufficio Gare deve poterle usare per entrare.
   const ESTERNE_FILE: Record<string, string> = {
@@ -158,7 +160,7 @@ async function main() {
   uguale(
     "le pagine e le route dell'area sono quelle previste (una nuova va classificata)",
     pagine.map((p) => routeDi(p).slice(RADICE_AREA.length)).sort(),
-    ["", "/abbonamento", "/assistenza", "/documenti-aziendali", "/documenti-contrattuali", "/gare", "/gare/[id]", "/gare/[id]/revisione", "/impostazioni", "/pagamenti", "/pagamenti/fattura/[fonte]/[id]", "/profilo-azienda", "/ufficio-gare"].sort(),
+    ["", "/abbonamento", "/assistenza", "/documenti-aziendali", "/documenti-contrattuali", "/gare", "/gare/[id]", "/gare/[id]/revisione", "/impostazioni", "/pagamenti", "/pagamenti/fattura/[fonte]/[id]", "/profilo-azienda", "/servizi", "/ufficio-gare"].sort(),
   );
   for (const file of pagine) {
     const route = routeDi(file);

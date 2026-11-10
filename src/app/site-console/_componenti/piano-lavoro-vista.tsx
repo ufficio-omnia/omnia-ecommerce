@@ -1,44 +1,50 @@
 import type { ClienteConcessione, DatiPianoLavoroConsole, RicercaCliente } from "@/lib/console/piano-lavoro";
 import { formattaGiorno } from "@/lib/omnia-ai-catalogo-calcoli";
-import { PIANI } from "@/lib/omnia-ai-plans";
 import { modalitaChiaveStripe } from "@/lib/omnia-ai-vendita";
+import { APPROVAZIONE_LEGALE_PACCHETTI, LIMITI_CATALOGO, NOTA_CONSOLE_CONDIZIONI_PACCHETTI, convenienzaPacchetto, testoUnita } from "@/lib/pacchetti-servizi-calcoli";
 import { ETICHETTA_POLITICA_PROVA, POLITICHE_PROVA, descriviConcessione } from "@/lib/piano-lavoro-offerta-calcoli";
 import { NOTA_CONSOLE_TESTI } from "@/lib/piano-lavoro-testi";
-import { allineaPrezziStripePianoLavoro, creaConcessionePianoLavoro, impostaPoliticaProvaPianoLavoro, impostaVenditaPianoLavoro, revocaConcessionePianoLavoro, salvaPrezzoSingoloPianoLavoro, salvaSupplementiPianoLavoro } from "../azioni/piano-lavoro";
+import { creaConcessionePianoLavoro, impostaPoliticaProvaPianoLavoro, impostaVenditaPianoLavoro, revocaConcessionePianoLavoro, salvaCatalogoPacchettiPianoLavoro, salvaPrezzoSingoloPianoLavoro } from "../azioni/piano-lavoro";
 import { Badge, Pannello } from "./elementi";
 import { formattaDataOra, formattaEuro } from "./formati";
 import ModuloAzione from "./modulo-azione";
 
-// Pagina «Piano di lavoro»: la vendita (acquisto della singola gara e opzione nell'abbonamento), i prezzi, la regola per gli utenti in prova e le
-// concessioni gratuite. Ciò che si scrive qui vale per i NUOVI acquisti: chi ha già pagato mantiene il suo diritto e il suo prezzo.
+// Pagina «Piano di lavoro e pacchetti»: la vendita (un interruttore solo, per la singola gara e per i pacchetti), il prezzo della singola gara, i pacchetti
+// prepagati, la regola per gli utenti in prova e le concessioni gratuite. Il piano di lavoro NON si vende più nell'abbonamento: il pannello dei
+// supplementi mensili non è più in pagina (il codice resta). Ciò che si scrive qui vale per i NUOVI acquisti: chi ha già pagato mantiene il suo
+// diritto, le sue unità e il suo prezzo.
 
 const euro = (centesimi: number) => formattaEuro(centesimi / 100);
 const euroCampo = (centesimi: number) => (centesimi / 100).toFixed(2).replace(".", ",");
 
 export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati: DatiPianoLavoroConsole; emailCercata: string; ricerca: RicercaCliente | null }) {
   const modalita = modalitaChiaveStripe(process.env.STRIPE_SECRET_KEY_OMNIA_AI);
-  const tuttiAllineati = dati.piani.every((p) => p.stripe.stato === "allineato");
   const visibile = dati.interruttore && modalita === "reale";
 
   return (
     <>
       <div className="cn-testata">
         <div>
-          <h1>Piano di lavoro</h1>
-          <p>Vendita, prezzi e concessioni gratuite del piano di lavoro Excel di ogni gara</p>
+          <h1>Piano di lavoro e pacchetti</h1>
+          <p>Vendita, prezzi, pacchetti prepagati e concessioni gratuite del piano di lavoro Excel di ogni gara</p>
         </div>
       </div>
 
+      {!dati.pacchettiDisponibili && (
+        <p className="cn-esito avviso" role="alert" style={{ marginBottom: 14 }}>
+          Manca la migrazione 0104 (pacchetti di servizi): finché non è eseguita i pacchetti non esistono e la vendita non si può accendere.
+        </p>
+      )}
       {!dati.concessioniDisponibili && (
         <p className="cn-esito avviso" role="alert" style={{ marginBottom: 14 }}>
-          Manca la migrazione 0101 (abbonamento con piano di lavoro e concessioni): finché non è eseguita non si possono creare concessioni né accendere la vendita.
+          Manca la migrazione 0101 (concessioni gratuite): finché non è eseguita non si possono creare concessioni.
         </p>
       )}
       <p className={`cn-esito ${modalita === "reale" ? "avviso" : "ok"}`} role="status" style={{ marginBottom: 14 }}>
         {modalita === "prova"
-          ? "Stripe è in modalità di PROVA: i prezzi che crei da qui vanno sull'account di prova, nessun cliente reale ne è toccato."
+          ? "Stripe è in modalità di PROVA: nessun cliente reale vede l'acquisto, finché la chiave Stripe di OMNIA AI non è quella reale."
           : modalita === "reale"
-            ? "Stripe è in modalità REALE: ogni allineamento crea prezzi veri sull'account di produzione."
+            ? "Stripe è in modalità REALE: ogni acquisto è un pagamento vero."
             : "Non riesco a stabilire se la chiave Stripe è di prova o reale."}
       </p>
 
@@ -46,10 +52,13 @@ export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati
         <div className="cn-pannello-corpo">
           <p className={`cn-esito ${visibile ? "ok" : "avviso"}`} role="status" style={{ marginBottom: 14 }}>
             {visibile
-              ? "Vendita ACCESA: nella gara compare «Acquista il piano di lavoro» e nelle pagine di acquisto l'opzione «piano di lavoro» dell'abbonamento."
+              ? "Vendita ACCESA: nella gara compare «Acquista il piano di lavoro» e, nella home e in «Servizi aggiuntivi», i pacchetti."
               : dati.interruttore
                 ? "L'interruttore è acceso, ma l'acquisto NON è visibile: la chiave Stripe di OMNIA AI su questo ambiente non è reale."
-                : "Vendita SPENTA: i clienti non possono comprare il piano di lavoro (né da soli né nell'abbonamento). Chi lo ha già pagato o ricevuto lo usa."}
+                : "Vendita SPENTA: i clienti non possono comprare il piano di lavoro né i pacchetti. Chi li ha già pagati o ricevuti li usa."}
+          </p>
+          <p className={`cn-esito ${APPROVAZIONE_LEGALE_PACCHETTI ? "ok" : "avviso"}`} role="alert" style={{ marginBottom: 14 }}>
+            {NOTA_CONSOLE_CONDIZIONI_PACCHETTI}
           </p>
           <p className="cn-nota-inline" style={{ marginBottom: 14 }}>
             {NOTA_CONSOLE_TESTI}
@@ -66,7 +75,10 @@ export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati
             )}
           </div>
           <p className="cn-nota-inline" style={{ marginTop: 10 }}>
-            La vendita si accende solo se i prezzi dell&apos;abbonamento con il piano di lavoro sono allineati su Stripe ({tuttiAllineati ? "lo sono" : "NON lo sono: vedi sotto"}). Si spegne sempre, anche per fermare tutto in un attimo.
+            <strong>L&apos;interruttore è uno solo:</strong> vale per l&apos;acquisto del piano di lavoro di una gara <strong>e</strong> per i pacchetti. Si accende solo con la chiave Stripe riconosciuta e la migrazione 0104 eseguita; si spegne sempre, anche per fermare tutto in un attimo.
+          </p>
+          <p className="cn-nota-inline" style={{ marginTop: 10 }}>
+            Il piano di lavoro <strong>non si vende più nell&apos;abbonamento</strong>: lo si compra nella singola gara o a pacchetto. I supplementi mensili dell&apos;abbonamento non sono più in uso (chi lo ha già nel suo abbonamento lo conserva).
           </p>
         </div>
       </Pannello>
@@ -75,7 +87,7 @@ export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati
         <Pannello titolo="Piano di lavoro di una singola gara (IVA inclusa)">
           <div className="cn-pannello-corpo">
             <p style={{ marginBottom: 10 }}>
-              Oggi si paga <strong>{euro(dati.prezzoSingoloCentesimi)}</strong> {dati.prezzoSingoloModificato ? "(modificato da qui)" : "(prezzo del codice, mai modificato)"}. Una generazione per gara, più una seconda solo se i documenti indicano una proroga.
+              Oggi si paga <strong>{euro(dati.prezzoSingoloCentesimi)}</strong> {dati.prezzoSingoloModificato ? "(modificato da qui)" : "(prezzo del codice, mai modificato)"}. Una generazione per gara, più una seconda solo se i documenti indicano una proroga. È il prezzo con cui si confrontano i pacchetti qui sotto.
             </p>
             <ModuloAzione azione={salvaPrezzoSingoloPianoLavoro} etichetta="Salva prezzo" etichettaInCorso="Salvo…" messaggioOk="Prezzo salvato." variante="primario">
               <input className="cn-input" name="prezzo" inputMode="decimal" required placeholder={euroCampo(dati.prezzoSingoloCentesimi)} aria-label="Nuovo prezzo del piano di lavoro di una gara" style={{ maxWidth: 120 }} autoComplete="off" />
@@ -86,7 +98,7 @@ export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati
         <Pannello titolo="Utenti in prova">
           <div className="cn-pannello-corpo">
             <p style={{ marginBottom: 10 }}>
-              Chi è in prova (gare gratuite dalla console, nessun abbonamento): <strong>{ETICHETTA_POLITICA_PROVA[dati.politicaProva]}</strong>.
+              Chi è in prova (gare gratuite dalla console, nessun abbonamento): <strong>{ETICHETTA_POLITICA_PROVA[dati.politicaProva]}</strong>. I pacchetti si vendono solo a chi ha l&apos;abbonamento attivo.
             </p>
             <ModuloAzione azione={impostaPoliticaProvaPianoLavoro} etichetta="Salva" etichettaInCorso="Salvo…" messaggioOk="Salvato." variante="primario">
               <select className="cn-input" name="politica" defaultValue={dati.politicaProva} aria-label="Cosa fa il piano di lavoro per chi è in prova">
@@ -101,63 +113,65 @@ export default function PianoLavoroVista({ dati, emailCercata, ricerca }: { dati
         </Pannello>
       </div>
 
-      <Pannello titolo="Abbonamento con piano di lavoro (IVA inclusa, al mese)">
+      <Pannello titolo={`Pacchetti di piani di lavoro (${dati.pacchetti.length} in vendita)`}>
         <div className="cn-pannello-corpo">
-          <div className="cn-scorri">
-            <table className="cn-tab">
-              <thead>
-                <tr>
-                  <th>Piano</th>
-                  <th className="num">Listino</th>
-                  <th className="num">Supplemento</th>
-                  <th className="num">Prezzo con piano di lavoro</th>
-                  <th>Su Stripe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dati.piani.map((p) => (
-                  <tr key={p.slug}>
-                    <td className="cn-cella-doppia">
-                      {p.nome}
-                      <small>{p.surplusModificato ? "supplemento modificato da qui" : "supplemento del codice"}</small>
-                    </td>
-                    <td className="num">{euro(p.listinoCentesimi)}</td>
-                    <td className="num">+{euro(p.surplusCentesimi)}</td>
-                    <td className="num">{euro(p.attesoCentesimi)}</td>
-                    <td>
-                      {p.stripe.stato === "allineato" && <Badge tono="ok">allineato</Badge>}
-                      {p.stripe.stato === "da_allineare" && (
-                        <>
-                          <Badge tono="errore">NON allineato</Badge> <small>({euro(p.stripe.importoCentesimi ?? 0)} su Stripe: l&apos;opzione nel checkout è ferma finché non allinei)</small>
-                        </>
-                      )}
-                      {p.stripe.stato === "mancante" && <Badge tono="errore">prezzo Stripe mancante</Badge>}
-                      {p.stripe.stato === "errore" && <Badge tono="avviso">non verificabile</Badge>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p style={{ marginBottom: 10 }}>
+            Un pacchetto è un numero di piani di lavoro prepagati: il cliente li usa <strong>uno per gara</strong>, <strong>non scadono nel tempo</strong> e si esauriscono man mano che li usa, anche in più mesi. Se l&apos;abbonamento cessa, le unità
+            che restano <strong>si perdono</strong>, come i crediti. Prezzi IVA inclusa. {dati.pacchettiDiPartenza ? "L'elenco è quello di partenza del codice: non è mai stato salvato da qui." : "L'elenco è quello salvato da qui."}
+          </p>
+          {dati.unitaResidue !== null && (
+            <p className="cn-nota-inline" style={{ marginBottom: 10 }}>
+              Unità ancora da usare, in tutti i saldi dei clienti: <strong>{dati.unitaResidue}</strong>.
+            </p>
+          )}
 
-          <div style={{ marginTop: 14 }}>
-            <ModuloAzione azione={salvaSupplementiPianoLavoro} etichetta="Salva i supplementi" etichettaInCorso="Salvo…" messaggioOk="Supplementi salvati." variante="primario">
-              {dati.piani.map((p) => (
-                <label key={p.slug} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                  {PIANI[p.slug].nome}
-                  <input className="cn-input" name={p.slug} inputMode="decimal" required defaultValue={euroCampo(p.surplusCentesimi)} aria-label={`Supplemento mensile del piano ${p.nome}`} style={{ maxWidth: 100 }} autoComplete="off" />
-                </label>
-              ))}
-            </ModuloAzione>
-          </div>
-          <div style={{ marginTop: 10 }}>
-            <ModuloAzione azione={allineaPrezziStripePianoLavoro} etichetta="Allinea i prezzi su Stripe" etichettaInCorso="Allineo…" messaggioOk="Prezzi allineati.">
-              <></>
-            </ModuloAzione>
-          </div>
+          {dati.pacchetti.length === 0 ? (
+            <p className="cn-vuoto">Nessun pacchetto in vendita: i clienti vedono solo l&apos;acquisto della singola gara.</p>
+          ) : (
+            <div className="cn-scorri" style={{ marginBottom: 14 }}>
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Pacchetto</th>
+                    <th className="num">Prezzo</th>
+                    <th className="num">Per unità</th>
+                    <th className="num">Risparmio sul prezzo di {euro(dati.prezzoSingoloCentesimi)} a gara</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dati.pacchetti.map((p) => {
+                    const c = convenienzaPacchetto(p, dati.prezzoSingoloCentesimi);
+                    return (
+                      <tr key={p.quantita}>
+                        <td>{testoUnita(p.quantita, "piano_lavoro")}</td>
+                        <td className="num">{euro(p.prezzoCentesimi)}</td>
+                        <td className="num">{euro(c.perUnitaCentesimi)}</td>
+                        <td className="num">{c.risparmioCentesimi ? euro(c.risparmioCentesimi) : "nessuno (costa come o più della singola gara)"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <ModuloAzione azione={salvaCatalogoPacchettiPianoLavoro} etichetta="Salva i pacchetti" etichettaInCorso="Salvo…" messaggioOk="Pacchetti salvati." variante="primario">
+            <div key={JSON.stringify(dati.pacchetti)} style={{ display: "grid", gap: 8 }}>
+              {Array.from({ length: LIMITI_CATALOGO.pacchettiMassimi }, (_, i) => {
+                const p = dati.pacchetti[i];
+                return (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ minWidth: 70 }}>Pacchetto {i + 1}</span>
+                    <input className="cn-input" name={`quantita_${i + 1}`} inputMode="numeric" defaultValue={p ? String(p.quantita) : ""} placeholder="Quanti piani" aria-label={`Pacchetto ${i + 1}: quanti piani di lavoro`} style={{ maxWidth: 120 }} autoComplete="off" />
+                    <input className="cn-input" name={`prezzo_${i + 1}`} inputMode="decimal" defaultValue={p ? euroCampo(p.prezzoCentesimi) : ""} placeholder="Prezzo in euro" aria-label={`Pacchetto ${i + 1}: prezzo in euro, IVA inclusa`} style={{ maxWidth: 140 }} autoComplete="off" />
+                  </div>
+                );
+              })}
+            </div>
+          </ModuloAzione>
           <p className="cn-nota-inline" style={{ marginTop: 10 }}>
-            Il prezzo dell&apos;abbonamento con il piano di lavoro è il <strong>listino del piano + il supplemento</strong> (gli sconti e le offerte riservate si applicano come per il piano). Chi è già abbonato resta al prezzo che ha: su Stripe si crea un prezzo nuovo e quello vecchio non si tocca. Il
-            piano di lavoro dell&apos;abbonamento copre solo le gare incluse nel piano: per le gare pagate con i crediti il cliente compra il piano della singola gara.
+            Fino a {LIMITI_CATALOGO.pacchettiMassimi} pacchetti, da {LIMITI_CATALOGO.quantitaMinima} a {LIMITI_CATALOGO.quantitaMassima} piani ciascuno; le righe vuote si ignorano e non si possono avere due pacchetti con la stessa quantità. <strong>Se le lasci tutte vuote non si vende nessun
+            pacchetto.</strong> Chi ha già comprato mantiene le sue unità e il prezzo pagato.
           </p>
         </div>
       </Pannello>

@@ -18,12 +18,15 @@ import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-g
 import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
 import { leggiDirittiPianoLavoro } from "@/lib/piano-lavoro-diritti";
 import { MESSAGGIO_PIANO_LAVORO_SOLO_PULIZIE, normalizzaSettore, proponePianoLavoro } from "@/lib/gara-settore";
+import { consumaUnita, riaccreditaUnita } from "@/lib/pacchetti-servizi";
+import { TESTI_PACCHETTI } from "@/lib/pacchetti-servizi-calcoli";
 import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
 
 // Piano di lavoro di una gara: genera l'Excel, lo scarica e lo acquista. La generazione e il download sono aperti al titolare e all'Ufficio Gare
 // (è lavoro di gara); l'acquisto singolo lo fa solo il titolare. Il diritto alla generazione viene da una concessione della console, dall'abbonamento
 // che include il piano di lavoro (per le gare incluse nel piano), dalla prova gratuita decisa dalla console, dall'acquisto della gara (pagato,
-// confermato da Stripe) oppure, solo in locale, dall'apertura di sviluppo (variabile OMNIA_AI_PIANO_LAVORO_APERTO, mai in produzione). Le regole
+// confermato da Stripe), da un'unità del pacchetto prepagato (consumata una sola volta per gara, riaccreditata se la generazione non riesce)
+// oppure, solo in locale, dall'apertura di sviluppo (variabile OMNIA_AI_PIANO_LAVORO_APERTO, mai in produzione). Le regole
 // sono in piano-lavoro-gara-calcoli.ts, le letture in piano-lavoro-diritti.ts. I controlli sono QUI, non nel pulsante.
 
 export type PianoLavoroState = { error?: string; ok?: boolean };
@@ -42,7 +45,7 @@ export async function generaPianoLavoroGara(_prevState: PianoLavoroState, formDa
   if (!garaId) return { error: "Gara non valida." };
 
   // La RLS garantisce che la gara sia dell'azienda dell'utente
-  const { data: gara } = await supabase.from("gare").select("id, estrazione_stato").eq("id", garaId).maybeSingle<{ id: string; estrazione_stato: string | null }>();
+  const { data: gara } = await supabase.from("gare").select("id, titolo, estrazione_stato").eq("id", garaId).maybeSingle<{ id: string; titolo: string; estrazione_stato: string | null }>();
   if (!gara) return { error: "Gara non trovata." };
   // colonna della migrazione 0095: se non c'è, nessuna proroga
   const { data: proroga } = await supabase.from("gare").select("proroga_stato").eq("id", garaId).maybeSingle<{ proroga_stato: string | null }>();
@@ -68,13 +71,35 @@ export async function generaPianoLavoroGara(_prevState: PianoLavoroState, formDa
     abbonamentoCopreGara: diritti.abbonamentoCopreGara,
     provaGratuita: diritti.provaGratuita,
     acquistoPagato: diritti.acquistoPagato,
+    pacchettoSaldo: diritti.pacchettoSaldo,
+    pacchettoGaraConsumata: diritti.pacchettoGaraConsumata,
     aperturaSviluppo: aperturaSviluppoAttiva(process.env),
     adesso: new Date(),
   });
   if (!esito.ok) return { error: esito.messaggio };
 
-  const generato = await generaPianoLavoro({ garaId, accountId: contesto.accountId, versione: esito.versione, fonte: esito.fonte, concessioneId: esito.concessioneId });
+  // Pacchetto prepagato: si usa UN'unità per questa gara, una volta sola (la seconda generazione per la proroga e la ripetizione dopo un errore non ne
+  // consumano un'altra). Il cliente deve averlo confermato: la pagina che glielo diceva può essere vecchia, quindi il server lo pretende.
+  let unitaConsumata = false;
+  if (esito.fonte === "pacchetto" && esito.consumaUnita) {
+    if (formData.get("usaPacchetto") !== "1") return { error: TESTI_PACCHETTI.usoNonConfermato };
+    const consumo = await consumaUnita(admin, { accountId: contesto.accountId, servizio: "piano_lavoro", garaId, garaTitolo: gara.titolo });
+    if (consumo === "saldo_insufficiente") return { error: TESTI_PACCHETTI.saldoEsaurito };
+    if (consumo === "errore") return { error: "Non riesco a usare il pacchetto in questo momento: non è stato consumato nulla. Riprova tra qualche istante." };
+    unitaConsumata = consumo === "consumata";
+  }
+
+  let generato: Awaited<ReturnType<typeof generaPianoLavoro>>;
+  try {
+    generato = await generaPianoLavoro({ garaId, accountId: contesto.accountId, versione: esito.versione, fonte: esito.fonte, concessioneId: esito.concessioneId });
+  } catch (err) {
+    console.error("Piano di lavoro: generazione interrotta da un errore", err);
+    generato = { ok: false, errore: "La generazione del piano di lavoro non è riuscita. Riprova: non è stata conteggiata." };
+  }
+  // Un errore del servizio non si conteggia: l'unità appena consumata torna nel saldo
+  if (!generato.ok && unitaConsumata) await riaccreditaUnita(admin, { accountId: contesto.accountId, servizio: "piano_lavoro", garaId, motivo: "Generazione non riuscita" });
   revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
+  revalidatePath("/dashboard/omnia-ai");
   if (!generato.ok) return { error: generato.errore };
   return { ok: true };
 }
@@ -163,9 +188,12 @@ export async function acquistaPianoLavoro(_prevState: AcquistoPianoLavoroState, 
     abbonamentoCopreGara: diritti.abbonamentoCopreGara,
     provaGratuita: diritti.provaGratuita,
     acquistoPagato: false,
+    pacchettoSaldo: diritti.pacchettoSaldo,
+    pacchettoGaraConsumata: diritti.pacchettoGaraConsumata,
     aperturaSviluppo: aperturaSviluppoAttiva(process.env),
     adesso: new Date(),
   });
+  if (esito.ok && esito.fonte === "pacchetto") return { error: esito.consumaUnita ? TESTI_PACCHETTI.soloUnPianoNonServe(diritti.pacchettoSaldo) : "Per questa gara hai già usato un piano di lavoro del tuo pacchetto: non serve acquistarlo." };
   if (esito.ok) return { error: "Puoi già generare il piano di lavoro di questa gara: non serve acquistarlo." };
   if (esito.motivo !== "non_attivo") return { error: esito.messaggio };
 

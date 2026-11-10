@@ -25,6 +25,8 @@ import { normalizzaSettore, proponeFoodMenu, proponePianoLavoro } from "@/lib/ga
 import { leggiPianiGara } from "@/lib/piano-lavoro-gara";
 import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
 import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { leggiCatalogoPacchetti, pacchettiDisponibili } from "@/lib/pacchetti-servizi";
+import { proponiPacchettoPiuConveniente, type PacchettoNellaGara } from "@/lib/pacchetti-servizi-calcoli";
 import { leggiDirittiPianoLavoro } from "@/lib/piano-lavoro-diritti";
 import { interpretaRitornoPagamento, valutaOffertaAcquisto } from "@/lib/piano-lavoro-acquisto-calcoli";
 import { getCurrentOmniaAiLegalDocuments } from "@/lib/omnia-ai-legal";
@@ -214,6 +216,8 @@ export default async function GaraPage({
     abbonamentoCopreGara: dirittiPianoLavoro.abbonamentoCopreGara,
     provaGratuita: dirittiPianoLavoro.provaGratuita,
     acquistoPagato: dirittiPianoLavoro.acquistoPagato,
+    pacchettoSaldo: dirittiPianoLavoro.pacchettoSaldo,
+    pacchettoGaraConsumata: dirittiPianoLavoro.pacchettoGaraConsumata,
     aperturaSviluppo: aperturaSviluppoAttiva(process.env),
     adesso: new Date(),
   });
@@ -226,6 +230,13 @@ export default async function GaraPage({
   });
   // la Privacy policy in vigore, da linkare accanto all'accettazione delle avvertenze
   const documentiLegaliPianoLavoro = offertaPianoLavoro.stato === "acquistabile" ? await getCurrentOmniaAiLegalDocuments(adminPianoLavoro) : null;
+  // Pacchetto prepagato: le unità residue, se questa gara ha già usato la sua e, a chi può comprare, il pacchetto più conveniente da proporre
+  // accanto all'acquisto della singola gara (solo quando l'acquisto singolo è offerto).
+  const pacchettoPianoLavoro: PacchettoNellaGara = {
+    saldo: dirittiPianoLavoro.pacchettoSaldo,
+    garaGiaConsumata: dirittiPianoLavoro.pacchettoGaraConsumata,
+    proposta: offertaPianoLavoro.stato === "acquistabile" && (await pacchettiDisponibili(adminPianoLavoro)) ? proponiPacchettoPiuConveniente(await leggiCatalogoPacchetti("piano_lavoro", adminPianoLavoro)) : null,
+  };
 
   const chunkCountPerDocumento = new Map<string, number>();
   for (const chunk of chunksRaw ?? []) {
@@ -252,9 +263,10 @@ export default async function GaraPage({
           action={deleteGara}
           hiddenFields={{ garaId: gara.id }}
           confirmMessage={
-            gara.estrazione_stato === "completata"
+            (gara.estrazione_stato === "completata"
               ? `Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? Questa gara ha già consumato una gara della tua quota (piano o credito): eliminarla non te la restituisce. L'operazione non è reversibile.`
-              : `Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? L'operazione non è reversibile.`
+              : `Eliminare definitivamente la gara "${gara.titolo}" e tutti i documenti caricati? L'operazione non è reversibile.`) +
+            (pacchettoPianoLavoro.garaGiaConsumata ? " Per questa gara hai anche usato un piano di lavoro del tuo pacchetto: eliminarla non lo restituisce." : "")
           }
           label="Elimina gara"
           className="omnia-btn omnia-btn-s omnia-btn-piccolo"
@@ -344,7 +356,7 @@ export default async function GaraPage({
           ancora classificate, come prima, e per chi ha già dei piani generati: non si toglie niente di ciò che c'è), «OMNIA FOOD MENU» (sta arrivando)
           per la ristorazione collettiva, nulla per gli altri settori. */}
       {gara.estrazione_stato === "completata" && proponeFoodMenu(settore) && <FoodMenuPanel />}
-      {pianoLavoroDisponibile && (gara.estrazione_stato === "completata" || pianiLavoro.length > 0) && (proponePianoLavoro(settore) || pianiLavoro.length > 0) && <PianoLavoroPanel garaId={gara.id} piani={pianiLavoro} diritto={dirittoPianoLavoro} offerta={offertaPianoLavoro} ritorno={interpretaRitornoPagamento(ritornoPianoLavoro)} privacyVersione={documentiLegaliPianoLavoro?.privacyPolicy.version ?? null} />}
+      {pianoLavoroDisponibile && (gara.estrazione_stato === "completata" || pianiLavoro.length > 0) && (proponePianoLavoro(settore) || pianiLavoro.length > 0) && <PianoLavoroPanel garaId={gara.id} piani={pianiLavoro} diritto={dirittoPianoLavoro} offerta={offertaPianoLavoro} pacchetto={pacchettoPianoLavoro} ritorno={interpretaRitornoPagamento(ritornoPianoLavoro)} privacyVersione={documentiLegaliPianoLavoro?.privacyPolicy.version ?? null} />}
 
       <ChatSection garaId={gara.id} messaggi={messaggi} limitePagineTotale={gara.limite_pagine_totale} spenta={!diritto.consentito} />
 
