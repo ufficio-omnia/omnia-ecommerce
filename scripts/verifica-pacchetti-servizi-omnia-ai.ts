@@ -660,6 +660,8 @@ async function main() {
   const compoServizi = leggi("src/components/omnia-ai/servizi-per-le-gare.tsx");
   atteso("la home: l'offerta dedicata ha il suo badge, il collegamento con l'id dell'offerta e, per l'Ufficio Gare, l'id nel modulo che avvisa", compoServizi.includes("TESTI_PACCHETTI.offertaDedicata") && compoServizi.includes("&offerta=${p.offertaId}") && compoServizi.includes("offertaId={p.offertaId}"));
   atteso("la pagina dei servizi apre il modulo dell'offerta indicata e lo manda con il suo id", leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/page.tsx").includes("offertaAperta === p.offertaId") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/page.tsx").includes("offertaId={p.offertaId}") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/acquisto-pacchetto-form.tsx").includes('name="offertaId" value={offertaId}'));
+  atteso("l'email all'amministratore dice che il pacchetto è dedicato quando la richiesta viene da un'offerta dedicata (e non altrimenti)", /dedicato: offertaId !== null/.test(leggi("src/lib/omnia-ai-ufficio-gare-avvisi.ts")));
+  atteso("la scheda della gara propone anche l'offerta dedicata del cliente (letta per il suo account) e non solo i pacchetti dell'elenco", paginaGara.includes("await leggiOfferteAttive(adminPianoLavoro, contesto.accountId)") && /proponiPacchettoPiuConveniente\(await leggiCatalogoPacchetti\("piano_lavoro", adminPianoLavoro\), /.test(paginaGara));
   const diritti = leggi("src/lib/piano-lavoro-diritti.ts");
   atteso("diritti letti dal server: il pacchetto si legge insieme alle altre fonti", diritti.includes('leggiStatoPacchettoGara(admin, accountId, "piano_lavoro", garaId)') && diritti.includes("pacchettoSaldo: pacchetto.saldo"));
 
