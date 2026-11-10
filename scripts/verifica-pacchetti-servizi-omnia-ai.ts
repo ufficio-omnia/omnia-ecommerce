@@ -354,6 +354,7 @@ async function main() {
     atteso("riaccreditaUnita: l'unità torna e la gara può riprovare", (await riaccreditaUnita(admin, { accountId: U1, servizio: "piano_lavoro", garaId: GARA, motivo: "x" })) === true && (db.omnia_ai_pacchetti_saldi[0].saldo as number) === 1);
     const senzaFunzioni = fintoAdmin({}, [], {});
     uguale("consumaUnita: se il database non risponde (funzione assente) è «errore», non un consumo", await spegniErrori(() => consumaUnita(senzaFunzioni, { accountId: U1, servizio: "piano_lavoro", garaId: GARA, garaTitolo: null })), "errore");
+    uguale("consumaUnita: una risposta anomala del database (testo sconosciuto o vuota) NON è un consumo: «errore», e quindi non si genera nulla", [await consumaUnita(fintoAdmin({}, [], { omnia_ai_pacchetto_consuma: () => ({ data: "boh", error: null }) }), { accountId: U1, servizio: "piano_lavoro", garaId: GARA, garaTitolo: null }), await consumaUnita(fintoAdmin({}, [], { omnia_ai_pacchetto_consuma: () => ({ data: null, error: null }) }), { accountId: U1, servizio: "piano_lavoro", garaId: GARA, garaTitolo: null })], ["errore", "errore"]);
     atteso("riaccreditaUnita: un errore si dice (false), non si ignora in silenzio", (await spegniErrori(() => riaccreditaUnita(senzaFunzioni, { accountId: U1, servizio: "piano_lavoro", garaId: GARA, motivo: "x" }))) === false);
   }
   {
@@ -495,10 +496,11 @@ async function main() {
 
   console.log("\n--- Pagine, home, menu ---");
   const lib = leggi("src/lib/pacchetti-servizi.ts");
+  atteso("registrazione del pagamento: l'aggiornamento a «pagata» è condizionato allo stato «in attesa» (due webhook insieme non si sovrappongono)", /\.update\(\{\s*stato: "pagata"[\s\S]*?\.eq\("id", riga\.id\)\s*\.eq\("stato", "in_attesa_pagamento"\)/.test(lib));
   atteso("senza la migrazione 0104 i clienti non vedono pacchetti da comprare: la vendita offerta richiede anche le tabelle (home e pagina dei servizi)", /venditaAttiva: venditaAttiva && disponibile/.test(lib) && /leggiSaldiConStato\(admin, accountId\)/.test(lib));
   atteso("senza la migrazione 0104 né l'acquisto né la richiesta dell'Ufficio Gare partono, e la scheda della gara non propone il pacchetto", (azioni.match(/await pacchettiDisponibili\(admin\)/g) ?? []).length === 2 && /offertaPianoLavoro\.stato === "acquistabile" && \(await pacchettiDisponibili\(adminPianoLavoro\)\)/.test(paginaGara));
   const homePagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/page.tsx");
-  atteso("home: le schede si leggono sull'account effettivo con la chiave di servizio, solo con l'abbonamento attivo", homePagina.includes("leggiSchedeServizi({ admin: createAdminClient(), accountId, titolare: !ufficioGare, settoriGare })") && homePagina.includes('statoAccesso.stato === "attivo"') && !/\buser\.id\b/.test(homePagina));
+  atteso("home: le schede si leggono sull'account effettivo con la chiave di servizio, solo con l'abbonamento attivo", homePagina.includes("leggiSchedeServizi({ admin: createAdminClient(), accountId, titolare: !ufficioGare, settoriGare })") && /if \(statoAccesso\.stato === "attivo"\) \{\s*const settoriGare/.test(homePagina) && !/\buser\.id\b/.test(homePagina));
   atteso("home: la sezione compare tra l'elenco delle gare e le scorciatoie, per titolare e Ufficio Gare", /<GareRecentiList[^>]*\/>\s*<ServiziPerLeGare schede=\{schedeServizi\} titolare=\{!ufficioGare\} \/>\s*<CosaVuoiFareOggi/.test(homePagina));
   const paginaServizi = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/servizi/page.tsx");
   atteso("pagina «Servizi aggiuntivi»: solo titolare (guardia della pagina), senza leggere la sessione per conto suo", paginaServizi.includes("await richiediTitolarePagina()") && !paginaServizi.includes("auth.getUser"));
