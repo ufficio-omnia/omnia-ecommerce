@@ -16,6 +16,7 @@ import SelettorePeriodo from "./selettore-periodo";
 import VerificaDataManager from "./verifica-data-manager";
 import DiagnosiCalendario from "./diagnosi-calendario";
 import ProvaGa4Reale from "./prova-ga4-reale";
+import InvioAdsReale from "./invio-ads-reale";
 
 // Sezione «DEMO e Google Ads»: le richieste arrivate dal modulo, le prenotazioni confermate sul calendario, i casi da verificare, lo
 // stato delle importazioni verso GA4 e Google Ads e gli errori. SOLA LETTURA sui dati, con due eccezioni volute: la verifica della Data
@@ -176,6 +177,12 @@ export default function DemoVista({ periodo, risultato, adessoMs }: { periodo: P
       <div className="cn-sezione">
         <Pannello titolo="Verifica Google Ads (solo validazione)">
           <VerificaDataManager />
+        </Pannello>
+      </div>
+
+      <div className="cn-sezione">
+        <Pannello titolo="Invio reale a Google Ads (una conversione)">
+          <InvioAdsReale />
         </Pannello>
       </div>
 

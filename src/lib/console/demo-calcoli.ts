@@ -1,4 +1,5 @@
 import { configurazioneAdsDaAmbiente } from "@/lib/demo-ads-data-manager";
+import { dataMinimaReale } from "@/lib/demo-ads-invio-calcoli";
 import type { StatoAds } from "@/lib/demo-conversioni-calcoli";
 import { segretoFirmaConsensi } from "@/lib/demo-hash";
 import { credenzialiDaAmbiente } from "@/lib/google-oauth";
@@ -167,7 +168,7 @@ export type StatoIntegrazioni = {
   richieste: { attive: boolean; segretoFirma: boolean };
   calendario: { acceso: boolean; credenziali: boolean; idCalendario: boolean };
   ga4: { acceso: boolean; segretoApi: boolean; soloVerifica: boolean };
-  ads: { acceso: boolean; configurazione: boolean; credenziali: boolean; modalita: "solo_verifica" | "reale"; soloEmail: boolean };
+  ads: { acceso: boolean; configurazione: boolean; credenziali: boolean; modalita: "solo_verifica" | "reale"; soloEmail: boolean; dataMinimaReale: boolean };
 };
 
 const impostata = (v: string | undefined) => (v ?? "").trim() !== "";
@@ -183,6 +184,7 @@ export function statoIntegrazioni(env: Record<string, string | undefined>): Stat
       credenziali: credenzialiDaAmbiente(env, "GOOGLE_ADS_REFRESH_TOKEN") !== null,
       modalita: env.DEMO_ADS_VALIDATE_ONLY === "0" ? "reale" : "solo_verifica",
       soloEmail: env.DEMO_ADS_ALLOW_EMAIL_ONLY === "1",
+      dataMinimaReale: dataMinimaReale(env) !== null,
     },
   };
 }
@@ -197,7 +199,8 @@ export function avvisiIntegrazioni(s: StatoIntegrazioni): { tono: "avviso" | "er
   if (s.ga4.acceso && s.ga4.soloVerifica) avvisi.push({ tono: "avviso", testo: "GA4 in modalità di verifica (debug): gli eventi si controllano ma non si registrano." });
   if (s.ads.acceso && (!s.ads.configurazione || !s.ads.credenziali)) avvisi.push({ tono: "errore", testo: "Importazione Google Ads accesa ma account, azione di conversione o credenziali mancanti: non parte." });
   if (s.ads.acceso && s.ads.configurazione && s.ads.credenziali && s.ads.modalita === "solo_verifica") avvisi.push({ tono: "avviso", testo: "Google Ads in SOLA VERIFICA: Google controlla le richieste ma non registra nessuna conversione." });
-  if (s.ads.acceso && s.ads.modalita === "reale") avvisi.push({ tono: "avviso", testo: "Google Ads in modalità REALE: le conversioni vengono registrate sull'account." });
+  if (s.ads.acceso && s.ads.modalita === "reale" && s.ads.dataMinimaReale) avvisi.push({ tono: "avviso", testo: "Google Ads in modalità REALE: le conversioni confermate dopo la data minima (DEMO_ADS_REAL_FROM) vengono registrate sull'account." });
+  if (s.ads.acceso && s.ads.modalita === "reale" && !s.ads.dataMinimaReale) avvisi.push({ tono: "errore", testo: "Google Ads in modalità REALE ma senza una data minima valida (DEMO_ADS_REAL_FROM, con ora e fuso, es. 2026-11-10T12:00:00Z): il cron NON invia niente di nuovo." });
   return avvisi;
 }
 
