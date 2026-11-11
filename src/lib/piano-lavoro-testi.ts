@@ -46,7 +46,7 @@ export const OPZIONE_ABBONAMENTO_DESCRIZIONE =
 
 export const BANDA_PIANO_LAVORO = {
   etichetta: "Piano di lavoro",
-  titolo: "Dai documenti di gara a un piano di lavoro in Excel.",
+  titolo: "Dai documenti di gara a un piano di lavoro in Excel",
   testo:
     "Per ogni gara OMNIA AI legge i documenti e costruisce un Excel con formule attive: monte ore per sede, organico per livello, quadratura con il monte ore dichiarato, macchinari e attrezzature. Lo scarichi, lo modifichi, lo fai tuo.",
   nota: "È un dimensionamento di partenza, non un preventivo: rese e prezzi standard dei macchinari vanno validati e sostituiti con i tuoi. Una generazione per gara (una seconda solo se i documenti indicano una proroga dei termini).",
@@ -113,7 +113,7 @@ export function rigaPianoLavoroPerPiano(supplementoFormattato: string): string {
 // Senza prezzi: queste pagine sono statiche, i prezzi stanno solo nella pagina dei piani (che li legge dalla console).
 
 export const SITO_HOME_PIANO_LAVORO = {
-  titolo: "Dai documenti di gara anche il piano di lavoro.",
+  titolo: "Dai documenti di gara anche il piano di lavoro",
   guida: "Oltre alla relazione tecnica, per le gare di servizi di pulizia OMNIA AI costruisce un Excel con formule attive: il punto di partenza per dimensionare il servizio.",
   punti: [
     "Monte ore per sede e per tipologia di ambiente",

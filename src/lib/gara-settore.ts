@@ -49,7 +49,7 @@ export const MESSAGGIO_PIANO_LAVORO_SOLO_PULIZIE =
 export const FOOD_MENU = {
   nome: "OMNIA FOOD MENU",
   stato: "Sta arrivando",
-  titolo: "Dal capitolato ai menu: la ristorazione collettiva in gara.",
+  titolo: "Dal capitolato ai menu: la ristorazione collettiva in gara",
   testo:
     "OMNIA FOOD MENU genererà, a partire dai documenti di gara, i menu stagionali, i ricettari, le grammature, le tabelle degli allergeni e i piani delle derrate alimentari, nel rispetto dei requisiti del capitolato e con verifiche di conformità ai CAM.",
   punti: [

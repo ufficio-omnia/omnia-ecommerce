@@ -123,7 +123,7 @@ export default function OmniaAiHomePage() {
               </p>
             </div>
             <div>
-              <h2>Il file esce già impaginato.</h2>
+              <h2>Il file esce già impaginato</h2>
               <p className="omnia-guida">
                 Non un testo da riformattare, ma un documento Word costruito come lo costruirebbe
                 un consulente prima di consegnarlo.
@@ -140,7 +140,7 @@ export default function OmniaAiHomePage() {
         </section>
 
         <section className="omnia-section">
-          <h2>Cosa sa, che un&apos;AI generica non sa.</h2>
+          <h2>Cosa sa, che un&apos;AI generica non sa</h2>
           <p className="omnia-guida">
             La differenza non è il modello linguistico. È sapere come si vince una gara di
             facility management.
@@ -198,7 +198,7 @@ export default function OmniaAiHomePage() {
         <section className="omnia-section">
           <div className="omnia-dietro">
             <div>
-              <h2>Chi c&apos;è dietro.</h2>
+              <h2>Chi c&apos;è dietro</h2>
               <p className="omnia-guida" style={{ fontSize: 15.5 }}>
                 Se la bozza non ti basta, la rivediamo noi.
               </p>
@@ -232,7 +232,7 @@ export default function OmniaAiHomePage() {
         </section>
 
         <section className="omnia-section omnia-finale" id="demo">
-          <h2>Portaci una gara vera. Ti mostriamo cosa esce.</h2>
+          <h2>Portaci una gara vera. Ti mostriamo cosa esce</h2>
           <p className="omnia-guida">
             Nessuna presentazione preconfezionata: lavoriamo su un bando che ti interessa
             davvero.

@@ -36,7 +36,7 @@ export function etichettaNelMenu(categoria: CategoriaServizio): string {
 
 export const SEZIONE_SERVIZI = {
   etichetta: "Oltre alla relazione tecnica",
-  titolo: "Inserisci a quale categoria appartieni e scopri cosa puoi elaborare all'interno di una gara, oltre alla relazione tecnica.",
+  titolo: "Inserisci a quale categoria appartieni e scopri cosa puoi elaborare all'interno di una gara, oltre alla relazione tecnica",
   etichettaMenu: "La tua categoria",
   segnaposto: "Seleziona una categoria…",
 } as const;
