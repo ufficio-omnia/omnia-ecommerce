@@ -1,6 +1,7 @@
 // Autotest dei TITOLI di omnia-ai.it (richiesta dell'utente, 11/11/2026):
-//   1. il font dei titoli di pagina e di sezione (h1 e h2) sta in UNA regola sola (Helvetica Neue / Helvetica / Arial, peso normale), nessun titolo
-//      scrive il suo font a mano; il marchio e i titoletti (h3) restano in Syne;
+//   1. il font dei titoli di pagina e di sezione (h1 e h2) sta in UNA regola sola (Montserrat ExtraBold, con Helvetica Neue / Arial di riserva),
+//      nessun titolo scrive il suo font a mano; il carattere è ospitato da noi (mai da un CDN) con la sua licenza; il marchio e i titoletti (h3)
+//      restano in Syne;
 //   2. nessun titolo di pagina o di sezione finisce con il punto: né quelli scritti nelle pagine, né quelli scritti nei testi condivisi.
 // I documenti legali (testi approvati) non si toccano: i loro titoli vengono dai file dei documenti. Nessuna rete. Gratuito: gira nel livello 1.
 import fs from "fs";
@@ -36,7 +37,16 @@ const senzaCommenti = css.replace(/\/\*[\s\S]*?\*\//g, "");
 const regola = senzaCommenti.match(/(?:^|\n)h1,\s*h2\s*\{([^}]*)\}/);
 atteso("c'è una regola sola «h1, h2» con il font dei titoli", !!regola);
 const corpo = regola?.[1] ?? "";
-atteso("la regola usa Helvetica Neue, poi Helvetica e Arial, senza grazie (sans-serif), in peso normale (400)", /font-family:\s*"Helvetica Neue",\s*Helvetica,\s*Arial,\s*sans-serif;/.test(corpo) && /font-weight:\s*400;/.test(corpo), corpo.trim());
+atteso("la regola usa Montserrat, poi Helvetica Neue, Helvetica e Arial di riserva, senza grazie (sans-serif), in grassetto 800", /font-family:\s*"Montserrat",\s*"Helvetica Neue",\s*Helvetica,\s*Arial,\s*sans-serif;/.test(corpo) && /font-weight:\s*800;/.test(corpo), corpo.trim());
+atteso("la regola bilancia le righe dei titoli (niente parola sola in fondo)", /text-wrap:\s*balance;/.test(corpo));
+{
+  // il carattere è ospitato da noi: due file (latin e latin-ext) dichiarati nel CSS con il percorso locale, che esistono davvero, più la licenza
+  const facce = [...senzaCommenti.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]).filter((b) => /font-family:\s*"Montserrat"/.test(b));
+  const sorgenti = facce.map((b) => b.match(/url\("([^"]+)"\)/)?.[1] ?? "");
+  atteso("Montserrat 800 è dichiarato due volte nel CSS (latin e latin-ext) con unicode-range, dai file nostri in /fonts (mai da indirizzi esterni)", facce.length === 2 && facce.every((b) => /font-weight:\s*800;/.test(b) && /unicode-range:/.test(b)) && sorgenti.every((u) => /^\/fonts\/montserrat-800-latin(-ext)?\.woff2$/.test(u)), sorgenti.join(", "));
+  atteso("i file del carattere esistono e hanno dimensioni plausibili, e c'è la licenza (SIL Open Font License) accanto", sorgenti.every((u) => { const f = path.join(radice, "public", u); return fs.existsSync(f) && fs.statSync(f).size > 10_000; }) && /SIL Open Font License/.test(fs.existsSync(path.join(radice, "public/fonts/montserrat-LICENSE-OFL.txt")) ? leggi("public/fonts/montserrat-LICENSE-OFL.txt") : ""));
+  atteso("nessun carattere si carica da Google Fonts né da altri indirizzi esterni (privacy: stessa scelta già fatta per Syne e Space Grotesk)", !/fonts\.googleapis|fonts\.gstatic|@import\s+url\(["']?https?:/.test(css) && !/fonts\.googleapis|fonts\.gstatic/.test(leggi("src/app/site-omnia-ai/layout.tsx")));
+}
 atteso("il marchio e i titoletti (h3) restano in Syne, in grassetto", /(?:^|\n)h3,\s*\.font-marchio\s*\{[^}]*font-family:\s*"Syne",\s*sans-serif;[^}]*font-weight:\s*800;/.test(senzaCommenti));
 atteso("nessun h1 o h2 ha un font scritto a mano nel suo selettore (solo la regola unica); l'eccezione è il testo delle risposte della chat", (() => {
   const blocchi = [...senzaCommenti.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
