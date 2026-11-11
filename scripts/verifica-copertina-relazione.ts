@@ -41,6 +41,13 @@ import {
   MESSAGGI_ERRORE_COPERTINA,
   messaggioErroreCopertina,
   STILI,
+  CIG_CAMPO_MASSIMO,
+  SOTTOTITOLO_MASSIMO,
+  TESTI_CLIENTE_VUOTI,
+  TITOLO_PRINCIPALE_MASSIMO,
+  TITOLO_PRINCIPALE_PREDEFINITO,
+  avvisiDopoTestiCliente,
+  leggiTestiCliente,
 } from "../src/lib/copertina-relazione-calcoli";
 import { ErroreOpenAI, chiediImmagineAOpenAI, generaCopertina, modelloCopertina, paginaA4, pdfA4 } from "../src/lib/copertina-relazione";
 import { chiediLetturaAOpenAI, leggiDocumentoPerCopertina, modelloLettura, primePagine } from "../src/lib/copertina-lettura";
@@ -305,6 +312,75 @@ async function main() {
     const senzaUnLogo = await generaCopertina({ ...comuni, logoClientePath: null } as never);
     atteso("logo del cliente assente: copertina fatta con un solo logo", senzaUnLogo.ok && loghiRicevuti === 1 && !/IN BASSO A DESTRA/.test(promptRicevuti[promptRicevuti.length - 1]));
 
+    // ── i testi scritti dal cliente (richiesta dell'11/11/2026): prevalgono sull'estrazione, campo per campo; il documento resta letto per lo sfondo ──
+    const ultimoPrompt = () => promptRicevuti[promptRicevuti.length - 1];
+    // una lettura finta con gli avvisi divisi per argomento, come li dà verificaLettura: titolo non verificato, CIG non trovato, documento scansionato
+    const AVVISO_TITOLO = "Non ho trovato il titolo parola per parola nel documento.";
+    const AVVISO_CIG = "Nel documento scelto non ho trovato un CIG: la copertina non lo riporta.";
+    const AVVISO_SCANSIONE = "Il documento non ha testo selezionabile (sembra una scansione).";
+    let letture = 0;
+    const lettoConAvvisi = (titolo: string, cig: string | null) =>
+      (async (p: { documento: { nome_file: string } }) => {
+        letture++;
+        documentoLetto = p.documento.nome_file;
+        return {
+          lettura: { titolo, cig, ente: "Comune di Valleverde", direzione: direzioneLetta },
+          esito: { titolo, cig, titoloDaDocumento: false, cigDaDocumento: false, verificatoSulTesto: false, avvisi: [AVVISO_TITOLO, AVVISO_CIG, AVVISO_SCANSIONE], avvisiTitolo: [AVVISO_TITOLO], avvisiCig: [AVVISO_CIG], avvisiDocumento: [AVVISO_SCANSIONE] },
+          uso: { inputTokens: 1500, outputTokens: 500 },
+          modello: "gpt-5.4-mini",
+        };
+      }) as never;
+    const tutti = { titoloPrincipale: "RELAZIONE TECNICA - OFFERTA TECNICA", sottotitolo: "Servizio di pulizia dei presidi ospedalieri - Lotto 2", cig: "A9B8C7D6E5" };
+    usi.length = 0;
+    caricati.length = 0;
+    promptRicevuti.length = 0;
+    letture = 0;
+    const conTutti = await generaCopertina({ ...comuni, leggiDocumentoFn: lettoConAvvisi("Titolo letto dal documento", "B1C2D3E4F5"), testiCliente: tutti } as never);
+    atteso("tutti e tre i testi del cliente: sulla pagina ci sono i suoi, e dicono che sono suoi", conTutti.ok && conTutti.titoloPrincipale === tutti.titoloPrincipale && conTutti.titolo === tutti.sottotitolo && conTutti.cig === tutti.cig && conTutti.daCliente.titoloPrincipale && conTutti.daCliente.sottotitolo && conTutti.daCliente.cig);
+    atteso(
+      "il comando al modello ha i testi del cliente e NESSUNO di quelli estratti (né il titolo letto né il CIG letto né «RELAZIONE TECNICA» da solo)",
+      ultimoPrompt().includes(`AL CENTRO SCRIVI: ${tutti.titoloPrincipale}\n`) && ultimoPrompt().includes(`SOTTO SEMPRE AL CENTRO SCRIVI: ${tutti.sottotitolo} - CIG: ${tutti.cig}\n`) && !ultimoPrompt().includes("Titolo letto dal documento") && !ultimoPrompt().includes("B1C2D3E4F5") && !ultimoPrompt().includes("AL CENTRO SCRIVI: RELAZIONE TECNICA\n"),
+    );
+    atteso("il documento si legge comunque (lo sfondo): la lettura è partita, il suo costo registrato, e la direzione artistica del documento è nel prompt", letture === 1 && documentoLetto === "Disciplinare di gara.pdf" && /copertina_relazione_lettura$/.test(String(usi[0]?.operazione)) && ultimoPrompt().includes("Sagome stilizzate di scuole e biblioteca") && ultimoPrompt().includes("colline e vigneti"));
+    atteso("avvisi: con titolo e CIG scritti dal cliente non servono più quelli su titolo, CIG e scansione", conTutti.ok && conTutti.avvisi.length === 0);
+
+    // un testo alla volta: gli altri restano quelli del documento
+    const soloCig = await generaCopertina({ ...comuni, leggiDocumentoFn: lettoConAvvisi("Titolo letto dal documento", "B1C2D3E4F5"), testiCliente: { titoloPrincipale: null, sottotitolo: null, cig: "A9B8C7D6E5" } } as never);
+    atteso(
+      "solo il CIG del cliente: titolo principale di sempre, sottotitolo letto dal documento, CIG del cliente",
+      soloCig.ok && soloCig.titoloPrincipale === "RELAZIONE TECNICA" && soloCig.titolo === "Titolo letto dal documento" && soloCig.cig === "A9B8C7D6E5" && !soloCig.daCliente.titoloPrincipale && !soloCig.daCliente.sottotitolo && soloCig.daCliente.cig && ultimoPrompt().includes("AL CENTRO SCRIVI: RELAZIONE TECNICA\n") && ultimoPrompt().includes("Titolo letto dal documento - CIG: A9B8C7D6E5"),
+    );
+    atteso("solo il CIG del cliente: resta l'avviso sul titolo e quello sulla scansione (riguardano ciò che il cliente NON ha scritto), sparisce quello sul CIG", soloCig.ok && soloCig.avvisi.join("|") === `${AVVISO_TITOLO}|${AVVISO_SCANSIONE}`);
+    const soloSottotitolo = await generaCopertina({ ...comuni, leggiDocumentoFn: lettoConAvvisi("Titolo letto dal documento", "B1C2D3E4F5"), testiCliente: { titoloPrincipale: null, sottotitolo: "Mio sottotitolo", cig: null } } as never);
+    atteso(
+      "solo il sottotitolo del cliente: il CIG resta quello letto dal documento",
+      soloSottotitolo.ok && soloSottotitolo.titolo === "Mio sottotitolo" && soloSottotitolo.cig === "B1C2D3E4F5" && soloSottotitolo.daCliente.sottotitolo && !soloSottotitolo.daCliente.cig && ultimoPrompt().includes("SOTTO SEMPRE AL CENTRO SCRIVI: Mio sottotitolo - CIG: B1C2D3E4F5"),
+    );
+    atteso("solo il sottotitolo del cliente: sparisce l'avviso sul titolo, restano quelli sul CIG e sulla scansione", soloSottotitolo.ok && soloSottotitolo.avvisi.join("|") === `${AVVISO_CIG}|${AVVISO_SCANSIONE}`);
+    const soloPrincipale = await generaCopertina({ ...comuni, leggiDocumentoFn: lettoConAvvisi("Titolo letto dal documento", "B1C2D3E4F5"), testiCliente: { titoloPrincipale: "OFFERTA TECNICA MIGLIORATIVA", sottotitolo: null, cig: null } } as never);
+    atteso(
+      "solo il titolo principale: titolo e CIG letti dal documento, nessun «RELAZIONE TECNICA» rimasto nel comando",
+      soloPrincipale.ok && soloPrincipale.titoloPrincipale === "OFFERTA TECNICA MIGLIORATIVA" && soloPrincipale.daCliente.titoloPrincipale && !soloPrincipale.daCliente.sottotitolo && !soloPrincipale.daCliente.cig && ultimoPrompt().includes("AL CENTRO SCRIVI: OFFERTA TECNICA MIGLIORATIVA\n") && !/RELAZIONE TECNICA/.test(ultimoPrompt()) && ultimoPrompt().includes("«OFFERTA TECNICA MIGLIORATIVA» grande e ben visibile"),
+    );
+    atteso("solo il titolo principale: gli avvisi sul documento restano tutti e tre (il cliente non ha scritto né titolo né CIG)", soloPrincipale.ok && soloPrincipale.avvisi.length === 3);
+    // senza testi del cliente (o con tutti vuoti) tutto come prima, avvisi compresi
+    const nessuno = await generaCopertina({ ...comuni, leggiDocumentoFn: lettoConAvvisi("Titolo letto dal documento", "B1C2D3E4F5"), testiCliente: TESTI_CLIENTE_VUOTI } as never);
+    atteso("testi del cliente tutti vuoti: come prima (titolo e CIG letti, «RELAZIONE TECNICA», tutti gli avvisi)", nessuno.ok && nessuno.titoloPrincipale === "RELAZIONE TECNICA" && nessuno.titolo === "Titolo letto dal documento" && nessuno.cig === "B1C2D3E4F5" && !nessuno.daCliente.titoloPrincipale && !nessuno.daCliente.sottotitolo && !nessuno.daCliente.cig && nessuno.avvisi.length === 3);
+    // il documento non dà nessun titolo: con il sottotitolo del cliente si genera lo stesso (prima: errore «la gara non ha un titolo»)
+    const gara0 = { titolo: "", cig: null as string | null, stazioneAppaltante: base.stazioneAppaltante, settore: "pulizie" };
+    const senzaTitoloLetto = await generaCopertina({ ...comuni, gara: gara0, leggiDocumentoFn: lettoConAvvisi("", null), testiCliente: { titoloPrincipale: null, sottotitolo: "Titolo scritto dal cliente", cig: null } } as never);
+    atteso("nessun titolo dal documento né dalla gara, ma il cliente lo scrive: la copertina si genera", senzaTitoloLetto.ok && senzaTitoloLetto.titolo === "Titolo scritto dal cliente" && senzaTitoloLetto.cig === null && !/ - CIG:/.test(ultimoPrompt()));
+    const ancoraSenzaTitolo = await generaCopertina({ ...comuni, gara: gara0, leggiDocumentoFn: lettoConAvvisi("", null), testiCliente: { titoloPrincipale: "SOLO IL PRINCIPALE", sottotitolo: null, cig: null } } as never);
+    atteso("nessun titolo da nessuna parte e il cliente scrive solo il principale: errore chiaro come prima, immagine mai chiesta", !ancoraSenzaTitolo.ok && /titolo/.test(ancoraSenzaTitolo.errore));
+    // difesa in più: anche se arrivasse un testo non ripulito, la pagina non lo mostra lungo né su più righe
+    const sporco = await generaCopertina({ ...comuni, testiCliente: { titoloPrincipale: `Titolo\ncon\ta-capo   e  spazi${"x".repeat(200)}`, sottotitolo: null, cig: "  a9b8 c7d6e5 " } } as never);
+    atteso(
+      "difesa in più: un testo non ripulito arriva al modello su una riga sola e non oltre il massimo; il CIG con spazi e minuscole è normalizzato",
+      sporco.ok && !/\n/.test(sporco.titoloPrincipale) && sporco.titoloPrincipale.length <= TITOLO_PRINCIPALE_MASSIMO && sporco.cig === "A9B8C7D6E5" && ultimoPrompt().split("\n").filter((r) => r.startsWith("AL CENTRO SCRIVI:")).length === 1,
+    );
+    usi.length = 0;
+    caricati.length = 0;
+
     // errore di OpenAI: nessun file, nessun costo
     caricati.length = 0;
     usi.length = 0;
@@ -354,6 +430,82 @@ async function main() {
     atteso("senza la chiave di OpenAI: errore chiaro, nessuna chiamata", !senzaChiave.ok && /chiave/.test(senzaChiave.errore));
     if (apiKeyPrecedente === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = apiKeyPrecedente;
+  }
+
+  console.log("--- I testi scritti dal cliente: controlli, comando, avvisi, azione e pannello ---");
+  {
+    const ok = (g: Parameters<typeof leggiTestiCliente>[0]) => {
+      const r = leggiTestiCliente(g);
+      return r.ok ? r.testi : null;
+    };
+    const errore = (g: Parameters<typeof leggiTestiCliente>[0]) => {
+      const r = leggiTestiCliente(g);
+      return r.ok ? null : r.errore;
+    };
+    atteso("nessun testo (campi vuoti, spazi, assenti o non testo): nessuna scelta", [{ titoloPrincipale: "", sottotitolo: "", cig: "" }, { titoloPrincipale: "   ", sottotitolo: "\n\t", cig: " " }, { titoloPrincipale: null, sottotitolo: undefined, cig: 12 }].every((g) => { const t = ok(g); return t !== null && t.titoloPrincipale === null && t.sottotitolo === null && t.cig === null; }));
+    atteso("i tre testi scritti bene passano come sono (CIG in maiuscolo)", JSON.stringify(ok({ titoloPrincipale: "RELAZIONE TECNICA - OFFERTA TECNICA", sottotitolo: "Servizio di pulizia - Lotto 2", cig: "b1c2d3e4f5" })) === JSON.stringify({ titoloPrincipale: "RELAZIONE TECNICA - OFFERTA TECNICA", sottotitolo: "Servizio di pulizia - Lotto 2", cig: "B1C2D3E4F5" }));
+    atteso("spazi di troppo, a-capo e tabulazioni diventano uno spazio (il testo va al modello su una riga sola)", ok({ titoloPrincipale: "  OFFERTA \n\n TECNICA\t2026  ", sottotitolo: "a\r\nb\u0000c\u0007d", cig: "" })?.titoloPrincipale === "OFFERTA TECNICA 2026" && ok({ titoloPrincipale: "", sottotitolo: "a\r\nb\u0000c\u0007d", cig: "" })?.sottotitolo === "a b c d");
+    atteso(`i limiti sono ${TITOLO_PRINCIPALE_MASSIMO} caratteri per il titolo principale e ${SOTTOTITOLO_MASSIMO} per il sottotitolo: al limite passa, oltre si RIFIUTA con il motivo (mai accorciato in silenzio)`, ok({ titoloPrincipale: "T".repeat(TITOLO_PRINCIPALE_MASSIMO), sottotitolo: "S".repeat(SOTTOTITOLO_MASSIMO), cig: "" }) !== null && /titolo principale è troppo lungo.*100/.test(errore({ titoloPrincipale: "T".repeat(TITOLO_PRINCIPALE_MASSIMO + 1), sottotitolo: "", cig: "" }) ?? "") && /sottotitolo è troppo lungo.*300/.test(errore({ titoloPrincipale: "", sottotitolo: "S".repeat(SOTTOTITOLO_MASSIMO + 1), cig: "" }) ?? ""));
+    atteso("CIG scritto con la scritta davanti o con spazi in mezzo: si capisce lo stesso", ["CIG: B1C2D3E4F5", "cig B1C2D3E4F5", "CIG-B1C2D3E4F5", "CIG.B1C2D3E4F5", "B1C2 D3E4F5", " b1c2d3e4f5 "].every((c) => ok({ titoloPrincipale: "", sottotitolo: "", cig: c })?.cig === "B1C2D3E4F5"));
+    atteso("un codice che inizia per «CIG» ma è di 10 caratteri non perde le tre lettere (la scritta si toglie solo se seguita da separatore o spazio)", ok({ titoloPrincipale: "", sottotitolo: "", cig: "CIGABC1234" })?.cig === "CIGABC1234");
+    atteso(
+      "CIG sbagliato (troppo corto, troppo lungo, simboli): errore chiaro che dice come correggere o lasciare vuoto, nessuna copertina con un CIG inventato",
+      ["B12345", "B1C2D3E4F5X", "B1C2D3E4F!", "CIG: 123"].every((c) => /CIG non è valido/.test(errore({ titoloPrincipale: "", sottotitolo: "", cig: c }) ?? "") && /lascialo vuoto/.test(errore({ titoloPrincipale: "", sottotitolo: "", cig: c }) ?? "")),
+    );
+    atteso("la sola scritta «CIG:» senza codice vale come campo vuoto (nessuna scelta, nessun errore)", ["CIG:", "cig -", "CIG: "].every((c) => { const t = ok({ titoloPrincipale: "", sottotitolo: "", cig: c }); return t !== null && t.cig === null; }));
+    atteso("un solo campo sbagliato basta a rifiutare tutto (niente copertina a metà con i campi buoni)", errore({ titoloPrincipale: "OFFERTA TECNICA", sottotitolo: "Sottotitolo buono", cig: "XX" }) !== null && ok({ titoloPrincipale: "OFFERTA TECNICA", sottotitolo: "Sottotitolo buono", cig: "XX" }) === null);
+    atteso("il campo CIG della pagina ha spazio per la scritta e gli spazi", CIG_CAMPO_MASSIMO >= "CIG: B1C2 D3E4 F5".length);
+
+    // il comando
+    const datiBase = { titolo: base.titolo, cig: base.cig, stazioneAppaltante: base.stazioneAppaltante, settore: base.settore, stile: "stilizzato", logoStazione: true, logoCliente: true };
+    const predefinito = datiCopertina(datiBase);
+    atteso("titolo principale di base: «RELAZIONE TECNICA» (il comando dell'utente, parola per parola)", predefinito.titoloPrincipale === TITOLO_PRINCIPALE_PREDEFINITO && TITOLO_PRINCIPALE_PREDEFINITO === "RELAZIONE TECNICA" && comandoCopertina(predefinito).split("\n")[1] === "AL CENTRO SCRIVI: RELAZIONE TECNICA");
+    atteso("titolo principale vuoto o non testo: torna «RELAZIONE TECNICA»", ["", "   ", null, undefined, 5].every((v) => datiCopertina({ ...datiBase, titoloPrincipale: v }).titoloPrincipale === "RELAZIONE TECNICA"));
+    const custom = datiCopertina({ ...datiBase, titoloPrincipale: "RELAZIONE TECNICA - OFFERTA TECNICA", titolo: "Sottotitolo scelto", cig: "A9B8C7D6E5" });
+    atteso(
+      "titolo principale del cliente: sta nella seconda riga del comando e nella nota sui testi; il sottotitolo e il CIG nella terza",
+      comandoCopertina(custom).split("\n")[1] === "AL CENTRO SCRIVI: RELAZIONE TECNICA - OFFERTA TECNICA" && comandoCopertina(custom).split("\n")[2] === "SOTTO SEMPRE AL CENTRO SCRIVI: Sottotitolo scelto - CIG: A9B8C7D6E5" && promptCopertina(custom).includes("«RELAZIONE TECNICA - OFFERTA TECNICA» grande e ben visibile"),
+    );
+    atteso("il resto del comando non cambia con il titolo principale (prima riga, loghi in alto a sinistra e in basso a destra)", comandoCopertina(custom).split("\n")[0] === comandoCopertina(predefinito).split("\n")[0] && /IN ALTO A SINISTRA METTI LOGO STAZIONE APPALTANTE/.test(comandoCopertina(custom)) && /IN BASSO A DESTRA METTI LOGO CLIENTE/.test(comandoCopertina(custom)));
+    atteso("titolo principale troppo lungo che arrivasse fin qui: tagliato al massimo, mai oltre", datiCopertina({ ...datiBase, titoloPrincipale: "x".repeat(500) }).titoloPrincipale.length === TITOLO_PRINCIPALE_MASSIMO);
+    atteso("senza CIG il sottotitolo resta solo il titolo, anche con il titolo principale del cliente (mai un CIG inventato)", comandoCopertina(datiCopertina({ ...datiBase, titoloPrincipale: "OFFERTA", cig: null })).split("\n")[2] === `SOTTO SEMPRE AL CENTRO SCRIVI: ${base.titolo}`);
+
+    // gli avvisi, con la vera verificaLettura (divisione per argomento)
+    const testoLungo = "Disciplinare di gara per l'affidamento del servizio. ".repeat(40);
+    const lett = (t: string, c: string | null): LetturaGara => ({ titolo: t, cig: c, ente: null, direzione: { tipoServizio: "x", luoghi: [], territorio: null, direzioneStilizzata: "a", direzioneRealistica: "b" } });
+    const veri = verificaLettura({ lettura: lett("Titolo che nel testo non c'è per niente", null), testoPdf: testoLungo, titoloGara: "Titolo della gara", cigGara: null });
+    atteso("verificaLettura divide gli avvisi per argomento (titolo, CIG, documento) senza cambiarne l'ordine né il numero", veri.avvisiTitolo.length === 1 && veri.avvisiCig.length === 1 && veri.avvisiDocumento.length === 0 && veri.avvisi.join("|") === [...veri.avvisiTitolo, ...veri.avvisiCig].join("|"));
+    const scansione = verificaLettura({ lettura: lett("Titolo", null), testoPdf: "", titoloGara: "T", cigGara: null });
+    atteso("documento senza testo: l'avviso sulla scansione sta tra quelli del documento, dopo gli altri", scansione.avvisiDocumento.length === 1 && scansione.avvisi[scansione.avvisi.length - 1] === scansione.avvisiDocumento[0]);
+    const nulla = { titoloPrincipale: null, sottotitolo: null, cig: null };
+    atteso("senza testi del cliente (o solo il titolo principale) gli avvisi restano tutti, identici", avvisiDopoTestiCliente(veri, nulla) === veri.avvisi && avvisiDopoTestiCliente(veri, { ...nulla, titoloPrincipale: "X" }).length === veri.avvisi.length);
+    atteso("sottotitolo scritto dal cliente: via l'avviso sul titolo, resta quello sul CIG", avvisiDopoTestiCliente(veri, { ...nulla, sottotitolo: "Mio" }).join("|") === veri.avvisiCig.join("|"));
+    atteso("CIG scritto dal cliente: via l'avviso sul CIG, resta quello sul titolo", avvisiDopoTestiCliente(veri, { ...nulla, cig: "A9B8C7D6E5" }).join("|") === veri.avvisiTitolo.join("|"));
+    atteso("scansione: l'avviso sparisce solo se il cliente ha scritto SIA il titolo SIA il CIG", avvisiDopoTestiCliente(scansione, { ...nulla, sottotitolo: "Mio" }).includes(scansione.avvisiDocumento[0]) && avvisiDopoTestiCliente(scansione, { ...nulla, cig: "A9B8C7D6E5" }).includes(scansione.avvisiDocumento[0]) && !avvisiDopoTestiCliente(scansione, { ...nulla, sottotitolo: "Mio", cig: "A9B8C7D6E5" }).includes(scansione.avvisiDocumento[0]));
+    atteso("l'avviso sul titolo rimanda al campo «Sottotitolo centrale» (e non più al titolo della gara in alto)", /Sottotitolo centrale/.test(veri.avvisiTitolo[0]) && !/in alto nella pagina/.test(veri.avvisiTitolo[0]));
+
+    // l'azione del server e il pannello
+    const azione = leggi("src/app/actions/gara-copertina.ts");
+    const pannello = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/copertina-panel.tsx");
+    const inizioGenera = azione.indexOf("export async function generaCopertinaGara(");
+    const corpoGenera = azione.slice(inizioGenera, azione.indexOf("export type AcquistoCopertinaState"));
+    atteso(
+      "l'azione legge i tre campi dal modulo, li controlla subito dopo lo stile e PRIMA di database, riserva e gare gratis: un CIG sbagliato non consuma nulla",
+      /formData\.get\("testoTitoloPrincipale"\)/.test(corpoGenera) && /formData\.get\("testoSottotitolo"\)/.test(corpoGenera) && /formData\.get\("testoCig"\)/.test(corpoGenera) && corpoGenera.indexOf("leggiTestiCliente(") > corpoGenera.indexOf("normalizzaStile(") && corpoGenera.indexOf("leggiTestiCliente(") < corpoGenera.indexOf('.from("gare")') && corpoGenera.indexOf("leggiTestiCliente(") < corpoGenera.indexOf("riservaCopertina(") && /if \(!testi\.ok\) return \{ error: testi\.errore \}/.test(corpoGenera),
+    );
+    atteso("l'azione passa i testi controllati a generaCopertina e rimanda alla pagina cosa è finito sulla copertina e quali testi sono del cliente", /testiCliente: testi\.testi/.test(corpoGenera) && /titoloPrincipale: esito\.titoloPrincipale/.test(corpoGenera) && /daCliente: esito\.daCliente/.test(corpoGenera));
+    atteso("il documento resta obbligatorio anche se il cliente scrive tutti i testi (serve per lo sfondo)", /Scegli il documento da cui leggere titolo e CIG/.test(corpoGenera) && corpoGenera.indexOf("documentoId") > -1 && corpoGenera.indexOf("Scegli il documento") < corpoGenera.indexOf("riservaCopertina("));
+    atteso(
+      "il pannello ha i tre campi con i nomi che l'azione legge, ognuno con la sua etichetta, nel modulo che genera",
+      ["testoTitoloPrincipale", "testoSottotitolo", "testoCig"].every((n) => new RegExp(`name="${n}"`).test(pannello) && corpoGenera.includes(`"${n}"`)) && ["copertina-titolo-principale", "copertina-sottotitolo", "copertina-cig"].every((id) => new RegExp(`htmlFor="${id}"`).test(pannello) && new RegExp(`id="${id}"`).test(pannello)) && /<fieldset/.test(pannello) && /<legend/.test(pannello),
+    );
+    atteso(
+      "i campi sono CONTROLLATI (restano scritti dopo ogni generazione) e hanno i limiti giusti",
+      /value=\{titoloPrincipale\}/.test(pannello) && /value=\{sottotitolo\}/.test(pannello) && /value=\{cig\}/.test(pannello) && /onChange=\{\(e\) => setTitoloPrincipale/.test(pannello) && /onChange=\{\(e\) => setSottotitolo/.test(pannello) && /onChange=\{\(e\) => setCig/.test(pannello) && !/defaultValue=\{(titoloPrincipale|sottotitolo|cig)\}/.test(pannello) && /maxLength=\{TITOLO_PRINCIPALE_MASSIMO\}/.test(pannello) && /maxLength=\{SOTTOTITOLO_MASSIMO\}/.test(pannello) && /maxLength=\{CIG_CAMPO_MASSIMO\}/.test(pannello),
+    );
+    atteso("il pannello dice che ciò che il cliente scrive ha la precedenza, che un campo vuoto resta quello letto e che il documento serve comunque per lo sfondo", /ha la precedenza su quello letto dal documento/.test(pannello) && /un campo lasciato vuoto resta quello letto/.test(pannello) && /resta comunque usato per lo sfondo/.test(pannello) && /Per esempio: RELAZIONE TECNICA - OFFERTA TECNICA/.test(pannello));
+    atteso("dopo la generazione il pannello elenca i tre testi finiti sulla pagina e dice quali sono «scritto da te»", /Titolo principale: <strong>\{state\.titoloPrincipale/.test(pannello) && /Sottotitolo: <strong>\{state\.titolo\}/.test(pannello) && /CIG: <strong>\{state\.cig\}/.test(pannello) && (pannello.match(/scritto da te/g) ?? []).length >= 3 && /Nessun CIG/.test(pannello));
+    atteso("i campi del cliente non toccano i pulsanti dei due stili né il conteggio delle generazioni (stesso modulo, stessi valori di «stile»)", /name="stile"/.test(pannello) && /value=\{s\.stile\}/.test(pannello) && /\{s\.fatte\} di \{s\.massime\} generazioni fatte/.test(pannello));
   }
 
   console.log("--- La direzione artistica nel prompt ---");
