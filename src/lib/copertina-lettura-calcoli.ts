@@ -128,8 +128,12 @@ export type EsitoLettura = {
   cigDaDocumento: boolean;
   // vero se il PDF ha un testo con cui confrontare titolo e CIG; falso per le scansioni
   verificatoSulTesto: boolean;
-  // cosa dire al cliente: ripieghi e controlli che non si sono potuti fare
+  // cosa dire al cliente: ripieghi e controlli che non si sono potuti fare (sempre nell'ordine titolo, CIG, documento)
   avvisi: string[];
+  // gli stessi avvisi divisi per argomento: se il cliente scrive lui il titolo o il CIG, quelli che li riguardano non servono più (avvisiDopoTestiCliente)
+  avvisiTitolo: string[];
+  avvisiCig: string[];
+  avvisiDocumento: string[];
 };
 
 // Titolo e CIG proposti dal modello vengono tenuti SOLO se compaiono nel testo del PDF. Altrimenti si ripiega sui dati già estratti dall'analisi della gara
@@ -140,7 +144,9 @@ export function verificaLettura(params: { lettura: LetturaGara; testoPdf: string
   const cigGara = cigPerCopertina(params.cigGara);
   const testo = normalizzaPerConfronto(testoPdf);
   const verificabile = testo.length >= TESTO_MINIMO_VERIFICABILE;
-  const avvisi: string[] = [];
+  const avvisiTitolo: string[] = [];
+  const avvisiCig: string[] = [];
+  const avvisiDocumento: string[] = [];
 
   // titolo
   const titoloNorm = normalizzaPerConfronto(lettura.titolo);
@@ -150,7 +156,7 @@ export function verificaLettura(params: { lettura: LetturaGara; testoPdf: string
     if (titoloNorm.length < TITOLO_MINIMO_VERIFICA || !testo.includes(titoloNorm)) {
       titolo = pulisciTesto(titoloGara, 300);
       titoloDaDocumento = false;
-      avvisi.push("Non ho trovato il titolo parola per parola nel documento: sulla copertina c'è il titolo della gara. Se vuoi un altro titolo, cambialo in alto nella pagina.");
+      avvisiTitolo.push("Non ho trovato il titolo parola per parola nel documento: sulla copertina c'è il titolo della gara. Se vuoi un altro titolo, scrivilo tu nel campo «Sottotitolo centrale» qui sopra.");
     }
   }
 
@@ -164,17 +170,27 @@ export function verificaLettura(params: { lettura: LetturaGara; testoPdf: string
   if (!cig) {
     if (cigGara) {
       cig = cigGara;
-      avvisi.push("Nel documento scelto non ho trovato un CIG: ho usato quello trovato dall'analisi dei documenti della gara. Controllalo.");
+      avvisiCig.push("Nel documento scelto non ho trovato un CIG: ho usato quello trovato dall'analisi dei documenti della gara. Controllalo.");
     } else {
-      avvisi.push("Nel documento scelto non ho trovato un CIG: la copertina non lo riporta.");
+      avvisiCig.push("Nel documento scelto non ho trovato un CIG: la copertina non lo riporta.");
     }
   }
 
   if (!verificabile) {
-    avvisi.push("Il documento non ha testo selezionabile (sembra una scansione): titolo e CIG sono letti dall'immagine e non posso verificarli in automatico. Controllali sulla copertina.");
+    avvisiDocumento.push("Il documento non ha testo selezionabile (sembra una scansione): titolo e CIG sono letti dall'immagine e non posso verificarli in automatico. Controllali sulla copertina.");
   }
 
-  return { titolo, cig, titoloDaDocumento, cigDaDocumento, verificatoSulTesto: verificabile, avvisi };
+  return {
+    titolo,
+    cig,
+    titoloDaDocumento,
+    cigDaDocumento,
+    verificatoSulTesto: verificabile,
+    avvisi: [...avvisiTitolo, ...avvisiCig, ...avvisiDocumento],
+    avvisiTitolo,
+    avvisiCig,
+    avvisiDocumento,
+  };
 }
 
 // ───── Quale documento leggere ─────

@@ -55,6 +55,68 @@ export function cigPerCopertina(valore: unknown): string | null {
   return /^[0-9A-Z]{10}$/.test(cig) ? cig : null;
 }
 
+// ───── I testi scelti dal cliente ─────
+// Di base la copertina porta «RELAZIONE TECNICA» e, sotto, il titolo e il CIG letti dal documento. Il cliente può preferire un testo diverso (richiesta
+// dell'utente, 11/11/2026): un TITOLO PRINCIPALE (per esempio «RELAZIONE TECNICA - OFFERTA TECNICA») al posto di «RELAZIONE TECNICA», un SOTTOTITOLO
+// CENTRALE al posto del titolo letto, un CIG al posto di quello letto. Ciò che scrive PREVALE sull'estrazione, campo per campo (un campo lasciato vuoto
+// resta quello di prima). Il documento si legge comunque: serve per lo sfondo.
+
+export const TITOLO_PRINCIPALE_PREDEFINITO = "RELAZIONE TECNICA";
+export const TITOLO_PRINCIPALE_MASSIMO = 100;
+export const SOTTOTITOLO_MASSIMO = TITOLO_MASSIMO;
+// il campo del CIG accetta anche la scritta davanti e gli spazi in mezzo («CIG: B123 456789»)
+export const CIG_CAMPO_MASSIMO = 24;
+
+export type TestiCliente = { titoloPrincipale: string | null; sottotitolo: string | null; cig: string | null };
+export const TESTI_CLIENTE_VUOTI: TestiCliente = { titoloPrincipale: null, sottotitolo: null, cig: null };
+
+// Un testo scritto a mano finisce nel comando dato al modello: su una riga sola, senza caratteri di controllo (a-capo e tabulazioni diventano uno spazio)
+function ripulisciTestoCliente(valore: unknown): string {
+  if (typeof valore !== "string") return "";
+  return valore
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Controlla i tre campi del cliente. Un testo troppo lungo o un CIG con la forma sbagliata si RIFIUTANO con il motivo (non si accorciano e non si ignorano in
+// silenzio: sulla copertina un testo tagliato o un CIG diverso da quello scritto sono peggio di un errore). Un campo vuoto vale «nessuna scelta».
+export function leggiTestiCliente(grezzi: { titoloPrincipale: unknown; sottotitolo: unknown; cig: unknown }): { ok: true; testi: TestiCliente } | { ok: false; errore: string } {
+  const titoloPrincipale = ripulisciTestoCliente(grezzi.titoloPrincipale);
+  if (titoloPrincipale.length > TITOLO_PRINCIPALE_MASSIMO) {
+    return { ok: false, errore: `Il titolo principale è troppo lungo: al massimo ${TITOLO_PRINCIPALE_MASSIMO} caratteri (ora ${titoloPrincipale.length}).` };
+  }
+  const sottotitolo = ripulisciTestoCliente(grezzi.sottotitolo);
+  if (sottotitolo.length > SOTTOTITOLO_MASSIMO) {
+    return { ok: false, errore: `Il sottotitolo è troppo lungo: al massimo ${SOTTOTITOLO_MASSIMO} caratteri (ora ${sottotitolo.length}).` };
+  }
+  // «CIG: B123456789» o «CIG B123456789»: si toglie la scritta (ma non le lettere CIG di un codice scritto senza separatore)
+  const cigScritto = ripulisciTestoCliente(grezzi.cig).replace(/^CIG\s*[:.-]\s*|^CIG\s+/i, "");
+  let cig: string | null = null;
+  if (cigScritto) {
+    cig = cigPerCopertina(cigScritto);
+    if (!cig) {
+      return { ok: false, errore: "Il CIG non è valido: sono 10 caratteri tra lettere e numeri (per esempio B123456789). Correggilo, oppure lascialo vuoto per usare quello letto dal documento." };
+    }
+  }
+  return { ok: true, testi: { titoloPrincipale: titoloPrincipale || null, sottotitolo: sottotitolo || null, cig } };
+}
+
+// Gli avvisi della lettura che parlano di ciò che il cliente ha scritto lui non servono più («non ho trovato il CIG» quando il CIG l'ha scritto lui).
+// `avvisiTitolo`, `avvisiCig` e `avvisiDocumento` sono la divisione degli avvisi fatta da verificaLettura; senza testi del cliente non si tocca nulla.
+export function avvisiDopoTestiCliente(
+  esito: { avvisi: string[]; avvisiTitolo?: string[]; avvisiCig?: string[]; avvisiDocumento?: string[] },
+  testi: TestiCliente,
+): string[] {
+  if (!testi.sottotitolo && !testi.cig) return esito.avvisi;
+  const daTogliere = new Set<string>();
+  if (testi.sottotitolo) for (const a of esito.avvisiTitolo ?? []) daTogliere.add(a);
+  if (testi.cig) for (const a of esito.avvisiCig ?? []) daTogliere.add(a);
+  // l'avviso sulla scansione riguarda solo titolo e CIG: se li ha scritti tutti e due il cliente, non lo riguarda
+  if (testi.sottotitolo && testi.cig) for (const a of esito.avvisiDocumento ?? []) daTogliere.add(a);
+  return esito.avvisi.filter((a) => !daTogliere.has(a));
+}
+
 // ───── Gli stili ─────
 // Il cliente sceglie lo stile dello sfondo (richiesta dell'utente, 10/11/2026): «stilizzato» = illustrazione vettoriale editoriale; «realistico» =
 // fotografia. Può generarli entrambi e poi decidere. Lo stile decide la direzione artistica usata, le note sul modo di trattare lo sfondo e il nome del file.
@@ -81,6 +143,9 @@ export type DirezioneCopertina = {
 };
 
 export type DatiCopertina = {
+  // il testo grande al centro: «RELAZIONE TECNICA», o quello scelto dal cliente
+  titoloPrincipale: string;
+  // il sottotitolo centrale: il titolo letto dal documento, o quello scritto dal cliente
   titolo: string;
   cig: string | null;
   stile: Stile;
@@ -95,6 +160,8 @@ export type DatiCopertina = {
 };
 
 export function datiCopertina(grezzi: {
+  // senza (o vuoto): «RELAZIONE TECNICA»
+  titoloPrincipale?: unknown;
   titolo: unknown;
   cig: unknown;
   stazioneAppaltante: unknown;
@@ -106,6 +173,7 @@ export function datiCopertina(grezzi: {
   logoCliente: boolean;
 }): DatiCopertina {
   return {
+    titoloPrincipale: pulisciTesto(grezzi.titoloPrincipale, TITOLO_PRINCIPALE_MASSIMO) || TITOLO_PRINCIPALE_PREDEFINITO,
     titolo: pulisciTesto(grezzi.titolo, TITOLO_MASSIMO),
     cig: cigPerCopertina(grezzi.cig),
     stile: normalizzaStile(grezzi.stile) ?? "stilizzato",
@@ -162,7 +230,8 @@ export function comandoCopertina(dati: DatiCopertina): string {
 
   const righe = [
     "CREA COPERTINA GRAFICA CON SFONDO COME IMMAGINE IN A4 COERENTE CON IL Disciplinare/Capitolato della gara.",
-    "AL CENTRO SCRIVI: RELAZIONE TECNICA",
+    // di base «RELAZIONE TECNICA» (il comando dell'utente, parola per parola); se il cliente ha scelto un altro titolo principale, al suo posto
+    `AL CENTRO SCRIVI: ${dati.titoloPrincipale}`,
     `SOTTO SEMPRE AL CENTRO SCRIVI: ${rigaTitolo(dati)}`,
   ];
 
@@ -181,7 +250,7 @@ export function promptCopertina(dati: DatiCopertina): string {
     "Formato: pagina A4 verticale, a tutta pagina, senza bordi bianchi né cornici di foglio.",
     // senza CIG la nota non lo nomina nemmeno: sarebbe un invito al modello a inventarne uno
     `I testi vanno scritti ESATTAMENTE come indicati sopra (compresi numeri${dati.cig ? ", lettere del CIG, trattino semplice" : ""} e punteggiatura), parola per parola: non correggerli, non tradurli, non abbreviarli. Se il titolo è lungo vai a capo su più righe, senza tagliarlo. Non scrivere nessun altro testo oltre a quelli richiesti.`,
-    "I due testi sono centrati orizzontalmente sulla pagina, uno sotto l'altro: «RELAZIONE TECNICA» grande e ben visibile, il titolo sotto in dimensione minore.",
+    `I due testi sono centrati orizzontalmente sulla pagina, uno sotto l'altro: «${dati.titoloPrincipale}» grande e ben visibile, il titolo sotto in dimensione minore.`,
   ];
   const realistico = dati.stile === "realistico";
   if (realistico) {

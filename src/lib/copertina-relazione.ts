@@ -15,6 +15,8 @@ import {
   COPERTINA_LARGHEZZA,
   COPERTINA_MODELLO_PREDEFINITO,
   PREFISSO_FILE_COPERTINA,
+  TESTI_CLIENTE_VUOTI,
+  avvisiDopoTestiCliente,
   copertineDaNomi,
   datiCopertina,
   marcaTempo,
@@ -27,6 +29,7 @@ import {
   validaDatiCopertina,
   type CopertinaElenco,
   type Stile,
+  type TestiCliente,
   type UsoImmagine,
 } from "@/lib/copertina-relazione-calcoli";
 
@@ -121,8 +124,19 @@ export async function pdfA4(png: Buffer): Promise<Buffer> {
 }
 
 export type EsitoCopertina =
-  // titolo e CIG che sono finiti sulla copertina, il documento da cui sono stati letti e cosa il cliente deve sapere (ripieghi, controlli non possibili)
-  | { ok: true; marca: string; stile: Stile; titolo: string; cig: string | null; documento: string; avvisi: string[] }
+  // i testi che sono finiti sulla copertina (titolo principale, sottotitolo centrale, CIG) e quali li ha scritti il cliente (gli altri sono letti dal
+  // documento), il documento usato per lo sfondo e cosa il cliente deve sapere (ripieghi, controlli non possibili)
+  | {
+      ok: true;
+      marca: string;
+      stile: Stile;
+      titoloPrincipale: string;
+      titolo: string;
+      cig: string | null;
+      daCliente: { titoloPrincipale: boolean; sottotitolo: boolean; cig: boolean };
+      documento: string;
+      avvisi: string[];
+    }
   | { ok: false; errore: string };
 
 // Genera la copertina di una gara e la salva (PNG + PDF A4) nel bucket «gare». OpenAI legge prima il disciplinare/capitolato scelto (titolo, CIG e
@@ -138,6 +152,8 @@ export async function generaCopertina(params: {
   documento: DocumentoDaLeggere;
   logoStazionePath: string | null;
   logoClientePath: string | null;
+  // i testi che il cliente ha scritto (già controllati da leggiTestiCliente): prevalgono sull'estrazione, campo per campo. Il documento si legge comunque, per lo sfondo.
+  testiCliente?: TestiCliente;
   admin?: SupabaseClient;
   // sostituibili per provare senza rete né database
   leggiDocumentoFn?: typeof leggiDocumentoPerCopertina;
@@ -172,9 +188,12 @@ export async function generaCopertina(params: {
 
     fase = "disegno";
     const [logoStazione, logoCliente] = await Promise.all([leggi("gare", params.logoStazionePath), leggi("company-assets", params.logoClientePath)]);
+    // ciò che il cliente ha scritto vale più di ciò che si è estratto, campo per campo; un campo lasciato vuoto resta quello letto dal documento
+    const testi = params.testiCliente ?? TESTI_CLIENTE_VUOTI;
     const dati = datiCopertina({
-      titolo: letto.esito.titolo,
-      cig: letto.esito.cig,
+      titoloPrincipale: testi.titoloPrincipale,
+      titolo: testi.sottotitolo ?? letto.esito.titolo,
+      cig: testi.cig ?? letto.esito.cig,
       // il nome dell'ente serve solo come contesto: se l'analisi non l'ha trovato vale quello letto nel documento
       stazioneAppaltante: gara.stazioneAppaltante ?? letto.lettura.ente,
       settore: gara.settore,
@@ -215,7 +234,17 @@ export async function generaCopertina(params: {
       await admin.storage.from("gare").remove([percorsoPng]);
       throw new Error(`Salvataggio del PDF non riuscito: ${caricaPdf.error.message}`);
     }
-    return { ok: true, marca: marcaTempo(adesso), stile, titolo: dati.titolo, cig: dati.cig, documento: documento.nome_file, avvisi: letto.esito.avvisi };
+    return {
+      ok: true,
+      marca: marcaTempo(adesso),
+      stile,
+      titoloPrincipale: dati.titoloPrincipale,
+      titolo: dati.titolo,
+      cig: dati.cig,
+      daCliente: { titoloPrincipale: Boolean(testi.titoloPrincipale), sottotitolo: Boolean(testi.sottotitolo), cig: Boolean(testi.cig) },
+      documento: documento.nome_file,
+      avvisi: avvisiDopoTestiCliente(letto.esito, testi),
+    };
   } catch (err) {
     // nel log resta la causa vera (con lo stato di OpenAI, se c'è); al cliente va un messaggio che non la attribuisce a lui se non è sua
     console.error(`Copertina relazione: generazione non riuscita (${fase})`, err instanceof Error ? err.message : err);

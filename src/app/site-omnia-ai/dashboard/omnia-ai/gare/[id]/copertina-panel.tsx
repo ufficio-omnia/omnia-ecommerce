@@ -7,7 +7,7 @@ import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import ThinkingIndicator from "./thinking-indicator";
 import AcquistoCopertina from "./copertina-acquisto";
 import ServizioRichiudibile from "./servizio-richiudibile";
-import { ETICHETTA_STILE, type Stile } from "@/lib/copertina-relazione-calcoli";
+import { CIG_CAMPO_MASSIMO, ETICHETTA_STILE, SOTTOTITOLO_MASSIMO, TITOLO_PRINCIPALE_MASSIMO, TITOLO_PRINCIPALE_PREDEFINITO, type Stile } from "@/lib/copertina-relazione-calcoli";
 import { prezzoCopertina, type MotivoNegato } from "@/lib/copertina-diritto-calcoli";
 import { TESTI_COPERTINA, type OffertaCopertina, type RitornoPagamentoCopertina } from "@/lib/copertina-acquisto-calcoli";
 
@@ -73,6 +73,11 @@ export default function CopertinaPanel({
   const [state, formAction, pending] = useActionState(generaCopertinaGara, statoIniziale);
   // quale dei due pulsanti è stato premuto, per scrivere «Generazione in corso...» su quello giusto
   const [stileInCorso, setStileInCorso] = useState<Stile | null>(null);
+  // I testi che il cliente può scrivere al posto di quelli letti dal documento: campi CONTROLLATI, così restano scritti dopo ogni generazione (un modulo che si
+  // svuota a ogni invio costringerebbe a riscriverli per ognuna delle sei copertine possibili).
+  const [titoloPrincipale, setTitoloPrincipale] = useState("");
+  const [sottotitolo, setSottotitolo] = useState("");
+  const [cig, setCig] = useState("");
   const idSelezione = "copertina-documento";
   // la più recente di ciascuno stile è «Ultima copertina»
   const primaPerStile = new Map<Stile, string>();
@@ -98,14 +103,14 @@ export default function CopertinaPanel({
         <input type="hidden" name="garaId" value={garaId} />
 
         <p className="omnia-riquadro-nota" style={{ marginTop: 4 }}>
-          Una copertina in formato A4 per la tua relazione tecnica, costruita sulla gara: legge il disciplinare o il capitolato che scegli qui sotto e ne ricava il titolo, il CIG e lo sfondo (luoghi, attività e territorio della gara). Al centro <strong>RELAZIONE TECNICA</strong> e sotto il titolo con il CIG,
+          Una copertina in formato A4 per la tua relazione tecnica, costruita sulla gara: legge il disciplinare o il capitolato che scegli qui sotto e ne ricava lo sfondo (luoghi, attività e territorio della gara) e, se non scrivi tu il testo, il titolo e il CIG. Al centro <strong>RELAZIONE TECNICA</strong> e sotto il titolo con il CIG,
           in alto a sinistra il logo della stazione appaltante, in basso a destra il tuo logo. Scegli lo stile: <strong>stilizzato</strong> (sfondo grafico illustrato) o <strong>realistico</strong> (sfondo fotografico). Puoi generarle in tutti e due gli stili e poi decidere; ogni generazione è diversa e si
           aggiunge alle precedenti. Per ogni gara puoi fare fino a <strong>3 generazioni per stile</strong> (3 stilizzate e 3 realistiche).
         </p>
 
         <div style={{ marginTop: 14, maxWidth: 560 }}>
           <label className="omnia-etichetta" htmlFor={idSelezione}>
-            Documento da cui leggere titolo e CIG (il disciplinare o il capitolato)
+            Documento da leggere (il disciplinare o il capitolato): ne ricavo lo sfondo e, se non scrivi tu il testo, il titolo e il CIG
           </label>
           {documenti.length > 0 ? (
             <select id={idSelezione} name="documentoId" className="omnia-select" defaultValue={documentoPredefinito ?? documenti[0].id} disabled={pending}>
@@ -121,6 +126,72 @@ export default function CopertinaPanel({
             </p>
           )}
         </div>
+
+        {/* Testo scelto dal cliente (facoltativo): PREVALE su titolo e CIG letti dal documento, campo per campo; il documento resta usato per lo sfondo */}
+        <fieldset style={{ marginTop: 18, maxWidth: 560, border: 0, padding: 0, minWidth: 0 }}>
+          <legend className="omnia-etichetta" style={{ padding: 0, marginBottom: 4 }}>
+            <strong>Testo della copertina</strong> (facoltativo)
+          </legend>
+          <p className="omnia-riquadro-nota" style={{ marginTop: 0, marginBottom: 10 }}>
+            Di base titolo e CIG li leggo dal documento. Se preferisci un testo diverso, scrivilo qui sotto: quello che inserisci ha la precedenza su quello letto dal documento (un campo lasciato vuoto resta quello letto). Il documento resta comunque usato per lo sfondo della copertina.
+          </p>
+          <div>
+            <label className="omnia-etichetta" htmlFor="copertina-titolo-principale">
+              Titolo principale
+            </label>
+            <input
+              id="copertina-titolo-principale"
+              name="testoTitoloPrincipale"
+              type="text"
+              className="omnia-input"
+              value={titoloPrincipale}
+              onChange={(e) => setTitoloPrincipale(e.target.value)}
+              maxLength={TITOLO_PRINCIPALE_MASSIMO}
+              placeholder={TITOLO_PRINCIPALE_PREDEFINITO}
+              autoComplete="off"
+              disabled={pending}
+            />
+            <span className="omnia-riquadro-nota" style={{ display: "block", marginTop: 4 }}>
+              Per esempio: RELAZIONE TECNICA - OFFERTA TECNICA. Vuoto: {TITOLO_PRINCIPALE_PREDEFINITO}.
+            </span>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="omnia-etichetta" htmlFor="copertina-sottotitolo">
+              Sottotitolo centrale
+            </label>
+            <input
+              id="copertina-sottotitolo"
+              name="testoSottotitolo"
+              type="text"
+              className="omnia-input"
+              value={sottotitolo}
+              onChange={(e) => setSottotitolo(e.target.value)}
+              maxLength={SOTTOTITOLO_MASSIMO}
+              placeholder="Vuoto: il titolo letto dal documento"
+              autoComplete="off"
+              disabled={pending}
+            />
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="omnia-etichetta" htmlFor="copertina-cig">
+              CIG
+            </label>
+            <input
+              id="copertina-cig"
+              name="testoCig"
+              type="text"
+              className="omnia-input"
+              value={cig}
+              onChange={(e) => setCig(e.target.value)}
+              maxLength={CIG_CAMPO_MASSIMO}
+              placeholder="Vuoto: il CIG letto dal documento"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              disabled={pending}
+            />
+          </div>
+        </fieldset>
 
         {/* Ciò che resta del periodo gratuito, e perché non si può generare (servizio non attivo, periodo finito, a pagamento): lo dice il server, qui si mostra */}
         {righeGratis.length > 0 && (
@@ -216,16 +287,26 @@ export default function CopertinaPanel({
       {state.ok && !pending && (
         <div className="omnia-messaggio-stato successo">
           <p style={{ margin: 0 }}>
-            <strong>Copertina creata{state.stile ? ` (${ETICHETTA_STILE[state.stile].toLowerCase()})` : ""}.</strong> Letto da «{state.documento}»: titolo <strong>{state.titolo}</strong>
-            {state.cig ? (
-              <>
-                , CIG <strong>{state.cig}</strong>
-              </>
-            ) : (
-              ", nessun CIG"
-            )}
-            .
+            <strong>Copertina creata{state.stile ? ` (${ETICHETTA_STILE[state.stile].toLowerCase()})` : ""}.</strong> Lo sfondo è ricavato da «{state.documento}». Testi sulla pagina:
           </p>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 20, lineHeight: 1.55 }}>
+            <li>
+              Titolo principale: <strong>{state.titoloPrincipale ?? TITOLO_PRINCIPALE_PREDEFINITO}</strong>
+              {state.daCliente?.titoloPrincipale ? " (scritto da te)" : ""}
+            </li>
+            <li>
+              Sottotitolo: <strong>{state.titolo}</strong> ({state.daCliente?.sottotitolo ? "scritto da te" : "dal documento"})
+            </li>
+            <li>
+              {state.cig ? (
+                <>
+                  CIG: <strong>{state.cig}</strong> ({state.daCliente?.cig ? "scritto da te" : "dal documento"})
+                </>
+              ) : (
+                "Nessun CIG"
+              )}
+            </li>
+          </ul>
           {state.avvisi && state.avvisi.length > 0 && (
             <ul style={{ margin: "8px 0 0", paddingLeft: 20, lineHeight: 1.55 }}>
               {state.avvisi.map((a) => (

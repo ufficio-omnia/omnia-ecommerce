@@ -14,7 +14,7 @@ import { richiediAccountAzione, richiediTitolareAzione } from "@/lib/omnia-ai-ac
 import { VERSIONE_CONDIZIONI_COPERTINA, testoCanonicoCondizioniCopertina } from "@/lib/copertina-acquisto-calcoli";
 import { accessoNegatoPerAccount } from "@/lib/omnia-ai-account-lavoro";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { nomeFileScaricato, normalizzaStile, percorsoCopertinaValido, stileDaNomeFile, type Stile } from "@/lib/copertina-relazione-calcoli";
+import { leggiTestiCliente, nomeFileScaricato, normalizzaStile, percorsoCopertinaValido, stileDaNomeFile, type Stile } from "@/lib/copertina-relazione-calcoli";
 import { generaCopertina, leggiPercorsoLogoCliente, linkCopertina } from "@/lib/copertina-relazione";
 import { annullaCopertina, completaCopertina, decidi, leggiContestoCopertina, riservaCopertina } from "@/lib/copertina-diritto";
 
@@ -26,7 +26,18 @@ import { annullaCopertina, completaCopertina, decidi, leggiContestoCopertina, ri
 // generazioni per stile e per gara. I controlli sono QUI, non nei pulsanti.
 
 // Dopo una generazione riuscita si rimanda alla pagina cosa è finito sulla copertina (stile, titolo, CIG, documento letto) e gli avvisi da mostrare.
-export type CopertinaState = { error?: string; ok?: boolean; stile?: Stile; titolo?: string; cig?: string | null; documento?: string; avvisi?: string[] };
+export type CopertinaState = {
+  error?: string;
+  ok?: boolean;
+  stile?: Stile;
+  // i testi finiti sulla copertina e quali li ha scritti il cliente (gli altri sono letti dal documento)
+  titoloPrincipale?: string;
+  titolo?: string;
+  cig?: string | null;
+  daCliente?: { titoloPrincipale: boolean; sottotitolo: boolean; cig: boolean };
+  documento?: string;
+  avvisi?: string[];
+};
 
 export async function generaCopertinaGara(_prevState: CopertinaState, formData: FormData): Promise<CopertinaState> {
   const supabase = await createClient();
@@ -44,6 +55,11 @@ export async function generaCopertinaGara(_prevState: CopertinaState, formData: 
   // Lo stile è quello del pulsante premuto (il valore arriva dal browser): solo i due stili previsti, nessun valore di ripiego
   const stile = normalizzaStile(formData.get("stile"));
   if (!stile) return { error: "Scegli lo stile della copertina: stilizzato o realistico." };
+
+  // I testi che il cliente può scrivere al posto di quelli letti dal documento (facoltativi, uno per uno): si controllano PRIMA di tutto il resto, così un CIG
+  // sbagliato o un testo troppo lungo non consuma né una generazione né una gara gratis. Prevalgono sull'estrazione; il documento si legge comunque per lo sfondo.
+  const testi = leggiTestiCliente({ titoloPrincipale: formData.get("testoTitoloPrincipale"), sottotitolo: formData.get("testoSottotitolo"), cig: formData.get("testoCig") });
+  if (!testi.ok) return { error: testi.errore };
 
   // La RLS ("gare_all_own") garantisce che la gara sia dell'azienda dell'utente
   const { data: gara, error: erroreGara } = await supabase
@@ -100,6 +116,7 @@ export async function generaCopertinaGara(_prevState: CopertinaState, formData: 
       documento: { file_path: documento.file_path, nome_file: documento.nome_file },
       logoStazionePath: gara.logo_cliente_path,
       logoClientePath: await leggiPercorsoLogoCliente(admin, contesto.accountId),
+      testiCliente: testi.testi,
       admin,
     });
   } catch (err) {
@@ -116,7 +133,7 @@ export async function generaCopertinaGara(_prevState: CopertinaState, formData: 
 
   revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
   if (!esito.ok) return { error: esito.errore };
-  return { ok: true, stile: esito.stile, titolo: esito.titolo, cig: esito.cig, documento: esito.documento, avvisi: esito.avvisi };
+  return { ok: true, stile: esito.stile, titoloPrincipale: esito.titoloPrincipale, titolo: esito.titolo, cig: esito.cig, daCliente: esito.daCliente, documento: esito.documento, avvisi: esito.avvisi };
 }
 
 // `prezzoAggiornatoCentesimi`: il prezzo che il cliente aveva davanti non vale più (la console l'ha cambiato mentre decideva): la pagina mostra quello nuovo.
