@@ -73,7 +73,7 @@ async function main() {
     const fonti = [...elenco.matchAll(/"([a-z_]+)"/g)].map((m) => m[1] as FonteRicavo);
     const senzaRamo = fonti.filter((f) => f !== "ordine" && f !== "abbonamento" && !new RegExp(`v\\.fonte === "${f}"`).test(calcoli));
     uguale("ogni fonte di ricavo ha il suo ramo (una fonte senza ramo finirebbe tra gli abbonamenti)", senzaRamo, []);
-    atteso("le fonti sono quelle previste, pacchetto compreso", fonti.includes("pacchetto") && fonti.length === 6, fonti.join(","));
+    atteso("le fonti sono quelle previste, pacchetto e copertina compresi", fonti.includes("pacchetto") && fonti.includes("copertina") && fonti.length === 7, fonti.join(","));
   }
 
   console.log("--- Ricavi: lettura ---");
@@ -107,13 +107,13 @@ async function main() {
     atteso("il contatore «da fatturare» (barra e panoramica) somma i pacchetti: solo pagati, da fatturare, non di prova", /omnia_ai_pacchetti_acquisti"\)\.select\("importo_pagato_centesimi, prezzo_centesimi"\)\.eq\("stato", "pagata"\)\.eq\("stato_fattura", "da_fatturare"\)\.eq\("livemode", true\)/.test(lettura) && /pacchettiReali\.length/.test(lettura) && /pacchettiReali\.reduce/.test(lettura));
     atteso("il contatore: senza la tabella dei pacchetti conta il resto, ogni altro errore lo rende inattendibile (null)", /tabellaPacchettiAssente/.test(lettura) && /if \(pacchettiQ\.error && !tabellaPacchettiAssente\) return null;/.test(lettura));
     const calcoli = leggi("src/lib/console/fatturazione-calcoli.ts");
-    atteso("la riga può essere di fonte «pacchetto»", /export type FonteRiga = "incasso" \| "crediti" \| "revisione" \| "piano_lavoro" \| "pacchetto";/.test(calcoli));
+    atteso("la riga può essere di fonte «pacchetto»", /export type FonteRiga = "incasso" \| "crediti" \| "revisione" \| "piano_lavoro" \| "pacchetto" \| "copertina";/.test(calcoli));
     const azioni = leggi("src/app/site-console/azioni/fatturazione.ts");
     const regex = (azioni.match(/const CHIAVE = (\/[^\n]+\/i);/) ?? [])[1];
     const CHIAVE = regex ? (new Function(`return ${regex}`)() as RegExp) : /^$/;
     atteso("l'azione sullo stato di fattura accetta «pacchetto:<uuid>»", CHIAVE.test(`pacchetto:${ID}`));
     atteso("e continua a rifiutare il resto (una fonte inventata, un id che non è un uuid, un nome al plurale)", !CHIAVE.test(`pacchetti:${ID}`) && !CHIAVE.test("pacchetto:1") && !CHIAVE.test(`ordine:${ID}`) && CHIAVE.test(`piano_lavoro:${ID}`) && CHIAVE.test(`revisione:${ID}`));
-    atteso("l'aggiornamento raggruppa anche i pacchetti e li fattura solo dopo il pagamento", /\{ incasso: \[\], crediti: \[\], revisione: \[\], piano_lavoro: \[\], pacchetto: \[\] \}/.test(azioni) && /tipo === "revisione" \|\| tipo === "piano_lavoro" \|\| tipo === "pacchetto" \? richiesta\.eq\("stato", "pagata"\)/.test(azioni));
+    atteso("l'aggiornamento raggruppa anche i pacchetti e li fattura solo dopo il pagamento", /\{ incasso: \[\], crediti: \[\], revisione: \[\], piano_lavoro: \[\], pacchetto: \[\], copertina: \[\] \}/.test(azioni) && /tipo === "revisione" \|\| tipo === "piano_lavoro" \|\| tipo === "pacchetto" \|\| tipo === "copertina" \? richiesta\.eq\("stato", "pagata"\)/.test(azioni));
     atteso("la pagina dice che i pacchetti compaiono nell'elenco", /ogni pacchetto di servizi pagato/.test(leggi("src/app/site-console/_componenti/fatturazione-vista.tsx")));
     atteso("il PDF si carica e si scarica dalla console e dal cliente con le stesse regole (le route usano la tabella per fonte)", /TABELLA_PER_FONTE\[origine\]/.test(leggi("src/app/site-console/(app)/fatturazione/fattura/[fonte]/[id]/route.ts")) && /CHIAVE_PAGAMENTO\.test\(fonte\)/.test(leggi("src/app/site-console/(app)/fatturazione/fattura/[fonte]/[id]/route.ts")));
   }

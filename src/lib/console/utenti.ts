@@ -166,6 +166,8 @@ export type IncassoScheda = { id: string; data: string; tipo: string; lordo: num
 export type AcquistoCreditiScheda = { id: string; data: string; pacchetto: string; crediti: number; lordo: number; prova: boolean; statoFattura: string | null };
 export type RevisioneScheda = { id: string; data: string; garaTitolo: string; pagine: number; lordo: number; maggiorazione: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type PianoLavoroScheda = { id: string; data: string; garaTitolo: string; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
+// Acquisti della copertina della relazione tecnica pagati dal cliente (migrazione 0107)
+export type CopertinaAcquistataScheda = PianoLavoroScheda;
 // Pacchetti di servizi aggiuntivi del cliente (migrazione 0104): acquisti pagati, unità residue per servizio, ultimi movimenti.
 export type AcquistoPacchettoScheda = { id: string; data: string; servizio: string; quantita: number; lordo: number; prova: boolean; statoFattura: string | null; numeroFattura: string | null };
 export type MovimentoPacchettoScheda = { id: string; data: string; servizio: string; tipo: string; delta: number; saldoDopo: number; garaTitolo: string | null; motivo: string | null; eseguitoDa: string | null };
@@ -206,6 +208,8 @@ export type SchedaCliente =
       revisioni: RevisioneScheda[];
       // piani di lavoro acquistati e pagati (migrazione 0097)
       pianiLavoro: PianoLavoroScheda[];
+      // copertine della relazione tecnica acquistate e pagate (migrazione 0107)
+      copertineAcquistate: CopertinaAcquistataScheda[];
       // pacchetti prepagati di servizi aggiuntivi (migrazione 0104)
       pacchetti: PacchettiScheda;
       incassi: IncassoScheda[];
@@ -308,6 +312,14 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
   // Piani di lavoro acquistati e pagati dal cliente: senza la tabella (migrazione 0097) non ce ne sono.
   const pianiLavoroQ: Risposta = await admin
     .from("omnia_ai_piani_lavoro_acquisti")
+    .select("id, gara_titolo, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura")
+    .eq("user_id", id)
+    .eq("stato", "pagata")
+    .order("pagata_il", { ascending: false });
+
+  // Copertine della relazione tecnica acquistate e pagate dal cliente: senza la tabella (migrazione 0107) non ce ne sono.
+  const copertineQ: Risposta = await admin
+    .from("omnia_ai_copertine_acquisti")
     .select("id, gara_titolo, prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode, stato_fattura, numero_fattura")
     .eq("user_id", id)
     .eq("stato", "pagata")
@@ -453,6 +465,17 @@ export async function leggiScheda(id: string): Promise<SchedaCliente> {
           prova: !p.livemode,
           statoFattura: p.stato_fattura ?? null,
           numeroFattura: p.numero_fattura ?? null,
+        })),
+    copertineAcquistate: copertineQ.error
+      ? []
+      : ((copertineQ.data ?? []) as { id: string; gara_titolo: string; prezzo_centesimi: number; importo_pagato_centesimi: number | null; pagata_il: string; livemode: boolean; stato_fattura?: string | null; numero_fattura?: string | null }[]).map((c) => ({
+          id: c.id,
+          data: c.pagata_il,
+          garaTitolo: c.gara_titolo,
+          lordo: num(c.importo_pagato_centesimi ?? c.prezzo_centesimi) / 100,
+          prova: !c.livemode,
+          statoFattura: c.stato_fattura ?? null,
+          numeroFattura: c.numero_fattura ?? null,
         })),
     pacchetti: {
       disponibile: pacchettiDisponibili,

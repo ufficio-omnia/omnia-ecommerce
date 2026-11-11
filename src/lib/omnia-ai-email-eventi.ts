@@ -28,7 +28,9 @@ export type TipoEmailEvento =
   | "piano_lavoro_acquistato"
   | "piano_lavoro_ricevuto"
   | "pacchetto_acquistato"
-  | "pacchetto_ricevuto";
+  | "pacchetto_ricevuto"
+  | "copertina_acquistata"
+  | "copertina_ricevuta";
 
 export type EsitoInvioEvento = "inviata" | "duplicata" | "fallita";
 

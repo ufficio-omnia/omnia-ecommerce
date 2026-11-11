@@ -53,6 +53,7 @@ async function main() {
     "omnia-ai-account-settings.ts": ["updateAccountEmail", "updateAccountPassword"],
     "omnia-ai-revisione.ts": ["avviaRevisioneUmana"],
     "gara-piano-lavoro.ts": ["acquistaPianoLavoro"],
+    "gara-copertina.ts": ["acquistaCopertina"],
     "pacchetti-servizi.ts": ["acquistaPacchettoServizio"],
     "omnia-ai-ufficio-gare.ts": ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"],
   };
@@ -61,6 +62,7 @@ async function main() {
     "gara-extraction.ts": ["extractGaraData", "impostaScadenzaGara", "impostaOraScadenzaGara"],
     "gara-chat.ts": ["sendGaraMessage"],
     "gara-piano-lavoro.ts": ["generaPianoLavoroGara", "scaricaPianoLavoroGara"],
+    "gara-copertina.ts": ["generaCopertinaGara", "scaricaCopertinaGara"],
     "download.ts": ["downloadGaraDocumento", "downloadGaraMessaggioFile", "downloadAllegatoMessaggio"],
     "assistenza-chat.ts": ["sendAssistenzaMessage", "richiediEscalationAssistenza"],
     "omnia-ai-stato-sistema.ts": ["getStatoElaborazioneGare"],

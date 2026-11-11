@@ -27,6 +27,13 @@ export const TARIFFE: Record<string, Tariffa> = {
   // correttamente il costo di quelle prove in ai_operazioni.
   "claude-haiku-4-5-20251001": { inputPerMilione: 1, outputPerMilione: 5 },
   "voyage-4": { inputPerMilione: 0.12, outputPerMilione: 0 },
+  // Modello immagini OpenAI della copertina della relazione (src/lib/copertina-relazione.ts), al 2026-11-10. Tariffa NON verificata sul listino
+  // ufficiale: fonti secondarie indicano 8 $/M per i token d'immagine in ingresso e 30 $/M per quelli in uscita (il testo del comando costa un po'
+  // meno, qui si usa la tariffa più alta: la stima può solo eccedere). I token registrati restano la fonte di verità.
+  "gpt-image-2": { inputPerMilione: 8, outputPerMilione: 30 },
+  // Modello di LETTURA del disciplinare per la copertina (src/lib/copertina-lettura.ts), al 2026-11-10: 0,75 $/M in ingresso e 4,50 $/M in uscita secondo
+  // la pagina del modello su developers.openai.com (da ricontrollare sul listino). I token di ragionamento sono già inclusi in quelli di uscita.
+  "gpt-5.4-mini": { inputPerMilione: 0.75, outputPerMilione: 4.5 },
 };
 
 // Moltiplicatori sulla tariffa di input per il prompt caching (verificati

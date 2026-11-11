@@ -656,8 +656,8 @@ async function main() {
 
   console.log("--- Migrazione, controllo periodico e sicurezza ---");
   const migrazione = leggi("supabase/migrations/0087_omnia_ai_email_eventi.sql");
-  // l'elenco dei tipi ammessi è quello dell'ULTIMA migrazione che lo ridefinisce (0090 ha aggiunto la revisione umana, 0097 il piano di lavoro, 0104 i pacchetti)
-  const migrazioneTipi = leggi("supabase/migrations/0104_pacchetti_servizi.sql");
+  // l'elenco dei tipi ammessi è quello dell'ULTIMA migrazione che lo ridefinisce (0090 ha aggiunto la revisione umana, 0097 il piano di lavoro, 0104 i pacchetti, 0107 la copertina)
+  const migrazioneTipi = leggi("supabase/migrations/0107_copertine_acquisti.sql");
   const tipiMigrazione = ((migrazioneTipi.match(/omnia_ai_email_eventi_tipo_check check \(\s*tipo in \(([^)]*)\)/) ?? [])[1] ?? "").match(/'([a-z_]+)'/g)?.map((t) => t.replace(/'/g, "")).sort() ?? [];
   const tipiCodice = ((libInvio.match(/export type TipoEmailEvento =([^;]*);/) ?? [])[1] ?? "").match(/"([a-z_]+)"/g)?.map((t) => t.replace(/"/g, "")).sort() ?? [];
   uguale("i tipi di email della migrazione sono gli stessi del codice", tipiMigrazione, tipiCodice);

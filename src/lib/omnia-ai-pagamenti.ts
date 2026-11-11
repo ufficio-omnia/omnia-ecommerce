@@ -67,6 +67,16 @@ export type PacchettoCliente = CampiFattura & {
   livemode: boolean;
 };
 
+// Un acquisto della copertina della relazione tecnica pagato (tabella omnia_ai_copertine_acquisti, migrazione 0107).
+export type CopertinaClientePagamento = CampiFattura & {
+  id: string;
+  gara_titolo: string;
+  prezzo_centesimi: number;
+  importo_pagato_centesimi: number | null;
+  pagata_il: string | null;
+  livemode: boolean;
+};
+
 export type AbbonamentoCliente = { stripe_subscription_id: string | null; plan: string };
 
 // Cosa vede il cliente della fattura di un pagamento. La differenza tra «disponibile» e
@@ -90,9 +100,9 @@ export function statoFatturaCliente(r: CampiFattura): StatoFatturaCliente {
 }
 
 export type PagamentoCliente = {
-  // «incasso:<uuid>», «crediti:<uuid>», «revisione:<uuid>», «piano_lavoro:<uuid>» o «pacchetto:<uuid>»
+  // «incasso:<uuid>», «crediti:<uuid>», «revisione:<uuid>», «piano_lavoro:<uuid>», «pacchetto:<uuid>» o «copertina:<uuid>»
   chiave: string;
-  fonte: "incasso" | "crediti" | "revisione" | "piano_lavoro" | "pacchetto";
+  fonte: "incasso" | "crediti" | "revisione" | "piano_lavoro" | "pacchetto" | "copertina";
   id: string;
   data: string;
   descrizione: string;
@@ -126,6 +136,10 @@ export function descrizionePianoLavoro(garaTitolo: string): string {
   return `Piano di lavoro della gara — ${garaTitolo}`;
 }
 
+export function descrizioneCopertina(garaTitolo: string): string {
+  return `Copertina della relazione tecnica — ${garaTitolo}`;
+}
+
 export function descrizionePacchetto(servizio: string, quantita: number): string {
   const nome = servizio === "piano_lavoro" ? "piano di lavoro" : servizio === "food_menu" ? "OMNIA FOOD MENU" : "servizio";
   const plurale = servizio === "piano_lavoro" ? "piani di lavoro" : nome;
@@ -140,6 +154,7 @@ export function costruisciPagamenti(
   revisioni: RevisioneCliente[] = [],
   pianiLavoro: PianoLavoroCliente[] = [],
   pacchetti: PacchettoCliente[] = [],
+  copertine: CopertinaClientePagamento[] = [],
 ): PagamentoCliente[] {
   const pianoPerAbbonamento = new Map(abbonamenti.filter((a) => a.stripe_subscription_id).map((a) => [a.stripe_subscription_id as string, a.plan]));
 
@@ -219,20 +234,36 @@ export function costruisciPagamenti(
       fattura: statoFatturaCliente(p),
     }));
 
-  return [...dagliIncassi, ...daiCrediti, ...dalleRevisioni, ...daiPianiLavoro, ...daiPacchetti].sort((a, b) => b.data.localeCompare(a.data));
+  // come i pacchetti: solo gli acquisti PAGATI sono un pagamento
+  const dalleCopertine = copertine
+    .filter((c) => c.pagata_il)
+    .map<PagamentoCliente>((c) => ({
+      chiave: `copertina:${c.id}`,
+      fonte: "copertina",
+      id: c.id,
+      data: c.pagata_il as string,
+      descrizione: descrizioneCopertina(c.gara_titolo),
+      importoCentesimi: Number(c.importo_pagato_centesimi ?? c.prezzo_centesimi),
+      prova: !c.livemode,
+      numeroRicevuta: null,
+      ricevutaUrl: null,
+      fattura: statoFatturaCliente(c),
+    }));
+
+  return [...dagliIncassi, ...daiCrediti, ...dalleRevisioni, ...daiPianiLavoro, ...daiPacchetti, ...dalleCopertine].sort((a, b) => b.data.localeCompare(a.data));
 }
 
 // ───── Collegamento di download ─────
 
-export const CHIAVE_PAGAMENTO = /^(incasso|crediti|revisione|piano_lavoro|pacchetto)$/;
+export const CHIAVE_PAGAMENTO = /^(incasso|crediti|revisione|piano_lavoro|pacchetto|copertina)$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const TABELLA_PER_FONTE = { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni", piano_lavoro: "omnia_ai_piani_lavoro_acquisti", pacchetto: "omnia_ai_pacchetti_acquisti" } as const;
+export const TABELLA_PER_FONTE = { incasso: "omnia_ai_incassi", crediti: "omnia_ai_credit_purchases", revisione: "omnia_ai_revisioni", piano_lavoro: "omnia_ai_piani_lavoro_acquisti", pacchetto: "omnia_ai_pacchetti_acquisti", copertina: "omnia_ai_copertine_acquisti" } as const;
 
 // La colonna con la data del pagamento, per ogni fonte.
-export const COLONNA_DATA_PER_FONTE = { incasso: "pagato_il", crediti: "created_at", revisione: "pagata_il", piano_lavoro: "pagata_il", pacchetto: "pagata_il" } as const;
+export const COLONNA_DATA_PER_FONTE = { incasso: "pagato_il", crediti: "created_at", revisione: "pagata_il", piano_lavoro: "pagata_il", pacchetto: "pagata_il", copertina: "pagata_il" } as const;
 
-const CARTELLA_FATTURE = { incasso: "incassi", crediti: "crediti", revisione: "revisioni", piano_lavoro: "piani-lavoro", pacchetto: "pacchetti" } as const;
+const CARTELLA_FATTURE = { incasso: "incassi", crediti: "crediti", revisione: "revisioni", piano_lavoro: "piani-lavoro", pacchetto: "pacchetti", copertina: "copertine" } as const;
 
 // Dove sta il file di una fattura nel bucket privato «invoices»: un file solo per pagamento,
 // quindi ricaricarlo lo sostituisce.

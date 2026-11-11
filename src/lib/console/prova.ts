@@ -16,12 +16,13 @@ export type RiepilogoProva = {
 
 export const leggiRiepilogoProva = cache(async (): Promise<RiepilogoProva> => {
   const admin = createAdminClient();
-  const [incassi, crediti, revisioni, pianiLavoro, pacchetti] = await Promise.all([
+  const [incassi, crediti, revisioni, pianiLavoro, pacchetti, copertine] = await Promise.all([
     admin.from("omnia_ai_incassi").select("pagato_il").eq("livemode", false).limit(5000),
     admin.from("omnia_ai_credit_purchases").select("created_at").like("stripe_session_id", "cs_test_%").limit(5000),
     admin.from("omnia_ai_revisioni").select("pagata_il").eq("stato", "pagata").eq("livemode", false).limit(5000),
     admin.from("omnia_ai_piani_lavoro_acquisti").select("pagata_il").eq("stato", "pagata").eq("livemode", false).limit(5000),
     admin.from("omnia_ai_pacchetti_acquisti").select("pagata_il").eq("stato", "pagata").eq("livemode", false).limit(5000),
+    admin.from("omnia_ai_copertine_acquisti").select("pagata_il").eq("stato", "pagata").eq("livemode", false).limit(5000),
   ]);
 
   // una tabella o una colonna che manca (migrazioni non eseguite) = nessun dato di prova noto
@@ -31,6 +32,7 @@ export const leggiRiepilogoProva = cache(async (): Promise<RiepilogoProva> => {
     ...(revisioni.error ? [] : ((revisioni.data ?? []) as { pagata_il: string }[]).map((r) => r.pagata_il)),
     ...(pianiLavoro.error ? [] : ((pianiLavoro.data ?? []) as { pagata_il: string }[]).map((r) => r.pagata_il)),
     ...(pacchetti.error ? [] : ((pacchetti.data ?? []) as { pagata_il: string }[]).map((r) => r.pagata_il)),
+    ...(copertine.error ? [] : ((copertine.data ?? []) as { pagata_il: string }[]).map((r) => r.pagata_il)),
   ]
     .map((iso) => dataRoma(new Date(iso)))
     .sort();
