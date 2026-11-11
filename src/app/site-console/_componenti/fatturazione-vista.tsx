@@ -359,7 +359,7 @@ export default function FatturazioneVista({
           <summary>Come funziona</summary>
           <ul className="cn-elenco">
             <li>
-              <strong>Cosa compare:</strong> ogni pagamento di abbonamento incassato (primo pagamento, rinnovo, conguaglio per cambio piano), ogni acquisto di crediti, ogni revisione umana pagata, ogni piano di lavoro acquistato e ogni pacchetto di servizi pagato. I pagamenti di prova nascono già «non dovuti».
+              <strong>Cosa compare:</strong> ogni pagamento di abbonamento incassato (primo pagamento, rinnovo, conguaglio per cambio piano), ogni acquisto di crediti, ogni revisione umana pagata, ogni piano di lavoro acquistato, ogni pacchetto di servizi pagato e ogni copertina della relazione tecnica acquistata. I pagamenti di prova nascono già «non dovuti».
             </li>
             <li>
               <strong>Dati del cliente:</strong> dal profilo azienda che ha compilato; i campi che mancano si completano con quelli raccolti da Stripe al pagamento. «Mancano» segnala ciò che serve e non c&apos;è: ragione sociale, partita IVA o codice fiscale, indirizzo, codice SDI o PEC (per un privato basta il codice fiscale).

@@ -4,6 +4,7 @@ import { richiediAdminPagina } from "@/lib/console/accesso";
 import { riassuntoAccessiCliente } from "@/lib/console/accessi-dati";
 import { leggiProvaCliente } from "@/lib/console/gare-gratuite";
 import { leggiPilotCliente } from "@/lib/console/pilot";
+import { leggiCopertinaCliente } from "@/lib/console/copertina";
 import { leggiPresenzaUtente } from "@/lib/console/presenza";
 import { leggiScheda } from "@/lib/console/utenti";
 import SchedaClienteVista from "../../../_componenti/scheda-cliente-vista";
@@ -30,9 +31,10 @@ export default async function PaginaSchedaCliente({
   const accessi = scheda.stato === "ok" ? await riassuntoAccessiCliente({ id, email: scheda.utente.email }) : null;
   const prova = await leggiProvaCliente(id);
   const pilot = await leggiPilotCliente(id);
+  const copertina = await leggiCopertinaCliente(id);
   // Presenza nell'area riservata (migrazione 0094): dell'utente e, se questo cliente ha un Ufficio Gare, anche della sua.
   const presenza = await leggiPresenzaUtente(id);
   const presenzaUfficioGare = scheda.stato === "ok" && scheda.legameUfficioGare?.ruolo === "titolare" ? await leggiPresenzaUtente(scheda.legameUfficioGare.ufficioGare.id) : null;
 
-  return <SchedaClienteVista scheda={scheda} idSessione={sessione.userId} esito={esito} accessi={accessi} prova={prova} pilot={pilot} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} />;
+  return <SchedaClienteVista scheda={scheda} idSessione={sessione.userId} esito={esito} accessi={accessi} prova={prova} pilot={pilot} copertina={copertina} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} />;
 }

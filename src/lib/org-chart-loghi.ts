@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { LoghiOrganigramma } from "@/lib/org-chart";
 
-async function caricaLogo(
+// Esportata anche per la copertina della relazione (src/lib/copertina-relazione.ts), che legge gli stessi due loghi.
+export async function caricaLogo(
   bucket: string,
   path: string | null,
 ): Promise<{ base64: string; width: number; height: number } | undefined> {

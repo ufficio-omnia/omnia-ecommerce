@@ -13,7 +13,7 @@ import { eServizioPacchetto, testoUnita } from "@/lib/pacchetti-servizi-calcoli"
 export type StatoFattura = "da_fatturare" | "fatturata" | "non_dovuta";
 export const STATI_FATTURA: StatoFattura[] = ["da_fatturare", "fatturata", "non_dovuta"];
 
-export type FonteRiga = "incasso" | "crediti" | "revisione" | "piano_lavoro" | "pacchetto";
+export type FonteRiga = "incasso" | "crediti" | "revisione" | "piano_lavoro" | "pacchetto" | "copertina";
 
 // Giorni dall'incasso oltre i quali la riga è segnalata. È il termine ORDINARIO
 // indicativo per l'emissione della fattura immediata, non un consiglio fiscale:
@@ -155,7 +155,7 @@ export function risolviDatiFatturazione(profilo: ProfiloFatturazione | null, sna
 // ───── Riga dell'elenco ─────
 
 export type RigaFatturazione = {
-  // "incasso:<uuid>", "crediti:<uuid>", "revisione:<uuid>", "piano_lavoro:<uuid>" o "pacchetto:<uuid>": identifica la riga nella tabella giusta
+  // "incasso:<uuid>", "crediti:<uuid>", "revisione:<uuid>", "piano_lavoro:<uuid>", "pacchetto:<uuid>" o "copertina:<uuid>": identifica la riga nella tabella giusta
   chiave: string;
   fonte: FonteRiga;
   // istante dell'incasso
@@ -218,6 +218,10 @@ export function descrizioneRevisioneRiga(garaTitolo: string, pagine: number, mag
 
 export function descrizionePianoLavoroRiga(garaTitolo: string): string {
   return `Piano di lavoro della gara — ${garaTitolo}`;
+}
+
+export function descrizioneCopertinaRiga(garaTitolo: string): string {
+  return `Copertina della relazione tecnica — ${garaTitolo}`;
 }
 
 // «Pacchetto di servizi aggiuntivi: 5 piani di lavoro» (un servizio sconosciuto non fa cadere la riga: si scrive com'è)

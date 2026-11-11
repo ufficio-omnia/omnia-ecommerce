@@ -10,6 +10,10 @@ import { creaOffertaDedicataCliente, rettificaPacchettiCliente, revocaOffertaDed
 import { ETICHETTA_STATO_OFFERTA, revocabile } from "@/lib/console/offerte-calcoli";
 import { ETICHETTA_MOVIMENTO, LIMITI_OFFERTA, SERVIZI, SERVIZI_PACCHETTO, formattaEuro as formattaEuroPacchetto, testoUnita, type MovimentoTipo } from "@/lib/pacchetti-servizi-calcoli";
 import type { PilotCliente } from "@/lib/console/pilot";
+import type { CopertinaCliente } from "@/lib/console/copertina";
+import { salvaImpostazioniCopertina } from "../azioni/copertina";
+import { LIMITE_GARE_GRATIS, LIMITE_NOTA, descriviImpostazioniCopertina } from "@/lib/copertina-diritto-calcoli";
+import { NOTA_CONSOLE_CONDIZIONI_COPERTINA } from "@/lib/copertina-acquisto-calcoli";
 import { GARE_PILOT_MAX, statoOffertaPilot, testoGareIncluse, testoOffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 import { statoPasswordCliente } from "@/lib/console/utenti-console-calcoli";
 import { MESSAGGIO_E_UN_UFFICIO_GARE } from "@/lib/console/ufficio-gare";
@@ -120,6 +124,7 @@ export default function SchedaClienteVista({
   accessi,
   prova,
   pilot,
+  copertina,
   presenza,
   presenzaUfficioGare,
 }: {
@@ -132,6 +137,8 @@ export default function SchedaClienteVista({
   prova: ProvaCliente;
   // offerte pilot del cliente (migrazione 0086)
   pilot: PilotCliente;
+  // copertina della relazione tecnica: impostazioni del cliente e generazioni (migrazione 0106)
+  copertina: CopertinaCliente;
   // presenza nell'area riservata (migrazione 0094): dell'utente, e dell'Ufficio Gare se questo cliente ne ha uno
   presenza: PresenzaUtente;
   presenzaUfficioGare: PresenzaUtente | null;
@@ -166,10 +173,10 @@ export default function SchedaClienteVista({
     );
   }
 
-  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} />;
+  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} copertina={copertina} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, presenza, presenzaUfficioGare }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente | null }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, copertina, presenza, presenzaUfficioGare }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; copertina: CopertinaCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente | null }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -672,6 +679,43 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
           )}
         </Pannello>
 
+        <Pannello titolo={`Copertine della relazione acquistate (${s.copertineAcquistate.length})`}>
+          {s.copertineAcquistate.length === 0 ? (
+            <p className="cn-vuoto">Nessuna copertina della relazione acquistata.</p>
+          ) : (
+            <div className="cn-scorri">
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Gara</th>
+                    <th className="num">Importo lordo</th>
+                    <th>Fattura</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.copertineAcquistate.map((c) => (
+                    <tr key={c.id}>
+                      <td className="mono">{formattaData(c.data)}</td>
+                      <td>
+                        {c.garaTitolo}
+                        {c.prova && (
+                          <>
+                            {" "}
+                            <Badge tono="avviso">prova</Badge>
+                          </>
+                        )}
+                      </td>
+                      <td className="num">{formattaEuro(c.lordo)}</td>
+                      <td>{c.statoFattura === "fatturata" ? `fatturata${c.numeroFattura ? ` ${c.numeroFattura}` : ""}` : c.statoFattura === "non_dovuta" ? "non dovuta" : "da fatturare"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Pannello>
+
         <Pannello titolo={`Acquisti di crediti (${s.acquistiCrediti.length})`}>
           {s.acquistiCrediti.length === 0 ? (
             <p className="cn-vuoto">Nessun acquisto di crediti.</p>
@@ -992,6 +1036,99 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
           </div>
         </Pannello>
       </div>
+
+      {/* ───── Copertina della relazione tecnica: acceso/spento, gratis o a pagamento, per cliente ───── */}
+      {s.utente.ruolo !== "admin" && (
+        <div className="cn-sezione">
+          <Pannello titolo="Copertina della relazione tecnica">
+            <div className="cn-pannello-corpo">
+              {eMembro ? (
+                <p className="cn-nota-inline">{MESSAGGIO_E_UN_UFFICIO_GARE}</p>
+              ) : !copertina.disponibile ? (
+                <p className="cn-nota-inline">Il servizio non è disponibile (migrazione 0106 non ancora eseguita).</p>
+              ) : (
+                (() => {
+                  const imp = copertina.impostazioni;
+                  const prezzoIniziale = imp?.prezzoCentesimi != null ? (imp.prezzoCentesimi / 100).toFixed(2).replace(".", ",").replace(/,00$/, "") : "";
+                  return (
+                    <>
+                      <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                        Il cliente genera una copertina grafica A4 per la relazione tecnica (stile stilizzato o realistico, fino a 3 generazioni per stile e per gara). Di base il servizio è <strong>spento</strong>: lo accendi tu, cliente per cliente.
+                      </p>
+                      <p className="cn-nota-inline">
+                        {imp?.attivo ? <Badge tono="ok">acceso</Badge> : <Badge tono="neutro">spento</Badge>} {descriviImpostazioniCopertina(imp)}
+                        {imp?.nota ? ` Nota: ${imp.nota}` : ""}
+                      </p>
+                      <p className="cn-nota-inline">
+                        Gare gratis usate: <strong>{copertina.gareGratisUsate}</strong>
+                        {imp?.attivo && imp.modalita === "gratis" && imp.gareMassime !== null ? ` su ${imp.gareMassime}` : ""} · Copertine generate: <strong>{copertina.generazioni.stilizzato}</strong> stilizzate, <strong>{copertina.generazioni.realistico}</strong> realistiche
+                        {copertina.aggiornataIl ? ` · Impostazioni aggiornate il ${formattaDataOra(copertina.aggiornataIl)}${copertina.aggiornataDa ? ` da ${copertina.aggiornataDa}` : ""}` : ""}.
+                      </p>
+
+                      <ModuloAzione
+                        key={copertina.aggiornataIl ?? "nuove"}
+                        azione={salvaImpostazioniCopertina}
+                        campi={{ userId: s.utente.id }}
+                        etichetta="Salva le impostazioni"
+                        etichettaInCorso="Salvo…"
+                        messaggioOk="Impostazioni salvate."
+                        variante="primario"
+                        classe="cn-modulo-linea"
+                      >
+                        <div>
+                          <label className="cn-etichetta" htmlFor="copertina-stato">
+                            Servizio
+                          </label>
+                          <select className="cn-input" id="copertina-stato" name="stato" defaultValue={imp?.attivo ? "acceso" : "spento"}>
+                            <option value="spento">Spento</option>
+                            <option value="acceso">Acceso</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="cn-etichetta" htmlFor="copertina-modalita">
+                            Modalità
+                          </label>
+                          <select className="cn-input" id="copertina-modalita" name="modalita" defaultValue={imp?.modalita ?? "gratis"}>
+                            <option value="gratis">Gratis</option>
+                            <option value="pagamento">A pagamento</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="cn-etichetta" htmlFor="copertina-prezzo">
+                            Prezzo per gara (€, IVA inclusa) — solo «a pagamento»
+                          </label>
+                          <input className="cn-input" id="copertina-prezzo" name="prezzo" inputMode="decimal" placeholder="es. 49" autoComplete="off" defaultValue={prezzoIniziale} style={{ maxWidth: 130 }} />
+                        </div>
+                        <div>
+                          <label className="cn-etichetta" htmlFor="copertina-gare">
+                            Gare gratis in tutto (vuoto = senza limite) — solo «gratis»
+                          </label>
+                          <input className="cn-input" id="copertina-gare" name="gareMassime" type="number" min={1} max={LIMITE_GARE_GRATIS} step={1} placeholder="es. 3" defaultValue={imp?.gareMassime ?? ""} style={{ maxWidth: 110 }} />
+                        </div>
+                        <div>
+                          <label className="cn-etichetta" htmlFor="copertina-scadenza">
+                            Gratis fino al (vuoto = senza scadenza) — solo «gratis»
+                          </label>
+                          <input className="cn-input" id="copertina-scadenza" name="scadeIl" type="date" defaultValue={imp?.scadeIl ?? ""} style={{ maxWidth: 170 }} />
+                        </div>
+                        <div>
+                          <label className="cn-etichetta" htmlFor="copertina-nota">
+                            Nota interna (facoltativa, il cliente non la vede)
+                          </label>
+                          <input className="cn-input" id="copertina-nota" name="nota" maxLength={LIMITE_NOTA} placeholder="es. prova concordata con il cliente" defaultValue={imp?.nota ?? ""} />
+                        </div>
+                      </ModuloAzione>
+                      <p className="cn-nota-inline">
+                        Una gara «usa» una gara gratis alla sua prima copertina; le altre copertine della stessa gara (fino a 3 per stile) non ne usano altre. Con «a pagamento» il titolare paga ogni gara con carta su Stripe, una volta, al prezzo qui indicato (il prezzo si fissa al pagamento: cambiarlo vale solo per i prossimi); chi ha già pagato una gara la tiene anche se poi spegni il servizio. {NOTA_CONSOLE_CONDIZIONI_COPERTINA}
+                      </p>
+                    </>
+                  );
+                })()
+              )}
+            </div>
+          </Pannello>
+        </div>
+      )}
 
       {/* ───── Password del cliente creato dalla console ───── */}
       {prova.creatoDaConsole && s.utente.ruolo !== "admin" && (

@@ -25,6 +25,7 @@ import {
 import { nuovoMetodoDaAbbonamento, nuovoMetodoDaCliente } from "@/lib/omnia-ai-email-eventi-calcoli";
 import { notificaRevisioneUmana, type RigaRevisione } from "@/lib/omnia-ai-email-revisione";
 import { registraPagamentoPianoLavoro } from "@/lib/piano-lavoro-acquisto";
+import { registraPagamentoCopertina } from "@/lib/copertina-acquisto";
 import { estinguiPacchetti, registraPagamentoPacchetto } from "@/lib/pacchetti-servizi";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -144,6 +145,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, eventoI
   // Acquisto singolo del piano di lavoro di una gara (pagamento una tantum): l'acquisto diventa «pagato» solo qui.
   if (session.metadata?.tipo === "omnia_ai_piano_lavoro") {
     await registraPagamentoPianoLavoro({ admin: createAdminClient(), sessione: session, eventoId });
+    return;
+  }
+
+  // Acquisto della copertina della relazione tecnica di una gara (pagamento una tantum): l'acquisto diventa «pagato» solo qui.
+  if (session.metadata?.tipo === "omnia_ai_copertina") {
+    await registraPagamentoCopertina({ admin: createAdminClient(), sessione: session, eventoId });
     return;
   }
 

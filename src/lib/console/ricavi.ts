@@ -55,7 +55,7 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
     ordiniQ = await admin.from("orders").select("id, total_amount, created_at, payment_method").eq("status", "pagato").limit(5000);
   }
 
-  const [incassiQ, creditiQ, revisioniQ, pianiLavoroQ, pacchettiQ, parametri] = await Promise.all([
+  const [incassiQ, creditiQ, revisioniQ, pianiLavoroQ, pacchettiQ, copertineQ, parametri] = await Promise.all([
     admin
       .from("omnia_ai_incassi")
       .select("id, user_id, tipo, importo_lordo_centesimi, imposta_centesimi, pagato_il, livemode, ricevuta_url, cliente_snapshot")
@@ -70,6 +70,8 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
     admin.from("omnia_ai_piani_lavoro_acquisti").select("prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode").eq("stato", "pagata").gte("pagata_il", periodo.daIso).lt("pagata_il", periodo.aIso).limit(5000),
     // pacchetti di servizi aggiuntivi pagati (migrazione 0104): senza la tabella non ce ne sono
     admin.from("omnia_ai_pacchetti_acquisti").select("prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode").eq("stato", "pagata").gte("pagata_il", periodo.daIso).lt("pagata_il", periodo.aIso).limit(5000),
+    // acquisti della copertina della relazione tecnica pagati (migrazione 0107): senza la tabella non ce ne sono
+    admin.from("omnia_ai_copertine_acquisti").select("prezzo_centesimi, importo_pagato_centesimi, pagata_il, livemode").eq("stato", "pagata").gte("pagata_il", periodo.daIso).lt("pagata_il", periodo.aIso).limit(5000),
     leggiParametriCalcolo(),
   ]);
 
@@ -179,6 +181,18 @@ export async function leggiRicavi(periodo: Periodo, opzioni: { includiProva?: bo
     voci.push({
       dominio: "omnia_ai",
       fonte: "pacchetto",
+      data: p.pagata_il,
+      lordo: num(p.importo_pagato_centesimi ?? p.prezzo_centesimi) / 100,
+      impostaStripe: null,
+      prova: !p.livemode,
+      dataApprossimata: false,
+    });
+  }
+
+  for (const p of copertineQ.error ? [] : ((copertineQ.data ?? []) as { prezzo_centesimi: number; importo_pagato_centesimi: number | null; pagata_il: string; livemode: boolean }[])) {
+    voci.push({
+      dominio: "omnia_ai",
+      fonte: "copertina",
       data: p.pagata_il,
       lordo: num(p.importo_pagato_centesimi ?? p.prezzo_centesimi) / 100,
       impostaStripe: null,
