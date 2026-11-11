@@ -94,6 +94,17 @@ export async function leggiStatoSistema(opzioni: { registroAccessiDisponibile: b
       : { voce: "Email transazionali", esito: "errore", dettaglio: "RESEND_API_KEY mancante: il link di accesso non può partire" },
   );
 
+  // Copertina della relazione tecnica: la crea OpenAI, quindi serve la sua chiave in QUESTO ambiente (in produzione quella di Vercel, non quella di .env.local).
+  voci.push(
+    process.env.OPENAI_API_KEY
+      ? { voce: "OpenAI (copertine)", esito: "ok", dettaglio: "Chiave OpenAI configurata: la copertina della relazione tecnica può essere generata" }
+      : {
+          voce: "OpenAI (copertine)",
+          esito: ambiente === "produzione" ? "errore" : "avviso",
+          dettaglio: "OPENAI_API_KEY mancante: la copertina della relazione tecnica non può essere generata. In produzione va aggiunta tra le variabili d'ambiente di Vercel, poi serve un nuovo deploy",
+        },
+  );
+
   // Verifica anti-bot dei moduli pubblici (Cloudflare Turnstile): attiva solo con entrambe le chiavi.
   const antibot = statoTurnstile({ chiaveSito: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY, chiaveSegreta: process.env.TURNSTILE_SECRET_KEY });
   voci.push(
