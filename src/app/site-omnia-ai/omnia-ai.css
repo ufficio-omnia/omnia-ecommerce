@@ -213,14 +213,23 @@ body {
 }
 
 /* ---------- Tipografia ----------
-   Regola rigida: Syne SOLO sopra i 24px (titoli, marchio). Sotto quella
-   soglia mai — menu, etichette, pulsanti e testo corrente restano
-   Space Grotesk (il font di base sopra, ereditato di default). Chi
-   aggiunge un nuovo titolo/heading in questa zona deve applicare
-   esplicitamente .font-marchio o una delle regole qui sotto, non
-   presumere che "sembra un titolo" basti. */
+   TITOLI DI PAGINA E DI SEZIONE (h1 e h2): UNA regola sola, qui sotto, per
+   tutto il sito (nessun titolo scrive il suo font a mano). PROVA del
+   11/11/2026 (richiesta dell'utente): Helvetica Neue e, dove non c'è (Windows,
+   Android), Helvetica o Arial, in peso normale. Per cambiare carattere si
+   cambiano queste due righe; per tornare a prima: "Syne", sans-serif e 800.
+   Il marchio e i titoletti (h3) restano in Syne. Sotto i 24px, menu,
+   etichette, pulsanti e testo corrente restano Space Grotesk (il font di base
+   sopra, ereditato di default). Chi aggiunge un nuovo titolo/heading in questa
+   zona deve applicare esplicitamente .font-marchio o una delle regole qui
+   sotto, non presumere che "sembra un titolo" basti. */
 h1,
-h2,
+h2 {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 400;
+  /* le righe di un titolo si bilanciano: niente parola sola in fondo */
+  text-wrap: balance;
+}
 h3,
 .font-marchio {
   font-family: "Syne", sans-serif;
@@ -1055,8 +1064,6 @@ li {
 }
 .omnia-revisione h2 {
   margin-top: 10px;
-  font-family: "Syne", sans-serif;
-  font-weight: 700;
   font-size: clamp(24px, 3.2vw, 34px);
   line-height: 1.1;
   letter-spacing: -0.02em;

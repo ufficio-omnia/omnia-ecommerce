@@ -288,7 +288,7 @@ export default function HeroDemo() {
 
       <div className="omnia-wrap">
         <section className="omnia-hero">
-          <h1>L&apos;unica AI per gare scritta da chi le gare le ha scritte.</h1>
+          <h1>L&apos;unica AI per gare scritta da chi le gare le ha scritte</h1>
           <p className="omnia-sotto">
             OMNIA AI è l&apos;intelligenza artificiale per le gare d&apos;appalto. Legge bando,
             disciplinare e capitolato e ti restituisce la relazione tecnica in Word: indice,
