@@ -38,6 +38,8 @@ import {
   usoDaRisposta,
   validaDatiCopertina,
   ETICHETTA_STILE,
+  MESSAGGI_ERRORE_COPERTINA,
+  messaggioErroreCopertina,
   STILI,
 } from "../src/lib/copertina-relazione-calcoli";
 import { ErroreOpenAI, chiediImmagineAOpenAI, generaCopertina, modelloCopertina, paginaA4, pdfA4 } from "../src/lib/copertina-relazione";
@@ -319,6 +321,24 @@ async function main() {
     atteso("nessun titolo disponibile: errore chiaro e immagine mai chiesta", !senzaTitolo.ok && /titolo/.test(senzaTitolo.errore) && promptRicevuti.length === 0);
     const rifiutato = await generaCopertina({ ...comuni, chiediImmagine: (async () => { throw new ErroreOpenAI("OpenAI ha rifiutato la richiesta (400): Your request was rejected by the safety system", 400); }) as never } as never);
     atteso("rifiuto per le regole sui contenuti: messaggio dedicato che invita a controllare i loghi", !rifiutato.ok && /loghi/.test(rifiutato.errore));
+
+    // la causa vera, non sempre «il documento»: con la chiave rifiutata il cliente non deve sentirsi dire di cambiare documento (successo in produzione l'11/11/2026)
+    const M = MESSAGGI_ERRORE_COPERTINA;
+    const leggendo = (e: unknown) => generaCopertina({ ...comuni, leggiDocumentoFn: (async () => { throw e; }) as never } as never);
+    const disegnando = (e: unknown) => generaCopertina({ ...comuni, chiediImmagine: (async () => { throw e; }) as never } as never);
+    const messaggioDi = (r: { ok: boolean; errore?: string }) => (r.ok ? "ok" : (r.errore ?? ""));
+    atteso("lettura con la chiave rifiutata da OpenAI (401): «non configurato», NON «scegli un altro documento»", messaggioDi(await leggendo(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (401): Incorrect API key provided", 401))) === M.nonConfigurato && !/altro documento/.test(M.nonConfigurato));
+    atteso("lettura con modello non disponibile (404) o senza permessi (403): «non configurato»", messaggioDi(await leggendo(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (404): The model does not exist", 404))) === M.nonConfigurato && messaggioDi(await leggendo(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (403): forbidden", 403))) === M.nonConfigurato);
+    atteso("lettura con troppe richieste o credito finito (429): «sovraccarico», riprova tra poco", messaggioDi(await leggendo(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (429): You exceeded your current quota", 429))) === M.sovraccarico && /Riprova/.test(M.sovraccarico));
+    atteso("lettura senza risposta in tempo o senza connessione: «troppo tempo», non il documento", messaggioDi(await leggendo(new ErroreOpenAI("OpenAI non ha risposto in tempo."))) === M.lento && messaggioDi(await leggendo(new ErroreOpenAI("Connessione a OpenAI non riuscita: fetch failed"))) === M.lento);
+    const documentoNonLeggibile = await Promise.all(
+      [new ErroreOpenAI("Non riesco a scaricare il documento dallo spazio di archiviazione."), new ErroreOpenAI("Il PDF è troppo grande per essere letto."), new ErroreOpenAI("OpenAI ha rifiutato la richiesta (400): Invalid file data", 400), new Error("boom")].map((e) => leggendo(e)),
+    );
+    atteso("lettura: documento davvero non leggibile (non scaricabile, troppo grande, 400 di OpenAI sul file, errore qualunque): resta «scegli un altro documento»", documentoNonLeggibile.every((r) => messaggioDi(r) === M.documento) && /altro documento/.test(M.documento));
+    atteso("disegno con la chiave rifiutata (401) o troppe richieste (429): stesse cause, stessi messaggi", messaggioDi(await disegnando(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (401): x", 401))) === M.nonConfigurato && messaggioDi(await disegnando(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (429): x", 429))) === M.sovraccarico);
+    atteso("disegno: un errore qualunque resta il messaggio generico, senza dettagli tecnici", messaggioDi(await disegnando(new ErroreOpenAI("OpenAI ha rifiutato la richiesta (500): boom", 500))) === M.generico && messaggioDi(await disegnando(new Error("boom"))) === M.generico);
+    atteso("nessun messaggio al cliente contiene dettagli tecnici (codici, nomi di variabili, «boom»)", Object.values(M).every((m) => !/\b(401|403|404|429|500)\b|API_KEY|boom|quota|Bearer/i.test(m)));
+    atteso("la funzione dei messaggi non si lascia ingannare: un errore senza stato numerico o un valore che non è un errore", messaggioErroreCopertina({ stato: "401" }, "lettura") === M.documento && messaggioErroreCopertina(null, "disegno") === M.generico && messaggioErroreCopertina(undefined, "lettura") === M.documento);
 
     // PDF non salvato: l'immagine già caricata si toglie
     caricati.length = 0;

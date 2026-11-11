@@ -18,6 +18,7 @@ import {
   copertineDaNomi,
   datiCopertina,
   marcaTempo,
+  messaggioErroreCopertina,
   percorsoCopertina,
   promptCopertina,
   qualitaCopertina,
@@ -216,14 +217,9 @@ export async function generaCopertina(params: {
     }
     return { ok: true, marca: marcaTempo(adesso), stile, titolo: dati.titolo, cig: dati.cig, documento: documento.nome_file, avvisi: letto.esito.avvisi };
   } catch (err) {
+    // nel log resta la causa vera (con lo stato di OpenAI, se c'è); al cliente va un messaggio che non la attribuisce a lui se non è sua
     console.error(`Copertina relazione: generazione non riuscita (${fase})`, err instanceof Error ? err.message : err);
-    if (fase === "lettura") {
-      return { ok: false, errore: "Non sono riuscito a leggere il documento scelto. Riprova, oppure scegli un altro documento." };
-    }
-    if (err instanceof ErroreOpenAI && err.stato === 400 && /safety|moderation|content/i.test(err.message)) {
-      return { ok: false, errore: "OpenAI ha rifiutato la richiesta per le sue regole sui contenuti (potrebbe dipendere da uno dei loghi). Controlla i loghi caricati e riprova." };
-    }
-    return { ok: false, errore: "La generazione della copertina non è riuscita. Riprova tra qualche istante." };
+    return { ok: false, errore: messaggioErroreCopertina(err, fase) };
   }
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { acquistaPianoLavoro, generaPianoLavoroGara, scaricaPianoLavoroGara, type AcquistoPianoLavoroState, type PianoLavoroState } from "@/app/actions/gara-piano-lavoro";
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import ThinkingIndicator from "./thinking-indicator";
+import ServizioRichiudibile from "./servizio-richiudibile";
 import type { EsitoDirittoPiano, FonteDiritto, PianoRiga } from "@/lib/piano-lavoro-gara-calcoli";
 import { CLAUSOLE_PIANO_LAVORO, CLAUSOLE_SPECIFICHE_PIANO_LAVORO, VERSIONE_CONDIZIONI_PIANO_LAVORO, type OffertaAcquisto, type RitornoPagamento } from "@/lib/piano-lavoro-acquisto-calcoli";
 import { TESTI_PACCHETTI, formattaEuro, testoUnita, type PacchettoNellaGara } from "@/lib/pacchetti-servizi-calcoli";
@@ -132,34 +133,33 @@ export default function PianoLavoroPanel({
   // Il diritto viene da un'unità del pacchetto che questa gara NON ha ancora usato: generare ne consuma una (il cliente lo conferma)
   const consumaUnita = diritto.ok && diritto.fonte === "pacchetto" && diritto.consumaUnita;
 
-  return (
-    <section className="omnia-riquadro" style={{ marginTop: 24 }} aria-labelledby="piano-lavoro-titolo">
-      <div className="omnia-app-intestazione">
-        <span className="omnia-eyebrow" id="piano-lavoro-titolo">
-          Piano di lavoro
-        </span>
-        {puoGenerare && (
-          <form action={formAction}>
-            <input type="hidden" name="garaId" value={garaId} />
-            {consumaUnita && <input type="hidden" name="usaPacchetto" value="1" />}
-            <button
-              type="submit"
-              disabled={pending}
-              className="omnia-btn omnia-btn-p omnia-btn-piccolo"
-              onClick={(e) => {
-                if (consumaUnita && !window.confirm(`${TESTI_PACCHETTI.confermaUsoUnita} ${TESTI_PACCHETTI.usaUnitaNota(pacchetto.saldo)}`)) {
-                  e.preventDefault();
-                  return;
-                }
-                if (seconda && !window.confirm("Generare la seconda versione del piano di lavoro (per la proroga dei termini)? È l'ultima possibile per questa gara.")) e.preventDefault();
-              }}
-            >
-              {pending ? "Generazione in corso..." : seconda ? "Genera la seconda versione (proroga)" : ultimoErrore && !ultimoPronto ? "Riprova a generare il piano" : consumaUnita ? `Genera — usa 1 dei tuoi ${pacchetto.saldo}` : "Genera il piano di lavoro"}
-            </button>
-          </form>
-        )}
-      </div>
+  // il pulsante «Genera» sta nella testata e si vede solo a sezione aperta (ridotta, resta una riga con il titolo e lo stato)
+  const azioni = puoGenerare ? (
+    <form action={formAction}>
+      <input type="hidden" name="garaId" value={garaId} />
+      {consumaUnita && <input type="hidden" name="usaPacchetto" value="1" />}
+      <button
+        type="submit"
+        disabled={pending}
+        className="omnia-btn omnia-btn-p omnia-btn-piccolo"
+        onClick={(e) => {
+          if (consumaUnita && !window.confirm(`${TESTI_PACCHETTI.confermaUsoUnita} ${TESTI_PACCHETTI.usaUnitaNota(pacchetto.saldo)}`)) {
+            e.preventDefault();
+            return;
+          }
+          if (seconda && !window.confirm("Generare la seconda versione del piano di lavoro (per la proroga dei termini)? È l'ultima possibile per questa gara.")) e.preventDefault();
+        }}
+      >
+        {pending ? "Generazione in corso..." : seconda ? "Genera la seconda versione (proroga)" : ultimoErrore && !ultimoPronto ? "Riprova a generare il piano" : consumaUnita ? `Genera — usa 1 dei tuoi ${pacchetto.saldo}` : "Genera il piano di lavoro"}
+      </button>
+    </form>
+  ) : null;
+  // la frase che resta accanto al titolo quando la sezione è ridotta
+  const statoRidotto = pending || inCorso ? "generazione in corso…" : pronti.length > 0 ? `${pronti.length} ${pronti.length === 1 ? "piano pronto" : "piani pronti"}` : "nessun piano ancora";
 
+  return (
+    // dopo il ritorno da Stripe la sezione si vede aperta anche se il cliente l'aveva ridotta: deve leggere l'esito del pagamento
+    <ServizioRichiudibile id="piano_lavoro" titoloId="piano-lavoro-titolo" titolo="Piano di lavoro" riepilogo={statoRidotto} azioni={azioni} forzaApertura={ritorno !== null}>
       <p className="omnia-riquadro-nota" style={{ marginTop: 4 }}>
         {RIQUADRO_PIANO_PARTI[0]}
         <strong>{RIQUADRO_PIANO_PARTI[1]}</strong>
@@ -301,6 +301,6 @@ export default function PianoLavoroPanel({
           </div>
         </div>
       )}
-    </section>
+    </ServizioRichiudibile>
   );
 }

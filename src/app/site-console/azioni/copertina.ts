@@ -77,6 +77,11 @@ export async function salvaImpostazioniCopertina(_stato: StatoCopertinaAzione, f
   }
 
   revalidatePath("/site-console", "layout");
+  // la chiave di OpenAI di QUESTO ambiente: senza, il cliente vede il servizio ma la copertina non parte (le chiavi di Vercel non sono quelle di .env.local)
+  const avvisoChiaveOpenAI =
+    v.attivo && !process.env.OPENAI_API_KEY
+      ? "Attenzione: in questo ambiente manca la chiave di OpenAI (OPENAI_API_KEY): il cliente vede il servizio ma la copertina non parte finché non la aggiungi tra le variabili d'ambiente di Vercel e rifai il deploy."
+      : null;
   // «a pagamento»: cosa manca perché il cliente possa davvero pagare, detto subito accanto al salvataggio invece di lasciarlo scoprire a lui
   if (v.attivo && v.modalita === "pagamento") {
     const problemi: string[] = [];
@@ -86,7 +91,8 @@ export async function salvaImpostazioniCopertina(_stato: StatoCopertinaAzione, f
     // la chiave Stripe di questo ambiente: il database è condiviso, ma il pagamento si può completare solo dove la chiave è quella reale (o di prova, in locale)
     if (!pagamentoCopertinaDisponibile(process.env)) problemi.push("in questo ambiente la chiave Stripe di OMNIA AI non è quella reale");
     const parti = [problemi.length > 0 ? `Salvato, ma il cliente per ora NON può pagare: ${problemi.join("; ")}. Vede il prezzo, senza poter generare.` : "Salvato. Il cliente vede il prezzo e può pagare la gara con carta su Stripe.", NOTA_CONSOLE_CONDIZIONI_COPERTINA];
+    if (avvisoChiaveOpenAI) parti.push(avvisoChiaveOpenAI);
     return { ok: true, avviso: parti.join(" ") };
   }
-  return { ok: true };
+  return avvisoChiaveOpenAI ? { ok: true, avviso: avvisoChiaveOpenAI } : { ok: true };
 }

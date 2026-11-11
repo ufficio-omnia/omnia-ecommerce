@@ -4,6 +4,7 @@ import { REVISIONE, descriviFontePagine, testoRegoleUrgenza, testoScadenza, type
 import type { RichiestaRevisione } from "@/lib/omnia-ai-revisione";
 import RevisioneAvvisoForm from "./revisione-avviso-form";
 import ScadenzaOraForm from "./scadenza-ora-form";
+import ServizioRichiudibile from "./servizio-richiudibile";
 
 // Riquadro «Revisione umana» dentro la gara: compare solo dopo la relazione tecnica FINALE (con tutti i
 // criteri). Spiega che cosa si ottiene, i tempi, quanto costa per QUESTA gara e quando il prezzo sale, e
@@ -21,12 +22,11 @@ export default function RevisionePanel({
   ufficioGare?: boolean;
 }) {
   const prezzo = esito.ok ? esito.prezzo : null;
+  // la frase che resta accanto al titolo quando la sezione è ridotta (l'Ufficio Gare non vede il prezzo)
+  const riepilogo = pagata ? "revisione già richiesta" : prezzo && !ufficioGare ? `${formatEuro(prezzo.totaleCentesimi)} IVA inclusa` : "non ancora richiesta";
 
   return (
-    <section className="omnia-riquadro" style={{ marginTop: 24 }} aria-labelledby="revisione-umana-titolo">
-      <span className="omnia-eyebrow" id="revisione-umana-titolo">
-        Revisione umana
-      </span>
+    <ServizioRichiudibile id="revisione_umana" titoloId="revisione-umana-titolo" titolo="Revisione umana" riepilogo={riepilogo}>
       <h2 style={{ margin: "8px 0 4px", fontSize: 20 }}>Fai rivedere la relazione tecnica da un consulente</h2>
       <p className="omnia-riquadro-nota" style={{ marginTop: 0 }}>
         La relazione finale è pronta. Se vuoi, un consulente umano la rivede e la rifinisce prima della consegna.
@@ -94,6 +94,6 @@ export default function RevisionePanel({
           </p>
         </>
       )}
-    </section>
+    </ServizioRichiudibile>
   );
 }

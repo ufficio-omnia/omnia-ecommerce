@@ -1,16 +1,12 @@
 import { FOOD_MENU } from "@/lib/gara-settore";
+import ServizioRichiudibile from "./servizio-richiudibile";
 
 // Riquadro «OMNIA FOOD MENU» dentro la gara: compare SOLO quando l'analisi dei documenti ha riconosciuto una gara di ristorazione collettiva
 // (le regole stanno in src/lib/gara-settore.ts). Per ora il servizio «sta arrivando»: nessun pulsante, nessun acquisto, nessuna promessa
-// di data. Il testo è lo stesso della pagina dei piani (un solo posto: FOOD_MENU).
+// di data. Il testo è lo stesso della pagina dei piani (un solo posto: FOOD_MENU). Come gli altri servizi aggiuntivi si può ridurre a una riga.
 export default function FoodMenuPanel() {
   return (
-    <section className="omnia-riquadro" style={{ marginTop: 24 }} aria-labelledby="food-menu-titolo">
-      <div className="omnia-app-intestazione">
-        <span className="omnia-eyebrow" id="food-menu-titolo">
-          {FOOD_MENU.nome} · {FOOD_MENU.stato.toLowerCase()}
-        </span>
-      </div>
+    <ServizioRichiudibile id="food_menu" titoloId="food-menu-titolo" titolo={`${FOOD_MENU.nome} · ${FOOD_MENU.stato.toLowerCase()}`}>
       <h2 style={{ margin: "8px 0 4px", fontSize: 20 }}>{FOOD_MENU.titolo}</h2>
       <p className="omnia-riquadro-nota" style={{ marginTop: 4 }}>
         {FOOD_MENU.testo}
@@ -23,6 +19,6 @@ export default function FoodMenuPanel() {
         ))}
       </ul>
       <p className="omnia-riquadro-nota">{FOOD_MENU.nota}</p>
-    </section>
+    </ServizioRichiudibile>
   );
 }

@@ -1358,6 +1358,52 @@ li {
   color: var(--fioco);
 }
 
+/* Sezioni dei servizi aggiuntivi della gara che si riducono a una riga (gare/[id]/servizio-richiudibile.tsx): il titolo è il pulsante */
+.omnia-servizio-titolo {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--fioco);
+  text-align: left;
+  cursor: pointer;
+}
+.omnia-servizio-titolo:hover,
+.omnia-servizio-titolo:hover .omnia-eyebrow {
+  color: var(--testo);
+}
+.omnia-servizio-freccia {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.omnia-servizio.ridotto .omnia-servizio-freccia {
+  transform: rotate(-90deg);
+}
+.omnia-servizio-riepilogo {
+  font-size: 13px;
+  color: var(--fioco);
+}
+.omnia-servizio-riepilogo::before {
+  content: "·";
+  margin-right: 8px;
+}
+.omnia-servizio.ridotto {
+  padding-block: 12px;
+}
+.omnia-servizio-corpo[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .omnia-servizio-freccia {
+    transition: none;
+  }
+}
+
 /* Elenco (gare, documenti) */
 .omnia-elenco-riquadri {
   margin-top: 24px;

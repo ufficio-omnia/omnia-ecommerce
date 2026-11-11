@@ -329,6 +329,15 @@ async function main() {
     atteso("scrive UNA riga per cliente (upsert su user_id) con operatore e data, senza cancellare nulla", /upsert\(/.test(salva) && /onConflict: "user_id"/.test(salva) && /aggiornata_da_email: sessione\.email/.test(salva) && !/\.delete\(/.test(salva));
     atteso("senza la migrazione: errore chiaro, senza scrivere altrove", /schemaAssente\(error\)\) return \{ errore: "Le tabelle della copertina non esistono ancora \(migrazione 0106\)/.test(salva));
     atteso("a pagamento: avvisa subito cosa manca perché il cliente possa pagare (acquisti, chiave Stripe) e che le condizioni sono una bozza", /v\.attivo && v\.modalita === "pagamento"/.test(salva) && /Salvato, ma il cliente per ora NON può pagare/.test(salva) && /NOTA_CONSOLE_CONDIZIONI_COPERTINA/.test(salva));
+    atteso(
+      "se in questo ambiente manca la chiave di OpenAI, salvando un cliente acceso (gratis o a pagamento) la console lo dice subito: senza, il cliente vedrebbe il servizio ma la copertina non partirebbe",
+      /v\.attivo && !process\.env\.OPENAI_API_KEY/.test(salva) && /manca la chiave di OpenAI \(OPENAI_API_KEY\)/.test(salva) && /variabili d'ambiente di Vercel/.test(salva) && /parti\.push\(avvisoChiaveOpenAI\)/.test(salva) && /return avvisoChiaveOpenAI \? \{ ok: true, avviso: avvisoChiaveOpenAI \} : \{ ok: true \}/.test(salva),
+    );
+    const statoSistema = leggi("src/lib/console/stato-sistema.ts");
+    atteso(
+      "lo stato di sistema della Panoramica controlla la chiave di OpenAI (errore in produzione, avviso altrove) senza mai leggerne il valore oltre alla presenza",
+      /voce: "OpenAI \(copertine\)"/.test(statoSistema) && /process\.env\.OPENAI_API_KEY\s*\?/.test(statoSistema) && /esito: ambiente === "produzione" \? "errore" : "avviso"/.test(statoSistema) && /nuovo deploy/.test(statoSistema) && !/OPENAI_API_KEY\s*[}\)]*\s*(\+|\$\{)/.test(statoSistema),
+    );
     atteso("il prezzo non arriva da altro che dal modulo validato (niente ripieghi nascosti)", /v\.prezzoCentesimi/.test(salva) && !/PREZZO_COPERTINA/.test(azione));
 
     const vista = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");

@@ -156,7 +156,12 @@ async function main() {
   atteso("il piano di lavoro compare, a analisi fatta, per le gare di pulizia o non classificate; chi ha già dei piani generati li vede sempre (non si toglie nulla di ciò che c'è)", /pianoLavoroDisponibile && \(gara\.estrazione_stato === "completata" \|\| pianiLavoro\.length > 0\) && \(proponePianoLavoro\(settore\) \|\| pianiLavoro\.length > 0\) && <PianoLavoroPanel/.test(paginaGara));
   const pannelloFood = renderToStaticMarkup(createElement(FoodMenuPanel));
   const tPannello = testoDi(pannelloFood);
-  atteso("il riquadro nella gara dice «OMNIA FOOD MENU · sta arrivando», la descrizione e le tre voci; nessun pulsante, nessun prezzo", tPannello.includes("OMNIA FOOD MENU · sta arrivando") && tPannello.includes(FOOD_MENU.testo) && FOOD_MENU.punti.every((p) => tPannello.includes(p.titolo)) && !/<button|<form|<a /.test(pannelloFood) && !/€|\d,\d\d/.test(tPannello));
+  // l'unico pulsante ammesso è quello che riduce/riapre la sezione (il titolo): nessun pulsante per acquistare o prenotare, nessun modulo, nessun link
+  const pulsantiFood = pannelloFood.match(/<button[^>]*>/g) ?? [];
+  atteso(
+    "il riquadro nella gara dice «OMNIA FOOD MENU · sta arrivando», la descrizione e le tre voci; nessun pulsante di acquisto (solo quello che riduce la sezione), nessun modulo, nessun link, nessun prezzo",
+    tPannello.includes("OMNIA FOOD MENU · sta arrivando") && tPannello.includes(FOOD_MENU.testo) && FOOD_MENU.punti.every((p) => tPannello.includes(p.titolo)) && pulsantiFood.length === 1 && /omnia-servizio-titolo/.test(pulsantiFood[0]) && !/<form|<a /.test(pannelloFood) && !/€|\d,\d\d/.test(tPannello),
+  );
   atteso("il riquadro usa lo STESSO testo della pagina dei piani (un solo posto: FOOD_MENU)", /FOOD_MENU\.testo/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/food-menu-panel.tsx")) && /FOOD_MENU\.testo/.test(sezione));
   atteso("la scheda non propone nulla per le altre gare: nessun terzo riquadro e nessun testo sul settore «altro»", !/proponeAltro|settore === "altro"/.test(paginaGara));
 

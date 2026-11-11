@@ -6,6 +6,7 @@ import { generaCopertinaGara, scaricaCopertinaGara, type CopertinaState } from "
 import OpenInNewTabButton from "@/components/open-in-new-tab-button";
 import ThinkingIndicator from "./thinking-indicator";
 import AcquistoCopertina from "./copertina-acquisto";
+import ServizioRichiudibile from "./servizio-richiudibile";
 import { ETICHETTA_STILE, type Stile } from "@/lib/copertina-relazione-calcoli";
 import { prezzoCopertina, type MotivoNegato } from "@/lib/copertina-diritto-calcoli";
 import { TESTI_COPERTINA, type OffertaCopertina, type RitornoPagamentoCopertina } from "@/lib/copertina-acquisto-calcoli";
@@ -81,16 +82,20 @@ export default function CopertinaPanel({
   const inConferma = ritorno === "pagato" && !acquistata;
   const motivoGenerale = inConferma ? null : (stili.find((s) => !s.consentito && s.motivo !== "limite_stile")?.messaggio ?? null);
   const puoGenerare = stili.some((s) => s.consentito);
+  // la frase che resta accanto al titolo quando la sezione è ridotta
+  const riepilogo = pending
+    ? "generazione in corso…"
+    : copertine.length > 0
+      ? `${copertine.length} ${copertine.length === 1 ? "copertina generata" : "copertine generate"}`
+      : acquistata
+        ? "acquistata, nessuna copertina ancora"
+        : "nessuna copertina ancora";
 
   return (
-    <section className="omnia-riquadro" style={{ marginTop: 24 }} aria-labelledby="copertina-titolo">
+    // dopo il ritorno da Stripe la sezione si vede aperta anche se il cliente l'aveva ridotta: deve leggere l'esito del pagamento
+    <ServizioRichiudibile id="copertina" titoloId="copertina-titolo" titolo="Copertina relazione tecnica" riepilogo={riepilogo} forzaApertura={ritorno !== null}>
       <form action={formAction}>
         <input type="hidden" name="garaId" value={garaId} />
-        <div className="omnia-app-intestazione">
-          <span className="omnia-eyebrow" id="copertina-titolo">
-            Copertina relazione tecnica
-          </span>
-        </div>
 
         <p className="omnia-riquadro-nota" style={{ marginTop: 4 }}>
           Una copertina in formato A4 per la tua relazione tecnica, costruita sulla gara: legge il disciplinare o il capitolato che scegli qui sotto e ne ricava il titolo, il CIG e lo sfondo (luoghi, attività e territorio della gara). Al centro <strong>RELAZIONE TECNICA</strong> e sotto il titolo con il CIG,
@@ -276,6 +281,6 @@ export default function CopertinaPanel({
           })}
         </div>
       )}
-    </section>
+    </ServizioRichiudibile>
   );
 }

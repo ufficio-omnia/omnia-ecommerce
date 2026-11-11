@@ -251,6 +251,36 @@ export function validaDatiCopertina(dati: Pick<DatiCopertina, "titolo">): { ok: 
   return { ok: true };
 }
 
+// ───── Perché una generazione non è riuscita ─────
+// Il messaggio al cliente dice la causa vera, senza dettagli tecnici (quelli restano nei log del server). Prima ogni errore della lettura diceva «scegli un
+// altro documento», anche quando il documento era a posto e a non andare era la chiave del servizio.
+// `stato` è quello della risposta di OpenAI (ErroreOpenAI.stato): qui si legge per forma, per non dipendere da copertina-openai.ts.
+
+export type FaseCopertina = "lettura" | "disegno" | "salvataggio";
+
+export const MESSAGGI_ERRORE_COPERTINA = {
+  nonConfigurato: "Il servizio di creazione delle copertine non è configurato correttamente in questo momento. Il problema è stato registrato: riprova più tardi o contatta il supporto di OMNIA AI.",
+  sovraccarico: "Il servizio di creazione delle copertine è momentaneamente sovraccarico. Riprova tra qualche minuto.",
+  lento: "Il servizio ha impiegato troppo tempo a rispondere. Riprova tra qualche istante.",
+  documento: "Non sono riuscito a leggere il documento scelto. Riprova, oppure scegli un altro documento.",
+  regole: "OpenAI ha rifiutato la richiesta per le sue regole sui contenuti (potrebbe dipendere da uno dei loghi). Controlla i loghi caricati e riprova.",
+  generico: "La generazione della copertina non è riuscita. Riprova tra qualche istante.",
+} as const;
+
+export function messaggioErroreCopertina(err: unknown, fase: FaseCopertina): string {
+  const stato = typeof (err as { stato?: unknown } | null)?.stato === "number" ? (err as { stato: number }).stato : null;
+  const testo = err instanceof Error ? err.message : "";
+  // chiave non accettata, senza permessi o modello non disponibile: non dipende dal documento né dal cliente
+  if (stato === 401 || stato === 403 || stato === 404) return MESSAGGI_ERRORE_COPERTINA.nonConfigurato;
+  // troppe richieste o credito finito
+  if (stato === 429) return MESSAGGI_ERRORE_COPERTINA.sovraccarico;
+  // nessuna risposta in tempo, o nessuna connessione
+  if (/non ha risposto in tempo|Connessione a OpenAI non riuscita/.test(testo)) return MESSAGGI_ERRORE_COPERTINA.lento;
+  if (fase === "lettura") return MESSAGGI_ERRORE_COPERTINA.documento;
+  if (stato === 400 && /safety|moderation|content/i.test(testo)) return MESSAGGI_ERRORE_COPERTINA.regole;
+  return MESSAGGI_ERRORE_COPERTINA.generico;
+}
+
 // ───── File ─────
 // Stanno nel bucket «gare», alla radice della cartella della gara: la cancellazione della gara raccoglie tutto ciò che sta sotto
 // «<id gara>/» (src/lib/gara-storage.ts, percorsiSottoPrefisso), quindi le copertine spariscono con lei, come promette il contratto.
