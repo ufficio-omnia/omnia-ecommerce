@@ -94,7 +94,7 @@ async function main() {
 
   const pulizie = disegna("pulizie");
   const tPulizie = testoDi(pulizie);
-  atteso("«Servizi di pulizia»: il piano di lavoro, con SOLO «Per una gara» (75,00 € IVA inclusa) e «Formule attive»", /Piano di lavoro/.test(tPulizie) && /Dai documenti di gara a un piano di lavoro in Excel\./.test(tPulizie) && (pulizie.match(/<li>/g) ?? []).length === 2 && /Per una gara 75,00 € IVA inclusa, senza abbonamento/.test(tPulizie) && /Formule attive modifichi i valori e tutti i fogli si aggiornano/.test(tPulizie));
+  atteso("«Servizi di pulizia»: il piano di lavoro, con SOLO «Per una gara» (75,00 € IVA inclusa) e «Formule attive»", /Piano di lavoro/.test(tPulizie) && /Dai documenti di gara a un piano di lavoro in Excel(?!\.)/.test(tPulizie) && (pulizie.match(/<li>/g) ?? []).length === 2 && /Per una gara 75,00 € IVA inclusa, senza abbonamento/.test(tPulizie) && /Formule attive modifichi i valori e tutti i fogli si aggiornano/.test(tPulizie));
   atteso("«Servizi di pulizia»: NIENTE abbonamento al piano di lavoro (nessuna scheda «Nell'abbonamento», nessun supplemento mensile, nessun «al mese», nessun «Abbonati»)", !/Nell'abbonamento|al mese|in più|supplemento|\+\s*\d|Abbonati|Con il piano di lavoro Excel/i.test(tPulizie.replace("senza abbonamento", "")));
   atteso("«Servizi di pulizia»: dimensionamento di partenza, non un preventivo, collegamento alle condizioni del servizio", /non un preventivo/.test(tPulizie) && /href="\/condizioni-piano-lavoro"/.test(pulizie));
 

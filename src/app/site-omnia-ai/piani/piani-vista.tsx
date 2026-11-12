@@ -24,7 +24,7 @@ export default function PianiVista({
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
-        <h1>OMNIA AI: un piano per ogni ritmo di partecipazione a gara.</h1>
+        <h1>OMNIA AI: un piano per ogni ritmo di partecipazione a gara</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           Abbonamento mensile con un numero di gare incluso. Una gara si consuma quando parte
           l&apos;analisi dei documenti: da lì in poi generazioni e revisioni sulla stessa gara

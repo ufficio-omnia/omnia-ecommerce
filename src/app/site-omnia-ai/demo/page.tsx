@@ -14,7 +14,7 @@ export default function DemoPage() {
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
-        <h1>OMNIA AI: portaci una gara vera. Ti mostriamo cosa esce.</h1>
+        <h1>OMNIA AI: portaci una gara vera. Ti mostriamo cosa esce</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           Nessuna presentazione preconfezionata: lavoriamo su un bando che ti interessa davvero.
           Lasciaci i tuoi dati e scegli subito giorno e ora della demo nel calendario.

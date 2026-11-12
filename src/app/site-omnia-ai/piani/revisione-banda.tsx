@@ -9,7 +9,7 @@ export default function RevisioneBanda() {
   return (
     <section className="omnia-revisione" aria-labelledby="omnia-revisione-titolo">
       <p className="omnia-revisione-etichetta">Revisione umana</p>
-      <h2 id="omnia-revisione-titolo">L&apos;AI scrive. Un consulente esperto rifinisce.</h2>
+      <h2 id="omnia-revisione-titolo">L&apos;AI scrive. Un consulente esperto rifinisce</h2>
       <p className="omnia-revisione-testo">
         Hai finito la relazione con OMNIA AI? Dall&apos;interfaccia chiedi con un clic la revisione umana di
         consulenti esperti in gare d&apos;appalto: ti contattano personalmente e la relazione revisionata ti arriva

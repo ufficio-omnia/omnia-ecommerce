@@ -35,7 +35,7 @@ export default function ComeFunzionaPage() {
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
-        <h1>OMNIA AI non indovina. Recupera, e cita la fonte.</h1>
+        <h1>OMNIA AI non indovina. Recupera, e cita la fonte</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           La differenza tra un&apos;AI generica e OMNIA AI non è il modello linguistico: è cosa
           succede tra la tua domanda e la risposta. Ecco il percorso, passo per passo.

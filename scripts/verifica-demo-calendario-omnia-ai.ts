@@ -71,7 +71,7 @@ function main() {
 
   console.log("\n--- La pagina /demo e il modulo ---");
   const paginaDemo = leggi("src/app/site-omnia-ai/demo/page.tsx");
-  atteso("la pagina ha il titolo di sempre e il modulo (una volta sola), senza scorciatoie verso il calendario", paginaDemo.includes("OMNIA AI: portaci una gara vera. Ti mostriamo cosa esce.") && paginaDemo.includes('title: "Richiedi la demo — OMNIA AI"') && (paginaDemo.match(/<DemoForm \/>/g) ?? []).length === 1 && !/LinkDemo|calendar\.app|Prenota direttamente/.test(paginaDemo));
+  atteso("la pagina ha il titolo di sempre e il modulo (una volta sola), senza scorciatoie verso il calendario", paginaDemo.includes("OMNIA AI: portaci una gara vera. Ti mostriamo cosa esce</h1>") && paginaDemo.includes('title: "Richiedi la demo — OMNIA AI"') && (paginaDemo.match(/<DemoForm \/>/g) ?? []).length === 1 && !/LinkDemo|calendar\.app|Prenota direttamente/.test(paginaDemo));
   atteso("la frase della pagina spiega il percorso: dati, poi giorno e ora nel calendario (non più «rispondiamo entro 24 ore»)", /Lasciaci i tuoi dati e scegli subito giorno e ora della demo nel calendario\./.test(paginaDemo) && !/Rispondiamo entro 24 ore/.test(paginaDemo));
   const modulo = leggi("src/components/omnia-ai/demo-form.tsx");
   atteso("il calendario si apre dal modulo solo dopo l'esito positivo del server, con il pulsante di riserva se la scheda è bloccata", modulo.indexOf("if (scheda) scheda.location.href = LINK_PRENOTA_DEMO") > modulo.indexOf("if (!risposta.ok)") && /<LinkDemo className="omnia-btn omnia-btn-p" testo="Apri il calendario e scegli l'orario" \/>/.test(modulo) && /CONTINUA E PRENOTA LA DEMO/.test(modulo));
