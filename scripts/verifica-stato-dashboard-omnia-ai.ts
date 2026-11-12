@@ -300,6 +300,12 @@ async function main() {
   atteso("gare in elaborazione dell'account effettivo (titolare per l'Ufficio Gare)", /\.eq\("user_id", guardia\.contesto\.accountId\)/.test(azione) && /\.eq\("estrazione_stato", "in_corso"\)/.test(azione));
   atteso("notifiche lette con la sessione dell'utente (regole di accesso), mai con la chiave di servizio", /createClient\(\)/.test(azione) && !/createAdminClient/.test(azione) && /conNotifiche === true/.test(azione));
   atteso("sessione non valida: nessun dato", /if \(!guardia\.ok\) return \{ inCorso: false, nonLette: null \};/.test(azione));
+  const proxy = senzaCommenti(leggi("src/proxy.ts"));
+  atteso(
+    "proxy: il cookie di zona si scrive solo se manca o cambia (riscriverlo identico faceva ridisegnare la pagina a ogni azione e ricaricare tutti i link)",
+    /if \(request\.cookies\.get\(ZONE_COOKIE\)\?\.value !== zone\) \{\s*response\.cookies\.set\(ZONE_COOKIE, zone, \{ path: "\/" \}\);\s*\}/.test(proxy) &&
+      (proxy.match(/response\.cookies\.set\(ZONE_COOKIE/g) ?? []).length === 1,
+  );
   const guardie = senzaCommenti(leggi("src/lib/omnia-ai-account-guardie.ts"));
   atteso("le pagine leggono la sessione una volta per richiesta (cache di React), sempre con getUser", /export const leggiSessioneAccountPerPagina = cache\(leggiSessioneAccount\);/.test(guardie) && /import \{ cache \} from "react";/.test(guardie) && /auth\.getUser\(\)/.test(guardie));
   {
