@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import { createRequire } from "node:module";
 import {
   CHIAVE_TEMA,
   COLORI_BROWSER,
@@ -20,6 +21,12 @@ import {
   salvaScelta,
   temaEffettivo,
 } from "../src/lib/tema-omnia-ai";
+
+import ToggleTema from "../src/components/omnia-ai/toggle-tema";
+
+const richiedi = createRequire(path.join(__dirname, "..", "package.json"));
+const { createElement } = richiedi("react") as typeof import("react");
+const { renderToStaticMarkup } = richiedi("react-dom/server") as typeof import("react-dom/server");
 
 const fallimenti: string[] = [];
 function atteso(nome: string, ok: boolean, dettaglio = "") {
@@ -320,6 +327,17 @@ async function main() {
   }
 
   console.log("");
+  // ═════ 6. il primo disegno: chiaro anche per l'interruttore e per chi legge il tema ═════
+  console.log("--- Il primo disegno ---");
+  {
+    // sul server (e al primo disegno nel browser) l'interruttore dice «chiaro», come l'<html> scritto dal server
+    const html = renderToStaticMarkup(createElement(ToggleTema));
+    const premuti = [...html.matchAll(/aria-pressed="(true|false)" aria-label="([^"]+)"/g)].filter((m) => m[1] === "true").map((m) => m[2]);
+    uguale("l'interruttore, al primo disegno, ha premuto solo «Tema chiaro»", premuti, ["Tema chiaro"]);
+    const hook = senzaCommentiJs(leggi("src/components/omnia-ai/use-tema.ts"));
+    atteso("chi legge il tema (anti-bot, animazione, interruttore) al primo disegno vale il tema di base, il chiaro; nel browser vale «scuro» solo se l'<html> lo dice davvero", /getAttribute\("data-tema"\) === "scuro" \? "scuro" : "chiaro"/.test(hook) && /\(\) => TEMA_PREDEFINITO,/.test(hook) && /\(\) => SCELTA_PREDEFINITA,/.test(hook));
+  }
+
   if (fallimenti.length > 0) {
     console.error(`${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
     process.exit(1);
