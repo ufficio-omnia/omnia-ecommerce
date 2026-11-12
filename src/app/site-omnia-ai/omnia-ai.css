@@ -3154,3 +3154,51 @@ li {
     align-items: flex-start;
   }
 }
+
+/* ───── Stato di caricamento dell'area riservata (dashboard/omnia-ai/loading.tsx) ─────
+   Sagome neutre al cambio di pagina, con i colori del tema; nessuna animazione con movimento ridotto. */
+.omnia-caricamento {
+  padding-top: 8px;
+}
+.omnia-caricamento-testo-nascosto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.omnia-caricamento-riga {
+  height: 14px;
+  margin: 12px 0;
+  border-radius: 8px;
+  background: rgba(var(--viola-rgb), 0.12);
+  animation: omnia-caricamento-pulsa 1.4s ease-in-out infinite;
+}
+.omnia-caricamento-titolo {
+  width: 42%;
+  height: 28px;
+}
+.omnia-caricamento-sottotitolo {
+  width: 64%;
+}
+.omnia-caricamento-corta {
+  width: 55%;
+}
+.omnia-caricamento-riquadro {
+  min-height: 140px;
+}
+@keyframes omnia-caricamento-pulsa {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .omnia-caricamento-riga {
+    animation: none;
+  }
+}
