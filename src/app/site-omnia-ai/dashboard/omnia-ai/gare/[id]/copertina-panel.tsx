@@ -268,6 +268,9 @@ export default function CopertinaPanel({
         </li>
       </ul>
       <p className="omnia-riquadro-nota" style={{ marginTop: 8 }}>
+        I loghi vengono applicati così come sono, senza sfondo, direttamente sull&apos;immagine: per il risultato migliore caricali in PNG con sfondo trasparente (uno sfondo bianco lo togliamo noi).
+      </p>
+      <p className="omnia-riquadro-nota" style={{ marginTop: 4 }}>
         Controlla sempre i testi e i loghi sulla copertina prima di usarla: è un&apos;immagine creata da un modello di intelligenza artificiale e può contenere imprecisioni.
       </p>
 

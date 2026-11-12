@@ -4,10 +4,12 @@
 // senza rete. Le chiamate (OpenAI, storage) stanno in copertina-relazione.ts. Test: scripts/verifica-copertina-relazione.ts.
 //
 // Il comando è quello scritto dall'utente, parola per parola, con i dati della gara al posto delle parentesi. Dopo il comando ci sono poche
-// note tecniche (loghi identici, testi esatti, margini, contesto della gara) che il comando da solo non può dire a un modello che non ha
-// letto il disciplinare: restano separate dal comando e si vedono nel prompt, non si mischiano con esso.
+// note tecniche (spazi liberi per i loghi, testi esatti, margini, contesto della gara) che il comando da solo non può dire a un modello che non ha
+// letto il disciplinare: restano separate dal comando e si vedono nel prompt, non si mischiano con esso. I loghi NON li disegna il modello: li applica
+// il codice dopo, originali e senza sfondo (copertina-loghi.ts, decisione dell'utente del 12/11/2026).
 
 import { normalizzaSettore, type Settore } from "@/lib/gara-settore";
+import { ZONA_CLIENTE, ZONA_STAZIONE, type Zona } from "@/lib/copertina-loghi-calcoli";
 
 // CHI può generare, a che prezzo e quante volte NON si decide qui: stanno nelle impostazioni per cliente della console (copertina-diritto-calcoli.ts).
 
@@ -154,9 +156,11 @@ export type DatiCopertina = {
   settore: Settore | null;
   // senza una lettura del documento (non dovrebbe succedere) lo sfondo ripiega sul motivo del settore
   direzione: DirezioneCopertina | null;
-  // quali loghi vengono allegati al modello, nell'ordine in cui compaiono nel prompt
+  // quali loghi verranno applicati sulla pagina (dal codice, dopo): per questi il modello lascia libero il loro angolo
   logoStazione: boolean;
   logoCliente: boolean;
+  // i colori principali dei loghi (esadecimali), per l'armonia della pagina; vuoto se i loghi sono solo neri/grigi o mancano
+  coloriLoghi: string[];
 };
 
 export function datiCopertina(grezzi: {
@@ -171,6 +175,7 @@ export function datiCopertina(grezzi: {
   stile?: unknown;
   logoStazione: boolean;
   logoCliente: boolean;
+  coloriLoghi?: unknown;
 }): DatiCopertina {
   return {
     titoloPrincipale: pulisciTesto(grezzi.titoloPrincipale, TITOLO_PRINCIPALE_MASSIMO) || TITOLO_PRINCIPALE_PREDEFINITO,
@@ -182,6 +187,10 @@ export function datiCopertina(grezzi: {
     direzione: grezzi.direzione ?? null,
     logoStazione: grezzi.logoStazione,
     logoCliente: grezzi.logoCliente,
+    // solo colori nel formato #rrggbb, senza doppioni, al massimo sei: finiscono nel prompt
+    coloriLoghi: Array.isArray(grezzi.coloriLoghi)
+      ? [...new Set(grezzi.coloriLoghi.filter((c): c is string => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c)).map((c) => c.toLowerCase()))].slice(0, 6)
+      : [],
   };
 }
 
@@ -216,18 +225,11 @@ export function rigaTitolo(dati: Pick<DatiCopertina, "titolo" | "cig">): string 
   return dati.cig ? `${dati.titolo} - CIG: ${dati.cig}` : dati.titolo;
 }
 
-// Il comando dell'utente, con i dati della gara al posto delle parentesi. I loghi arrivano al modello come immagini allegate, nell'ordine:
-// prima quello della stazione appaltante, poi quello del cliente (se uno manca, quello rimasto è «la prima immagine»). Un logo che non c'è
-// NON si chiede: il modello ne inventerebbe uno.
+// Il comando dell'utente, con i dati della gara al posto delle parentesi. La parte sui loghi («IN ALTO A SINISTRA METTI LOGO [stazione appaltante],
+// IN BASSO A DESTRA LOGO [cliente]») la esegue il CODICE dopo il disegno, applicando i loghi originali senza sfondo (copertina-loghi.ts): il modello i
+// loghi li ridisegnava, e ne perdeva dei pezzi (il caso SMAC, 12/11/2026). Al modello si chiede solo di lasciare liberi quei due angoli; un angolo senza
+// logo non si nomina nemmeno.
 export function comandoCopertina(dati: DatiCopertina): string {
-  const ordine: string[] = [];
-  if (dati.logoStazione) ordine.push("stazione");
-  if (dati.logoCliente) ordine.push("cliente");
-  const riferimento = (chi: "stazione" | "cliente") => {
-    const posizione = ordine.indexOf(chi);
-    return posizione === 0 ? "prima immagine allegata" : "seconda immagine allegata";
-  };
-
   const righe = [
     "CREA COPERTINA GRAFICA CON SFONDO COME IMMAGINE IN A4 COERENTE CON IL Disciplinare/Capitolato della gara.",
     // di base «RELAZIONE TECNICA» (il comando dell'utente, parola per parola); se il cliente ha scelto un altro titolo principale, al suo posto
@@ -235,16 +237,19 @@ export function comandoCopertina(dati: DatiCopertina): string {
     `SOTTO SEMPRE AL CENTRO SCRIVI: ${rigaTitolo(dati)}`,
   ];
 
-  const loghi: string[] = [];
-  if (dati.logoStazione) loghi.push(`IN ALTO A SINISTRA METTI LOGO STAZIONE APPALTANTE (${riferimento("stazione")})`);
-  if (dati.logoCliente) loghi.push(`IN BASSO A DESTRA METTI LOGO CLIENTE (${riferimento("cliente")})`);
-  if (loghi.length) righe.push("", loghi.join(", "));
+  const spazi: string[] = [];
+  if (dati.logoStazione) spazi.push("IN ALTO A SINISTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DELLA STAZIONE APPALTANTE");
+  if (dati.logoCliente) spazi.push("IN BASSO A DESTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DEL CLIENTE");
+  if (spazi.length) righe.push("", `${spazi.join(", ")} (i loghi vengono applicati dopo: NON disegnarli).`);
   return righe.join("\n");
 }
 
-// Il comando più le note tecniche e la direzione artistica. Le note non cambiano il comando: dicono come trattare i testi e i loghi (un modello
-// d'immagini tende a ridisegnare i loghi, a sbagliare le lettere e a scrivere insegne dove non servono); la direzione artistica dice COSA disegnare
-// nello sfondo, ricavato dal documento di gara letto da OpenAI (o, se manca, dal settore).
+const percento = (v: number) => `${Math.round(v * 100)}%`;
+const descriviZona = (z: Zona) => `circa dal ${percento(z.x)} al ${percento(z.x + z.larghezza)} della larghezza e dal ${percento(z.y)} al ${percento(z.y + z.altezza)} dell'altezza`;
+
+// Il comando più le note tecniche e la direzione artistica. Le note non cambiano il comando: dicono come trattare i testi e gli spazi dei loghi (un
+// modello d'immagini tende a sbagliare le lettere, a scrivere insegne dove non servono e a disegnare loghi o stemmi inventati); la direzione artistica dice
+// COSA disegnare nello sfondo, ricavato dal documento di gara letto da OpenAI (o, se manca, dal settore).
 export function promptCopertina(dati: DatiCopertina): string {
   const note: string[] = [
     "Formato: pagina A4 verticale, a tutta pagina, senza bordi bianchi né cornici di foglio.",
@@ -253,6 +258,9 @@ export function promptCopertina(dati: DatiCopertina): string {
     `I due testi sono centrati orizzontalmente sulla pagina, uno sotto l'altro: «${dati.titoloPrincipale}» grande e ben visibile, il titolo sotto in dimensione minore.`,
   ];
   const realistico = dati.stile === "realistico";
+  // gli angoli che devono restare chiari per i loghi (applicati dopo dal codice): la composizione li evita, invece di riempirli (nella prima prova del
+  // 12/11/2026 il modello aveva disegnato una villa proprio nell'angolo del logo del cliente)
+  const angoliLiberi = [dati.logoStazione ? "l'angolo in alto a sinistra" : null, dati.logoCliente ? "l'angolo in basso a destra" : null].filter((a): a is string => a !== null);
   if (realistico) {
     note.push(
       "Lo sfondo è una FOTOGRAFIA realistica a tutta pagina, da servizio fotografico professionale per una pubblicazione istituzionale: luce naturale, messa a fuoco nitida, profondità di campo, colori naturali. Non un'illustrazione, non un disegno, non una grafica vettoriale.",
@@ -261,23 +269,34 @@ export function promptCopertina(dati: DatiCopertina): string {
       // la leggibilità dei testi su una foto: una velatura chiara sulla fascia centrale (la foto resta visibile, schiarita e morbida)
       "Per la leggibilità, la fascia centrale della pagina (circa dal 30% al 70% dell'altezza), dove stanno i testi, è coperta da una velatura chiara molto morbida: la fotografia vi resta visibile ma schiarita e sfumata, e i testi scuri risaltano perfettamente. La parte alta e quella bassa della pagina mostrano la fotografia nitida e a piena intensità.",
     );
+    if (angoliLiberi.length) {
+      note.push(
+        `Inquadra la scena in modo che ${angoliLiberi.join(" e ")} cadano su zone chiare, calme e sfocate (un soffitto luminoso, una parete chiara, un pavimento chiaro), senza oggetti, piante o persone in primo piano: lì vanno i loghi e devono vedersi bene.`,
+      );
+    }
   } else {
     note.push(
       // l'illustrazione NON deve contenere testo: è il difetto più frequente di un modello d'immagini (insegne, targhe, nomi sugli edifici)
       "Nelle illustrazioni dello sfondo NESSUNA scritta: niente insegne, targhe, cartelli o nomi sugli edifici, niente numeri, niente bandiere, stemmi o simboli di enti.",
-      "La fascia centrale della pagina (circa dal 35% al 65% dell'altezza), dove stanno i testi, ha uno sfondo molto semplice, chiaro e senza dettagli, così i testi si leggono perfettamente; le illustrazioni stanno nella parte alta e nella parte bassa della pagina.",
+      angoliLiberi.length
+        ? // composizione LIBERA (l'utente non vuole sempre la stessa, 12/11/2026): l'unico vincolo sono gli angoli dei loghi, che devono restare chiari
+          `La fascia centrale della pagina (circa dal 35% al 65% dell'altezza), dove stanno i testi, ha uno sfondo molto semplice, chiaro e senza dettagli, così i testi si leggono perfettamente. La composizione delle illustrazioni è libera e può cambiare da una copertina all'altra (in alto e in basso, su un lato, in diagonale, a cornice: come rende meglio questa gara), purché ${angoliLiberi.join(" e ")} ${angoliLiberi.length === 2 ? "abbiano" : "abbia"} solo uno sfondo chiaro e semplice, senza illustrazioni né dettagli: lì vanno i loghi e devono vedersi bene.`
+        : "La fascia centrale della pagina (circa dal 35% al 65% dell'altezza), dove stanno i testi, ha uno sfondo molto semplice, chiaro e senza dettagli, così i testi si leggono perfettamente; le illustrazioni stanno nella parte alta e nella parte bassa della pagina.",
     );
   }
-  if (dati.logoStazione || dati.logoCliente) {
+  // I loghi li applica il codice, originali e senza sfondo: il modello non ne disegna nessuno (né veri né inventati), e nessun riquadro per contenerli
+  note.push("Non disegnare NESSUN logo, stemma, marchio o simbolo di enti in nessun punto della pagina, e nessun riquadro, pannello o cornice per loghi.");
+  const zone: string[] = [];
+  if (dati.logoStazione) zone.push(`in alto a sinistra (${descriviZona(ZONA_STAZIONE)})`);
+  if (dati.logoCliente) zone.push(`in basso a destra (${descriviZona(ZONA_CLIENTE)})`);
+  if (zone.length) {
     note.push(
-      `I loghi allegati vanno riprodotti IDENTICI all'originale: stessa forma, stessi colori, stesse scritte, senza ridisegnarli, deformarli o ricolorarli. ${
-        realistico ? "Mettili su pannelli bianchi con gli angoli arrotondati, ben leggibili sopra la fotografia." : "Mettili su un'area chiara o neutra così restano ben leggibili."
-      } ${dati.logoStazione && dati.logoCliente ? "Non inserire altri loghi, stemmi o marchi." : "Non inserire altri loghi, stemmi o marchi, e nessun logo negli angoli per cui non è stato richiesto."}`,
+      `${zone.length === 2 ? "Gli spazi dei loghi" : "Lo spazio del logo"} ${zone.join(" e ")} ${zone.length === 2 ? "restano liberi" : "resta libero"}: lì il logo originale viene applicato dopo, senza sfondo, direttamente sull'immagine. In ${zone.length === 2 ? "quegli spazi" : "quello spazio"} lo sfondo è chiaro, uniforme e calmo, senza oggetti, persone, testi o dettagli, così il logo si legge bene${
+        realistico ? " (nella fotografia: una zona chiara e sfocata, come una parete luminosa, il cielo o un pavimento chiaro)" : ""
+      }; ma resta parte dell'immagine, sfumato con il resto: niente riquadri, rettangoli bianchi, pannelli o cornici.`,
     );
-  } else {
-    note.push("Non inserire nessun logo, stemma o marchio.");
   }
-  note.push("Lascia margini ampi (almeno l'8% su ogni lato) intorno a testi e loghi, perché la pagina può essere rifilata ai bordi.");
+  note.push("Lascia margini ampi (almeno l'8% su ogni lato) intorno ai testi, perché la pagina può essere rifilata ai bordi.");
 
   const direzione: string[] = [];
   if (dati.direzione) {
@@ -289,10 +308,12 @@ export function promptCopertina(dati: DatiCopertina): string {
   } else {
     direzione.push(`Sfondo grafico coerente con il tema della gara, con ${MOTIVO_PER_SETTORE[dati.settore ?? "nessuno"]}.`);
   }
+  // l'armonia con i loghi: i loghi non arrivano più al modello, quindi i loro colori principali si scrivono (letti dal file del logo, mai inventati)
+  const armonia = dati.coloriLoghi.length ? `con i colori dei loghi che verranno applicati (${dati.coloriLoghi.join(", ")})` : "con toni sobri e istituzionali";
   direzione.push(
     realistico
-      ? "I colori della velatura e dei testi si armonizzano con i colori dei loghi allegati. Stile: fotografico, sobrio, istituzionale; riconoscibile come fatto per QUESTA gara, non una foto stock generica."
-      : "La palette si armonizza con i colori dei loghi allegati. Stile: sobrio, istituzionale, da studio grafico professionale; riconoscibile come fatto per QUESTA gara, non un modello generico. Niente persone con volti.",
+      ? `I colori della velatura e dei testi si armonizzano ${armonia}. Stile: fotografico, sobrio, istituzionale; riconoscibile come fatto per QUESTA gara, non una foto stock generica.`
+      : `La palette si armonizza ${armonia}. Stile: sobrio, istituzionale, da studio grafico professionale; riconoscibile come fatto per QUESTA gara, non un modello generico. Niente persone con volti.`,
   );
 
   const contesto: string[] = [`Oggetto della gara: ${dati.titolo}.`];
