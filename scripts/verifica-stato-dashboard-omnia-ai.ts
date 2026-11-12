@@ -249,7 +249,24 @@ async function main() {
   atteso("notifiche lette con la sessione dell'utente (regole di accesso), mai con la chiave di servizio", /createClient\(\)/.test(azione) && !/createAdminClient/.test(azione) && /conNotifiche === true/.test(azione));
   atteso("sessione non valida: nessun dato", /if \(!guardia\.ok\) return \{ inCorso: false, nonLette: null \};/.test(azione));
   const guardie = senzaCommenti(leggi("src/lib/omnia-ai-account-guardie.ts"));
-  atteso("la sessione dell'account si legge una volta per richiesta (cache di React), sempre con getUser", /export const leggiSessioneAccount = cache\(async/.test(guardie) && /import \{ cache \} from "react";/.test(guardie) && /auth\.getUser\(\)/.test(guardie));
+  atteso("le pagine leggono la sessione una volta per richiesta (cache di React), sempre con getUser", /export const leggiSessioneAccountPerPagina = cache\(leggiSessioneAccount\);/.test(guardie) && /import \{ cache \} from "react";/.test(guardie) && /auth\.getUser\(\)/.test(guardie));
+  {
+    // Le guardie delle AZIONI sono usate anche dal motore (analisi, chat, piano di lavoro, copertina): devono restare quelle di prima.
+    const corpi = (testo: string) =>
+      ["leggiSessioneAccount", "richiediTitolareAzione", "richiediAccountAzione"]
+        .map((n) => testo.replace(/\r\n/g, "\n").match(new RegExp(`export async function ${n}\\(\\)[\\s\\S]*?\\n\\}`))?.[0] ?? "")
+        .join("\n");
+    const { execSync } = await import("node:child_process");
+    let master = "";
+    try {
+      master = execSync("git show master:src/lib/omnia-ai-account-guardie.ts", { encoding: "utf8" });
+    } catch {
+      master = "";
+    }
+    atteso("guardie delle azioni (usate dal motore) identiche a master, senza cache", master === "" || (corpi(master).length > 200 && corpi(master) === corpi(leggi("src/lib/omnia-ai-account-guardie.ts"))));
+    const pagine = senzaCommenti(leggi("src/lib/omnia-ai-account-guardie.ts"));
+    atteso("solo le guardie delle pagine e il layout usano la versione con cache", (pagine.match(/await leggiSessioneAccountPerPagina\(\)/g) ?? []).length === 2 && (pagine.match(/await leggiSessioneAccount\(\)/g) ?? []).length === 2 && /await leggiSessioneAccountPerPagina\(\)/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx")));
+  }
   atteso("nessuna cache condivisa tra richieste (niente unstable_cache / use cache / variabili di modulo per la sessione)", !/unstable_cache|"use cache"|revalidate/.test(guardie));
 
   console.log("");

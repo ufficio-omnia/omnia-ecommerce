@@ -14,7 +14,7 @@ import DashboardShell from "@/components/omnia-ai/dashboard-shell";
 import PresenzaBattito from "@/components/omnia-ai/presenza-battito";
 import ActivateSubscriptionForm from "./activate-subscription-form";
 import { ErroreContestoAccount, type ContestoAccount } from "@/lib/omnia-ai-account";
-import { leggiSessioneAccount } from "@/lib/omnia-ai-account-guardie";
+import { leggiSessioneAccountPerPagina } from "@/lib/omnia-ai-account-guardie";
 import {
   MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO,
   MESSAGGIO_UFFICIO_GARE_GARE_FINITE,
@@ -174,7 +174,7 @@ async function LayoutInterno({
   // tratta come «titolare»: si ferma, per non aprire le pagine amministrative a chi non deve vederle.
   let sessione;
   try {
-    sessione = await leggiSessioneAccount();
+    sessione = await leggiSessioneAccountPerPagina();
   } catch (e) {
     if (e instanceof ErroreContestoAccount) {
       return <SchermataFermo email="" titolo="Verifica non riuscita" testo={MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA} />;
