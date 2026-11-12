@@ -6,6 +6,7 @@ import {
   extractGaraData,
   type ExtractionState,
 } from "@/app/actions/gara-extraction";
+import { SegnaleElaborazione } from "@/components/omnia-ai/stato-dashboard";
 import QuotaEsauritaConfronto from "./quota-esaurita-confronto";
 import ScadenzaProrogaForm from "./scadenza-proroga-form";
 import ScadenzaOraForm from "./scadenza-ora-form";
@@ -85,6 +86,8 @@ export default function ExtractionSection({
 
   return (
     <section className="omnia-riquadro" style={{ marginTop: 24 }}>
+      {/* Solo visualizzazione: il marchio in sidebar diventa ambra appena parte l'analisi (legge «pending», non tocca l'azione). */}
+      <SegnaleElaborazione attiva={pending} />
       <div className="omnia-app-intestazione">
         <span className="omnia-eyebrow">Dati estratti dall&apos;AI</span>
         <form action={formAction}>
