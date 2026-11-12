@@ -124,7 +124,13 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  response.cookies.set(ZONE_COOKIE, zone, { path: "/" });
+  // Il cookie di zona si scrive solo quando manca o cambia valore. Riscriverlo identico a OGNI risposta (com'era prima)
+  // faceva sì che ogni azione del server risultasse «con cookie modificati»: Next allora ridisegnava tutta la pagina
+  // corrente e svuotava la memoria di navigazione del browser, che a sua volta ricaricava tutti i link visibili.
+  // Il valore resta lo stesso di prima per ogni richiesta (è il cookie che il browser ha già).
+  if (request.cookies.get(ZONE_COOKIE)?.value !== zone) {
+    response.cookies.set(ZONE_COOKIE, zone, { path: "/" });
+  }
 
   return response;
 }
