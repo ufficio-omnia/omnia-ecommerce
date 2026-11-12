@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { MarchioStatoProvider } from "./marchio-stato-context";
-import MarchioStatoDriver from "./marchio-stato-driver";
+import { StatoDashboardProvider } from "./stato-dashboard";
 import SidebarNav from "./sidebar-nav";
 import Topbar from "./topbar";
 import type { VoceMenu } from "@/lib/omnia-ai-account-calcoli";
@@ -32,17 +32,19 @@ export default function DashboardShell({
 }) {
   return (
     <MarchioStatoProvider>
-      <MarchioStatoDriver />
-      <div className="omnia-shell">
-        <SidebarNav nomeAzienda={nomeAzienda} voci={voci} />
-        <div className="omnia-content">
-          {avvisi}
-          <div className="omnia-content-interno">
-            <Topbar nomeSaluto={nomeSaluto} email={email} ufficioGare={ufficioGare} />
-            {children}
+      {/* Un solo controllo periodico per spia del marchio e campanella (l'Ufficio Gare non ha la campanella). */}
+      <StatoDashboardProvider conNotifiche={!ufficioGare}>
+        <div className="omnia-shell">
+          <SidebarNav nomeAzienda={nomeAzienda} voci={voci} />
+          <div className="omnia-content">
+            {avvisi}
+            <div className="omnia-content-interno">
+              <Topbar nomeSaluto={nomeSaluto} email={email} ufficioGare={ufficioGare} />
+              {children}
+            </div>
           </div>
         </div>
-      </div>
+      </StatoDashboardProvider>
     </MarchioStatoProvider>
   );
 }

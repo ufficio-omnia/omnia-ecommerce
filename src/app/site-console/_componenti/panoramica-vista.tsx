@@ -188,8 +188,8 @@ export default function PanoramicaVista({
         </div>
       </div>
 
-      {/* La Panoramica si rilegge da sola ogni 30 secondi: «Online adesso» cambia continuamente. Nessun modulo qui. */}
-      <RicaricaAutomatica secondi={30} />
+      {/* La Panoramica si rilegge da sola ogni 60 secondi (a scheda visibile): «Online adesso» cambia continuamente. Nessun modulo qui. */}
+      <RicaricaAutomatica secondi={60} />
 
       <EvidenzaBonifici bonifici={bonifici} />
       <EvidenzaDaFatturare daFatturare={daFatturare} />

@@ -238,14 +238,22 @@ atteso("la scheda cliente: pagina riservata, presenza dell'utente e dell'Ufficio
 const utentiLib = leggi("src/lib/console/utenti.ts");
 atteso("l'elenco utenti legge la presenza insieme al resto e funziona anche senza", /leggiPresenze\(\),\s*\]\);/.test(utentiLib) && /presenze: presenze\.righe/.test(utentiLib) && /presenzaDisponibile: presenze\.disponibile/.test(utentiLib));
 const utentiVista = leggi("src/app/site-console/_componenti/utenti-vista.tsx");
-atteso("elenco utenti: colonna «Presenza», tessera e filtro «Online ora», nota se la migrazione manca, spiegazione, aggiornamento automatico", /etichetta: "Presenza"/.test(utentiVista) && /<CellaPresenza p=\{r\.presenza\} \/>/.test(utentiVista) && /etichetta="Online ora"/.test(utentiVista) && /migrazione 0094/.test(utentiVista) && /<strong>Presenza:<\/strong>/.test(utentiVista) && /<RicaricaAutomatica secondi=\{30\} \/>/.test(utentiVista));
+atteso("elenco utenti: colonna «Presenza», tessera e filtro «Online ora», nota se la migrazione manca, spiegazione, aggiornamento automatico", /etichetta: "Presenza"/.test(utentiVista) && /<CellaPresenza p=\{r\.presenza\} \/>/.test(utentiVista) && /etichetta="Online ora"/.test(utentiVista) && /migrazione 0094/.test(utentiVista) && /<strong>Presenza:<\/strong>/.test(utentiVista) && /<RicaricaAutomatica secondi=\{60\} \/>/.test(utentiVista));
 const pannVista = leggi("src/app/site-console/_componenti/panoramica-vista.tsx");
-atteso("Panoramica: tessera «Online adesso», tabella con ruolo, stato, sezione, in linea da, ultima attività; si aggiorna da sola", /etichetta="Online adesso"/.test(pannVista) && /<th>Dove si trova<\/th>/.test(pannVista) && /<th>In linea da<\/th>/.test(pannVista) && /<RicaricaAutomatica secondi=\{30\} \/>/.test(pannVista) && /Ufficio Gare di \{u\.ufficioGareDi\}/.test(pannVista));
+atteso("Panoramica: tessera «Online adesso», tabella con ruolo, stato, sezione, in linea da, ultima attività; si aggiorna da sola", /etichetta="Online adesso"/.test(pannVista) && /<th>Dove si trova<\/th>/.test(pannVista) && /<th>In linea da<\/th>/.test(pannVista) && /<RicaricaAutomatica secondi=\{60\} \/>/.test(pannVista) && /Ufficio Gare di \{u\.ufficioGareDi\}/.test(pannVista));
 const schedaVista = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
 atteso("scheda cliente: riquadro Presenza per chi non è amministratore, e la presenza dell'Ufficio Gare nel suo riquadro", /\{s\.utente\.ruolo !== "admin" && \(\s*<div className="cn-sezione">\s*<PannelloPresenza presenza=\{presenza\} \/>/.test(schedaVista) && /<dt>Presenza<\/dt>/.test(schedaVista) && /presenzaUfficioGare\?\.disponibile/.test(schedaVista));
 atteso("la scheda cliente NON si ricarica da sola (ha dei moduli da compilare: si perderebbe ciò che si sta scrivendo)", !/RicaricaAutomatica/.test(schedaVista));
 const ricarica = senzaCommenti(leggi("src/app/site-console/_componenti/ricarica-automatica.tsx"));
-atteso("l'aggiornamento automatico rilegge solo a scheda visibile, ogni 30 secondi di default, e si ferma allo smontaggio", /secondi = 30/.test(ricarica) && /document\.visibilityState === "visible"\) router\.refresh\(\)/.test(ricarica) && /window\.clearInterval\(timer\)/.test(ricarica));
+atteso(
+  "l'aggiornamento automatico rilegge solo a scheda visibile, ogni 60 secondi di default, mai sovrapposto, recupera al ritorno sulla scheda e si ferma allo smontaggio",
+  /secondi = 60/.test(ricarica) &&
+    /if \(document\.visibilityState !== "visible" \|\| inCorsoRef\.current\) return;/.test(ricarica) &&
+    /avvia\(\(\) => router\.refresh\(\)\)/.test(ricarica) &&
+    /document\.visibilityState === "visible" && Date\.now\(\) - ultimaRicarica >= intervalloMs\) ricarica\(\)/.test(ricarica) &&
+    /window\.clearInterval\(timer\)/.test(ricarica) &&
+    /document\.removeEventListener\("visibilitychange", alCambioDiVisibilita\)/.test(ricarica),
+);
 const pannelloVista = leggi("src/app/site-console/_componenti/presenza-vista.tsx");
 atteso("il riquadro della scheda spiega la differenza tra «Esci» e chiusura della scheda, e che si registra solo la sezione", /È uscito senza premere «Esci»/.test(pannelloVista) && /Si registra solo la sezione, mai quale gara/.test(pannelloVista) && /Ultima uscita con «Esci»/.test(pannelloVista));
 

@@ -3,14 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  getConteggioNonLette,
   getNotificheRecenti,
   segnaLetta,
   segnaTutteLette,
   type NotificaRow,
 } from "@/app/actions/omnia-ai-notifiche";
-
-const INTERVALLO_MS = 6000;
+import { useStatoDashboard } from "./stato-dashboard";
 
 // Dove porta una notifica che non riguarda una gara: prima restava un semplice pulsante
 // «segna come letta» senza nessuna destinazione, quindi «la tua fattura è disponibile» non
@@ -34,27 +32,11 @@ function formattaOrario(iso: string): string {
 }
 
 export default function NotificationBell() {
-  const [nonLette, setNonLette] = useState(0);
+  // Il contatore arriva dal controllo periodico unico della dashboard (stato-dashboard.tsx): niente timer qui.
+  const { nonLette, setNonLette } = useStatoDashboard();
   const [notifiche, setNotifiche] = useState<NotificaRow[] | null>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
-
-  // Il contatore si aggiorna sempre, in ogni pagina della dashboard —
-  // stesso intervallo del marchio a tre stati, ma un timer a sé: sono
-  // due segnali indipendenti (elaborazione gare vs notifiche da leggere).
-  useEffect(() => {
-    let annullato = false;
-    async function controlla() {
-      const n = await getConteggioNonLette();
-      if (!annullato) setNonLette(n);
-    }
-    controlla();
-    const id = setInterval(controlla, INTERVALLO_MS);
-    return () => {
-      annullato = true;
-      clearInterval(id);
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) return;

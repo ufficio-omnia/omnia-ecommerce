@@ -128,8 +128,8 @@ export default function UtentiVista({
         </p>
       )}
 
-      {/* La pagina si rilegge da sola ogni 30 secondi (chi è collegato cambia): niente moduli da compilare qui, solo filtri. */}
-      <RicaricaAutomatica secondi={30} />
+      {/* La pagina si rilegge da sola ogni 60 secondi, a scheda visibile (chi è collegato cambia): niente moduli da compilare qui, solo filtri. */}
+      <RicaricaAutomatica secondi={60} />
       {!elenco.presenzaDisponibile && (
         <p className="cn-esito avviso" role="status" style={{ marginBottom: 14 }}>
           La presenza (chi è collegato) non è ancora attiva: va eseguita la migrazione 0094.
@@ -283,7 +283,7 @@ export default function UtentiVista({
               <strong>Ultimo accesso:</strong> arriva da Supabase Auth e comprende gli accessi a entrambi i siti.
             </li>
             <li>
-              <strong>Presenza:</strong> riguarda solo l&apos;area riservata di OMNIA AI. L&apos;area manda un segnale ogni 45 secondi circa finché la scheda è aperta e visibile: «online» = ultimo segnale di meno di 2 minuti e mezzo fa; «attivo» = in quel segnale l&apos;utente stava usando la pagina (mouse, tastiera, scorrimento o tocco nell&apos;ultimo minuto), «fermo» = scheda aperta ma ferma. Sotto il badge: la sezione (solo il nome, mai quale gara) oppure, se è offline, quando è uscito. L&apos;orario esatto c&apos;è solo se ha premuto «Esci»; se ha chiuso la scheda o il browser vale l&apos;ultimo segnale (al più 45 secondi prima). Il telefono sospende le schede in background: lì «offline» può arrivare prima. La pagina si aggiorna da sola ogni 30 secondi.
+              <strong>Presenza:</strong> riguarda solo l&apos;area riservata di OMNIA AI. L&apos;area manda un segnale ogni 45 secondi circa finché la scheda è aperta e visibile: «online» = ultimo segnale di meno di 2 minuti e mezzo fa; «attivo» = in quel segnale l&apos;utente stava usando la pagina (mouse, tastiera, scorrimento o tocco nell&apos;ultimo minuto), «fermo» = scheda aperta ma ferma. Sotto il badge: la sezione (solo il nome, mai quale gara) oppure, se è offline, quando è uscito. L&apos;orario esatto c&apos;è solo se ha premuto «Esci»; se ha chiuso la scheda o il browser vale l&apos;ultimo segnale (al più 45 secondi prima). Il telefono sospende le schede in background: lì «offline» può arrivare prima. La pagina si aggiorna da sola ogni 60 secondi.
             </li>
           </ul>
         </details>

@@ -65,7 +65,7 @@ async function main() {
     "gara-copertina.ts": ["generaCopertinaGara", "scaricaCopertinaGara"],
     "download.ts": ["downloadGaraDocumento", "downloadGaraMessaggioFile", "downloadAllegatoMessaggio"],
     "assistenza-chat.ts": ["sendAssistenzaMessage", "richiediEscalationAssistenza"],
-    "omnia-ai-stato-sistema.ts": ["getStatoElaborazioneGare"],
+    "omnia-ai-stato-sistema.ts": ["getStatoDashboard"],
     "omnia-ai-revisione.ts": ["avvisaAmministratoreRevisione"],
     "pacchetti-servizi.ts": ["richiediAcquistoPacchetto"],
   };

@@ -32,21 +32,8 @@ export async function getNotificheRecenti(): Promise<NotificaRow[]> {
   return data ?? [];
 }
 
-export async function getConteggioNonLette(): Promise<number> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return 0;
-
-  const { count } = await supabase
-    .from("omnia_ai_notifiche")
-    .select("id", { count: "exact", head: true })
-    .eq("letta", false);
-
-  return count ?? 0;
-}
+// Il conteggio delle non lette non sta più qui: lo legge getStatoDashboard (omnia-ai-stato-sistema.ts) insieme allo
+// stato delle gare, con un solo controllo della sessione.
 
 export async function segnaLetta(id: string): Promise<void> {
   const supabase = await createClient();

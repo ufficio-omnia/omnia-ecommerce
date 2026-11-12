@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
@@ -21,7 +22,13 @@ export type SessioneAccount = { user: User; contesto: ContestoAccount };
 
 // Chi è loggato e di che account è. null = nessuna sessione. Solleva ErroreContestoAccount se il ruolo non si
 // riesce a verificare (mai «titolare» per difetto).
-export async function leggiSessioneAccount(): Promise<SessioneAccount | null> {
+//
+// cache() di React (come leggiSessioneConsole in src/lib/console/accesso.ts): layout, pagina e guardie della STESSA
+// richiesta leggono la sessione una volta sola invece di una per chiamata (ognuna è una chiamata a Supabase Auth più
+// una query). La memoria vive solo per la durata della singola richiesta del server: mai condivisa tra richieste né
+// tra utenti. Fuori dal disegno della pagina (route handler) cache() non memorizza e la funzione si esegue ogni volta,
+// come prima. La verifica resta getUser() (va al server di Auth, non si fida del cookie).
+export const leggiSessioneAccount = cache(async (): Promise<SessioneAccount | null> => {
   const supabase = await createClient();
   const {
     data: { user },
@@ -30,7 +37,7 @@ export async function leggiSessioneAccount(): Promise<SessioneAccount | null> {
   // La chiave di servizio, non la sessione dell'utente: la ricerca del ruolo non deve dipendere dalle regole di accesso.
   const contesto = await risolviContestoAccount(user.id, createAdminClient());
   return { user, contesto };
-}
+});
 
 export type EsitoGuardiaAzione = { ok: true; user: User; contesto: ContestoAccount } | { ok: false; errore: string };
 
