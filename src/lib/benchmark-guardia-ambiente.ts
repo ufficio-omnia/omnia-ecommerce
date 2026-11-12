@@ -11,6 +11,18 @@ export const STAGING_REF = "ryawdldqiumqsskrnyps";
 export const STAGING_URL = `https://${STAGING_REF}.supabase.co`;
 const PRODUZIONE = ["bihfrzspqxsrzlbqqvqa", "omnia-ai.it", "omniaitalia.com"];
 
+// Le 18 variabili NEXT_PUBLIC_VERCEL_* che Vercel aggiunge da sola ai progetti Next.js, in produzione E nelle anteprime
+// (https://vercel.com/docs/environment-variables/framework-environment-variables, sezione «Next.js»). Per esempio
+// NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL contiene SEMPRE il dominio di produzione, «even in preview deployments».
+const VERCEL_FRAMEWORK = new Set([
+  "NEXT_PUBLIC_VERCEL_ENV", "NEXT_PUBLIC_VERCEL_TARGET_ENV", "NEXT_PUBLIC_VERCEL_URL", "NEXT_PUBLIC_VERCEL_BRANCH_URL",
+  "NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL", "NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID", "NEXT_PUBLIC_VERCEL_PROJECT_ID",
+  "NEXT_PUBLIC_VERCEL_GIT_PROVIDER", "NEXT_PUBLIC_VERCEL_GIT_REPO_SLUG", "NEXT_PUBLIC_VERCEL_GIT_REPO_OWNER",
+  "NEXT_PUBLIC_VERCEL_GIT_REPO_ID", "NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF", "NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA",
+  "NEXT_PUBLIC_VERCEL_GIT_COMMIT_MESSAGE", "NEXT_PUBLIC_VERCEL_GIT_COMMIT_AUTHOR_LOGIN", "NEXT_PUBLIC_VERCEL_GIT_COMMIT_AUTHOR_NAME",
+  "NEXT_PUBLIC_VERCEL_GIT_PREVIOUS_SHA", "NEXT_PUBLIC_VERCEL_GIT_PULL_REQUEST_ID",
+]);
+
 // Valori finti attesi (non sono segreti: sono scritti anche in .env.vercel-benchmark).
 const FINTI: Record<string, string> = {
   NEXT_PUBLIC_SITE_URL: "https://benchmark-staging.invalid",
@@ -65,7 +77,14 @@ export function erroriAmbienteBenchmark(env: Record<string, string | undefined>)
   // sempre il dominio di produzione ma non è una credenziale né un accesso.
   for (const [k, valore] of Object.entries(env)) {
     if (!valore || /^(VERCEL_|npm_|NEXT_PRIVATE_|NEXT_RUNTIME$|TURBO_|__NEXT)/.test(k)) continue;
-    if (PRODUZIONE.some((p) => valore.includes(p))) e.push(`${k} contiene un riferimento alla produzione`);
+    // Variabili «di framework» che Vercel genera da sola per Next.js (elenco ESATTO della documentazione): informative, mai
+    // usate dal codice come indirizzo di un servizio. Per loro (e solo per loro) il nome del dominio di produzione è ammesso;
+    // restano vietati un progetto Supabase diverso dallo staging e le stringhe di connessione (controlli qui sotto), e le *_URL
+    // devono essere un semplice nome di dominio, senza protocollo, percorso o credenziali.
+    if (VERCEL_FRAMEWORK.has(k)) {
+      if (k.endsWith("_URL") && !/^[a-z0-9.-]+(:\d+)?$/i.test(valore)) e.push(`${k} non è un semplice nome di dominio`);
+    } else if (PRODUZIONE.some((p) => valore.includes(p))) e.push(`${k} contiene un riferimento alla produzione`);
+    if (valore.includes(PRODUZIONE[0])) e.push(`${k} contiene l'identificativo del progetto Supabase di produzione`);
     const altriSupabase = (valore.match(/[a-z0-9]{20}\.supabase\.(co|in)/g) ?? []).filter((h) => !h.startsWith(STAGING_REF));
     if (altriSupabase.length) e.push(`${k} punta a un progetto Supabase diverso dallo staging`);
     if (/^postgres(ql)?:\/\//.test(valore)) e.push(`${k} contiene una stringa di connessione a un database`);
