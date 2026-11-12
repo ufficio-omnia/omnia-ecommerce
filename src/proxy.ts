@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { benchmarkAcceso } from "@/lib/benchmark-regione";
+import { ambienteBenchmarkValido } from "@/lib/benchmark-guardia-ambiente";
 import {
   CONSOLE_PERCORSI_CONDIVISI,
   DEV_ZONE_COOKIE,
@@ -46,6 +47,15 @@ function resolveZone(request: NextRequest): { zone: Zone; recognized: boolean } 
 }
 
 export async function proxy(request: NextRequest) {
+  // SOLO BRANCH DI BENCHMARK (mai in master): blocco a runtime, PRIMA di qualsiasi altra cosa (anche prima di Supabase Auth).
+  // Se l'ambiente non è lo staging autorizzato con i servizi finti, ogni richiesta (pagine, azioni, API, cron) riceve 503.
+  if (!ambienteBenchmarkValido(process.env)) {
+    return new NextResponse("Servizio non disponibile: ambiente di benchmark non autorizzato.", {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
   const { zone, recognized } = resolveZone(request);
 
   // Inoltrati alla richiesta upstream (non alla risposta): permettono a

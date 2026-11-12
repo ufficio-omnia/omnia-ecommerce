@@ -1,4 +1,15 @@
 import type { NextConfig } from "next";
+import { erroriAmbienteBenchmark } from "./src/lib/benchmark-guardia-ambiente";
+
+// SOLO SUI BRANCH DI BENCHMARK (mai in master): la configurazione si carica per prima in `next build` (e in `next dev`/`start`).
+// Se l'ambiente non è lo staging autorizzato con i servizi finti, si ferma qui: nessuna pagina generata, nessun accesso a
+// database o servizi. Copre anche un comando di build cambiato a mano in `next build` (che salterebbe gli script npm).
+{
+  const errori = erroriAmbienteBenchmark(process.env);
+  if (errori.length) {
+    throw new Error(`BUILD BLOCCATA — ambiente non autorizzato per il benchmark:\n  - ${errori.join("\n  - ")}`);
+  }
+}
 
 const nextConfig: NextConfig = {
   experimental: {
