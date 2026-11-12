@@ -287,6 +287,13 @@ async function main() {
       /segnala\(true\);\s*return \(\) => segnala\(false\);/.test(stato) &&
       /const ctx = useContext\(StatoDashboardContext\);\s*const segnala = ctx\?\.segnalaElaborazioneLocale;/.test(stato),
   );
+  atteso(
+    "il verde («pronto») si accende solo quando il SERVER vede una gara passare da in corso a conclusa, mai alla sola fine del segnale locale (analisi rifiutata o finita con errore)",
+    /const applica = useCallback\(\(concluseDalServer = false\) =>/.test(stato) &&
+      /\} else if \(concluseDalServer\) \{\s*\/\/[^\n]*\n\s*setStato\("pronto"\);/.test(leggi("src/components/omnia-ai/stato-dashboard.tsx")) &&
+      /applica\(eraInCorsoSulServer && !esito\.inCorso\)/.test(stato) &&
+      /elaborazioniLocali\.current \+ \(attiva \? 1 : -1\)\);\s*applica\(\);/.test(stato),
+  );
   atteso("il marchio passa ancora da elaborazione a verde e poi a riposo", /setStato\("elaborazione"\)/.test(stato) && /setStato\("pronto"\)/.test(stato) && /setStato\("riposo"\)/.test(stato));
   const azione = senzaCommenti(leggi("src/app/actions/omnia-ai-stato-sistema.ts"));
   atteso("l'azione unica: una sola lettura della sessione (la guardia), nessun getUser in più", (azione.match(/richiediAccountAzione\(\)/g) ?? []).length === 1 && !/auth\.getUser\(\)/.test(azione));
