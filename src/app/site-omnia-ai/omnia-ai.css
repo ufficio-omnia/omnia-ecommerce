@@ -178,8 +178,9 @@ a {
 }
 
 /* ---------- Tema chiaro ----------
-   Si attiva con data-tema="chiaro" sull'<html> (lo scrive lo script di src/lib/tema-omnia-ai.ts prima che la pagina compaia;
-   senza una scelta dell'utente il tema è SEMPRE quello scuro). Stessi nomi di variabile del tema scuro, quindi nessuna regola
+   Si attiva con data-tema="chiaro" sull'<html>. È il tema di BASE: lo scrive già il server (layout.tsx), quindi chiunque arrivi lo
+   vede chiaro, anche senza JavaScript; lo scuro si sceglie con l'interruttore e lo applica lo script di src/lib/tema-omnia-ai.ts prima
+   che la pagina compaia. Qui sotto i colori scuri sono il blocco :root, che vale solo con data-tema="scuro". Stessi nomi di variabile del tema scuro, quindi nessuna regola
    sotto cambia: --nero è «il colore di fondo», --vetro «la superficie», --testo «il testo», anche se qui il fondo non è nero.
    I ruoli dei colori restano gli stessi (viola = azione, verde = risposta del sistema, ambra = avvisi, rosso = errori): cambiano
    solo le tonalità, più scure, perché sul fondo chiaro reggano il contrasto (controllato in scripts/verifica-tema-omnia-ai.ts). */

@@ -1,5 +1,5 @@
 // Controlli gratuiti sul tema chiaro/scuro di omnia-ai.it e della sua area riservata (nessuna rete, nessun database).
-//   1. la logica: scelta salvata → tema, di base SEMPRE lo scuro;
+//   1. la logica: scelta salvata → tema, di base SEMPRE il chiaro (richiesta del 12/11/2026), anche con il sistema in modo scuro;
 //   2. lo script che parte prima della pagina, eseguito davvero caso per caso e confrontato con la logica;
 //   3. il CSS: il tema scuro è rimasto com'era, quello chiaro ridefinisce ogni variabile, niente colori scritti a mano fuori dalla tavolozza;
 //   4. il contrasto dei testi (WCAG AA) nel tema chiaro, calcolato sui colori veri del CSS;
@@ -12,6 +12,7 @@ import {
   COLORI_BROWSER,
   SCELTA_PREDEFINITA,
   SCELTE_TEMA,
+  TEMA_PREDEFINITO,
   applicaTemaAlDocumento,
   costruisciScriptTema,
   interpretaScelta,
@@ -131,9 +132,10 @@ function eseguiScript(opzioni: { salvato?: string | null; storageRotto?: boolean
 async function main() {
   // ═════ 1. la logica ═════
   console.log("--- La logica ---");
-  uguale("senza una scelta il tema è SEMPRE lo scuro (e valori strani valgono «scuro»)", [interpretaScelta(null), interpretaScelta(undefined), interpretaScelta(""), interpretaScelta("blu"), interpretaScelta("CHIARO")], ["scuro", "scuro", "scuro", "scuro", "scuro"]);
+  uguale("senza una scelta il tema è SEMPRE il chiaro (e valori strani valgono «chiaro»)", [interpretaScelta(null), interpretaScelta(undefined), interpretaScelta(""), interpretaScelta("blu"), interpretaScelta("CHIARO")], ["chiaro", "chiaro", "chiaro", "chiaro", "chiaro"]);
   uguale("le tre scelte valide si riconoscono", SCELTE_TEMA.map((s) => interpretaScelta(s)), ["scuro", "chiaro", "auto"]);
-  uguale("la scelta predefinita è «scuro»", SCELTA_PREDEFINITA, "scuro");
+  uguale("la scelta predefinita è «chiaro» e il tema predefinito scritto dal server è il chiaro", [SCELTA_PREDEFINITA, TEMA_PREDEFINITO], ["chiaro", "chiaro"]);
+  uguale("senza scelta, il tema effettivo è chiaro qualunque sia il sistema (il chiaro di base non dipende dal dispositivo)", [temaEffettivo(SCELTA_PREDEFINITA, true), temaEffettivo(SCELTA_PREDEFINITA, false)], ["chiaro", "chiaro"]);
   uguale(
     "tema effettivo: «auto» segue il sistema, le altre due no",
     [temaEffettivo("scuro", true), temaEffettivo("scuro", false), temaEffettivo("chiaro", true), temaEffettivo("chiaro", false), temaEffettivo("auto", true), temaEffettivo("auto", false)],
@@ -144,19 +146,20 @@ async function main() {
     const scritto: string[] = [];
     const finto = { getItem: () => "chiaro", setItem: (k: string, v: string) => void scritto.push(`${k}=${v}`) };
     const rotto = { getItem: () => { throw new Error("no"); }, setItem: () => { throw new Error("no"); } };
-    uguale("salvare e rileggere la scelta funziona; con storage assente o bloccato non c'è nessun errore e si resta sullo scuro", [salvaScelta(finto, "chiaro"), scritto, salvaScelta(null, "chiaro"), salvaScelta(rotto, "chiaro"), leggiScelta(finto), leggiScelta(null), leggiScelta(rotto)], [true, ["omnia-tema=chiaro"], false, false, "chiaro", "scuro", "scuro"]);
+    uguale("salvare e rileggere la scelta funziona; con storage assente o bloccato non c'è nessun errore e si resta sul chiaro", [salvaScelta(finto, "scuro"), scritto, salvaScelta(null, "scuro"), salvaScelta(rotto, "scuro"), leggiScelta({ getItem: () => "scuro", setItem: () => undefined }), leggiScelta(null), leggiScelta(rotto)], [true, ["omnia-tema=scuro"], false, false, "scuro", "chiaro", "chiaro"]);
   }
 
   // ═════ 2. lo script iniziale ═════
   console.log("--- Lo script iniziale ---");
   const casi: { nome: string; opz: Parameters<typeof eseguiScript>[0]; scelta: string }[] = [
-    { nome: "niente salvato", opz: {}, scelta: "scuro" },
-    { nome: "niente salvato, sistema chiaro (il sito resta scuro)", opz: { sistemaChiaro: true }, scelta: "scuro" },
+    { nome: "niente salvato", opz: {}, scelta: "chiaro" },
+    { nome: "niente salvato, sistema chiaro", opz: { sistemaChiaro: true }, scelta: "chiaro" },
+    { nome: "niente salvato, sistema SCURO (il sito parte chiaro lo stesso)", opz: { sistemaChiaro: false }, scelta: "chiaro" },
     { nome: "scuro", opz: { salvato: "scuro", sistemaChiaro: true }, scelta: "scuro" },
     { nome: "chiaro", opz: { salvato: "chiaro" }, scelta: "chiaro" },
     { nome: "auto con sistema chiaro", opz: { salvato: "auto", sistemaChiaro: true }, scelta: "auto" },
     { nome: "auto con sistema scuro", opz: { salvato: "auto", sistemaChiaro: false }, scelta: "auto" },
-    { nome: "valore salvato non valido", opz: { salvato: "viola", sistemaChiaro: true }, scelta: "scuro" },
+    { nome: "valore salvato non valido", opz: { salvato: "viola", sistemaChiaro: false }, scelta: "chiaro" },
   ];
   for (const c of casi) {
     const e = eseguiScript(c.opz);
@@ -182,7 +185,7 @@ async function main() {
   }
   {
     const rotti = [eseguiScript({ storageRotto: true }), eseguiScript({ senzaMatchMedia: true, salvato: "auto" }), eseguiScript({ matchMediaRotto: true, salvato: "auto" }), eseguiScript({ senzaMeta: true, salvato: "chiaro" })];
-    uguale("senza errori e con il tema giusto anche se: lo storage è bloccato, manca matchMedia, matchMedia fallisce, mancano i meta", rotti.map((e) => [e.errore, e.tema]), [[null, "scuro"], [null, "scuro"], [null, "scuro"], [null, "chiaro"]]);
+    uguale("senza errori e con il tema giusto (chiaro: con «automatico» un sistema che non si riesce a interrogare non dà lo scuro) anche se: lo storage è bloccato, manca matchMedia, matchMedia fallisce, mancano i meta", rotti.map((e) => [e.errore, e.tema]), [[null, "chiaro"], [null, "chiaro"], [null, "chiaro"], [null, "chiaro"]]);
   }
   {
     const script = costruisciScriptTema();
@@ -238,7 +241,7 @@ async function main() {
     const colpevoli = file.filter((f) => /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d|\b(white|black)\b\s*["']/.test(senzaCommentiJs(leggi(f))));
     atteso("nei componenti e nelle pagine di omnia-ai.it nessun colore scritto a mano (tutto passa dalle variabili, quindi dal tema)", colpevoli.length === 0, colpevoli.join(", "));
     const layout = senzaCommentiJs(leggi("src/app/site-omnia-ai/layout.tsx"));
-    atteso("il colore del browser di base resta quello scuro (themeColor #050509, colorScheme dark): senza scelta non cambia nulla", /themeColor: "#050509"/.test(layout) && /colorScheme: "dark"/.test(layout));
+    atteso("il colore del browser di base è quello del tema di base, il chiaro (themeColor #f5f4fb, colorScheme light): lo cambia solo lo script, per chi sceglie lo scuro", /themeColor: COLORI_BROWSER\[TEMA_PREDEFINITO\]\.themeColor/.test(layout) && /colorScheme: COLORI_BROWSER\[TEMA_PREDEFINITO\]\.colorScheme/.test(layout) && COLORI_BROWSER[TEMA_PREDEFINITO].themeColor === "#f5f4fb" && COLORI_BROWSER[TEMA_PREDEFINITO].colorScheme === "light");
   }
 
   // ═════ 4. il contrasto nel tema chiaro (e il testo nel tema scuro) ═════
@@ -281,7 +284,7 @@ async function main() {
     const layout = senzaCommentiJs(layoutGrezzo);
     const corpo = layout.slice(layout.indexOf("<body>"), layout.indexOf("</body>"));
     atteso("lo script del tema è il PRIMO elemento del body (parte prima del contenuto, nessun lampo del tema sbagliato)", /^<body>\s*(?:\{\}\s*)?<ApplicaTema \/>\s*\{children\}/.test(corpo), corpo.slice(0, 80));
-    atteso("l'<html> non dichiara nessun tema da server (di base è lo scuro) e ammette gli attributi scritti dallo script", /<html lang="it" suppressHydrationWarning>/.test(layout) && !/data-tema/.test(layout));
+    atteso("l'<html> dichiara già dal server il tema di base (chiaro: data-tema e data-tema-scelta), così la pagina parte chiara per chiunque anche senza JavaScript, e ammette gli attributi riscritti dallo script", /<html lang="it" data-tema=\{TEMA_PREDEFINITO\} data-tema-scelta=\{SCELTA_PREDEFINITA\} suppressHydrationWarning>/.test(layout));
     atteso("lo script lo scrive un componente server dal modulo della logica (un solo testo, provato qui sopra)", /costruisciScriptTema\(\)/.test(leggi("src/components/omnia-ai/applica-tema.tsx")) && !/"use client"/.test(leggi("src/components/omnia-ai/applica-tema.tsx")));
 
     const intestazione = leggi("src/components/omnia-ai/site-header.tsx");

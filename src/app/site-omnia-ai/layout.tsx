@@ -3,6 +3,7 @@ import "./omnia-ai.css";
 import OmniaAiCookieConsent from "@/components/omnia-ai/cookie-consent";
 import AttribuzioneDemo from "@/components/omnia-ai/attribuzione-demo";
 import ApplicaTema from "@/components/omnia-ai/applica-tema";
+import { COLORI_BROWSER, SCELTA_PREDEFINITA, TEMA_PREDEFINITO } from "@/lib/tema-omnia-ai";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { URL_GTAG_JS, costruisciSnippetIniziale } from "@/lib/google-tag";
 
@@ -18,9 +19,11 @@ export const metadata: Metadata = {
   title: "OMNIA AI",
 };
 
+// Il colore del browser (barra dell'indirizzo sui telefoni, controlli nativi) è quello del tema di base, il chiaro; lo script del tema lo
+// cambia solo per chi ha scelto lo scuro.
 export const viewport: Viewport = {
-  themeColor: "#050509",
-  colorScheme: "dark",
+  themeColor: COLORI_BROWSER[TEMA_PREDEFINITO].themeColor,
+  colorScheme: COLORI_BROWSER[TEMA_PREDEFINITO].colorScheme,
 };
 
 // Google tag (Consent Mode v2, modalità avanzata): UN solo gtag.js con due destinazioni (Analytics G-… e Google Ads AW-…), presente
@@ -32,14 +35,16 @@ export const viewport: Viewport = {
 // Tutto sta in src/lib/google-tag.ts (testato in scripts/verifica-google-tag-omnia-ai.ts) e nella guida GUIDA-GOOGLE-TAG-CONSENT-MODE.md.
 export default function OmniaAiRootLayout({ children }: { children: React.ReactNode }) {
   return (
-    // suppressHydrationWarning: lo script del tema scrive data-tema e data-tema-scelta sull'<html> prima che React parta.
-    <html lang="it" suppressHydrationWarning>
+    // data-tema / data-tema-scelta: il tema di base (chiaro) è scritto già dal server, così la pagina parte chiara per chiunque, anche senza
+    // JavaScript. suppressHydrationWarning: per chi ha scelto lo scuro (o «automatico») lo script del tema cambia questi attributi
+    // sull'<html> prima che React parta.
+    <html lang="it" data-tema={TEMA_PREDEFINITO} data-tema-scelta={SCELTA_PREDEFINITA} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: costruisciSnippetIniziale() }} />
         <script defer src={URL_GTAG_JS} />
       </head>
       <body>
-        {/* Primo elemento del body: applica il tema scelto (di base lo scuro) prima che la pagina compaia. */}
+        {/* Primo elemento del body: applica il tema scelto (di base il chiaro, già scritto dal server) prima che la pagina compaia. */}
         <ApplicaTema />
         {children}
         <OmniaAiCookieConsent />
