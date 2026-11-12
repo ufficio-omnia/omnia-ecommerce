@@ -23,7 +23,7 @@ export type SessioneAccount = { user: User; contesto: ContestoAccount };
 // Chi è loggato e di che account è. null = nessuna sessione. Solleva ErroreContestoAccount se il ruolo non si
 // riesce a verificare (mai «titolare» per difetto).
 //
-// cache() di React (come leggiSessioneConsole in src/lib/console/accesso.ts): layout, pagina e guardie della STESSA
+// cache() di React (lo schema consigliato da Next per lo strato di accesso ai dati): layout, pagina e guardie della STESSA
 // richiesta leggono la sessione una volta sola invece di una per chiamata (ognuna è una chiamata a Supabase Auth più
 // una query). La memoria vive solo per la durata della singola richiesta del server: mai condivisa tra richieste né
 // tra utenti. Fuori dal disegno della pagina (route handler) cache() non memorizza e la funzione si esegue ogni volta,
