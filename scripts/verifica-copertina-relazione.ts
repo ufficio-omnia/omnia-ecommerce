@@ -1,9 +1,10 @@
 // Autotest della «Copertina relazione tecnica» (pulsante dentro la gara che chiede a OpenAI una copertina A4).
 // Controlla, senza rete né database (OpenAI e storage sono sostituiti da finti):
-//   - il comando è quello dell'utente, parola per parola, con titolo e CIG della gara; un logo mancante NON si chiede (il modello ne inventerebbe uno);
+//   - il comando è quello dell'utente, parola per parola, con titolo e CIG della gara; i loghi NON li disegna il modello (dal 12/11/2026): gli si chiede
+//     di lasciare liberi i loro angoli e li applica il codice, originali e senza sfondo (prove dei loghi: scripts/verifica-copertina-loghi.ts);
 //   - il CIG che non ha la forma giusta non si stampa; senza CIG resta il solo titolo;
 //   - il formato è A4 e multiplo di 16 (OpenAI rifiuta le altre dimensioni: errore reale della prima prova);
-//   - la richiesta a OpenAI: «modifiche» con i loghi allegati nell'ordine giusto, «generazioni» senza loghi, errori leggibili;
+//   - la richiesta a OpenAI: «generazioni» senza immagini allegate (la funzione sa ancora allegarne, provata a parte), errori leggibili;
 //   - la pagina esce A4 (PNG e PDF di una sola pagina A4); un formato sbagliato viene riportato ad A4;
 //   - il salvataggio (PNG + PDF con la stessa data nel nome, mai sopra una copertina precedente) e il costo registrato;
 //   - un errore di OpenAI non lascia file a metà né chiede soldi (nessun consumo, nessun file);
@@ -82,6 +83,18 @@ async function png(larghezza: number, altezza: number, colore = "#3366cc"): Prom
   return sharp({ create: { width: larghezza, height: altezza, channels: 3, background: colore } }).png().toBuffer();
 }
 
+// Un logo finto con lo sfondo trasparente: un rettangolo rosso 40×30 dentro un'immagine 60×40 trasparente (i margini vuoti si tolgono)
+async function logoTrasparente(colore = "#cc0000"): Promise<Buffer> {
+  const pieno = await sharp({ create: { width: 40, height: 30, channels: 3, background: colore } }).png().toBuffer();
+  return sharp({ create: { width: 60, height: 40, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: pieno, left: 10, top: 5 }]).png().toBuffer();
+}
+
+// Il colore di un pixel di un PNG
+async function pixel(immagine: Buffer, x: number, y: number): Promise<[number, number, number]> {
+  const { data } = await sharp(immagine).extract({ left: x, top: y, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return [data[0], data[1], data[2]];
+}
+
 async function main() {
   console.log("--- Il comando dell'utente, parola per parola ---");
   {
@@ -90,11 +103,17 @@ async function main() {
     atteso("prima riga identica a quella scritta dall'utente", comando.startsWith("CREA COPERTINA GRAFICA CON SFONDO COME IMMAGINE IN A4 COERENTE CON IL Disciplinare/Capitolato della gara.\n"));
     atteso("«AL CENTRO SCRIVI: RELAZIONE TECNICA»", comando.includes("\nAL CENTRO SCRIVI: RELAZIONE TECNICA\n"));
     atteso("«SOTTO SEMPRE AL CENTRO SCRIVI: [titolo] - CIG: [cig]»", comando.includes("\nSOTTO SEMPRE AL CENTRO SCRIVI: Servizio di pulizia degli edifici comunali - CIG: B1C2D3E4F5\n"));
-    atteso("logo della stazione appaltante IN ALTO A SINISTRA (prima immagine)", comando.includes("IN ALTO A SINISTRA METTI LOGO STAZIONE APPALTANTE (prima immagine allegata)"));
-    atteso("logo del cliente IN BASSO A DESTRA (seconda immagine)", comando.includes("IN BASSO A DESTRA METTI LOGO CLIENTE (seconda immagine allegata)"));
+    atteso(
+      "loghi: il modello lascia LIBERO l'angolo in alto a sinistra (stazione appaltante) e quello in basso a destra (cliente) e NON li disegna (li applica il codice)",
+      comando.includes("IN ALTO A SINISTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DELLA STAZIONE APPALTANTE") && comando.includes("IN BASSO A DESTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DEL CLIENTE") && /NON disegnarli/.test(comando) && !/METTI LOGO/.test(comando) && !/immagine allegata/.test(comando),
+    );
     const prompt = promptCopertina(dati);
     atteso("il prompt contiene il comando intero", prompt.startsWith(comando));
-    atteso("il prompt dice di riprodurre i loghi identici e di non scrivere altri testi", /IDENTICI/.test(prompt) && /Non scrivere nessun altro testo/.test(prompt));
+    atteso(
+      "il prompt vieta di disegnare loghi (veri o inventati) e riquadri per loghi, e di scrivere altri testi",
+      /Non disegnare NESSUN logo, stemma, marchio/.test(prompt) && /nessun riquadro, pannello o cornice per loghi/.test(prompt) && /niente riquadri, rettangoli bianchi, pannelli o cornici/.test(prompt) && /Non scrivere nessun altro testo/.test(prompt) && !/IDENTICI/.test(prompt),
+    );
+    atteso("gli spazi dei loghi nel prompt sono quelli dove il codice li applica (stesse percentuali delle zone)", prompt.includes("in alto a sinistra (circa dal 8% al 44% della larghezza e dal 6% al 20% dell'altezza)") && prompt.includes("in basso a destra (circa dal 56% al 92% della larghezza e dal 78% al 92% dell'altezza)"));
     atteso("il nome della stazione appaltante è solo contesto (non va scritto)", /non scriverne il nome sulla pagina/.test(prompt));
     atteso("il tipo di servizio è nel contesto (pulizie)", /pulizia, sanificazione e igiene ambientale/.test(prompt));
   }
@@ -104,11 +123,11 @@ async function main() {
     const soloStazione = comandoCopertina(datiCopertina({ ...base, logoCliente: false }));
     atteso("senza il logo del cliente non si chiede quello in basso a destra", soloStazione.includes("IN ALTO A SINISTRA") && !soloStazione.includes("IN BASSO A DESTRA"));
     const soloCliente = comandoCopertina(datiCopertina({ ...base, logoStazione: false }));
-    atteso("senza il logo della stazione appaltante quello del cliente è la PRIMA immagine", !soloCliente.includes("IN ALTO A SINISTRA") && soloCliente.includes("IN BASSO A DESTRA METTI LOGO CLIENTE (prima immagine allegata)"));
+    atteso("senza il logo della stazione appaltante si lascia libero solo l'angolo del cliente", !soloCliente.includes("IN ALTO A SINISTRA") && soloCliente.includes("IN BASSO A DESTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DEL CLIENTE"));
     const nessuno = promptCopertina(datiCopertina({ ...base, logoStazione: false, logoCliente: false }));
-    atteso("senza loghi non si nomina nessun logo da inserire e si vieta di inventarne", !nessuno.includes("IN ALTO A SINISTRA") && !nessuno.includes("IN BASSO A DESTRA") && /Non inserire nessun logo/.test(nessuno));
+    atteso("senza loghi non si lascia libero nessun angolo e si vieta di inventarne", !nessuno.includes("IN ALTO A SINISTRA") && !nessuno.includes("IN BASSO A DESTRA") && /Non disegnare NESSUN logo/.test(nessuno) && !/restano liberi|resta libero|lì vanno i loghi/.test(nessuno));
     const unoSolo = promptCopertina(datiCopertina({ ...base, logoCliente: false }));
-    atteso("con un solo logo si vieta il logo negli angoli non richiesti", /nessun logo negli angoli per cui non è stato richiesto/.test(unoSolo));
+    atteso("con un solo logo resta libero solo il suo angolo (e la composizione evita solo quello)", /Lo spazio del logo in alto a sinistra/.test(unoSolo) && !/in basso a destra \(circa/.test(unoSolo) && /purché l'angolo in alto a sinistra abbia solo uno sfondo chiaro e semplice/.test(unoSolo) && !/l'angolo in basso a destra/.test(unoSolo));
   }
 
   console.log("--- CIG e titolo ---");
@@ -218,7 +237,7 @@ async function main() {
 
   console.log("--- Generazione e salvataggio (storage finto) ---");
   {
-    const caricati: { percorso: string; tipo?: string; upsert?: boolean }[] = [];
+    const caricati: { percorso: string; tipo?: string; upsert?: boolean; corpo?: Buffer }[] = [];
     const rimossi: string[][] = [];
     let erroreSulPdf = false;
     const admin = {
@@ -227,7 +246,7 @@ async function main() {
           upload: async (percorso: string, _corpo: unknown, opzioni?: { contentType?: string; upsert?: boolean }) => {
             if (bucket !== "gare") return { error: { message: "bucket sbagliato" } };
             if (erroreSulPdf && percorso.endsWith(".pdf")) return { error: { message: "disco pieno" } };
-            caricati.push({ percorso, tipo: opzioni?.contentType, upsert: opzioni?.upsert });
+            caricati.push({ percorso, tipo: opzioni?.contentType, upsert: opzioni?.upsert, corpo: _corpo as Buffer });
             return { error: null };
           },
           remove: async (percorsi: string[]) => {
@@ -254,7 +273,7 @@ async function main() {
       logoStazionePath: "gara/logo.png",
       logoClientePath: "azienda/logo.png",
       admin: admin as never,
-      leggiLogoFn: async (_bucket: string, percorso: string | null) => (percorso ? { png: await png(30, 20) } : undefined),
+      leggiLogoFn: async (_bucket: string, percorso: string | null) => (percorso ? { png: await logoTrasparente(_bucket === "gare" ? "#cc0000" : "#00aa00") } : undefined),
       leggiDocumentoFn: (async (p: { documento: { nome_file: string }; titoloGara: string; cigGara: string | null }) => {
         documentoLetto = p.documento.nome_file;
         return {
@@ -284,7 +303,18 @@ async function main() {
     atteso("salvati PNG e PDF nel bucket «gare», sotto la cartella della gara, con la stessa data", caricati.length === 2 && caricati[0].percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.png` && caricati[1].percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.pdf`);
     atteso("mai sopra un file precedente (upsert spento)", caricati.every((c) => c.upsert === false));
     atteso("tipi dei file", caricati[0].tipo === "image/png" && caricati[1].tipo === "application/pdf");
-    atteso("i due loghi sono arrivati al modello e il prompt nomina entrambi", loghiRicevuti === 2 && /prima immagine allegata/.test(promptRicevuti[0]) && /seconda immagine allegata/.test(promptRicevuti[0]));
+    atteso("i loghi NON arrivano al modello (nessuna immagine allegata) e il comando lascia liberi i due angoli", loghiRicevuti === 0 && /IN ALTO A SINISTRA LASCIA LIBERO/.test(promptRicevuti[0]) && /IN BASSO A DESTRA LASCIA LIBERO/.test(promptRicevuti[0]));
+    // i loghi li applica il codice: nella copertina SALVATA il logo della stazione (rosso) è nel suo angolo in alto a sinistra, quello del cliente (verde)
+    // nel suo angolo in basso a destra, il resto della pagina è quello disegnato dal modello (blu). Il logo 40×30 si ingrandisce al massimo 4 volte: 160×120.
+    const salvata = caricati[0].corpo as Buffer;
+    const [stazioneCentro, clienteCentro, fuori] = await Promise.all([pixel(salvata, 127 + 80, 134 + 60), pixel(salvata, 1297 + 80, 1941 + 60), pixel(salvata, 792, 300)]);
+    atteso(
+      "nella copertina salvata ci sono i loghi originali, ognuno nel suo angolo, e il resto della pagina è quello disegnato dal modello",
+      stazioneCentro.join() === "204,0,0" && clienteCentro.join() === "0,170,0" && fuori.join() === "51,102,204",
+      `stazione ${stazioneCentro} cliente ${clienteCentro} fuori ${fuori}`,
+    );
+    const pdfSalvato = await PDFDocument.load(caricati[1].corpo as Buffer);
+    atteso("il PDF salvato è quello della pagina con i loghi (una pagina A4)", pdfSalvato.getPageCount() === 1);
     atteso("costi registrati: prima la lettura (modello di testo), poi l'immagine, con provider, token, gara e account", usi.length === 2 && usi[0].provider === "openai" && usi[0].model === "gpt-5.4-mini" && usi[0].inputTokens === 1500 && /copertina_relazione_lettura$/.test(String(usi[0].operazione)) && usi[1].provider === "openai" && usi[1].model === "gpt-image-2" && usi[1].inputTokens === 1540 && usi[1].outputTokens === 2264 && usi[1].garaId === GARA_ID && usi[1].userId === "account-finto" && /copertina_relazione_stilizzato$/.test(String(usi[1].operazione)));
 
     // lo stile realistico: stesso flusso, direzione fotografica, file con «-realistico», costo con il suo nome; i due stili non si pestano i piedi
@@ -310,7 +340,21 @@ async function main() {
     // un logo che non si legge: la copertina si fa lo stesso, senza quel logo
     caricati.length = 0;
     const senzaUnLogo = await generaCopertina({ ...comuni, logoClientePath: null } as never);
-    atteso("logo del cliente assente: copertina fatta con un solo logo", senzaUnLogo.ok && loghiRicevuti === 1 && !/IN BASSO A DESTRA/.test(promptRicevuti[promptRicevuti.length - 1]));
+    atteso("logo del cliente assente: copertina fatta con il solo logo della stazione, e l'angolo in basso a destra non si nomina", senzaUnLogo.ok && loghiRicevuti === 0 && !/IN BASSO A DESTRA/.test(promptRicevuti[promptRicevuti.length - 1]) && /IN ALTO A SINISTRA LASCIA LIBERO/.test(promptRicevuti[promptRicevuti.length - 1]));
+    // un logo con uno sfondo che non si può togliere (qui: tutto blu, non bianco) si applica così com'è e il cliente lo sa
+    caricati.length = 0;
+    const conSfondoPieno = await generaCopertina({ ...comuni, leggiLogoFn: async (_b: string, p: string | null) => (p ? { png: await png(30, 20, "#1144aa") } : undefined) } as never);
+    atteso(
+      "logo con uno sfondo non bianco: applicato così com'è, con un avviso che dice di caricarlo in PNG trasparente (per la stazione nella gara, per il cliente nel profilo azienda)",
+      conSfondoPieno.ok && conSfondoPieno.avvisi.some((a) => /logo della stazione appaltante ha uno sfondo che non si può togliere/.test(a) && /«Documenti» della gara in PNG con sfondo trasparente/.test(a)) && conSfondoPieno.avvisi.some((a) => /Il tuo logo ha uno sfondo/.test(a) && /profilo azienda in PNG con sfondo trasparente/.test(a)),
+    );
+    // un file del logo che non è un'immagine: copertina senza quel logo, con l'avviso
+    const nonImmagine = await generaCopertina({ ...comuni, leggiLogoFn: async (b: string, p: string | null) => (p ? { png: b === "gare" ? Buffer.from("non sono un'immagine") : await logoTrasparente() } : undefined) } as never);
+    atteso(
+      "logo della stazione che non è un'immagine leggibile: copertina fatta senza, angolo non riservato, avviso chiaro",
+      nonImmagine.ok && nonImmagine.avvisi.some((a) => /logo della stazione appaltante non è un'immagine leggibile/.test(a)) && !/IN ALTO A SINISTRA/.test(promptRicevuti[promptRicevuti.length - 1]),
+    );
+    caricati.length = 0;
 
     // ── i testi scritti dal cliente (richiesta dell'11/11/2026): prevalgono sull'estrazione, campo per campo; il documento resta letto per lo sfondo ──
     const ultimoPrompt = () => promptRicevuti[promptRicevuti.length - 1];
@@ -466,7 +510,7 @@ async function main() {
       "titolo principale del cliente: sta nella seconda riga del comando e nella nota sui testi; il sottotitolo e il CIG nella terza",
       comandoCopertina(custom).split("\n")[1] === "AL CENTRO SCRIVI: RELAZIONE TECNICA - OFFERTA TECNICA" && comandoCopertina(custom).split("\n")[2] === "SOTTO SEMPRE AL CENTRO SCRIVI: Sottotitolo scelto - CIG: A9B8C7D6E5" && promptCopertina(custom).includes("«RELAZIONE TECNICA - OFFERTA TECNICA» grande e ben visibile"),
     );
-    atteso("il resto del comando non cambia con il titolo principale (prima riga, loghi in alto a sinistra e in basso a destra)", comandoCopertina(custom).split("\n")[0] === comandoCopertina(predefinito).split("\n")[0] && /IN ALTO A SINISTRA METTI LOGO STAZIONE APPALTANTE/.test(comandoCopertina(custom)) && /IN BASSO A DESTRA METTI LOGO CLIENTE/.test(comandoCopertina(custom)));
+    atteso("il resto del comando non cambia con il titolo principale (prima riga, loghi in alto a sinistra e in basso a destra)", comandoCopertina(custom).split("\n")[0] === comandoCopertina(predefinito).split("\n")[0] && /IN ALTO A SINISTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DELLA STAZIONE APPALTANTE/.test(comandoCopertina(custom)) && /IN BASSO A DESTRA LASCIA LIBERO LO SPAZIO PER IL LOGO DEL CLIENTE/.test(comandoCopertina(custom)));
     atteso("titolo principale troppo lungo che arrivasse fin qui: tagliato al massimo, mai oltre", datiCopertina({ ...datiBase, titoloPrincipale: "x".repeat(500) }).titoloPrincipale.length === TITOLO_PRINCIPALE_MASSIMO);
     atteso("senza CIG il sottotitolo resta solo il titolo, anche con il titolo principale del cliente (mai un CIG inventato)", comandoCopertina(datiCopertina({ ...datiBase, titoloPrincipale: "OFFERTA", cig: null })).split("\n")[2] === `SOTTO SEMPRE AL CENTRO SCRIVI: ${base.titolo}`);
 
@@ -522,8 +566,16 @@ async function main() {
     atteso("stile realistico: è una fotografia, non un'illustrazione", /FOTOGRAFIA realistica a tutta pagina/.test(real) && /Non un'illustrazione/.test(real));
     atteso("stile realistico: nessuna scritta, bandiera o volto riconoscibile nella foto", /nessuna scritta leggibile/.test(real) && /bandiere/.test(real) && /senza volti riconoscibili/.test(real));
     atteso("stile realistico: velatura chiara sulla fascia centrale perché i testi si leggano sulla foto", /velatura chiara/.test(real) && /fascia centrale/.test(real));
-    atteso("stile realistico: i loghi su pannelli bianchi, identici all'originale", /pannelli bianchi/.test(real) && /IDENTICI/.test(real) && !/Mettili su un'area chiara o neutra/.test(real));
-    atteso("stile stilizzato: niente fotografia né velatura, loghi su area chiara", !/FOTOGRAFIA realistica/.test(prompt) && !/velatura/.test(prompt) && /area chiara o neutra/.test(prompt));
+    atteso(
+      "stile realistico: niente pannelli per i loghi; la scena si inquadra perché gli angoli dei loghi cadano su zone chiare e sfocate",
+      !/pannelli bianchi/.test(real) && !/IDENTICI/.test(real) && /Inquadra la scena in modo che l'angolo in alto a sinistra e l'angolo in basso a destra cadano su zone chiare, calme e sfocate/.test(real) && /zona chiara e sfocata/.test(real),
+    );
+    atteso(
+      "stile stilizzato: niente fotografia né velatura; composizione LIBERA e varia (non sempre la diagonale: richiesta dell'utente), con l'unico vincolo degli angoli dei loghi chiari perché i loghi si vedano bene",
+      !/FOTOGRAFIA realistica/.test(prompt) && !/velatura/.test(prompt) && /La composizione delle illustrazioni è libera e può cambiare da una copertina all'altra/.test(prompt) && !/composte in diagonale/.test(prompt) && /purché l'angolo in alto a sinistra e l'angolo in basso a destra abbiano solo uno sfondo chiaro e semplice, senza illustrazioni né dettagli: lì vanno i loghi e devono vedersi bene/.test(prompt),
+    );
+    const senzaLoghi = promptCopertina(datiCopertina({ ...base, direzione, logoStazione: false, logoCliente: false }));
+    atteso("senza loghi la composizione resta quella di prima (illustrazioni in alto e in basso, nessun angolo riservato)", /le illustrazioni stanno nella parte alta e nella parte bassa della pagina\./.test(senzaLoghi) && !/composizione delle illustrazioni è libera/.test(senzaLoghi));
     const realSenza = promptCopertina(datiCopertina({ ...base, direzione: null, stile: "realistico" }));
     atteso("stile realistico senza la lettura del documento: ripiego fotografico sul settore", realSenza.includes("Sfondo fotografico coerente con il tema della gara: una fotografia di ambienti puliti e luminosi") && !realSenza.includes("motivi astratti"));
     atteso("stile realistico senza CIG: nessuna menzione del CIG nel prompt", !promptCopertina(datiCopertina({ ...base, cig: null, direzione, stile: "realistico" })).includes("CIG"));
@@ -532,7 +584,13 @@ async function main() {
     atteso("il tipo di servizio è quello letto nel documento", prompt.includes("Tipo di servizio: pulizia e sanificazione di edifici comunali."));
     atteso("le illustrazioni non devono contenere scritte, insegne, bandiere (difetto visto nelle prove)", /NESSUNA scritta/.test(prompt) && /insegne/.test(prompt) && /bandiere/.test(prompt));
     atteso("la fascia centrale resta libera per i testi", /fascia centrale/.test(prompt) && /molto semplice, chiaro e senza dettagli/.test(prompt));
-    atteso("la palette segue i loghi e lo stile è professionale, non generico", /armonizza con i colori dei loghi/.test(prompt) && /NON un modello generico|non un modello generico/.test(prompt));
+    atteso("senza colori dei loghi la palette è sobria, e lo stile è professionale, non generico", /armonizza con toni sobri e istituzionali/.test(prompt) && /NON un modello generico|non un modello generico/.test(prompt));
+    const conColori = promptCopertina(datiCopertina({ ...base, direzione, coloriLoghi: ["#1F2A61", "#d4107b", "#1f2a61", "rosso", "#12345", null] }));
+    atteso(
+      "con i colori dei loghi (letti dai file) la palette si armonizza con quelli: solo #rrggbb validi, senza doppioni",
+      /armonizza con i colori dei loghi che verranno applicati \(#1f2a61, #d4107b\)/.test(conColori) && !/rosso|#12345\b/.test(conColori),
+    );
+    atteso("al massimo sei colori dei loghi", datiCopertina({ ...base, coloriLoghi: ["#000001", "#000002", "#000003", "#000004", "#000005", "#000006", "#000007"] }).coloriLoghi.length === 6 && datiCopertina({ ...base }).coloriLoghi.length === 0);
     atteso("il comando dell'utente resta la prima parte del prompt, intatto", prompt.startsWith(comandoCopertina(datiCopertina({ ...base, direzione }))));
     const senza = promptCopertina(datiCopertina({ ...base, direzione: null }));
     atteso("senza la lettura del documento si ripiega sul motivo del settore", senza.includes("motivi astratti che richiamino pulizia") && !senza.includes("Territorio:"));

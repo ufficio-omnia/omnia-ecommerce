@@ -7,6 +7,7 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { operazionePerRegistro } from "@/lib/anthropic";
 import { ErroreOpenAI, postaAOpenAI } from "@/lib/copertina-openai";
 import { leggiDocumentoPerCopertina, type DocumentoDaLeggere } from "@/lib/copertina-lettura";
+import { applicaLoghi, preparaLogo } from "@/lib/copertina-loghi";
 import {
   A4_ALTEZZA_PT,
   A4_LARGHEZZA_PT,
@@ -44,20 +45,15 @@ const URL_GENERAZIONI = "https://api.openai.com/v1/images/generations";
 const URL_MODIFICHE = "https://api.openai.com/v1/images/edits";
 // La generazione di un'immagine grande può durare più di un minuto; la pagina della gara ha già un tetto di 800 s
 const TEMPO_MASSIMO_MS = 280_000;
-// I loghi non servono più grandi di così al modello (e più pixel = più token da pagare)
-const LATO_MASSIMO_LOGO = 1024;
-
 export type Logo = { png: Buffer };
 
-// Un logo del bucket, pronto da allegare: sempre PNG, ridotto. undefined se manca o non si legge (un logo mancante non è un errore).
+// Un logo del bucket, ORIGINALE (convertito in PNG, mai ridotto qui): lo prepara copertina-loghi.ts. undefined se manca o non si legge (un logo mancante
+// non è un errore). Prima lo si riduceva a 1024 px per mandarlo al modello: riducendo un PNG trasparente il colore nascosto sotto la trasparenza diventava
+// nero, e il modello (che la trasparenza non la considera) perdeva le scritte nere del logo (il caso SMAC, 12/11/2026).
 export async function leggiLogo(bucket: string, percorso: string | null): Promise<Logo | undefined> {
   const grezzo = await caricaLogo(bucket, percorso);
   if (!grezzo) return undefined;
-  const png = await sharp(Buffer.from(grezzo.base64, "base64"))
-    .resize({ width: LATO_MASSIMO_LOGO, height: LATO_MASSIMO_LOGO, fit: "inside", withoutEnlargement: true })
-    .png()
-    .toBuffer();
-  return { png };
+  return { png: Buffer.from(grezzo.base64, "base64") };
 }
 
 // Il logo del cliente (l'azienda che usa OMNIA AI) sta sul profilo azienda del titolare; la lettura usa la chiave di servizio, come per l'organigramma
@@ -187,7 +183,21 @@ export async function generaCopertina(params: {
     });
 
     fase = "disegno";
-    const [logoStazione, logoCliente] = await Promise.all([leggi("gare", params.logoStazionePath), leggi("company-assets", params.logoClientePath)]);
+    // I loghi ORIGINALI (non ridotti): non vanno al modello, li applica il codice dopo, senza sfondo. Un logo che non si legge si salta, con un avviso.
+    const [fileStazione, fileCliente] = await Promise.all([leggi("gare", params.logoStazionePath), leggi("company-assets", params.logoClientePath)]);
+    const [logoStazione, logoCliente] = await Promise.all([
+      fileStazione ? preparaLogo(fileStazione.png).catch(() => undefined) : undefined,
+      fileCliente ? preparaLogo(fileCliente.png).catch(() => undefined) : undefined,
+    ]);
+    const avvisiLoghi: string[] = [];
+    const DOVE_CARICARE = { stazione: "nella sezione «Documenti» della gara", cliente: "nel profilo azienda" } as const;
+    const NOME_LOGO = { stazione: "Il logo della stazione appaltante", cliente: "Il tuo logo" } as const;
+    for (const [chi, file, pronto] of [["stazione", fileStazione, logoStazione], ["cliente", fileCliente, logoCliente]] as const) {
+      if (file && !pronto) avvisiLoghi.push(`${NOME_LOGO[chi]} non è un'immagine leggibile: la copertina è senza. Caricalo di nuovo ${DOVE_CARICARE[chi]} (PNG o JPG).`);
+      if (pronto?.sfondo === "pieno") {
+        avvisiLoghi.push(`${NOME_LOGO[chi]} ha uno sfondo che non si può togliere in automatico (${pronto.motivo}): è stato applicato così com'è. Per un risultato migliore caricalo ${DOVE_CARICARE[chi]} in PNG con sfondo trasparente.`);
+      }
+    }
     // ciò che il cliente ha scritto vale più di ciò che si è estratto, campo per campo; un campo lasciato vuoto resta quello letto dal documento
     const testi = params.testiCliente ?? TESTI_CLIENTE_VUOTI;
     const dati = datiCopertina({
@@ -201,13 +211,15 @@ export async function generaCopertina(params: {
       stile,
       logoStazione: Boolean(logoStazione),
       logoCliente: Boolean(logoCliente),
+      // i colori dei loghi, letti dai file, per l'armonia della pagina (i loghi non arrivano più al modello)
+      coloriLoghi: [...(logoStazione?.colori ?? []), ...(logoCliente?.colori ?? [])],
     });
     const valido = validaDatiCopertina(dati);
     if (!valido.ok) return { ok: false, errore: valido.errore };
-    const loghi = [logoStazione, logoCliente].filter((l): l is Logo => Boolean(l));
 
     const modello = modelloCopertina();
-    const { immagine, uso } = await chiedi({ prompt: promptCopertina(dati), loghi, apiKey, modello });
+    // nessun logo allegato: il modello disegna sfondo e testi, lasciando liberi gli angoli dei loghi
+    const { immagine, uso } = await chiedi({ prompt: promptCopertina(dati), loghi: [], apiKey, modello });
     await registra({
       userId: accountId,
       garaId,
@@ -221,12 +233,15 @@ export async function generaCopertina(params: {
 
     fase = "salvataggio";
     const pagina = await paginaA4(immagine);
-    const pdf = await pdfA4(pagina.png);
+    // i loghi originali, senza sfondo e senza riquadri, ognuno nel suo angolo
+    const conLoghi = await applicaLoghi(pagina.png, { stazione: logoStazione, cliente: logoCliente });
+    for (const chi of conLoghi.saltati) avvisiLoghi.push(`${NOME_LOGO[chi]} non si è potuto applicare: la copertina è senza. Riprova; se succede ancora, caricalo di nuovo ${DOVE_CARICARE[chi]}.`);
+    const pdf = await pdfA4(conLoghi.png);
 
     const adesso = params.adesso ?? new Date();
     const percorsoPng = percorsoCopertina(garaId, adesso, stile, "png");
     const percorsoPdf = percorsoCopertina(garaId, adesso, stile, "pdf");
-    const caricaPng = await admin.storage.from("gare").upload(percorsoPng, pagina.png, { contentType: "image/png", upsert: false });
+    const caricaPng = await admin.storage.from("gare").upload(percorsoPng, conLoghi.png, { contentType: "image/png", upsert: false });
     if (caricaPng.error) throw new Error(`Salvataggio dell'immagine non riuscito: ${caricaPng.error.message}`);
     const caricaPdf = await admin.storage.from("gare").upload(percorsoPdf, pdf, { contentType: "application/pdf", upsert: false });
     if (caricaPdf.error) {
@@ -243,7 +258,7 @@ export async function generaCopertina(params: {
       cig: dati.cig,
       daCliente: { titoloPrincipale: Boolean(testi.titoloPrincipale), sottotitolo: Boolean(testi.sottotitolo), cig: Boolean(testi.cig) },
       documento: documento.nome_file,
-      avvisi: avvisiDopoTestiCliente(letto.esito, testi),
+      avvisi: [...avvisiDopoTestiCliente(letto.esito, testi), ...avvisiLoghi],
     };
   } catch (err) {
     // nel log resta la causa vera (con lo stato di OpenAI, se c'è); al cliente va un messaggio che non la attribuisce a lui se non è sua
