@@ -194,7 +194,24 @@ async function LayoutInterno({
     );
   }
 
-  const stato = await getOmniaAiAccessState(user.id, supabase);
+  // Tre letture indipendenti in parallelo invece che una dopo l'altra (ogni lettura è un giro fino al database): stato
+  // dell'abbonamento, dati dell'azienda per saluto e avvisi, offerta pilot acquistata. Il pilot si legge sempre ma vale
+  // solo con l'abbonamento attivo (come prima); la lettura non solleva mai errori (in caso di problemi restituisce null).
+  const [stato, { data: company }, pilotAcquistato] = await Promise.all([
+    getOmniaAiAccessState(user.id, supabase),
+    supabase
+      .from("companies")
+      .select("ragione_sociale, partita_iva, indirizzo, codice_sdi, pec")
+      .eq("user_id", user.id)
+      .maybeSingle<{
+        ragione_sociale: string | null;
+        partita_iva: string | null;
+        indirizzo: string | null;
+        codice_sdi: string | null;
+        pec: string | null;
+      }>(),
+    leggiPilotAcquistato(user.id),
+  ]);
 
   if (stato.stato === "cessato") {
     const admin = createAdminClient();
@@ -239,20 +256,8 @@ async function LayoutInterno({
     );
   }
 
-  const { data: company } = await supabase
-    .from("companies")
-    .select("ragione_sociale, partita_iva, indirizzo, codice_sdi, pec")
-    .eq("user_id", user.id)
-    .maybeSingle<{
-      ragione_sociale: string | null;
-      partita_iva: string | null;
-      indirizzo: string | null;
-      codice_sdi: string | null;
-      pec: string | null;
-    }>();
-
   // Offerta pilot acquistata: negli ultimi 15 giorni un promemoria sempre visibile.
-  const pilot = stato.stato === "attivo" ? await leggiPilotAcquistato(user.id) : null;
+  const pilot = stato.stato === "attivo" ? pilotAcquistato : null;
   const promemoriaDelPilot = pilot ? promemoriaPilot(pilot, new Date()) : null;
 
   const profiloIncompleto =
