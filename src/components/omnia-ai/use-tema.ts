@@ -1,10 +1,10 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { SCELTA_PREDEFINITA, interpretaScelta, type SceltaTema, type TemaEffettivo } from "@/lib/tema-omnia-ai";
+import { SCELTA_PREDEFINITA, TEMA_PREDEFINITO, interpretaScelta, type SceltaTema, type TemaEffettivo } from "@/lib/tema-omnia-ai";
 
 // Legge il tema dall'<html> (lo scrive lo script iniziale e l'interruttore) e avvisa quando cambia. Sul server, e durante la
-// prima disegnata nel browser, vale il tema scuro: poi React si allinea a quello vero senza errori di coerenza.
+// prima disegnata nel browser, vale il tema di base (il chiaro): poi React si allinea a quello vero senza errori di coerenza.
 function iscrivi(attributo: "data-tema" | "data-tema-scelta") {
   return (avvisa: () => void) => {
     const osservatore = new MutationObserver(avvisa);
@@ -18,8 +18,8 @@ const iscriviScelta = iscrivi("data-tema-scelta");
 export function useTemaEffettivo(): TemaEffettivo {
   return useSyncExternalStore(
     iscriviTema,
-    () => (document.documentElement.getAttribute("data-tema") === "chiaro" ? "chiaro" : "scuro"),
-    () => "scuro",
+    () => (document.documentElement.getAttribute("data-tema") === "scuro" ? "scuro" : "chiaro"),
+    () => TEMA_PREDEFINITO,
   );
 }
 
