@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { benchmarkAcceso } from "@/lib/benchmark-regione";
 import {
   CONSOLE_PERCORSI_CONDIVISI,
   DEV_ZONE_COOKIE,
@@ -15,7 +16,10 @@ import {
   type Zone,
 } from "@/lib/zone";
 
-const IS_DEV = process.env.NODE_ENV !== "production";
+// SOLO BENCHMARK DI REGIONE (branch perf/benchmark-regione*, mai in master): su un'anteprima Vercel con il banco di prova
+// acceso (vedi src/lib/benchmark-regione.ts: anteprima + token + database di staging dichiarato) si può scegliere la zona
+// con ?__zone=omnia-ai come in sviluppo, perché un host *.vercel.app ricadrebbe sempre sull'e-commerce.
+const IS_DEV = process.env.NODE_ENV !== "production" || (process.env.VERCEL_ENV === "preview" && benchmarkAcceso());
 
 // Path garantito senza corrispondenza (prefisso "_" = cartella privata,
 // esclusa dal routing di Next per convenzione): usato per forzare un 404
