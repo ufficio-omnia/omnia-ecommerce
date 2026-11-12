@@ -5,14 +5,15 @@
 // Prima: due timer separati ogni 6 secondi, anche a scheda nascosta (due azioni del server ogni 6 s, ognuna con il suo
 // controllo della sessione su Supabase Auth). Ora:
 //   - un solo controllo, che porta insieme i due stati;
-//   - ogni 30 secondi di norma, ogni 10 secondi solo mentre una gara del cliente è in elaborazione;
+//   - ogni 30 secondi di norma, ogni 6 secondi (il ritmo di prima) solo mentre una gara del cliente è in elaborazione;
+//   - aggiornaOra(): un controllo subito (avvio o fine di un'analisi vista da questa scheda), con le stesse protezioni;
 //   - a scheda nascosta nessun controllo; quando torna visibile ne parte subito uno (se l'ultimo ha almeno 5 secondi);
 //   - mai due controlli sovrapposti: il successivo si programma solo dopo la risposta del precedente (setTimeout a
 //     catena, non setInterval), e un controllo già in corso non se ne vede affiancare un altro;
 //   - fermato (smontaggio del componente) = nessun timer resta vivo e nessuna risposta tardiva ne programma un altro.
 
 export const INTERVALLO_ORDINARIO_MS = 30_000;
-export const INTERVALLO_ELABORAZIONE_MS = 10_000;
+export const INTERVALLO_ELABORAZIONE_MS = 6_000;
 export const INTERVALLO_MINIMO_RIPRESA_MS = 5_000;
 
 export function prossimoIntervallo(inCorso: boolean): number {
@@ -31,6 +32,9 @@ export type AmbientePoller<T> = {
 export type PollerStato = {
   avvia: () => void;
   alCambioVisibilita: () => void;
+  // Un controllo subito. Se ce n'è già uno in volo non se ne affianca un secondo: ne parte UNO solo appena il primo
+  // risponde (il primo potrebbe aver letto lo stato di un attimo prima). Più richieste ravvicinate = un solo controllo.
+  aggiornaOra: () => void;
   ferma: () => void;
 };
 
@@ -40,6 +44,7 @@ export function creaPollerStato<T>(controlla: () => Promise<{ inCorso: boolean }
   let fermato = false;
   let ultimoControllo = Number.NEGATIVE_INFINITY;
   let ultimoInCorso = false;
+  let richiestaDopo = false;
 
   const annullaTimer = () => {
     if (timer !== null) {
@@ -69,7 +74,16 @@ export function creaPollerStato<T>(controlla: () => Promise<{ inCorso: boolean }
     } finally {
       inVolo = false;
     }
-    if (!fermato && ambiente.visibile()) pianifica(prossimoIntervallo(ultimoInCorso));
+    if (fermato || !ambiente.visibile()) {
+      richiestaDopo = false;
+      return;
+    }
+    if (richiestaDopo) {
+      richiestaDopo = false;
+      void esegui();
+      return;
+    }
+    pianifica(prossimoIntervallo(ultimoInCorso));
   };
 
   return {
@@ -86,6 +100,14 @@ export function creaPollerStato<T>(controlla: () => Promise<{ inCorso: boolean }
       const trascorso = ambiente.adesso() - ultimoControllo;
       if (trascorso >= INTERVALLO_MINIMO_RIPRESA_MS) void esegui();
       else pianifica(INTERVALLO_MINIMO_RIPRESA_MS - trascorso);
+    },
+    aggiornaOra: () => {
+      if (fermato || !ambiente.visibile()) return;
+      if (inVolo) {
+        richiestaDopo = true;
+        return;
+      }
+      void esegui();
     },
     ferma: () => {
       fermato = true;

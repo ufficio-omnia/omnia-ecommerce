@@ -93,7 +93,7 @@ function controllaFinto() {
 
 async function main() {
   console.log("--- Ritmo ---");
-  atteso("ritmo ordinario 30 s, 10 s solo durante un'elaborazione, ripresa dopo almeno 5 s", INTERVALLO_ORDINARIO_MS === 30_000 && INTERVALLO_ELABORAZIONE_MS === 10_000 && INTERVALLO_MINIMO_RIPRESA_MS === 5_000 && prossimoIntervallo(false) === 30_000 && prossimoIntervallo(true) === 10_000);
+  atteso("ritmo ordinario 30 s, 6 s (come prima) solo durante un'elaborazione, ripresa dopo almeno 5 s", INTERVALLO_ORDINARIO_MS === 30_000 && INTERVALLO_ELABORAZIONE_MS === 6_000 && INTERVALLO_MINIMO_RIPRESA_MS === 5_000 && prossimoIntervallo(false) === 30_000 && prossimoIntervallo(true) === 6_000);
 
   {
     const o = ambienteFinto();
@@ -112,11 +112,11 @@ async function main() {
 
     c.setInCorso(true);
     await o.avanza(30_000);
-    atteso("quando un'elaborazione è in corso il prossimo controllo è a 10 s", o.prossimoTra() === 10_000);
+    atteso("quando un'elaborazione è in corso il prossimo controllo è a 6 s", o.prossimoTra() === 6_000);
     await o.avanza(60_000);
-    atteso("durante l'elaborazione: 6 controlli al minuto", c.chiamate() === 19);
+    atteso("durante l'elaborazione: 10 controlli al minuto (come prima: 1 ogni 6 s)", c.chiamate() === 23);
     c.setInCorso(false);
-    await o.avanza(10_000);
+    await o.avanza(6_000);
     atteso("finita l'elaborazione si torna a 30 s", o.prossimoTra() === 30_000);
     p.ferma();
     atteso("ferma: nessun timer resta vivo", o.timerAttivi() === 0);
@@ -216,13 +216,51 @@ async function main() {
     p.avvia();
     await svuota();
     c.setErrore(true);
-    await o.avanza(10_000);
-    atteso("un errore di rete non ferma il controllo: si riprova con l'ultimo ritmo noto", c.chiamate() === 2 && o.prossimoTra() === 10_000);
+    await o.avanza(6_000);
+    atteso("un errore di rete non ferma il controllo: si riprova con l'ultimo ritmo noto", c.chiamate() === 2 && o.prossimoTra() === 6_000);
     c.setErrore(false);
     c.setInCorso(false);
-    await o.avanza(10_000);
+    await o.avanza(6_000);
     atteso("e alla risposta buona riprende il ritmo giusto", c.chiamate() === 3 && o.prossimoTra() === 30_000);
     p.ferma();
+  }
+
+  console.log("--- Aggiorna subito (avvio e fine di un'analisi) ---");
+  {
+    const o = ambienteFinto();
+    const c = controllaFinto();
+    const p = creaPollerStato(c.fn, o.ambiente);
+    p.avvia();
+    await svuota();
+    await o.avanza(3_000);
+    p.aggiornaOra();
+    await svuota();
+    atteso("aggiornaOra: un controllo subito, senza aspettare i 30 s", c.chiamate() === 2);
+    atteso("e un solo timer dopo, al ritmo giusto", o.timerAttivi() === 1 && o.prossimoTra() === 30_000);
+
+    c.setSospeso(true);
+    p.aggiornaOra();
+    await svuota();
+    p.aggiornaOra();
+    p.aggiornaOra();
+    p.aggiornaOra();
+    await svuota();
+    atteso("richieste ravvicinate mentre un controllo è in volo: nessun secondo controllo affiancato", c.chiamate() === 3);
+    await c.sblocca();
+    atteso("appena il primo risponde ne parte UNO solo (stato fresco), non tre", c.chiamate() === 4);
+    await svuota();
+    atteso("poi un solo timer al ritmo ordinario", o.timerAttivi() === 1 && o.prossimoTra() === 30_000);
+
+    o.setVisibile(false);
+    p.alCambioVisibilita();
+    p.aggiornaOra();
+    await svuota();
+    atteso("a scheda nascosta aggiornaOra non fa nulla", c.chiamate() === 4 && o.timerAttivi() === 0);
+    o.setVisibile(true);
+    p.ferma();
+    p.aggiornaOra();
+    await svuota();
+    atteso("dopo ferma aggiornaOra non fa nulla", c.chiamate() === 4 && o.timerAttivi() === 0);
   }
 
   console.log("--- Componenti e azione del server ---");
@@ -241,6 +279,13 @@ async function main() {
       /document\.removeEventListener\("visibilitychange", alCambioDiVisibilita\)/.test(stato) &&
       /clearTimeout\(timeoutPronto\.current\)/.test(stato) &&
       /visibile: \(\) => document\.visibilityState === "visible"/.test(stato),
+  );
+  atteso(
+    "segnale locale: accende subito l'ambra, a fine analisi chiede un controllo immediato; si spegne allo smontaggio; fuori dalla dashboard non fa nulla",
+    /elaborazioniLocali\.current > 0/.test(stato) &&
+      /pollerRef\.current\?\.aggiornaOra\(\)/.test(stato) &&
+      /segnala\(true\);\s*return \(\) => segnala\(false\);/.test(stato) &&
+      /const ctx = useContext\(StatoDashboardContext\);\s*const segnala = ctx\?\.segnalaElaborazioneLocale;/.test(stato),
   );
   atteso("il marchio passa ancora da elaborazione a verde e poi a riposo", /setStato\("elaborazione"\)/.test(stato) && /setStato\("pronto"\)/.test(stato) && /setStato\("riposo"\)/.test(stato));
   const azione = senzaCommenti(leggi("src/app/actions/omnia-ai-stato-sistema.ts"));
