@@ -57,6 +57,19 @@ export default function PianiVista({
                     <li key={v}>{v}</li>
                   ))}
                 </ul>
+                {/* i servizi extra della gara, in evidenza (acquistabili con Starter, compresi con Professional) e la nota con l'asterisco */}
+                {p.servizi && (
+                  <div className="omnia-prezzo-servizi">
+                    <b>{p.servizi.titolo}</b>
+                    <p>{p.servizi.intro}</p>
+                    <ul>
+                      {p.servizi.punti.map((punto) => (
+                        <li key={punto}>{punto}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {p.nota && <p className="omnia-prezzo-nota">{p.nota}</p>}
                 {/* «Abbonati» (verso /abbonati/[piano], pagamento diretto) compare solo con la vendita accesa
                     in console E la chiave Stripe reale (vedi lib/omnia-ai-vendita.ts): nessun visitatore deve
                     arrivare a un pagamento che non può davvero completare. */}

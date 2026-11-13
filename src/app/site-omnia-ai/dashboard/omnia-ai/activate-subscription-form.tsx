@@ -76,7 +76,14 @@ export default function ActivateSubscriptionForm({
                 {p.voci.map((v) => (
                   <li key={v}>{v}</li>
                 ))}
+                {/* gli stessi servizi extra della pagina dei piani */}
+                {p.servizi && (
+                  <li>
+                    <strong>{p.servizi.titolo}</strong>: {p.servizi.intro} {p.servizi.punti.join("; ")}.
+                  </li>
+                )}
               </ul>
+              {p.nota && <p className="omnia-prezzo-nota">{p.nota}</p>}
             </label>
           );
         })}

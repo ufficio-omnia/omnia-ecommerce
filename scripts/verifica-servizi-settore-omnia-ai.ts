@@ -23,6 +23,8 @@ import { CATEGORIE_SERVIZI, IN_LAVORAZIONE, SEZIONE_SERVIZI, SUFFISSO_STATO_NEL_
 import { ABBONAMENTO_PIANO_LAVORO_OFFERTO, BANDA_PIANO_LAVORO, MESSAGGIO_ABBONAMENTO_PIANO_LAVORO_NON_OFFERTO } from "../src/lib/piano-lavoro-testi";
 import { surplusSeInVendita, venditaAbbonamentoPianoLavoroAttiva } from "../src/lib/piano-lavoro-offerta";
 import ServiziPerCategoria from "../src/app/site-omnia-ai/piani/servizi-per-categoria";
+import { NOTA_SERVIZI_SETTORE, PIANI } from "../src/lib/omnia-ai-plans";
+import { costruisciCatalogo } from "../src/lib/omnia-ai-catalogo-calcoli";
 import FoodMenuPanel from "../src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/food-menu-panel";
 
 const richiedi = createRequire(path.join(__dirname, "..", "package.json"));
@@ -123,6 +125,39 @@ async function main() {
   atteso("il vecchio componente della fascia resta nel codice (lavoro non cancellato) ma non è più usato in nessuna pagina", fs.existsSync(path.join(radice, "src/app/site-omnia-ai/piani/piano-lavoro-banda.tsx")) && !/piano-lavoro-banda|PianoLavoroBanda/.test(senzaCommenti(vista)) && /NON PIÙ USATA/.test(leggi("src/app/site-omnia-ai/piani/piano-lavoro-banda.tsx")));
   atteso("da telefono le due schede del piano di lavoro vanno in colonna come le tre degli altri riquadri, senza toccare la regola già esistente delle tre schede", /@media \(max-width: 900px\) \{[\s\S]*?\.omnia-revisione-punti \{\s*grid-template-columns: 1fr;\s*\}\s*\.omnia-revisione-punti\.due \{\s*grid-template-columns: 1fr;\s*\}/.test(leggi("src/app/site-omnia-ai/omnia-ai.css")));
   atteso("il testo della vecchia fascia (con la scheda «Nell'abbonamento») resta nel modulo dei testi, non cancellato", BANDA_PIANO_LAVORO.punti.abbonamento.titolo === "Nell'abbonamento");
+
+  // ═════ 3 bis. Le schede dei piani: i servizi extra (richiesta dell'utente, 13/11/2026; SOLO testo della pagina) ═════
+  console.log("\n--- Pagina dei piani: i servizi extra sulle schede ---");
+  {
+    const { starter, professional, enterprise } = PIANI;
+    atteso(
+      "Starter: riquadro «Servizi extra, quando ti servono», acquistabili in autonomia dall'area riservata: la copertina (PDF e PNG, 6 automatiche + 3 su misura in chat) e i servizi del settore*",
+      starter.servizi?.titolo === "Servizi extra, quando ti servono" && /acquisti in autonomia dalla tua area riservata/.test(starter.servizi?.intro ?? "") && /Copertina della relazione tecnica in PDF e PNG: 6 proposte automatiche \+ 3 su misura, chiedendo le modifiche all'assistente in chat/.test(starter.servizi?.punti[0] ?? "") && starter.servizi?.punti[1] === "Servizi dedicati al tuo settore*",
+    );
+    atteso(
+      "Professional: i servizi COMPRESI sono voci dell'elenco, dopo quelle di prima (niente riquadro); tolte «Intestazioni e piè di pagina con il tuo logo»",
+      professional.servizi === null &&
+        !professional.voci.some((v) => /Intestazioni|piè di pagina/i.test(v)) &&
+        JSON.stringify(professional.voci) ===
+          JSON.stringify([
+            "8 gare incluse ogni mese",
+            "Tutto il piano Starter",
+            "Supporto prioritario",
+            "Copertina della relazione tecnica compresa in ogni gara: PDF e PNG, 6 proposte automatiche + 3 su misura chiedendo le modifiche in chat",
+            "Servizi dedicati al tuo settore* compresi in ogni gara",
+          ]),
+    );
+    atteso("l'asterisco ha la sua nota (per i servizi di pulizia: il piano di lavoro), sotto Starter e Professional", NOTA_SERVIZI_SETTORE === "* Per esempio, per i servizi di pulizia: il piano di lavoro della gara in Excel." && starter.nota === NOTA_SERVIZI_SETTORE && professional.nota === NOTA_SERVIZI_SETTORE);
+    atteso("Enterprise non cambia: ha già «Tutto il piano Professional» (quindi anche i servizi), senza un riquadro in più", enterprise.servizi === null && enterprise.nota === null && enterprise.voci.includes("Tutto il piano Professional"));
+    atteso("Starter conserva le sue tre voci", JSON.stringify(starter.voci) === JSON.stringify(["3 gare incluse ogni mese", "Generazione relazione tecnica in Word", "Estrazione automatica dei criteri di valutazione"]));
+    const catalogo = costruisciCatalogo({}, [], "2026-11-13");
+    atteso("il catalogo (prezzi dalla console) porta sulle schede anche servizi e nota", JSON.stringify(catalogo.starter.servizi) === JSON.stringify(starter.servizi) && catalogo.professional.nota === NOTA_SERVIZI_SETTORE && catalogo.professional.servizi === null && JSON.stringify(catalogo.professional.voci) === JSON.stringify(professional.voci) && catalogo.enterprise.servizi === null);
+    atteso("la scheda mostra il riquadro (titolo, introduzione, punti) e la nota, dopo le voci e prima dei pulsanti", /\{p\.servizi && \(\s*<div className="omnia-prezzo-servizi">\s*<b>\{p\.servizi\.titolo\}<\/b>\s*<p>\{p\.servizi\.intro\}<\/p>/.test(vista) && /p\.servizi\.punti\.map\(\(punto\) =>/.test(vista) && /\{p\.nota && <p className="omnia-prezzo-nota">\{p\.nota\}<\/p>\}/.test(vista) && vista.indexOf('className="omnia-prezzo-elenco"') < vista.indexOf('className="omnia-prezzo-servizi"') && vista.indexOf('className="omnia-prezzo-nota"') < vista.indexOf("{vendita && ("));
+    const sceltaPiano = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/activate-subscription-form.tsx");
+    atteso("anche la scelta del piano nell'area riservata mostra i servizi e la nota (stesse schede)", /<strong>\{p\.servizi\.titolo\}<\/strong>: \{p\.servizi\.intro\} \{p\.servizi\.punti\.join\("; "\)\}\./.test(sceltaPiano) && /\{p\.nota && <p className="omnia-prezzo-nota">\{p\.nota\}<\/p>\}/.test(sceltaPiano));
+    const css = leggi("src/app/site-omnia-ai/omnia-ai.css");
+    atteso("le voci delle schede restano in alto anche quando un'altra scheda è più alta (lo spazio in più va sotto)", /\.omnia-prezzo-elenco \{[^}]*align-content: start;[^}]*\}/.test(css) && /\.omnia-prezzo-servizi \{[^}]*\}/.test(css) && /\.omnia-prezzo-servizi p \{[^}]*text-align: left;[^}]*\}/.test(css));
+  }
 
   // ═════ 4. L'abbonamento al piano di lavoro è spento, ovunque ═════
   console.log("\n--- L'abbonamento al piano di lavoro: spento (il lavoro fatto resta nel codice) ---");
