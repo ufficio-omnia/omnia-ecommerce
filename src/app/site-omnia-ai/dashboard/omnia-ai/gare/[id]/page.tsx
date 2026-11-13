@@ -21,13 +21,15 @@ import { calcolaPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 import PianoLavoroPanel from "./piano-lavoro-panel";
 import FoodMenuPanel from "./food-menu-panel";
-import CopertinaPanel, { type CopertinaVista, type DocumentoScelta, type StatoStile } from "./copertina-panel";
-import { dataDaMarca, STILI } from "@/lib/copertina-relazione-calcoli";
+import CopertinaPanel, { type ChatVista, type CopertinaVista, type DocumentoScelta, type StatoStile } from "./copertina-panel";
+import { copertineDaNomi, dataDaMarca, fileCopertina, numeriCopertine, STILI } from "@/lib/copertina-relazione-calcoli";
+import { chatAperta, copertinaDiLavoro, modificheContate, statoChat } from "@/lib/copertina-chat-calcoli";
+import { leggiChat } from "@/lib/copertina-chat";
 import { COPERTINE_PER_STILE, copertinaVisibile, righeGratisPerCliente } from "@/lib/copertina-diritto-calcoli";
 import { decidi as decidiCopertina, leggiContestoCopertina, sviluppoLocale } from "@/lib/copertina-diritto";
 import { interpretaRitornoCopertina, valutaOffertaCopertina, type OffertaCopertina, type RitornoPagamentoCopertina } from "@/lib/copertina-acquisto-calcoli";
 import { documentoPredefinito, soloPdf } from "@/lib/copertina-lettura-calcoli";
-import { elencaCopertine, leggiPercorsoLogoCliente, linkCopertina } from "@/lib/copertina-relazione";
+import { leggiPercorsoLogoCliente, linkCopertineIntere, linkMiniature, nomiFileCopertine } from "@/lib/copertina-relazione";
 import { normalizzaSettore, proponeFoodMenu, proponePianoLavoro } from "@/lib/gara-settore";
 import { leggiPianiGara } from "@/lib/piano-lavoro-gara";
 import { aperturaSviluppoAttiva, valutaDirittoPiano } from "@/lib/piano-lavoro-gara-calcoli";
@@ -262,32 +264,81 @@ export default async function GaraPage({
     privacyVersione: number | null;
     acquistata: boolean;
     copertine: CopertinaVista[];
+    chat: ChatVista | null;
   } | null = null;
   if (gara.estrazione_stato === "completata") {
     const adminCopertina = createAdminClient();
-    const [{ data: datiGaraCopertina }, percorsoLogoCliente, elencoCopertine, ctxCopertina] = await Promise.all([
+    const [{ data: datiGaraCopertina }, percorsoLogoCliente, nomiCopertine, ctxCopertina, chatCopertina] = await Promise.all([
       supabase.from("gare").select("stazione_appaltante").eq("id", id).maybeSingle<{ stazione_appaltante: string | null }>(),
       leggiPercorsoLogoCliente(adminCopertina, contesto.accountId),
-      elencaCopertine(adminCopertina, gara.id),
+      nomiFileCopertine(adminCopertina, gara.id),
       leggiContestoCopertina({ admin: adminCopertina, accountId: contesto.accountId, garaId: gara.id }),
+      leggiChat(adminCopertina, gara.id, contesto.accountId),
     ]);
+    const elencoCopertine = copertineDaNomi(nomiCopertine);
+    // «COPERTINA N.x»: in ordine di creazione, comprese quelle modificate in chat
+    const numeriCop = numeriCopertine(elencoCopertine);
     const visibileCopertina = !ctxCopertina.errore && (copertinaVisibile({ impostazioni: ctxCopertina.impostazioni, schemaAssente: ctxCopertina.schemaAssente, sviluppoLocale: sviluppoLocale(process.env), acquistata: ctxCopertina.acquistata }) || elencoCopertine.length > 0);
     const pdfDellaGara = soloPdf(documentiOrdinati);
     const offertaCopertina: OffertaCopertina = valutaOffertaCopertina({ diritto: decidiCopertina(ctxCopertina, gara.id, "stilizzato"), titolare: !ufficioGare });
     // la Privacy policy in vigore, da linkare accanto all'accettazione delle condizioni (solo se si può comprare)
     const privacyCopertina = offertaCopertina.stato === "acquistabile" ? ((await getCurrentOmniaAiLegalDocuments(adminCopertina))?.privacyPolicy.version ?? null) : null;
     if (visibileCopertina) {
+    // tutte le copertine, numerate, in una griglia: la miniatura (leggera) quando c'è, altrimenti il PNG intero; il PNG intero serve anche per l'anteprima
+    // grande. Due sole richieste allo storage per tutte (miniature e copertine intere); il browser scarica le immagini solo quando le mostra.
+    const conMiniatura = elencoCopertine.filter((c) => nomiCopertine.includes(fileCopertina(c.id).mini)).map((c) => c.id);
+    const [miniature, intere] = await Promise.all([
+      linkMiniature(adminCopertina, gara.id, conMiniatura),
+      linkCopertineIntere(adminCopertina, gara.id, elencoCopertine.map((c) => ({ id: c.id, png: c.png }))),
+    ]);
     const copertine: CopertinaVista[] = await Promise.all(
-      elencoCopertine.slice(0, 8).map(async (c, i) => ({
+      elencoCopertine.map(async (c) => ({
+        id: c.id,
+        numero: numeriCop.get(c.id) ?? 0,
         marca: c.marca,
         stile: c.stile,
+        modifica: c.modifica,
         nomePng: c.png,
         nomePdf: c.pdf,
         generataIl: dataDaMarca(c.marca)?.toISOString() ?? null,
-        // l'anteprima (il PNG intero) solo per le quattro più recenti (due per stile): le altre si scaricano e basta
-        anteprimaUrl: i < 4 ? await linkCopertina(adminCopertina, gara.id, c.png) : null,
+        anteprimaUrl: miniature.get(c.id) ?? intere.get(c.id) ?? null,
+        grandeUrl: intere.get(c.id) ?? null,
+        // si può modificare in chat solo se ha la pagina senza loghi e la scheda (le copertine fatte prima del 13/11/2026 non le hanno)
+        modificabile: [fileCopertina(c.id).base, fileCopertina(c.id).scheda].every((n) => nomiCopertine.includes(n)),
       })),
     );
+    // La chat per modificare una copertina: compare dopo le 6 generazioni (o se ha già dei messaggi), solo se la migrazione 0108 è stata eseguita
+    let chat: ChatVista | null = null;
+    if (chatCopertina.disponibile && !chatCopertina.errore) {
+      const aperta = chatAperta(ctxCopertina.uso);
+      if (aperta || chatCopertina.righe.length > 0) {
+        const adesso = new Date();
+        const dirittoModifica = decidiCopertina({ ...ctxCopertina, uso: { ...ctxCopertina.uso, perStile: { stilizzato: 0, realistico: 0 } } }, gara.id, "stilizzato");
+        const statoC = statoChat({ aperta, righe: chatCopertina.righe, adesso, diritto: { ok: dirittoModifica.ok, messaggio: dirittoModifica.ok ? null : dirittoModifica.messaggio } });
+        const contate = new Set(modificheContate(chatCopertina.righe, adesso).map((r) => r.id));
+        const perId = new Map(copertine.map((c) => [c.id, c]));
+        const lavoroChat = copertinaDiLavoro(chatCopertina.righe);
+        chat = {
+          stato: statoC,
+          messaggi: chatCopertina.righe.map((r) => ({
+            id: r.id,
+            ruolo: r.ruolo,
+            testo: r.testo,
+            quando: r.creata_il,
+            numeroScelta: r.ruolo === "cliente" && r.copertina ? (numeriCop.get(r.copertina) ?? null) : null,
+            allegato: Boolean(r.allegato),
+            inPreparazione: r.ruolo === "assistente" && r.stato === "in_corso" && contate.has(r.id),
+            interrotta: r.ruolo === "assistente" && r.stato === "in_corso" && !contate.has(r.id),
+            copertina: r.ruolo === "assistente" && r.copertina ? (perId.get(r.copertina) ?? null) : null,
+          })),
+          scelte: copertine.filter((c) => c.modificabile),
+          // dopo il primo messaggio la copertina non si sceglie più: si lavora sempre sull'ultima versione di quella scelta
+          sceltaFatta: lavoroChat !== null,
+          lavoro: lavoroChat ? (perId.get(lavoroChat.ultima) ?? null) : null,
+          numeroSceltaIniziale: lavoroChat ? (numeriCop.get(lavoroChat.scelta) ?? null) : null,
+        };
+      }
+    }
     copertinaPannello = {
       stazioneAppaltante: datiGaraCopertina?.stazione_appaltante ?? null,
       logoStazione: Boolean(gara.logo_cliente_path),
@@ -306,6 +357,7 @@ export default async function GaraPage({
       privacyVersione: privacyCopertina,
       acquistata: ctxCopertina.acquistata,
       copertine,
+      chat,
     };
     }
   }

@@ -10,16 +10,63 @@
 
 // ───── Dove vanno i loghi ─────
 // In frazioni della pagina A4. Fuori dalla fascia centrale dei testi (circa dal 30% al 70% dell'altezza) e con margini di almeno l'8% sui lati esterni.
-export type Zona = { x: number; y: number; larghezza: number; altezza: number; allinea: "alto-sinistra" | "basso-destra" };
+// Dove si allinea il logo dentro la sua zona: in orizzontale (sinistra, centro, destra) e in verticale (alto, basso)
+export type Allineamento = { orizzontale: "sinistra" | "centro" | "destra"; verticale: "alto" | "basso" };
+export type Zona = { x: number; y: number; larghezza: number; altezza: number; allinea: "alto-sinistra" | "basso-destra" | Allineamento };
 export const ZONA_STAZIONE: Zona = { x: 0.08, y: 0.06, larghezza: 0.36, altezza: 0.14, allinea: "alto-sinistra" };
 export const ZONA_CLIENTE: Zona = { x: 0.56, y: 0.78, larghezza: 0.36, altezza: 0.14, allinea: "basso-destra" };
 // un logo molto piccolo si ingrandisce per farsi vedere, ma non oltre questo (sgranerebbe)
 export const INGRANDIMENTO_MASSIMO = 4;
 
+// ───── Posizioni e dimensioni (per le modifiche in chat) ─────
+// Il cliente può chiedere di spostare un logo o di cambiarne la dimensione (richiesta dell'utente, 13/11/2026). Le posizioni sono sei: in alto o in basso,
+// a sinistra, al centro o a destra, sempre fuori dalla fascia centrale dei testi. Di base: stazione appaltante in alto a sinistra, cliente in basso a destra.
+export const POSIZIONI = ["alto-sinistra", "alto-centro", "alto-destra", "basso-sinistra", "basso-centro", "basso-destra"] as const;
+export type Posizione = (typeof POSIZIONI)[number];
+export const DIMENSIONI = ["piccolo", "medio", "grande"] as const;
+export type Dimensione = (typeof DIMENSIONI)[number];
+export const POSIZIONE_PREDEFINITA: Record<"stazione" | "cliente", Posizione> = { stazione: "alto-sinistra", cliente: "basso-destra" };
+export const ETICHETTA_POSIZIONE: Record<Posizione, string> = {
+  "alto-sinistra": "in alto a sinistra",
+  "alto-centro": "in alto al centro",
+  "alto-destra": "in alto a destra",
+  "basso-sinistra": "in basso a sinistra",
+  "basso-centro": "in basso al centro",
+  "basso-destra": "in basso a destra",
+};
+// quanto si allarga (o si stringe) la zona rispetto alla dimensione media; la zona grande resta comunque fuori dalla fascia dei testi e dentro i margini
+const SCALA_DIMENSIONE: Record<Dimensione, number> = { piccolo: 0.7, medio: 1, grande: 1.28 };
+
+export function normalizzaPosizione(valore: unknown): Posizione | null {
+  return typeof valore === "string" && (POSIZIONI as readonly string[]).includes(valore) ? (valore as Posizione) : null;
+}
+export function normalizzaDimensione(valore: unknown): Dimensione | null {
+  return typeof valore === "string" && (DIMENSIONI as readonly string[]).includes(valore) ? (valore as Dimensione) : null;
+}
+
+// La zona di una posizione e di una dimensione. Media = le zone di sempre (36% × 14% della pagina); in alto parte dal 6% dell'altezza, in basso finisce al
+// 92%; a sinistra dall'8% della larghezza, a destra fino al 92%, al centro centrata. La zona si allarga o si stringe intorno all'angolo a cui è attaccata.
+export function zonaPer(posizione: Posizione, dimensione: Dimensione = "medio"): Zona {
+  const s = SCALA_DIMENSIONE[dimensione];
+  const larghezza = Math.min(0.36 * s, 0.84);
+  const altezza = Math.min(0.14 * s, 0.2);
+  const [verticale, orizzontale] = posizione.split("-") as ["alto" | "basso", "sinistra" | "centro" | "destra"];
+  const x = orizzontale === "sinistra" ? 0.08 : orizzontale === "destra" ? 0.92 - larghezza : 0.5 - larghezza / 2;
+  const y = verticale === "alto" ? 0.06 : 0.92 - altezza;
+  return { x, y, larghezza, altezza, allinea: { orizzontale, verticale } };
+}
+
+// Due loghi nella stessa posizione: la zona si divide in due metà affiancate (la stazione appaltante a sinistra, il cliente a destra)
+export function metaZona(zona: Zona, lato: "sinistra" | "destra"): Zona {
+  const meta = zona.larghezza / 2;
+  const verticale = typeof zona.allinea === "string" ? (zona.allinea === "alto-sinistra" ? "alto" : "basso") : zona.allinea.verticale;
+  return { x: lato === "sinistra" ? zona.x : zona.x + meta, y: zona.y, larghezza: meta - 0.01, altezza: zona.altezza, allinea: { orizzontale: lato === "sinistra" ? "destra" : "sinistra", verticale } };
+}
+
 export type Rettangolo = { left: number; top: number; width: number; height: number };
 
-// Il logo entra tutto nella sua zona senza deformarsi; quello della stazione appaltante sta attaccato all'angolo in alto a sinistra della zona, quello
-// del cliente all'angolo in basso a destra.
+// Il logo entra tutto nella sua zona senza deformarsi e sta attaccato all'angolo (o al lato) della zona indicato da `allinea`: di base quello della stazione
+// appaltante all'angolo in alto a sinistra, quello del cliente all'angolo in basso a destra.
 export function rettangoloLogo(zona: Zona, paginaL: number, paginaA: number, logoL: number, logoA: number): Rettangolo {
   const boxL = Math.round(zona.larghezza * paginaL);
   const boxA = Math.round(zona.altezza * paginaA);
@@ -28,7 +75,11 @@ export function rettangoloLogo(zona: Zona, paginaL: number, paginaA: number, log
   const height = Math.max(1, Math.min(boxA, Math.round(logoA * scala)));
   const x0 = Math.round(zona.x * paginaL);
   const y0 = Math.round(zona.y * paginaA);
-  return zona.allinea === "alto-sinistra" ? { left: x0, top: y0, width, height } : { left: x0 + boxL - width, top: y0 + boxA - height, width, height };
+  const allinea: Allineamento =
+    zona.allinea === "alto-sinistra" ? { orizzontale: "sinistra", verticale: "alto" } : zona.allinea === "basso-destra" ? { orizzontale: "destra", verticale: "basso" } : zona.allinea;
+  const left = allinea.orizzontale === "sinistra" ? x0 : allinea.orizzontale === "destra" ? x0 + boxL - width : x0 + Math.round((boxL - width) / 2);
+  const top = allinea.verticale === "alto" ? y0 : y0 + boxA - height;
+  return { left, top, width, height };
 }
 
 // ───── Colori ─────

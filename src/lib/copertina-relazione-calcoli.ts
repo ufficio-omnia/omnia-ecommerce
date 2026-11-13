@@ -387,26 +387,55 @@ export function percorsoCopertina(garaId: string, data: Date, stile: Stile, este
   return `${garaId}/${PREFISSO_FILE_COPERTINA}${marcaTempo(data)}-${stile}.${estensione}`;
 }
 
-export type CopertinaElenco = { marca: string; stile: Stile; png: string; pdf: string | null };
+// Una copertina modificata in chat (13/11/2026) ha «-modifica» nel nome: «copertina-<data>-<stile>-modifica.<est>». Accanto a ogni copertina fatta da
+// quel giorno ci sono anche (stesso nome, con un'aggiunta): la pagina SENZA loghi («-base.png», serve per modificarla senza far ridisegnare i loghi al
+// modello), la miniatura («-mini.jpg», per la scelta in chat) e la scheda («.json»: testi, stile e disposizione dei loghi). Questi file non sono copertine:
+// non compaiono nell'elenco e non si scaricano.
+export type CopertinaElenco = { id: string; marca: string; stile: Stile; modifica: boolean; png: string; pdf: string | null };
 
-const NOME_COPERTINA = /^copertina-(\d{8}T\d{6}Z)(?:-(stilizzato|realistico))?\.(png|pdf)$/;
+const NOME_COPERTINA = /^copertina-(\d{8}T\d{6}Z)(?:-(stilizzato|realistico))?(-modifica)?\.(png|pdf)$/;
+
+// L'identificativo di una copertina: il nome dei suoi file senza estensione («copertina-20261113T101500Z-stilizzato-modifica»)
+export function idCopertina(marca: string, stile: Stile, modifica: boolean): string {
+  return `${PREFISSO_FILE_COPERTINA}${marca}-${stile}${modifica ? "-modifica" : ""}`;
+}
+const FORMA_ID_COPERTINA = /^copertina-\d{8}T\d{6}Z-(stilizzato|realistico)(-modifica)?$/;
+export function idCopertinaValido(valore: unknown): valore is string {
+  return typeof valore === "string" && FORMA_ID_COPERTINA.test(valore);
+}
+
+// I file di una copertina (nomi, senza la cartella della gara)
+export function fileCopertina(id: string): { png: string; pdf: string; base: string; mini: string; scheda: string } {
+  return { png: `${id}.png`, pdf: `${id}.pdf`, base: `${id}-base.png`, mini: `${id}-mini.jpg`, scheda: `${id}.json` };
+}
 
 // Dall'elenco dei nomi dei file nella cartella della gara alle copertine complete (la più recente per prima; a parità di data, prima la stilizzata).
 // Una copertina esiste se c'è il PNG; il PDF è l'altro formato della stessa pagina, nello stesso stile.
 export function copertineDaNomi(nomi: string[]): CopertinaElenco[] {
-  const png = new Map<string, { marca: string; stile: Stile; nome: string }>();
+  const png = new Map<string, { marca: string; stile: Stile; modifica: boolean; nome: string }>();
   const pdf = new Map<string, string>();
   for (const nome of nomi) {
     const m = NOME_COPERTINA.exec(nome);
     if (!m) continue;
     const stile: Stile = m[2] === "realistico" ? "realistico" : "stilizzato";
-    const chiave = `${m[1]}|${stile}`;
-    if (m[3] === "png") png.set(chiave, { marca: m[1], stile, nome });
+    const modifica = Boolean(m[3]);
+    const chiave = `${m[1]}|${stile}|${modifica}`;
+    if (m[4] === "png") png.set(chiave, { marca: m[1], stile, modifica, nome });
     else pdf.set(chiave, nome);
   }
   return [...png.entries()]
-    .map(([chiave, p]) => ({ marca: p.marca, stile: p.stile, png: p.nome, pdf: pdf.get(chiave) ?? null }))
+    .map(([chiave, p]) => ({ id: p.nome.replace(/\.png$/, ""), marca: p.marca, stile: p.stile, modifica: p.modifica, png: p.nome, pdf: pdf.get(chiave) ?? null }))
     .sort((a, b) => (a.marca < b.marca ? 1 : a.marca > b.marca ? -1 : a.stile < b.stile ? 1 : a.stile > b.stile ? -1 : 0));
+}
+
+// «COPERTINA N.1, N.2, N.3…» (richiesta dell'utente, 13/11/2026): il numero segue l'ordine di creazione (la più vecchia è la N.1), comprese le copertine
+// modificate in chat, che continuano la numerazione. Stabile: una copertina nuova non cambia il numero di quelle che c'erano.
+export function numeriCopertine(elenco: Pick<CopertinaElenco, "id" | "marca" | "stile">[]): Map<string, number> {
+  const ordinate = [...elenco].sort((a, b) => (a.marca < b.marca ? -1 : a.marca > b.marca ? 1 : a.stile < b.stile ? 1 : a.stile > b.stile ? -1 : 0));
+  return new Map(ordinate.map((c, i) => [c.id, i + 1]));
+}
+export function etichettaNumero(numero: number): string {
+  return `COPERTINA N.${numero}`;
 }
 
 // «20261110T153000Z» → data (per la scheda: «generata il 10/11/2026»)
@@ -423,15 +452,16 @@ export function stileDaNomeFile(nomeFile: string): Stile | null {
   return m ? (m[2] === "realistico" ? "realistico" : "stilizzato") : null;
 }
 
-// Nome del file scaricato: «Copertina relazione tecnica (stile realistico) - <titolo>.<est>», senza i caratteri che i sistemi non accettano nei nomi
-export function nomeFileScaricato(titolo: string, estensione: "png" | "pdf", stile?: Stile): string {
+// Nome del file scaricato: «Copertina N.3 relazione tecnica (realistico) - <titolo>.<est>» (il numero, se c'è, è quello mostrato nella pagina), senza i
+// caratteri che i sistemi non accettano nei nomi
+export function nomeFileScaricato(titolo: string, estensione: "png" | "pdf", stile?: Stile, numero?: number): string {
   const pulito = titolo
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80)
     .trim();
-  return `Copertina relazione tecnica${stile ? ` (${stile})` : ""}${pulito ? ` - ${pulito}` : ""}.${estensione}`;
+  return `Copertina${numero ? ` N.${numero}` : ""} relazione tecnica${stile ? ` (${stile})` : ""}${pulito ? ` - ${pulito}` : ""}.${estensione}`;
 }
 
 // Il percorso di un file di copertina si accetta solo se è proprio uno di quelli di QUESTA gara: il nome arriva dal browser

@@ -303,7 +303,8 @@ async function main() {
     atteso("un'eccezione durante la generazione non lascia la riga registrata come fatta", /try \{[\s\S]*await generaCopertina\([\s\S]*\} catch \(err\)[\s\S]*esito = \{ ok: false/.test(generazione));
     atteso("senza la tabella si procede solo in sviluppo locale (fonte «sviluppo»)", /riserva\.stato === "schema_assente" && diritto\.fonte !== "sviluppo"/.test(generazione));
     atteso("errore nel controllo del servizio: l'azione si ferma (nel dubbio non si genera)", /if \(ctx\.errore\) return \{ error:/.test(generazione));
-    const scarico = azione.slice(azione.indexOf("export async function scaricaCopertinaGara"));
+    // solo la funzione di scaricamento (dopo, nello stesso file, c'è la chat delle modifiche)
+    const scarico = azione.slice(azione.indexOf("export async function scaricaCopertinaGara"), azione.indexOf("export type ChatCopertinaState"));
     atteso("il download non dipende dall'interruttore del servizio: i file sono del cliente", !/decidi\(|leggiContestoCopertina|copertinaAttiva/.test(scarico) && scarico.includes("percorsoCopertinaValido("));
   }
 

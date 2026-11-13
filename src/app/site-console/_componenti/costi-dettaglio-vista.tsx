@@ -26,6 +26,8 @@ function etichettaOperazione(nome: string): string {
     copertina_relazione_lettura: "Copertina della relazione: lettura del disciplinare",
     copertina_relazione_stilizzato: "Copertina della relazione: immagine in stile stilizzato",
     copertina_relazione_realistico: "Copertina della relazione: immagine in stile realistico",
+    copertina_relazione_chat: "Copertina della relazione: lettura della richiesta di modifica in chat",
+    copertina_relazione_modifica: "Copertina della relazione: ritocco dell'immagine chiesto in chat",
     chat_assistenza: "Assistente di supporto",
     kb_nota_stile: "Knowledge base: nota di stile",
     kb_struttura_titoli: "Knowledge base: struttura dei titoli",

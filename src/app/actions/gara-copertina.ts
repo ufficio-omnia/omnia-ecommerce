@@ -14,8 +14,41 @@ import { richiediAccountAzione, richiediTitolareAzione } from "@/lib/omnia-ai-ac
 import { VERSIONE_CONDIZIONI_COPERTINA, testoCanonicoCondizioniCopertina } from "@/lib/copertina-acquisto-calcoli";
 import { accessoNegatoPerAccount } from "@/lib/omnia-ai-account-lavoro";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { leggiTestiCliente, nomeFileScaricato, normalizzaStile, percorsoCopertinaValido, stileDaNomeFile, type Stile } from "@/lib/copertina-relazione-calcoli";
-import { generaCopertina, leggiPercorsoLogoCliente, linkCopertina } from "@/lib/copertina-relazione";
+import {
+  copertineDaNomi,
+  fileCopertina,
+  idCopertinaValido,
+  leggiTestiCliente,
+  marcaTempo,
+  messaggioErroreCopertina,
+  nomeFileScaricato,
+  normalizzaStile,
+  numeriCopertine,
+  percorsoCopertinaValido,
+  stileDaNomeFile,
+  type Stile,
+} from "@/lib/copertina-relazione-calcoli";
+import { generaCopertina, leggiPercorsoLogoCliente, leggiSchedaCopertina, linkCopertina, modificaCopertina, nomiFileCopertine } from "@/lib/copertina-relazione";
+import {
+  ALLEGATO_MASSIMO_BYTE,
+  MESSAGGIO_SENZA_EFFETTI,
+  RICHIESTA_MASSIMA,
+  TIPI_ALLEGATO,
+  applicaPiano,
+  chatAperta,
+  copertinaDiLavoro,
+  loghiDiRiserva,
+  pianoSenzaEffetti,
+  statoChat,
+  storiaPerInterprete,
+  verificaPiano,
+  type ChiLogo,
+  type ContestoInterprete,
+} from "@/lib/copertina-chat-calcoli";
+import { annullaModifica, completaModifica, interpretaRichiesta, leggiChat, riservaModifica, salvaMessaggioCliente, salvaRisposta } from "@/lib/copertina-chat";
+import { preparaLogo } from "@/lib/copertina-loghi";
+import { logAiUsage } from "@/lib/ai-usage";
+import { operazionePerRegistro } from "@/lib/anthropic";
 import { annullaCopertina, completaCopertina, decidi, leggiContestoCopertina, riservaCopertina } from "@/lib/copertina-diritto";
 
 // «Genera copertina relazione tecnica»: dentro la gara due pulsanti (stile stilizzato e stile realistico) chiedono a OpenAI di leggere il
@@ -269,6 +302,174 @@ export async function scaricaCopertinaGara(_prevState: DownloadCopertinaState, f
   if (!gara) return { error: "Gara non trovata." };
 
   const estensione = nomeFile.endsWith(".pdf") ? "pdf" : "png";
-  const url = await linkCopertina(createAdminClient(), garaId, nomeFile, nomeFileScaricato(gara.titolo, estensione, stileDaNomeFile(nomeFile) ?? undefined));
+  // il numero nel nome del file è quello mostrato nella pagina («Copertina N.3 …»)
+  const admin = createAdminClient();
+  const numero = numeriCopertine(copertineDaNomi(await nomiFileCopertine(admin, garaId))).get(nomeFile.replace(/\.(png|pdf)$/, "")) ?? undefined;
+  const url = await linkCopertina(admin, garaId, nomeFile, nomeFileScaricato(gara.titolo, estensione, stileDaNomeFile(nomeFile) ?? undefined, numero));
   return url ? { url } : { error: "Errore nella generazione del link di download." };
+}
+
+// ───── La chat per modificare una copertina (richiesta dell'utente, 13/11/2026) ─────
+// Dopo le 6 generazioni (3 stilizzate e 3 realistiche) il cliente sceglie una copertina e scrive cosa cambiare: al massimo 3 copertine nuove per gara, poi la
+// chat si chiude. Conta solo una copertina consegnata: una domanda o una richiesta poco chiara non consuma nulla (c'è comunque un tetto ai messaggi). Lavoro
+// di gara: titolare e Ufficio Gare. Regole: copertina-chat-calcoli.ts; i controlli sono QUI, prima di qualsiasi chiamata a OpenAI.
+
+export type ChatCopertinaState = { error?: string; ok?: boolean; messaggio?: string; nuova?: string };
+
+const MESSAGGIO_NON_CAPITO = "Non sono riuscito a capire la richiesta: puoi riscriverla in modo più semplice, dicendo cosa vuoi cambiare nella copertina?";
+
+export async function inviaRichiestaCopertina(_prevState: ChatCopertinaState, formData: FormData): Promise<ChatCopertinaState> {
+  const supabase = await createClient();
+  const guardia = await richiediAccountAzione();
+  if (!guardia.ok) return { error: guardia.errore };
+  const { user, contesto } = guardia;
+  const accessoNegato = await accessoNegatoPerAccount(contesto, user, supabase);
+  if (accessoNegato) return { error: accessoNegato };
+
+  // ciò che arriva dal browser, controllato prima di tutto il resto
+  const garaId = String(formData.get("garaId") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(garaId)) return { error: "Gara non valida." };
+  // la copertina scelta col flag conta SOLO per il primo messaggio: dopo, la decide la chat (vedi sotto)
+  const sceltaDalBrowser = formData.get("copertina");
+  if (sceltaDalBrowser !== null && sceltaDalBrowser !== "" && !idCopertinaValido(sceltaDalBrowser)) return { error: "Copertina non valida." };
+  const richiesta = String(formData.get("richiesta") ?? "").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").trim();
+  if (!richiesta) return { error: "Scrivi cosa vuoi cambiare nella copertina." };
+  if (richiesta.length > RICHIESTA_MASSIMA) return { error: `La richiesta è troppo lunga: al massimo ${RICHIESTA_MASSIMA} caratteri.` };
+  const file = formData.get("allegato");
+  const conAllegato = file instanceof File && file.size > 0;
+  let allegatoPer: ChiLogo | null = null;
+  if (conAllegato) {
+    if (!TIPI_ALLEGATO[file.type]) return { error: "Il logo allegato deve essere un'immagine PNG, JPG o WebP." };
+    if (file.size > ALLEGATO_MASSIMO_BYTE) return { error: "Il logo allegato supera i 5 MB: riducilo e riprova." };
+    const per = formData.get("allegatoPer");
+    if (per !== "stazione" && per !== "cliente") return { error: "Indica di quale logo si tratta: il tuo o quello della stazione appaltante." };
+    allegatoPer = per;
+  }
+
+  // la gara (la RLS la mostra solo all'account giusto)
+  const { data: gara } = await supabase
+    .from("gare")
+    .select("id, titolo, stazione_appaltante, amministrazione_committente")
+    .eq("id", garaId)
+    .maybeSingle<{ id: string; titolo: string | null; stazione_appaltante: string | null; amministrazione_committente: string | null }>();
+  if (!gara) return { error: "Gara non trovata." };
+
+  // si può scrivere? Chat aperta (6 generazioni), modifiche rimaste, tetto dei messaggi, servizio ancora attivo per la gara, nessuna modifica in corso
+  const admin = createAdminClient();
+  const [ctx, chat] = await Promise.all([leggiContestoCopertina({ admin, accountId: contesto.accountId, garaId }), leggiChat(admin, garaId, contesto.accountId)]);
+  if (ctx.errore || chat.errore) return { error: "Non riesco a controllare la chat in questo momento. Riprova tra qualche istante." };
+  if (!chat.disponibile) return { error: "La chat per modificare le copertine non è ancora disponibile." };
+  // il diritto sulla gara, senza il limite per stile (le 6 generazioni sono già state fatte)
+  const diritto = decidi({ ...ctx, uso: { ...ctx.uso, perStile: { stilizzato: 0, realistico: 0 } } }, garaId, "stilizzato");
+  const stato = statoChat({ aperta: chatAperta(ctx.uso), righe: chat.righe, adesso: new Date(), diritto: { ok: diritto.ok, messaggio: diritto.ok ? null : diritto.messaggio } });
+  if (!stato.puoScrivere) return { error: stato.motivo ?? "La chat è chiusa." };
+
+  // La copertina su cui lavorare (richiesta dell'utente, 13/11/2026): si sceglie UNA volta, col primo messaggio; poi la chat continua sempre sulla stessa,
+  // ripartendo dall'ultima versione consegnata. Dopo la prima scelta la decide la chat, mai il browser.
+  const lavoro = copertinaDiLavoro(chat.righe);
+  const origine = lavoro ? lavoro.ultima : sceltaDalBrowser;
+  if (!idCopertinaValido(origine)) return { error: "Scegli prima la copertina che ritieni migliore: la chat lavorerà su quella." };
+
+  // la copertina scelta deve esistere ed essere modificabile (pagina senza loghi e scheda: le copertine fatte prima del 13/11/2026 non le hanno)
+  const nomi = await nomiFileCopertine(admin, garaId);
+  const fileOrigine = fileCopertina(origine);
+  if (![fileOrigine.png, fileOrigine.base, fileOrigine.scheda].every((n) => nomi.includes(n))) {
+    return {
+      error: lavoro
+        ? "La copertina su cui stavi lavorando non si trova più, quindi le modifiche non possono continuare."
+        : "Questa copertina non si può modificare: è stata fatta prima che le modifiche in chat fossero disponibili. Scegline un'altra.",
+    };
+  }
+  const scheda = await leggiSchedaCopertina(admin, garaId, contesto.accountId, origine);
+  if (!scheda) return { error: lavoro ? "Non riesco a leggere la copertina su cui stai lavorando. Riprova tra qualche istante." : "Non riesco a leggere questa copertina. Scegline un'altra o riprova." };
+  const numeri = numeriCopertine(copertineDaNomi(nomi));
+  const numero = numeri.get(origine) ?? null;
+  // Ciò che l'interprete deve sapere oltre alla copertina (correzione del 13/11/2026): chi è chi (nome della stazione appaltante e dell'azienda del cliente),
+  // i messaggi precedenti, com'erano i loghi nella copertina scelta all'inizio. Senza, sulla gara Teatro alla Scala ha spostato il logo sbagliato e ha letto
+  // la correzione «non il nostro logo» come «togli il nostro logo».
+  const sceltaIniziale = lavoro ? lavoro.scelta : origine;
+  // com'erano i loghi in ogni copertina consegnata in chat (al massimo 3): per rimediare a un errore tornando alla versione giusta precedente
+  const consegnate = [...new Set(chat.righe.filter((r) => r.ruolo === "assistente" && r.stato === "pronta" && r.copertina && idCopertinaValido(r.copertina)).map((r) => r.copertina as string))];
+  const [{ data: azienda }, schedaPartenza, schedeConsegnate] = await Promise.all([
+    admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>(),
+    sceltaIniziale === origine ? Promise.resolve(scheda) : leggiSchedaCopertina(admin, garaId, contesto.accountId, sceltaIniziale),
+    Promise.all(consegnate.map(async (id) => [id, id === origine ? scheda : await leggiSchedaCopertina(admin, garaId, contesto.accountId, id)] as const)),
+  ]);
+  // la copertina da cui è nata quella da modificare (per annullare l'ultima modifica): una consegnata in chat, o quella di partenza
+  const schedaPrecedente = scheda.origine ? (scheda.origine === sceltaIniziale ? schedaPartenza : (new Map(schedeConsegnate).get(scheda.origine) ?? null)) : null;
+  const contestoInterprete: ContestoInterprete = {
+    // il nome dell'ente: dalla gara; se l'estrazione non l'ha trovato, quello letto dal documento per la copertina (salvato nella scheda dal 13/11/2026)
+    nomi: { stazione: gara.stazione_appaltante ?? gara.amministrazione_committente ?? schedaPartenza?.ente ?? scheda.ente ?? null, cliente: azienda?.ragione_sociale ?? null },
+    titoloGara: gara.titolo,
+    storia: storiaPerInterprete(chat.righe, numeri, new Map(schedeConsegnate)),
+    partenza: schedaPartenza ? { numero: numeri.get(sceltaIniziale) ?? null, scheda: schedaPartenza } : null,
+    precedente: schedaPrecedente && scheda.origine ? { numero: numeri.get(scheda.origine) ?? null, scheda: schedaPrecedente } : null,
+  };
+
+  // il logo allegato: deve essere un'immagine leggibile; si salva nella cartella della gara (va via con la gara)
+  let allegato: { per: ChiLogo; percorso: string } | null = null;
+  if (conAllegato && allegatoPer) {
+    const contenuto = Buffer.from(await (file as File).arrayBuffer());
+    if (!(await preparaLogo(contenuto))) return { error: "Il logo allegato non è un'immagine leggibile." };
+    const percorso = `${garaId}/copertina-allegato-${marcaTempo(new Date())}.${TIPI_ALLEGATO[(file as File).type]}`;
+    const { error: erroreCarica } = await admin.storage.from("gare").upload(percorso, contenuto, { contentType: (file as File).type, upsert: false });
+    if (erroreCarica) return { error: "Non sono riuscito a caricare il logo allegato. Riprova." };
+    allegato = { per: allegatoPer, percorso };
+  }
+
+  const idMessaggio = await salvaMessaggioCliente(admin, { garaId, userId: contesto.accountId, testo: richiesta, copertina: origine, allegato: allegato?.percorso ?? null, allegatoPer: allegato?.per ?? null });
+  if (!idMessaggio) return { error: "Non sono riuscito a registrare il messaggio. Riprova." };
+  const rispondi = async (testo: string, errore = false): Promise<ChatCopertinaState> => {
+    await salvaRisposta(admin, { garaId, userId: contesto.accountId, testo });
+    revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
+    return errore ? { error: testo } : { ok: true, messaggio: testo };
+  };
+
+  // la richiesta → il piano
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return rispondi("La modifica della copertina non è configurata (manca la chiave di OpenAI).", true);
+  let interpretazione: Awaited<ReturnType<typeof interpretaRichiesta>>;
+  try {
+    interpretazione = await interpretaRichiesta({ scheda, numero, richiesta, allegatoPer: allegato?.per ?? null, contesto: contestoInterprete, apiKey });
+  } catch (err) {
+    console.error("Copertina: interpretazione della richiesta non riuscita", err instanceof Error ? err.message : err);
+    return rispondi(messaggioErroreCopertina(err, "disegno"), true);
+  }
+  await logAiUsage({
+    userId: contesto.accountId,
+    garaId,
+    operazione: operazionePerRegistro("copertina_relazione_chat"),
+    provider: "openai",
+    model: interpretazione.modello,
+    inputTokens: interpretazione.uso.inputTokens,
+    outputTokens: interpretazione.uso.outputTokens,
+  });
+  if (!interpretazione.piano) return rispondi(MESSAGGIO_NON_CAPITO);
+  // i controlli nel codice sul piano: niente «togli» se il cliente non ha chiesto di togliere; se nomina un logo e il modello vuole cambiare l'altro, si chiede
+  const verificato = verificaPiano({ piano: interpretazione.piano, richiesta, nomi: contestoInterprete.nomi });
+  if (verificato.domanda) return rispondi(verificato.domanda);
+  const piano = verificato.piano;
+  // una domanda, una richiesta poco chiara o fuori tema: si risponde e non si consuma nulla. Con un logo allegato però il cliente vuole quel logo sulla copertina.
+  if (piano.esito === "risposta" && !allegato) return rispondi(piano.messaggio);
+  // la copertina nuova (un logo tolto per errore si rimette dalla copertina di partenza o dall'ultimo allegato); se resterebbe uguale non si prepara
+  const dopo = applicaPiano({ scheda, piano, allegato, origine, riserva: loghiDiRiserva(chat.righe, schedaPartenza, garaId, schedaPrecedente) });
+  if (!allegato && pianoSenzaEffetti(piano, scheda, dopo)) return rispondi(MESSAGGIO_SENZA_EFFETTI);
+
+  // si registra che è in preparazione (conta subito), poi o si consegna o si annulla
+  const riserva = await riservaModifica(admin, { garaId, userId: contesto.accountId, testo: piano.messaggio });
+  if (!riserva) return rispondi("Non riesco a preparare la copertina in questo momento. Riprova tra qualche istante.", true);
+  let esito: Awaited<ReturnType<typeof modificaCopertina>>;
+  try {
+    esito = await modificaCopertina({ garaId, accountId: contesto.accountId, origine, prima: scheda, dopo, piano, admin });
+  } catch (err) {
+    console.error("Copertina: modifica interrotta da un errore", err instanceof Error ? err.message : err);
+    esito = { ok: false, errore: "La modifica della copertina non è riuscita. Riprova tra qualche istante." };
+  }
+  if (!esito.ok) {
+    await annullaModifica(admin, riserva);
+    return rispondi(esito.errore, true);
+  }
+  await completaModifica(admin, riserva, { testo: [piano.messaggio, ...esito.avvisi].join(" "), copertina: esito.id });
+  revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
+  return { ok: true, messaggio: piano.messaggio, nuova: esito.id };
 }

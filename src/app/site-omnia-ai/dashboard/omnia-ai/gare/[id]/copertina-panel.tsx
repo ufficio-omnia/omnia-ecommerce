@@ -2,11 +2,12 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { generaCopertinaGara, scaricaCopertinaGara, type CopertinaState } from "@/app/actions/gara-copertina";
-import OpenInNewTabButton from "@/components/open-in-new-tab-button";
+import { generaCopertinaGara, type CopertinaState } from "@/app/actions/gara-copertina";
 import ThinkingIndicator from "./thinking-indicator";
 import AcquistoCopertina from "./copertina-acquisto";
 import ServizioRichiudibile from "./servizio-richiudibile";
+import CopertinaChat from "./copertina-chat";
+import CopertineGalleria from "./copertine-galleria";
 import { CIG_CAMPO_MASSIMO, ETICHETTA_STILE, SOTTOTITOLO_MASSIMO, TITOLO_PRINCIPALE_MASSIMO, TITOLO_PRINCIPALE_PREDEFINITO, type Stile } from "@/lib/copertina-relazione-calcoli";
 import { prezzoCopertina, type MotivoNegato } from "@/lib/copertina-diritto-calcoli";
 import { TESTI_COPERTINA, type OffertaCopertina, type RitornoPagamentoCopertina } from "@/lib/copertina-acquisto-calcoli";
@@ -14,23 +15,55 @@ import { TESTI_COPERTINA, type OffertaCopertina, type RitornoPagamentoCopertina 
 const statoIniziale: CopertinaState = {};
 
 export type CopertinaVista = {
+  // il nome dei file senza estensione (lo usa la chat per indicare la copertina scelta)
+  id: string;
+  // «COPERTINA N.x»: in ordine di creazione, comprese quelle modificate in chat
+  numero: number;
   marca: string;
   stile: Stile;
+  // nata da una modifica in chat
+  modifica: boolean;
   nomePng: string;
   nomePdf: string | null;
   // quando è stata generata (ISO), per mostrarla al cliente
   generataIl: string | null;
-  // link temporaneo per mostrare l'immagine: solo per le più recenti (le altre si scaricano e basta)
+  // link temporaneo per mostrare l'immagine piccola (la miniatura, o il PNG intero se la copertina non ha la miniatura)
   anteprimaUrl: string | null;
+  // link temporaneo al PNG intero, per l'anteprima grande in sovraimpressione
+  grandeUrl: string | null;
+  // si può modificare in chat (ha la pagina senza loghi e la scheda)
+  modificabile: boolean;
+};
+
+// La chat per modificare una copertina, come la prepara la pagina (stato e messaggi; le copertine consegnate sono già pronte da mostrare)
+export type MessaggioChatVista = {
+  id: string;
+  ruolo: "cliente" | "assistente";
+  testo: string;
+  quando: string;
+  // per il cliente: il numero della copertina scelta
+  numeroScelta: number | null;
+  allegato: boolean;
+  // per l'assistente: copertina in preparazione, preparazione interrotta, o copertina consegnata
+  inPreparazione: boolean;
+  interrotta: boolean;
+  copertina: CopertinaVista | null;
+};
+export type ChatVista = {
+  stato: { aperta: boolean; modificheFatte: number; modificheRimaste: number; puoScrivere: boolean; motivo: string | null };
+  messaggi: MessaggioChatVista[];
+  // le copertine che si possono scegliere con il flag
+  scelte: CopertinaVista[];
+  // la scelta si fa una volta (col primo messaggio): poi la chat lavora sempre sull'ultima versione di quella copertina
+  sceltaFatta: boolean;
+  lavoro: CopertinaVista | null;
+  numeroSceltaIniziale: number | null;
 };
 
 export type DocumentoScelta = { id: string; nome_file: string };
 
 // Per ogni stile: quante generazioni ha già fatto su questa gara, il massimo, e se può farne un'altra (con il perché, se no). Lo decide il server.
 export type StatoStile = { stile: Stile; fatte: number; massime: number; consentito: boolean; motivo: MotivoNegato | null; messaggio: string | null };
-
-const quando = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
 // Riquadro «Copertina relazione tecnica» dentro la gara: due pulsanti (stile stilizzato e stile realistico) leggono il disciplinare o il capitolato scelto
 // (titolo, CIG e ciò che il documento dice della gara) e creano una copertina in formato A4, con il logo della stazione appaltante in alto a sinistra e
@@ -50,6 +83,7 @@ export default function CopertinaPanel({
   privacyVersione,
   acquistata,
   copertine,
+  chat,
 }: {
   garaId: string;
   stazioneAppaltante: string | null;
@@ -69,6 +103,8 @@ export default function CopertinaPanel({
   // questa gara ha un acquisto pagato
   acquistata: boolean;
   copertine: CopertinaVista[];
+  // la chat delle modifiche (dopo le 6 generazioni; null se non c'è ancora)
+  chat: ChatVista | null;
 }) {
   const [state, formAction, pending] = useActionState(generaCopertinaGara, statoIniziale);
   // quale dei due pulsanti è stato premuto, per scrivere «Generazione in corso...» su quello giusto
@@ -79,9 +115,6 @@ export default function CopertinaPanel({
   const [sottotitolo, setSottotitolo] = useState("");
   const [cig, setCig] = useState("");
   const idSelezione = "copertina-documento";
-  // la più recente di ciascuno stile è «Ultima copertina»
-  const primaPerStile = new Map<Stile, string>();
-  for (const c of copertine) if (!primaPerStile.has(c.stile)) primaPerStile.set(c.stile, c.marca);
   // Se il motivo per cui non si può generare non riguarda un singolo stile (servizio spento, periodo finito, a pagamento) lo si dice una volta sola, sopra
   // i pulsanti; il «massimo raggiunto» sta sotto il pulsante dello stile che l'ha raggiunto.
   const inConferma = ritorno === "pagato" && !acquistata;
@@ -107,6 +140,23 @@ export default function CopertinaPanel({
           in alto a sinistra il logo della stazione appaltante, in basso a destra il tuo logo. Scegli lo stile: <strong>stilizzato</strong> (sfondo grafico illustrato) o <strong>realistico</strong> (sfondo fotografico). Puoi generarle in tutti e due gli stili e poi decidere; ogni generazione è diversa e si
           aggiunge alle precedenti. Per ogni gara puoi fare fino a <strong>3 generazioni per stile</strong> (3 stilizzate e 3 realistiche).
         </p>
+
+        {/* Ben visibile (richiesta dell'utente, 13/11/2026): dopo le 6 generazioni si apre la chat delle modifiche sulla copertina migliore */}
+        <div className="omnia-copertina-avviso-chat">
+          <span className="icona" aria-hidden="true">
+            💬
+          </span>
+          <p style={{ margin: 0 }}>
+            <strong>Al termine delle 6 generazioni potrai fare le tue modifiche in chat.</strong> Si aprirà una chat sulla copertina che ritieni migliore: chiedi
+            cosa cambiare (sfondo, colori, testi, posizione dei loghi, anche un logo nuovo) e ricevi fino a <strong>3 nuove copertine</strong>, in PNG e PDF.
+            {chat && (
+              <>
+                {" "}
+                <a href="#copertina-chat">Vai alla chat ↓</a>
+              </>
+            )}
+          </p>
+        </div>
 
         <div style={{ marginTop: 14, maxWidth: 560 }}>
           <label className="omnia-etichetta" htmlFor={idSelezione}>
@@ -320,51 +370,10 @@ export default function CopertinaPanel({
         </div>
       )}
 
-      {copertine.length > 0 && (
-        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 20 }}>
-          {copertine.map((c) => {
-            const ultima = primaPerStile.get(c.stile) === c.marca;
-            return (
-            <div key={`${c.marca}-${c.stile}`} style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-              {c.anteprimaUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={c.anteprimaUrl}
-                  alt={`${ETICHETTA_STILE[c.stile]}, generata il ${quando(c.generataIl)}`}
-                  loading="lazy"
-                  style={{ width: ultima ? 240 : 130, height: "auto", aspectRatio: "210 / 297", border: "1px solid var(--bordo)", borderRadius: 4 }}
-                />
-              )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <span>
-                  <strong>{ETICHETTA_STILE[c.stile]}</strong>
-                  {ultima ? " — la più recente" : ""}
-                  {c.generataIl ? ` — generata il ${quando(c.generataIl)}` : ""}
-                </span>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {c.nomePdf && (
-                    <OpenInNewTabButton
-                      action={scaricaCopertinaGara}
-                      hiddenFields={{ garaId, nomeFile: c.nomePdf }}
-                      label="Scarica il PDF (A4)"
-                      pendingLabel="Preparo il file..."
-                      className={ultima ? "omnia-btn omnia-btn-p omnia-btn-piccolo" : "omnia-btn omnia-btn-s omnia-btn-piccolo"}
-                    />
-                  )}
-                  <OpenInNewTabButton
-                    action={scaricaCopertinaGara}
-                    hiddenFields={{ garaId, nomeFile: c.nomePng }}
-                    label="Scarica l'immagine (PNG)"
-                    pendingLabel="Preparo il file..."
-                    className="omnia-btn omnia-btn-s omnia-btn-piccolo"
-                  />
-                </div>
-              </div>
-            </div>
-            );
-          })}
-        </div>
-      )}
+      {/* tutte le copertine affiancate in una griglia; un clic apre l'anteprima grande (copertine-galleria.tsx) */}
+      <CopertineGalleria garaId={garaId} copertine={copertine} />
+      {/* la chat per modificare una copertina: dopo le 6 generazioni (decide la pagina) */}
+      {chat && <CopertinaChat garaId={garaId} chat={chat} />}
     </ServizioRichiudibile>
   );
 }
