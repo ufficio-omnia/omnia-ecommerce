@@ -1040,6 +1040,8 @@ li {
   margin-top: 20px;
   flex: 1;
   display: grid;
+  /* le voci restano in alto anche quando la scheda è più alta (lo spazio in più va sotto, non tra le voci) */
+  align-content: start;
   gap: 10px;
 }
 .omnia-prezzo-elenco li {
@@ -3324,6 +3326,73 @@ li {
   font-size: 13px;
   line-height: 1.5;
   color: var(--verde);
+  text-align: left;
+}
+/* I servizi extra della gara sulla scheda del piano (omnia-ai-plans.ts): un riquadro in evidenza sopra i pulsanti, allineato tra le schede */
+.omnia-prezzo-servizi {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--viola-rgb), 0.35);
+  background: rgba(var(--viola-rgb), 0.08);
+  text-align: left;
+}
+.omnia-prezzo.in-evidenza .omnia-prezzo-servizi {
+  background: var(--vetro);
+}
+.omnia-prezzo .omnia-prezzo-servizi b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--viola);
+}
+.omnia-prezzo-servizi b::before {
+  content: "✦";
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.omnia-prezzo-servizi p {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--testo-2);
+  text-align: left;
+}
+.omnia-prezzo-servizi ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.omnia-prezzo-servizi li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--testo);
+  text-align: left;
+}
+.omnia-prezzo-servizi li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--viola);
+}
+.omnia-prezzo-nota {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fioco);
   text-align: left;
 }
 

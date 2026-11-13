@@ -7,6 +7,11 @@
 
 export type PianoSlug = "starter" | "professional" | "enterprise";
 
+// I servizi extra della gara (copertina della relazione tecnica, servizi del settore come il piano di lavoro): con Starter in un riquadro in evidenza
+// («acquistabili dall'area riservata»), con Professional come voci dell'elenco, compresi (e quindi con Enterprise, che ha «Tutto il piano Professional").
+// Richiesta dell'utente del 13/11/2026: SOLO testo della pagina dei piani; chi può usarli lo decide la console, non questa costante.
+export type ServiziPiano = { titolo: string; intro: string; punti: string[] };
+
 export type Piano = {
   slug: PianoSlug;
   nome: string;
@@ -14,8 +19,17 @@ export type Piano = {
   gareIncluse: number;
   descrizione: string;
   voci: string[];
+  servizi: ServiziPiano | null;
+  // la nota con l'asterisco, sotto i servizi
+  nota: string | null;
   inEvidenza: boolean;
 };
+
+const PUNTI_SERVIZI = [
+  "Copertina della relazione tecnica in PDF e PNG: 6 proposte automatiche + 3 su misura, chiedendo le modifiche all'assistente in chat",
+  "Servizi dedicati al tuo settore*",
+];
+export const NOTA_SERVIZI_SETTORE = "* Per esempio, per i servizi di pulizia: il piano di lavoro della gara in Excel.";
 
 export const PIANI: Record<PianoSlug, Piano> = {
   starter: {
@@ -29,6 +43,12 @@ export const PIANI: Record<PianoSlug, Piano> = {
       "Generazione relazione tecnica in Word",
       "Estrazione automatica dei criteri di valutazione",
     ],
+    servizi: {
+      titolo: "Servizi extra, quando ti servono",
+      intro: "Li acquisti in autonomia dalla tua area riservata:",
+      punti: PUNTI_SERVIZI,
+    },
+    nota: NOTA_SERVIZI_SETTORE,
     inEvidenza: false,
   },
   professional: {
@@ -40,9 +60,13 @@ export const PIANI: Record<PianoSlug, Piano> = {
     voci: [
       "8 gare incluse ogni mese",
       "Tutto il piano Starter",
-      "Intestazioni e piè di pagina con il tuo logo",
       "Supporto prioritario",
+      // i servizi extra compresi, in elenco dopo le voci di prima (scelta dell'utente del 13/11/2026: niente riquadro sul Professional)
+      "Copertina della relazione tecnica compresa in ogni gara: PDF e PNG, 6 proposte automatiche + 3 su misura chiedendo le modifiche in chat",
+      "Servizi dedicati al tuo settore* compresi in ogni gara",
     ],
+    servizi: null,
+    nota: NOTA_SERVIZI_SETTORE,
     inEvidenza: true,
   },
   enterprise: {
@@ -57,6 +81,8 @@ export const PIANI: Record<PianoSlug, Piano> = {
       "Revisione umana Omnia Consulting a condizioni dedicate",
       "Accesso API (in arrivo)",
     ],
+    servizi: null,
+    nota: null,
     inEvidenza: false,
   },
 };

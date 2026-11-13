@@ -1,4 +1,4 @@
-import { PIANI, PIANI_ORDINE, formatEuro, type PianoSlug } from "./omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, formatEuro, type PianoSlug, type ServiziPiano } from "./omnia-ai-plans";
 
 // Calcoli puri (nessun database, nessuna rete) del catalogo piani di OMNIA AI: prezzo di listino
 // modificabile dalla console, sconti, e ciò che il cliente vede e paga. La lettura dal database
@@ -191,6 +191,8 @@ export type PianoCatalogo = {
   nome: string;
   descrizione: string;
   voci: string[];
+  servizi: ServiziPiano | null;
+  nota: string | null;
   gareIncluse: number;
   inEvidenza: boolean;
   // prezzo di listino (quello su Stripe) e prezzo da pagare oggi (listino o scontato)
@@ -212,6 +214,8 @@ export function costruisciCatalogo(listini: Partial<Record<PianoSlug, number>>, 
       nome: base.nome,
       descrizione: base.descrizione,
       voci: base.voci,
+      servizi: base.servizi,
+      nota: base.nota,
       gareIncluse: base.gareIncluse,
       inEvidenza: base.inEvidenza,
       prezzoListinoCentesimi: listino,
