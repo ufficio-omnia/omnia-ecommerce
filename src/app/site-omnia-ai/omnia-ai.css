@@ -175,6 +175,13 @@ a {
   --su-verde: #06231a;
   --viola-2: #6f5fd6;
   --particella-rgb: 155, 146, 220;
+  /* anteprima grande delle copertine e lente sulle miniature: colori FISSI, uguali nei due temi (fondo scuro, carta bianca) */
+  --sovrapposto-rgb: 5, 5, 9;
+  --su-sovrapposto: #f4f3fa;
+  --chiaro-rgb: 255, 255, 255;
+  --ombra-rgb: 0, 0, 0;
+  --carta: #ffffff;
+  --inchiostro: #1b1930;
 }
 
 /* ---------- Tema chiaro ----------
@@ -213,6 +220,13 @@ a {
   --su-verde: #ffffff;
   --viola-2: #4a3bb8;
   --particella-rgb: 91, 75, 208;
+  /* anteprima grande delle copertine e lente: gli stessi colori fissi del tema scuro */
+  --sovrapposto-rgb: 5, 5, 9;
+  --su-sovrapposto: #f4f3fa;
+  --chiaro-rgb: 255, 255, 255;
+  --ombra-rgb: 0, 0, 0;
+  --carta: #ffffff;
+  --inchiostro: #1b1930;
 }
 
 /* ---------- Fondamenta ----------
@@ -1872,6 +1886,311 @@ li {
 .omnia-chat-riga textarea.omnia-input {
   flex: 1;
   resize: none;
+}
+
+/* Chat delle modifiche alla copertina (gare/[id]/copertina-chat.tsx): le copertine da scegliere come schede con la miniatura, la scelta evidenziata */
+.omnia-copertina-scelte {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+.omnia-copertina-scelta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  color: var(--testo);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.omnia-copertina-scelta:hover {
+  border-color: var(--bordo-f);
+}
+.omnia-copertina-scelta.scelta {
+  border-color: var(--viola);
+  box-shadow: 0 0 0 2px rgba(var(--viola-rgb), 0.35);
+}
+.omnia-copertina-scelta input {
+  accent-color: var(--viola);
+}
+.omnia-copertina-lavoro {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* Nel testo iniziale della copertina: l'avviso che dopo le 6 generazioni si apre la chat delle modifiche */
+.omnia-copertina-avviso-chat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 14px;
+  max-width: 760px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--viola-rgb), 0.4);
+  background: rgba(var(--viola-rgb), 0.1);
+  color: var(--testo);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.omnia-copertina-avviso-chat .icona {
+  flex: none;
+  font-size: 20px;
+  line-height: 1.2;
+}
+.omnia-copertina-avviso-chat a {
+  color: var(--viola);
+  font-weight: 600;
+}
+
+/* Le copertine della gara (gare/[id]/copertine-galleria.tsx): griglia di miniature, lente al passaggio del mouse, anteprima grande in sovraimpressione */
+.omnia-copertine-griglia {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 18px 14px;
+}
+.omnia-copertina-scheda {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.omnia-copertina-miniatura {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--vetro);
+  cursor: zoom-in;
+}
+.omnia-copertina-miniatura img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 210 / 297;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+.omnia-copertina-vuota {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 210 / 297;
+  padding: 8px;
+  font-size: 11.5px;
+  color: var(--fioco);
+  text-align: center;
+}
+.omnia-copertina-lente {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--sovrapposto-rgb), 0.38);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.omnia-copertina-lente > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--carta);
+  color: var(--inchiostro);
+  box-shadow: 0 4px 14px rgba(var(--ombra-rgb), 0.3);
+}
+.omnia-copertina-miniatura:hover .omnia-copertina-lente,
+.omnia-copertina-miniatura:focus-visible .omnia-copertina-lente {
+  opacity: 1;
+}
+.omnia-copertina-miniatura:hover img,
+.omnia-copertina-miniatura:focus-visible img {
+  transform: scale(1.04);
+}
+.omnia-copertina-miniatura:focus-visible {
+  outline: 2px solid var(--viola);
+  outline-offset: 2px;
+}
+/* al telefono (niente mouse) la lente resta sempre visibile, piccola, in un angolo */
+@media (hover: none) {
+  .omnia-copertina-lente {
+    opacity: 1;
+    background: none;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 6px;
+  }
+  .omnia-copertina-lente > span {
+    width: 32px;
+    height: 32px;
+  }
+  .omnia-copertina-lente svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+.omnia-copertina-recente {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--viola);
+  color: var(--su-viola);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.omnia-copertina-dati {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fioco);
+}
+.omnia-copertina-dati strong {
+  font-size: 12.5px;
+  color: var(--testo);
+}
+.omnia-copertina-azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.omnia-copertina-azioni .omnia-btn-piccolo {
+  padding: 5px 12px;
+}
+/* l'anteprima grande: colori fissi (fondo scuro in entrambi i temi), sopra header e banner */
+.omnia-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 72px;
+  background: rgba(var(--sovrapposto-rgb), 0.88);
+  color: var(--su-sovrapposto);
+}
+.omnia-lightbox-testa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 18px;
+  max-width: 100%;
+  font-size: 14px;
+  text-align: center;
+}
+.omnia-lightbox-pulsanti {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.omnia-lightbox-immagine {
+  display: block;
+  max-width: min(100%, 900px);
+  max-height: calc(100vh - 150px);
+  width: auto;
+  height: auto;
+  aspect-ratio: 210 / 297;
+  object-fit: contain;
+  border-radius: 6px;
+  background-color: var(--carta);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 24px 70px rgba(var(--ombra-rgb), 0.55);
+}
+.omnia-lightbox-conta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--su-sovrapposto);
+  opacity: 0.75;
+}
+.omnia-lightbox-chiudi,
+.omnia-lightbox-freccia {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--chiaro-rgb), 0.25);
+  border-radius: 50%;
+  background: rgba(var(--chiaro-rgb), 0.12);
+  color: var(--su-sovrapposto);
+  cursor: pointer;
+  line-height: 1;
+}
+.omnia-lightbox-chiudi:hover,
+.omnia-lightbox-freccia:hover {
+  background: rgba(var(--chiaro-rgb), 0.24);
+}
+.omnia-lightbox-chiudi:focus-visible,
+.omnia-lightbox-freccia:focus-visible {
+  outline: 2px solid var(--su-sovrapposto);
+  outline-offset: 2px;
+}
+.omnia-lightbox-chiudi {
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+.omnia-lightbox-freccia {
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  margin-top: -24px;
+  font-size: 30px;
+}
+.omnia-lightbox-freccia.sinistra {
+  left: 14px;
+}
+.omnia-lightbox-freccia.destra {
+  right: 14px;
+}
+/* senza mouse (telefono, tablet) i tasti non ci sono: la nota sui tasti non serve */
+@media (hover: none) {
+  .omnia-lightbox-tasti {
+    display: none;
+  }
+}
+/* al telefono le frecce scendono in basso, per lasciare tutta la larghezza all'immagine */
+@media (max-width: 640px) {
+  .omnia-lightbox {
+    padding: 60px 12px 76px;
+  }
+  .omnia-lightbox-immagine {
+    max-height: calc(100vh - 230px);
+  }
+  .omnia-lightbox-freccia {
+    top: auto;
+    bottom: 14px;
+    margin-top: 0;
+  }
+  .omnia-lightbox-freccia.sinistra {
+    left: calc(50% - 60px);
+  }
+  .omnia-lightbox-freccia.destra {
+    right: calc(50% - 60px);
+  }
 }
 
 /* Indicatore "sta elaborando": riusa il marchio nel suo stato

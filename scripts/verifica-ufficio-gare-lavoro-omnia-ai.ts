@@ -62,7 +62,7 @@ async function main() {
     "gara-extraction.ts": ["extractGaraData", "impostaScadenzaGara", "impostaOraScadenzaGara"],
     "gara-chat.ts": ["sendGaraMessage"],
     "gara-piano-lavoro.ts": ["generaPianoLavoroGara", "scaricaPianoLavoroGara"],
-    "gara-copertina.ts": ["generaCopertinaGara", "scaricaCopertinaGara"],
+    "gara-copertina.ts": ["generaCopertinaGara", "scaricaCopertinaGara", "inviaRichiestaCopertina"],
     "download.ts": ["downloadGaraDocumento", "downloadGaraMessaggioFile", "downloadAllegatoMessaggio"],
     "assistenza-chat.ts": ["sendAssistenzaMessage", "richiediEscalationAssistenza"],
     "omnia-ai-stato-sistema.ts": ["getStatoDashboard"],

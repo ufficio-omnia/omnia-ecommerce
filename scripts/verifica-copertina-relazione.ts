@@ -300,7 +300,21 @@ async function main() {
     atteso("generazione riuscita, con la data nel risultato", esito.ok && esito.marca === "20261110T153000Z");
     atteso("titolo e CIG sulla copertina sono quelli del DOCUMENTO (non quelli scritti dal cliente nella gara)", esito.ok && esito.titolo === base.titolo && esito.cig === "B1C2D3E4F5" && esito.documento === "Disciplinare di gara.pdf" && documentoLetto === "Disciplinare di gara.pdf");
     atteso("il prompt dell'immagine ha il titolo e il CIG letti, e la direzione artistica del documento", promptRicevuti[0].includes(`SOTTO SEMPRE AL CENTRO SCRIVI: ${base.titolo} - CIG: B1C2D3E4F5`) && promptRicevuti[0].includes("Sagome stilizzate di scuole e biblioteca") && !promptRicevuti[0].includes("Gara pulizie (titolo scritto dal cliente)"));
-    atteso("salvati PNG e PDF nel bucket «gare», sotto la cartella della gara, con la stessa data", caricati.length === 2 && caricati[0].percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.png` && caricati[1].percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.pdf`);
+    atteso("salvati PNG e PDF nel bucket «gare», sotto la cartella della gara, con la stessa data", caricati.length === 5 && caricati[0].percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.png` && caricati[1].percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.pdf`);
+    // per modificarla in chat (dal 13/11/2026): accanto alla copertina la pagina SENZA loghi, la miniatura e la scheda (testi, stile, loghi e loro posto)
+    atteso(
+      "salvati anche la pagina senza loghi (PNG), la miniatura (JPG) e la scheda (JSON), con lo stesso nome della copertina",
+      caricati[2]?.percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato-base.png` && caricati[2]?.tipo === "image/png" && caricati[3]?.percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato-mini.jpg` && caricati[3]?.tipo === "image/jpeg" && caricati[4]?.percorso === `${GARA_ID}/copertina-20261110T153000Z-stilizzato.json` && caricati[4]?.tipo === "application/json",
+    );
+    const schedaSalvata = JSON.parse(String(caricati[4]?.corpo ?? "{}"));
+    atteso(
+      "la scheda dice i testi sulla copertina, lo stile e dove sono i loghi (stazione in alto a sinistra, cliente in basso a destra, medi, con i loro file)",
+      schedaSalvata.versione === 1 && schedaSalvata.stile === "stilizzato" && schedaSalvata.testi?.titoloPrincipale === "RELAZIONE TECNICA" && schedaSalvata.testi?.titolo === base.titolo && schedaSalvata.testi?.cig === "B1C2D3E4F5" &&
+        JSON.stringify(schedaSalvata.loghi?.stazione) === JSON.stringify({ bucket: "gare", percorso: "gara/logo.png", posizione: "alto-sinistra", dimensione: "medio" }) &&
+        JSON.stringify(schedaSalvata.loghi?.cliente) === JSON.stringify({ bucket: "company-assets", percorso: "azienda/logo.png", posizione: "basso-destra", dimensione: "medio" }) && schedaSalvata.origine === null,
+    );
+    const [basePixel, miniMeta] = await Promise.all([pixel(caricati[2].corpo as Buffer, 127 + 80, 134 + 60), sharp(caricati[3].corpo as Buffer).metadata()]);
+    atteso("la pagina senza loghi è davvero SENZA loghi (dove c'è il logo della stazione si vede la pagina del modello) e la miniatura è piccola", basePixel.join() === "51,102,204" && miniMeta.width === 320 && miniMeta.format === "jpeg");
     atteso("mai sopra un file precedente (upsert spento)", caricati.every((c) => c.upsert === false));
     atteso("tipi dei file", caricati[0].tipo === "image/png" && caricati[1].tipo === "application/pdf");
     atteso("i loghi NON arrivano al modello (nessuna immagine allegata) e il comando lascia liberi i due angoli", loghiRicevuti === 0 && /IN ALTO A SINISTRA LASCIA LIBERO/.test(promptRicevuti[0]) && /IN BASSO A DESTRA LASCIA LIBERO/.test(promptRicevuti[0]));
@@ -323,7 +337,7 @@ async function main() {
     promptRicevuti.length = 0;
     const realistico = await generaCopertina({ ...comuni, stile: "realistico" } as never);
     atteso("stile realistico: generazione riuscita, con lo stile nel risultato", realistico.ok && realistico.stile === "realistico" && realistico.marca === "20261110T153000Z");
-    atteso("stile realistico: file «-realistico» (PNG e PDF), accanto a quelli stilizzati senza collisioni", caricati.length === 2 && caricati[0].percorso === `${GARA_ID}/copertina-20261110T153000Z-realistico.png` && caricati[1].percorso === `${GARA_ID}/copertina-20261110T153000Z-realistico.pdf`);
+    atteso("stile realistico: file «-realistico» (PNG e PDF), accanto a quelli stilizzati senza collisioni", caricati.length === 5 && caricati[0].percorso === `${GARA_ID}/copertina-20261110T153000Z-realistico.png` && caricati[1].percorso === `${GARA_ID}/copertina-20261110T153000Z-realistico.pdf`);
     atteso("stile realistico: il prompt usa la direzione FOTOGRAFICA (non quella grafica) e le note sulla fotografia", promptRicevuti[0].includes("corridoio scolastico luminoso") && !promptRicevuti[0].includes("Sagome stilizzate di scuole") && /FOTOGRAFIA realistica/.test(promptRicevuti[0]) && /STILE REALISTICO/.test(promptRicevuti[0]));
     atteso("stile realistico: la lettura è la stessa (titolo e CIG del documento) e il costo dell'immagine ha il nome dello stile", promptRicevuti[0].includes(`SOTTO SEMPRE AL CENTRO SCRIVI: ${base.titolo} - CIG: B1C2D3E4F5`) && usi.length === 2 && /copertina_relazione_lettura$/.test(String(usi[0].operazione)) && /copertina_relazione_realistico$/.test(String(usi[1].operazione)));
     const stilizzato2 = await generaCopertina({ ...comuni, stile: "stilizzato" } as never);
@@ -792,13 +806,16 @@ async function main() {
     atteso("la gara si legge con la sessione (RLS), non con la chiave di servizio", /createClient\(\)[\s\S]*\.from\("gare"\)/.test(generazione) && !/createAdminClient\(\)\s*\.from\("gare"\)/.test(generazione));
     atteso("il documento si cerca TRA quelli della gara con la sessione (RLS): l'identificativo dal browser non basta", /supabase\s*\.from\("gara_documenti"\)[\s\S]*\.eq\("id", documentoId\)[\s\S]*\.eq\("gara_id", garaId\)/.test(generazione) && /\^\[0-9a-f-\]\{36\}\$\/i\.test\(documentoId\)/.test(generazione));
     atteso("l'azione non legge titolo e CIG dal browser: arrivano solo dal documento (o dai dati già in archivio)", !/formData\.get\("(titolo|cig)"\)/.test(generazione));
-    const scarico = azione.slice(azione.indexOf("export async function scaricaCopertinaGara"));
+    // solo la funzione di scaricamento (dopo, nello stesso file, c'è la chat delle modifiche)
+    const scarico = azione.slice(azione.indexOf("export async function scaricaCopertinaGara"), azione.indexOf("export type ChatCopertinaState"));
     atteso("lo scarico accetta solo i nomi dei file di copertina e controlla la gara con la sessione", scarico.includes("percorsoCopertinaValido(") && scarico.includes("richiediAccountAzione()") && /supabase\.from\("gare"\)/.test(scarico));
     const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/page.tsx");
     atteso("il riquadro compare solo se la funzione è accesa e l'analisi è completata", /if \(gara\.estrazione_stato === "completata"\) \{/.test(pagina) && /\{copertinaPannello && <CopertinaPanel/.test(pagina));
     const pannello = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/copertina-panel.tsx");
     atteso("due pulsanti, uno per stile, nello stesso modulo: il valore del premuto arriva all'azione", pannello.includes('name="stile"') && pannello.includes("value={s.stile}") && pannello.includes("stili.map((s)") && pannello.includes("Genera copertina relazione tecnica — ") && /type="submit"\s+name="stile"/.test(pannello));
-    atteso("il pannello mostra lo stile di ogni copertina e la più recente di ciascuno stile", pannello.includes("ETICHETTA_STILE[c.stile]") && pannello.includes("primaPerStile"));
+    // dal 13/11/2026 le copertine stanno nella griglia (copertine-galleria.tsx), dentro il pannello
+    const galleria = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/copertine-galleria.tsx");
+    atteso("il pannello mostra lo stile di ogni copertina e la più recente di ciascuno stile", pannello.includes("<CopertineGalleria") && galleria.includes("ETICHETTA_STILE[x.stile]") && galleria.includes("primaPerStile") && galleria.includes("più recente"));
     atteso("il pannello fa scegliere il documento (solo PDF) e non nomina più OpenAI né i tempi", pannello.includes('name="documentoId"') && !/La crea OpenAI/.test(pannello) && !/in circa un minuto;/.test(pannello));
     atteso("la pagina propone il disciplinare/capitolato e passa solo i PDF", /documentoPredefinito\(pdfDellaGara\)/.test(pagina) && /soloPdf\(documentiOrdinati\)/.test(pagina));
     const lib = leggi("src/lib/copertina-relazione.ts");

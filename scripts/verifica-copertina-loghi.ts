@@ -261,7 +261,7 @@ async function main() {
     const relazione = leggi("src/lib/copertina-relazione.ts");
     atteso("i loghi non arrivano più al modello: la richiesta d'immagine parte senza allegati", /chiedi\(\{ prompt: promptCopertina\(dati\), loghi: \[\], apiKey, modello \}\)/.test(relazione));
     atteso("i loghi si leggono ORIGINALI (nessuna riduzione prima della preparazione: era la causa del caso SMAC)", !/LATO_MASSIMO_LOGO/.test(relazione) && /return \{ png: Buffer\.from\(grezzo\.base64, "base64"\) \}/.test(relazione));
-    atteso("la copertina salvata (PNG e PDF) è quella con i loghi applicati", /applicaLoghi\(pagina\.png, \{ stazione: logoStazione, cliente: logoCliente \}\)/.test(relazione) && /pdfA4\(conLoghi\.png\)/.test(relazione) && /upload\(percorsoPng, conLoghi\.png/.test(relazione));
+    atteso("la copertina salvata (PNG e PDF) è quella con i loghi applicati", /applicaLoghi\(pagina\.png, \{ stazione: logoStazione, cliente: logoCliente \}\)/.test(relazione) && /pdfA4\(conLoghi\.png\)/.test(relazione) && /salvaCopertina\(admin, garaId, idCopertina\(marcaTempo\(adesso\), stile, false\), \{ png: conLoghi\.png, pdf, base: pagina\.png, scheda \}\)/.test(relazione));
     atteso("i colori dei loghi vanno nel prompt (letti dai file, mai inventati)", /coloriLoghi: \[\.\.\.\(logoStazione\?\.colori \?\? \[\]\), \.\.\.\(logoCliente\?\.colori \?\? \[\]\)\]/.test(relazione));
     const pannello = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/copertina-panel.tsx");
     atteso("il pannello consiglia di caricare i loghi in PNG con sfondo trasparente", /PNG con sfondo trasparente/.test(pannello));

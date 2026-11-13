@@ -7,7 +7,9 @@ import { logAiUsage } from "@/lib/ai-usage";
 import { operazionePerRegistro } from "@/lib/anthropic";
 import { ErroreOpenAI, postaAOpenAI } from "@/lib/copertina-openai";
 import { leggiDocumentoPerCopertina, type DocumentoDaLeggere } from "@/lib/copertina-lettura";
-import { applicaLoghi, preparaLogo } from "@/lib/copertina-loghi";
+import { applicaLoghi, preparaLogo, type Disposizione, type LogoPronto } from "@/lib/copertina-loghi";
+import { POSIZIONE_PREDEFINITA } from "@/lib/copertina-loghi-calcoli";
+import { entePerScheda, promptRitocco, schedaDaJson, serveRitocco, type PianoModifica, type SchedaCopertina } from "@/lib/copertina-chat-calcoli";
 import {
   A4_ALTEZZA_PT,
   A4_LARGHEZZA_PT,
@@ -22,7 +24,8 @@ import {
   datiCopertina,
   marcaTempo,
   messaggioErroreCopertina,
-  percorsoCopertina,
+  fileCopertina,
+  idCopertina,
   promptCopertina,
   qualitaCopertina,
   scostamentoDaA4,
@@ -239,16 +242,20 @@ export async function generaCopertina(params: {
     const pdf = await pdfA4(conLoghi.png);
 
     const adesso = params.adesso ?? new Date();
-    const percorsoPng = percorsoCopertina(garaId, adesso, stile, "png");
-    const percorsoPdf = percorsoCopertina(garaId, adesso, stile, "pdf");
-    const caricaPng = await admin.storage.from("gare").upload(percorsoPng, conLoghi.png, { contentType: "image/png", upsert: false });
-    if (caricaPng.error) throw new Error(`Salvataggio dell'immagine non riuscito: ${caricaPng.error.message}`);
-    const caricaPdf = await admin.storage.from("gare").upload(percorsoPdf, pdf, { contentType: "application/pdf", upsert: false });
-    if (caricaPdf.error) {
-      // senza il PDF la copertina resterebbe a metà: si toglie anche l'immagine
-      await admin.storage.from("gare").remove([percorsoPng]);
-      throw new Error(`Salvataggio del PDF non riuscito: ${caricaPdf.error.message}`);
-    }
+    // la scheda (testi, stile, loghi e loro posto) e la pagina senza loghi: servono per modificarla in chat senza far ridisegnare i loghi al modello
+    const scheda: SchedaCopertina = {
+      versione: 1,
+      stile,
+      testi: { titoloPrincipale: dati.titoloPrincipale, titolo: dati.titolo, cig: dati.cig },
+      loghi: {
+        stazione: logoStazione && params.logoStazionePath ? { bucket: "gare", percorso: params.logoStazionePath, posizione: POSIZIONE_PREDEFINITA.stazione, dimensione: "medio" } : null,
+        cliente: logoCliente && params.logoClientePath ? { bucket: "company-assets", percorso: params.logoClientePath, posizione: POSIZIONE_PREDEFINITA.cliente, dimensione: "medio" } : null,
+      },
+      origine: null,
+      // chi è la stazione appaltante, per la chat delle modifiche (capire di quale logo parla il cliente)
+      ...entePerScheda(gara.stazioneAppaltante ?? letto.lettura.ente),
+    };
+    await salvaCopertina(admin, garaId, idCopertina(marcaTempo(adesso), stile, false), { png: conLoghi.png, pdf, base: pagina.png, scheda });
     return {
       ok: true,
       marca: marcaTempo(adesso),
@@ -263,6 +270,166 @@ export async function generaCopertina(params: {
   } catch (err) {
     // nel log resta la causa vera (con lo stato di OpenAI, se c'è); al cliente va un messaggio che non la attribuisce a lui se non è sua
     console.error(`Copertina relazione: generazione non riuscita (${fase})`, err instanceof Error ? err.message : err);
+    return { ok: false, errore: messaggioErroreCopertina(err, fase) };
+  }
+}
+
+// Salva una copertina nel bucket «gare», nella cartella della gara: PNG e PDF (insieme o niente: senza il PDF si toglie anche il PNG), poi la pagina senza
+// loghi, la miniatura e la scheda. Questi ultimi tre servono solo per modificarla in chat: se non si salvano la copertina resta valida (solo non
+// modificabile), quindi non fanno fallire nulla. Mai sopra un file esistente.
+export async function salvaCopertina(admin: SupabaseClient, garaId: string, id: string, file: { png: Buffer; pdf: Buffer; base: Buffer; scheda: SchedaCopertina }): Promise<void> {
+  const nomi = fileCopertina(id);
+  const bucket = admin.storage.from("gare");
+  const caricaPng = await bucket.upload(`${garaId}/${nomi.png}`, file.png, { contentType: "image/png", upsert: false });
+  if (caricaPng.error) throw new Error(`Salvataggio dell'immagine non riuscito: ${caricaPng.error.message}`);
+  const caricaPdf = await bucket.upload(`${garaId}/${nomi.pdf}`, file.pdf, { contentType: "application/pdf", upsert: false });
+  if (caricaPdf.error) {
+    // senza il PDF la copertina resterebbe a metà: si toglie anche l'immagine
+    await bucket.remove([`${garaId}/${nomi.png}`]);
+    throw new Error(`Salvataggio del PDF non riuscito: ${caricaPdf.error.message}`);
+  }
+  try {
+    const mini = await sharp(file.png).resize({ width: LARGHEZZA_MINIATURA }).jpeg({ quality: 78 }).toBuffer();
+    const esiti = await Promise.all([
+      bucket.upload(`${garaId}/${nomi.base}`, file.base, { contentType: "image/png", upsert: false }),
+      bucket.upload(`${garaId}/${nomi.mini}`, mini, { contentType: "image/jpeg", upsert: false }),
+      bucket.upload(`${garaId}/${nomi.scheda}`, Buffer.from(JSON.stringify(file.scheda)), { contentType: "application/json", upsert: false }),
+    ]);
+    for (const e of esiti) if (e?.error) console.error("Copertina: file per le modifiche non salvato (la copertina resta valida, ma non modificabile)", e.error.message);
+  } catch (err) {
+    console.error("Copertina: file per le modifiche non salvati (la copertina resta valida, ma non modificabile)", err instanceof Error ? err.message : err);
+  }
+}
+
+// La larghezza delle miniature (per la scelta in chat e l'elenco): leggere, invece del PNG intero di 4-5 MB
+const LARGHEZZA_MINIATURA = 320;
+
+// I link temporanei (a ora) delle miniature, in una richiesta sola; una miniatura che manca non ha link
+export async function linkMiniature(admin: SupabaseClient, garaId: string, ids: string[]): Promise<Map<string, string>> {
+  const mappa = new Map<string, string>();
+  if (ids.length === 0) return mappa;
+  const { data, error } = await admin.storage.from("gare").createSignedUrls(ids.map((id) => `${garaId}/${fileCopertina(id).mini}`), 3600);
+  if (error || !data) return mappa;
+  data.forEach((voce, i) => {
+    if (voce.signedUrl) mappa.set(ids[i], voce.signedUrl);
+  });
+  return mappa;
+}
+
+// I link temporanei alle copertine intere (PNG), per l'anteprima grande e come miniatura delle copertine che non ne hanno una: UNA sola richiesta per tutte.
+// Il browser scarica il file solo quando lo mostra (anteprima aperta, o miniatura mancante e visibile).
+export async function linkCopertineIntere(admin: SupabaseClient, garaId: string, copertine: { id: string; png: string }[]): Promise<Map<string, string>> {
+  const mappa = new Map<string, string>();
+  if (copertine.length === 0) return mappa;
+  const { data, error } = await admin.storage.from("gare").createSignedUrls(copertine.map((c) => `${garaId}/${c.png}`), 3600);
+  if (error || !data) return mappa;
+  data.forEach((voce, i) => {
+    if (voce.signedUrl) mappa.set(copertine[i].id, voce.signedUrl);
+  });
+  return mappa;
+}
+
+// Tutti i nomi dei file di copertina della gara (copertine, pagine senza loghi, miniature, schede)
+export async function nomiFileCopertine(admin: SupabaseClient, garaId: string): Promise<string[]> {
+  const { data, error } = await admin.storage.from("gare").list(garaId, { limit: 1000, search: PREFISSO_FILE_COPERTINA });
+  if (error) {
+    console.error("Copertine: elenco dei file non riuscito:", error.message);
+    return [];
+  }
+  return (data ?? []).map((voce) => voce.name);
+}
+
+// La scheda di una copertina (null se non c'è o non è valida: copertina fatta prima del 13/11/2026, non modificabile)
+export async function leggiSchedaCopertina(admin: SupabaseClient, garaId: string, accountId: string, id: string): Promise<SchedaCopertina | null> {
+  const { data, error } = await admin.storage.from("gare").download(`${garaId}/${fileCopertina(id).scheda}`);
+  if (error || !data) return null;
+  try {
+    return schedaDaJson(JSON.parse(await data.text()), garaId, accountId);
+  } catch {
+    return null;
+  }
+}
+
+// Una richiesta di RITOCCO all'immagine: la pagina senza loghi come immagine di partenza, e le modifiche da fare (endpoint «modifiche»)
+export async function ritoccaPaginaConOpenAI(params: { base: Buffer; prompt: string; apiKey: string; modello: string; fetchFn?: typeof fetch }): Promise<{ immagine: Buffer; uso: UsoImmagine }> {
+  const modulo = new FormData();
+  for (const [chiave, valore] of Object.entries({ model: params.modello, prompt: params.prompt, size: COPERTINA_DIMENSIONE, quality: qualitaCopertina(process.env), output_format: "png", n: "1" })) {
+    modulo.append(chiave, valore);
+  }
+  modulo.append("image[]", new Blob([new Uint8Array(params.base)], { type: "image/png" }), "copertina.png");
+  const corpo = await postaAOpenAI({ url: URL_MODIFICHE, apiKey: params.apiKey, corpo: modulo, tempoMassimoMs: TEMPO_MASSIMO_MS, fetchFn: params.fetchFn });
+  const base64 = (corpo as { data?: { b64_json?: unknown }[] } | null)?.data?.[0]?.b64_json;
+  if (typeof base64 !== "string" || !base64) throw new ErroreOpenAI("OpenAI non ha restituito nessuna immagine.");
+  return { immagine: Buffer.from(base64, "base64"), uso: usoDaRisposta(corpo) };
+}
+
+export type EsitoModifica = { ok: true; id: string; marca: string; ritoccata: boolean; avvisi: string[] } | { ok: false; errore: string };
+
+// Una copertina NUOVA da una copertina scelta e da un piano già controllato (copertina-chat-calcoli.ts): se cambiano sfondo o testi il modello ritocca la
+// pagina senza loghi; poi il codice applica i loghi della scheda nuova (spostati, ridimensionati, sostituiti o tolti). Si salva come «-modifica», con la
+// sua pagina senza loghi e la sua scheda: si può modificare a sua volta.
+export async function modificaCopertina(params: {
+  garaId: string;
+  accountId: string;
+  origine: string;
+  prima: SchedaCopertina;
+  dopo: SchedaCopertina;
+  piano: PianoModifica;
+  admin?: SupabaseClient;
+  // sostituibili per provare senza rete né database
+  ritocca?: typeof ritoccaPaginaConOpenAI;
+  leggiLogoFn?: typeof leggiLogo;
+  registraUso?: typeof logAiUsage;
+  adesso?: Date;
+}): Promise<EsitoModifica> {
+  const { garaId, accountId, origine, prima, dopo, piano } = params;
+  const admin = params.admin ?? createAdminClient();
+  const ritocca = params.ritocca ?? ritoccaPaginaConOpenAI;
+  const leggi = params.leggiLogoFn ?? leggiLogo;
+  const registra = params.registraUso ?? logAiUsage;
+  const serve = serveRitocco(piano, prima, dopo);
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (serve && !apiKey) return { ok: false, errore: "La modifica della copertina non è configurata (manca la chiave di OpenAI)." };
+
+  let fase: "lettura" | "disegno" | "salvataggio" = "disegno";
+  try {
+    const { data: fileBase, error: erroreBase } = await admin.storage.from("gare").download(`${garaId}/${fileCopertina(origine).base}`);
+    if (erroreBase || !fileBase) return { ok: false, errore: "Questa copertina non si può modificare: è stata fatta prima che le modifiche in chat fossero disponibili. Scegline un'altra." };
+    let base: Buffer = Buffer.from(await fileBase.arrayBuffer());
+
+    if (serve) {
+      const modello = modelloCopertina();
+      const { immagine, uso } = await ritocca({ base, prompt: promptRitocco({ piano, prima, dopo }), apiKey: apiKey as string, modello });
+      await registra({ userId: accountId, garaId, operazione: operazionePerRegistro("copertina_relazione_modifica"), provider: "openai", model: modello, inputTokens: uso.inputTokens, outputTokens: uso.outputTokens });
+      base = (await paginaA4(immagine)).png;
+    }
+
+    fase = "salvataggio";
+    const avvisi: string[] = [];
+    const loghi: { stazione?: LogoPronto; cliente?: LogoPronto } = {};
+    const disposizione: Disposizione = {};
+    for (const chi of ["stazione", "cliente"] as const) {
+      const l = dopo.loghi[chi];
+      if (!l) continue;
+      const file = await leggi(l.bucket, l.percorso);
+      const pronto = file ? await preparaLogo(file.png).catch(() => undefined) : undefined;
+      if (!pronto) {
+        avvisi.push(`${chi === "stazione" ? "Il logo della stazione appaltante" : "Il tuo logo"} non si è potuto leggere: la copertina è senza.`);
+        continue;
+      }
+      if (pronto.sfondo === "pieno") avvisi.push(`${chi === "stazione" ? "Il logo della stazione appaltante" : "Il tuo logo"} ha uno sfondo che non si può togliere in automatico: è stato applicato così com'è.`);
+      loghi[chi] = pronto;
+      disposizione[chi] = { posizione: l.posizione, dimensione: l.dimensione };
+    }
+    const conLoghi = await applicaLoghi(base, loghi, disposizione);
+    const pdf = await pdfA4(conLoghi.png);
+    const adesso = params.adesso ?? new Date();
+    const marca = marcaTempo(adesso);
+    const id = idCopertina(marca, dopo.stile, true);
+    await salvaCopertina(admin, garaId, id, { png: conLoghi.png, pdf, base, scheda: dopo });
+    return { ok: true, id, marca, ritoccata: serve, avvisi };
+  } catch (err) {
+    console.error(`Copertina: modifica non riuscita (${fase})`, err instanceof Error ? err.message : err);
     return { ok: false, errore: messaggioErroreCopertina(err, fase) };
   }
 }

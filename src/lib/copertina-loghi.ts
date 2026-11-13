@@ -1,8 +1,14 @@
 import sharp, { type OutputInfo, type OverlayOptions } from "sharp";
 import {
   LARGHEZZA_MISURA_DETTAGLIO,
+  DIMENSIONI,
+  POSIZIONE_PREDEFINITA,
   ZONA_CLIENTE,
   ZONA_STAZIONE,
+  metaZona,
+  zonaPer,
+  type Dimensione,
+  type Posizione,
   coloriPrincipali,
   contenutoVisibile,
   dettaglio,
@@ -87,16 +93,35 @@ export type EsitoLoghi = {
 };
 
 // Applica i loghi sulla pagina A4 già disegnata: la stazione appaltante in alto a sinistra, il cliente in basso a destra
-export async function applicaLoghi(pagina: Buffer, loghi: { stazione?: LogoPronto; cliente?: LogoPronto }): Promise<EsitoLoghi> {
+// Dove va ogni logo e quanto è grande (modifiche in chat). Senza indicazioni: la stazione appaltante in alto a sinistra, il cliente in basso a destra, medi.
+export type Disposizione = Partial<Record<"stazione" | "cliente", { posizione: Posizione; dimensione: Dimensione }>>;
+
+// Le zone dei due loghi per una disposizione. Quella di sempre resta identica; due loghi nello stesso punto si affiancano (metà zona ciascuno).
+export function zoneDeiLoghi(disposizione: Disposizione, entrambi: boolean): Record<"stazione" | "cliente", Zona> {
+  const s = disposizione.stazione ?? { posizione: POSIZIONE_PREDEFINITA.stazione, dimensione: "medio" as Dimensione };
+  const c = disposizione.cliente ?? { posizione: POSIZIONE_PREDEFINITA.cliente, dimensione: "medio" as Dimensione };
+  const zona = (chi: "stazione" | "cliente", d: { posizione: Posizione; dimensione: Dimensione }) =>
+    d.posizione === POSIZIONE_PREDEFINITA[chi] && d.dimensione === "medio" ? (chi === "stazione" ? ZONA_STAZIONE : ZONA_CLIENTE) : zonaPer(d.posizione, d.dimensione);
+  if (entrambi && s.posizione === c.posizione) {
+    // la più grande delle due dimensioni, divisa a metà
+    const grande: Dimensione = DIMENSIONI[Math.max(DIMENSIONI.indexOf(s.dimensione), DIMENSIONI.indexOf(c.dimensione))];
+    const condivisa = zonaPer(s.posizione, grande);
+    return { stazione: metaZona(condivisa, "sinistra"), cliente: metaZona(condivisa, "destra") };
+  }
+  return { stazione: zona("stazione", s), cliente: zona("cliente", c) };
+}
+
+export async function applicaLoghi(pagina: Buffer, loghi: { stazione?: LogoPronto; cliente?: LogoPronto }, disposizione: Disposizione = {}): Promise<EsitoLoghi> {
   const { width: W, height: H } = await sharp(pagina).metadata();
   if (!W || !H) throw new Error("Pagina della copertina non leggibile.");
   const strati: OverlayOptions[] = [];
   const velature = { stazione: false, cliente: false };
   const saltati: ("stazione" | "cliente")[] = [];
 
+  const zone = zoneDeiLoghi(disposizione, Boolean(loghi.stazione && loghi.cliente));
   const voci: [("stazione" | "cliente"), LogoPronto | undefined, Zona][] = [
-    ["stazione", loghi.stazione, ZONA_STAZIONE],
-    ["cliente", loghi.cliente, ZONA_CLIENTE],
+    ["stazione", loghi.stazione, zone.stazione],
+    ["cliente", loghi.cliente, zone.cliente],
   ];
   for (const [chi, logo, zona] of voci) {
     if (!logo) continue;
