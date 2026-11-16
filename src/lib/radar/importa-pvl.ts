@@ -102,7 +102,9 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
       const adesso = ora();
       await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat);
       await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
-      cursore = cursoreDopoPagina(cursore, pagina.content.length, pagina.token);
+      // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
+      const ultimaPerConteggio = pagina.count !== null && pagina.count < 1000 && (cursore.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;
+      cursore = cursoreDopoPagina(cursore, pagina.content.length, ultimaPerConteggio ? null : pagina.token, limiti.avvisiPerPagina);
       const salvataggio = await admin.from("radar_fonti_stato").update({ cursore, aggiornata_il: ora().toISOString() }).eq("fonte", "pvl");
       db.richiesteDb++;
       if (salvataggio.error) throw new Error(`salvataggio del punto di ripresa: ${salvataggio.error.message}`);

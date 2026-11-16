@@ -59,8 +59,9 @@ export function cursoreIncrementale(salvato: unknown, oggi: string): CursorePvl 
   return { versione: 1, modo: "incrementale", inCorso: true, da, a: oggi, token: null, pagine: 0, ultimoGiorno: c?.ultimoGiorno ?? null };
 }
 
-export function cursoreDopoPagina(c: CursorePvl, avvisiLetti: number, token: string | null): CursorePvl {
-  if (avvisiLetti > 0 && token) return { ...c, token, pagine: c.pagine + 1 };
+// Una pagina più corta del massimo è l'ultima: nessuna richiesta in più alla fonte (la PVL dopo l'ultima pagina risponde senza risultati).
+export function cursoreDopoPagina(c: CursorePvl, avvisiLetti: number, token: string | null, avvisiPerPagina: number): CursorePvl {
+  if (avvisiLetti >= avvisiPerPagina && token) return { ...c, token, pagine: c.pagine + 1 };
   const ultimo = c.modo === "incrementale" || !c.ultimoGiorno || c.a > c.ultimoGiorno ? c.a : c.ultimoGiorno;
   return { ...c, inCorso: false, token: null, pagine: c.pagine + 1, ultimoGiorno: c.modo === "incrementale" ? c.a : ultimo };
 }

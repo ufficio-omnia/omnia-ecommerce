@@ -109,7 +109,9 @@ export class SessionePvl {
         throw new ErrorePvl("La PVL ha risposto con dati illeggibili: connettore sospeso", 200, true);
       }
       const pagina = leggiPaginaGrezza(j);
-      if (!pagina) throw new ErrorePvl("La struttura della risposta della PVL è cambiata: connettore sospeso finché non si verifica", 200, true);
+      // per la diagnosi si conservano solo i NOMI dei campi di primo livello, mai i valori
+      const chiavi = j && typeof j === "object" && !Array.isArray(j) ? Object.keys(j as object).slice(0, 10).join(", ") : Array.isArray(j) ? "elenco" : typeof j;
+      if (!pagina) throw new ErrorePvl(`La struttura della risposta della PVL è cambiata (campi: ${chiavi}): connettore sospeso finché non si verifica`, 200, true);
       return pagina;
     }
     throw ultimo ?? new ErrorePvl("PVL: lettura non riuscita", null, false);

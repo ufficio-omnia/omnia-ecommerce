@@ -313,9 +313,15 @@ async function principale() {
   // ───── 9. punto di ripresa e finestre ─────
   const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);
   uguale("finestra controllata di 7 giorni", [f7.modo, f7.da, f7.a, f7.inCorso, f7.token], ["finestra", "2026-11-09", "2026-11-16", true, null]);
-  const c1 = cursoreDopoPagina(f7, 100, "TOK1");
+  const c1 = cursoreDopoPagina(f7, 100, "TOK1", 100);
   uguale("dopo una pagina piena: token salvato", [c1.token, c1.pagine, c1.inCorso], ["TOK1", 1, true]);
-  const c2 = cursoreDopoPagina(c1, 20, null);
+  uguale("pagina più corta del massimo: è l'ultima anche se la fonte dà un token (nessuna richiesta in più)", cursoreDopoPagina(c1, 10, "TOK2", 100).inCorso, false);
+  uguale(
+    "fine dei risultati senza elenco: pagina vuota, non «struttura cambiata»",
+    [leggiPaginaGrezza({ content: null, count: 110, lastPaginationToken: null }), leggiPaginaGrezza({ count: 0 }), leggiPaginaGrezza({ messaggio: "errore" })],
+    [{ content: [], count: 110, token: null }, { content: [], count: 0, token: null }, null],
+  );
+  const c2 = cursoreDopoPagina(c1, 20, null, 100);
   uguale("ultima pagina: giro finito, giorno letto", [c2.inCorso, c2.token, c2.ultimoGiorno], [false, null, "2026-11-16"]);
   uguale("giro programmato: dall'ultimo giorno meno uno a oggi", [cursoreIncrementale(c2, "2026-11-17").da, cursoreIncrementale(c2, "2026-11-17").a], ["2026-11-15", "2026-11-17"]);
   uguale("dopo un fermo lungo: al massimo 7 giorni indietro (oltre serve una finestra concordata)", cursoreIncrementale({ ...c2, ultimoGiorno: "2026-10-01" }, "2026-11-17").da, "2026-11-10");

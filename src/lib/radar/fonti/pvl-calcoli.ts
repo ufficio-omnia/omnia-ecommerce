@@ -98,8 +98,12 @@ export function parametriRicercaPvl(p: { da: string; a: string; cpv: readonly st
 export type PaginaPvlGrezza = { content: Record<string, unknown>[]; count: number | null; token: string | null };
 
 export function leggiPaginaGrezza(j: unknown): PaginaPvlGrezza | null {
-  if (!j || typeof j !== "object") return null;
+  if (!j || typeof j !== "object" || Array.isArray(j)) return null;
   const o = j as Record<string, unknown>;
+  // fine dei risultati: la risposta della ricerca senza elenco (o con elenco vuoto) ma con i suoi campi di paginazione o di conteggio
+  if ((o.content === null || o.content === undefined) && ("count" in o || "lastPaginationToken" in o || "firstPaginationToken" in o)) {
+    return { content: [], count: typeof o.count === "number" ? o.count : null, token: null };
+  }
   if (!Array.isArray(o.content)) return null;
   if (o.content.some((x) => !x || typeof x !== "object" || typeof (x as Record<string, unknown>).idAvviso !== "string")) return null;
   const count = typeof o.count === "number" ? o.count : null;
