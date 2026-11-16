@@ -21,8 +21,8 @@ export default async function SiteFooter() {
           OMNIA AI
         </Link>
         <p className="omnia-footer-descrizione">
-          Intelligenza artificiale per gare d&apos;appalto e offerte tecniche, nata da oltre dieci anni di esperienza di
-          Omnia Consulting.
+          Intelligenza artificiale per gare d&apos;appalto e offerte tecniche, nata dall&apos;esperienza di professionisti che
+          lavorano nel settore da oltre dieci anni.
         </p>
         <p className="omnia-slogan omnia-footer-slogan" lang="en">
           <span className="omnia-slogan-tech">TECH WHEN POSSIBLE.</span>{" "}

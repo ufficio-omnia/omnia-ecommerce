@@ -19,9 +19,9 @@ export default function ContattiPage() {
         <p className="omnia-occhiello omnia-occhiello-centro">Contatti</p>
         <h1>Contatta OMNIA AI</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
-          Domande sul prodotto, richieste commerciali o assistenza: ti risponde il team di Omnia
-          Consulting, lo stesso che da oltre dieci anni redige offerte tecniche per gare
-          d&apos;appalto.
+          Domande sul prodotto, richieste commerciali o assistenza: ti rispondono i professionisti di
+          Omnia Consulting, che lavorano alle offerte tecniche per gare d&apos;appalto da oltre dieci
+          anni.
         </p>
       </section>
 

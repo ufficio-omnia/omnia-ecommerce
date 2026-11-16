@@ -74,7 +74,7 @@ export default function AnteprimaRelazione() {
           <span className="omnia-foglio-est">PDF</span> Copertina
         </li>
       </ul>
-      <p className="omnia-foglio-nota">* Per le gare di servizi di pulizia. Piano di lavoro e copertina sono servizi aggiuntivi della gara: cosa comprende il tuo piano è indicato nella pagina dei piani.</p>
+      <p className="omnia-foglio-nota">* Per le gare di servizi di pulizia. Piano di lavoro e copertina sono compresi con Professional ed Enterprise, acquistabili a parte con Starter.</p>
     </figure>
   );
 }

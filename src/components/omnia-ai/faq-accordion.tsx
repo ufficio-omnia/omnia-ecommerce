@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 type Voce = { domanda: string; risposta: string };
 
@@ -11,6 +11,8 @@ export default function FaqAccordion({ voci }: { voci: Voce[] }) {
   // serve rimisurarla ad ogni render mentre resta aperta.
   const [altezzaAperta, setAltezzaAperta] = useState<number | undefined>(undefined);
   const risposteRef = useRef<(HTMLDivElement | null)[]>([]);
+  // collega ogni domanda alla sua risposta (aria-controls) per i lettori di schermo
+  const base = useId();
 
   function toggle(i: number) {
     if (aperta === i) {
@@ -27,10 +29,13 @@ export default function FaqAccordion({ voci }: { voci: Voce[] }) {
         const isAperta = aperta === i;
         return (
           <div key={voce.domanda} className={`omnia-q${isAperta ? " aperta" : ""}`}>
-            <button type="button" aria-expanded={isAperta} onClick={() => toggle(i)}>
+            <button type="button" id={`${base}-d${i}`} aria-expanded={isAperta} aria-controls={`${base}-r${i}`} onClick={() => toggle(i)}>
               {voce.domanda}
             </button>
             <div
+              id={`${base}-r${i}`}
+              role="region"
+              aria-labelledby={`${base}-d${i}`}
               className="omnia-r"
               ref={(el) => {
                 risposteRef.current[i] = el;

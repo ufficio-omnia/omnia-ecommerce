@@ -46,3 +46,36 @@ Nessuna nuova lettura dal database: la sintesi dei piani in home legge solo la c
 - Preview Vercel del commit a13011d: build riuscita (batteria completa compresa), protetta dall'accesso Vercel. Le Preview servono la zona e-commerce (la zona si decide dal dominio): le pagine di omnia-ai sono state verificate in locale, sia in sviluppo sia con `next start` e Host omnia-ai.it.
 - Nessuno scroll orizzontale su 9 pagine pubbliche a 320, 390, 768, 1024 e 1440 px; collegamenti interni tutti 200; un solo H1 per pagina, canonical, JSON-LD valido, sitemap aggiornata, robots invariato.
 - Nessuna nuova chiamata al database, polling o richiesta di rete. Peso JS+CSS della home praticamente invariato (+1%); HTML più lungo per i contenuti in più (circa +10 KB compresso); schermate da circa 27 KB servite ottimizzate e caricate solo quando arrivano a schermo.
+
+## 5. Revisione di leggibilità e conversione (16/11/2026, seconda richiesta)
+
+**Fatto**
+- Testi del sito pubblico allineati a sinistra e senza sillabazione automatica (solo dentro `.omnia-wrap`: l'area riservata non cambia); centrati solo titoli e introduzioni brevi; testi secondari da peso 300 a 400 e un tono più scuro (`--testo-3`); testi piccoli mai sotto 13 px; aree di tocco più alte nel piè di pagina.
+- Home: hero più corta (un paragrafo, percorso «documenti di gara → analisi → offerta Word», settori in vista, demo come azione principale); servizi divisi in «compreso» e «aggiuntivi»; «Perché» ridotto a 4 punti; richiamo alla demo dopo «Come funziona»; «Chi c'è dietro» distingue società, persone e metodo (i dieci anni sono l'esperienza dei professionisti); FAQ senza doppioni.
+- Esempi: niente più testo che si scrive da solo; domanda, risposta e fonti subito leggibili, schede consultabili da tastiera, altezza fissa, etichetta «esempio dimostrativo con dati di fantasia».
+- Schermate: riconvertite a qualità più alta e servite senza ricompressione; ritagli dei dettagli (scadenze e stato, vincoli, criteri) dalle stesse schermate; indicazione «Ingrandisci»; finestra con ingrandimento a grandezza reale e spostamento col dito, Esc, ritorno del focus, sfondo bloccato.
+- Piani: confronto sintetico in tabella (prezzi e sconti dal catalogo), su telefono una voce per riga con i tre valori sotto; «Servizi a parte, in sintesi» con il prezzo del piano Excel subito visibile; accesso API separato come «in programma»; frase sul percorso demo quando la vendita è spenta; chiarito che il menu delle categorie riguarda solo i servizi aggiuntivi.
+- Come funziona: percorso pratico in 7 passi (tutti presenti nell'area riservata), distinzione tra informazioni estratte e proposte per l'offerta, approfondimento tecnico richiudibile; tolte «OMNIA AI non indovina» e «mai un'affermazione senza riferimento».
+- Demo: introduzione e passaggi compatti, il modulo arriva nella prima schermata del telefono; modulo, consensi, anti-spam, salvataggio, calendario e tracciamenti invariati.
+
+**Da decidere (titolare)**
+1. «Servizi dedicati al settore compresi» per Professional/Enterprise (schede del 13/11) contro i testi approvati del piano di lavoro («lo compri dentro la singola gara», abbonamento con piano di lavoro NON offerto): la tabella riporta ciò che dicono le schede. Quale delle due vale?
+2. Il piano Excel «senza abbonamento»: il testo approvato lo dice, ma non è chiaro se un visitatore senza account possa davvero comprarlo (serve una gara nell'area riservata).
+3. Prezzi pubblici di revisione umana (250-550 € per pagine, +25/+50% urgenza) e crediti (290 € / 1.250 € per 5): sono nel codice ma volutamente non pubblicati; restano non pubblicati.
+4. FAQ «Su quali gare funziona davvero?» (solo facility management) contro il testo «la relazione tecnica la genera per ogni gara, di qualunque categoria» del menu delle categorie.
+5. Anni della società: il sito ora parla di oltre dieci anni di esperienza dei professionisti, non di età della società. Se la società ha davvero dieci anni, si può dire.
+
+**Asset che servirebbero**
+- Foto e breve biografia di chi guida Omnia Consulting e supervisiona OMNIA AI (con consenso).
+- Durata, gratuità e modalità della demo (oggi non scritte da nessuna parte, quindi non indicate).
+- Schermate a risoluzione più alta (catturate a 1920 px o più) per una nitidezza ancora migliore.
+
+## 6. Rifiniture: acquisto online e piano Excel (16/11/2026, terza richiesta)
+
+- Acquisto autonomo: tolta la frase «gli abbonamenti si attivano dopo un primo contatto»; su /piani, con la vendita visibile, «Puoi acquistare il tuo abbonamento direttamente online. Se preferisci vedere prima la piattaforma, prenota una demo». Nelle schede «Abbonati a <piano>» (percorso esistente /abbonati/[piano], il piano resta nell'indirizzo e arriva al modulo come planSlug; nessuna registrazione preventiva, l'account si crea con il pagamento) come azione principale, «Richiedi la demo» secondaria. In home: «Vuoi partire subito? Confronta piani e prezzi» sotto i pulsanti e nota «la demo è facoltativa» nella sezione piani.
+- Piano Excel, regola unica in tabella, schede, «Servizi della gara», menu delle categorie, home e FAQ: compreso con Professional ed Enterprise nelle gare del piano; con Starter e per le gare acquistate con i crediti si compra nella pagina della gara (prezzo dalla console). Non c'è un acquisto senza account: serve una gara nell'area riservata.
+- Piani più compatti: schede con destinatario, prezzo, offerta subito sotto, gare incluse e differenze essenziali; caratteristiche comuni solo in tabella; API in un solo punto.
+- Demo su telefono: primo campo a circa 490 px (360×740) e 497 px (390×844).
+- Esperienza: piè di pagina e Contatti attribuiscono i dieci anni ai professionisti; «OMNIA AI — un prodotto di Omnia Consulting SRLS» resta separato.
+
+**Attenzione operativa**: nel codice il piano di lavoro e la copertina NON si accendono da soli acquistando Professional o Enterprise: servono le impostazioni della console (concessione del piano di lavoro, copertina per account). Chi compra online questi piani va abilitato dalla console.

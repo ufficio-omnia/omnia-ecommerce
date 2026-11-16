@@ -73,75 +73,69 @@ const JSON_LD = {
 // I tre passi di «Come funziona» nella home. Nessuna promessa di conformità o di aggiudicazione: la verifica resta a chi firma.
 const PASSI = [
   {
-    titolo: "Carica la documentazione",
-    testo: "Bando, disciplinare, capitolato e gli allegati necessari, in PDF o Word: gli stessi file che scarichi dalla piattaforma della stazione appaltante.",
+    titolo: "Carichi i documenti di gara",
+    testo: "Bando, disciplinare, capitolato e allegati, in PDF o Word: gli stessi file che scarichi dalla piattaforma della stazione appaltante.",
   },
   {
     titolo: "OMNIA AI analizza ed elabora",
-    testo: "Individua criteri, sotto-criteri, punteggi e limiti di pagine, interpreta le richieste del capitolato e imposta l'offerta tecnica sulla griglia di valutazione.",
+    testo: "Individua scadenze, criteri, punteggi, formattazione richiesta e limite di pagine, e imposta l'offerta tecnica sulla griglia di valutazione.",
   },
   {
-    titolo: "Scarica e perfeziona",
-    testo: "Ottieni il documento Word strutturato e modificabile: lo completi con i dati della tua azienda e lo porti alla revisione finale.",
+    titolo: "Scarichi e perfezioni",
+    testo: "Ottieni il documento Word strutturato e modificabile: lo completi con i dati della tua azienda e fai la verifica finale prima della consegna.",
   },
 ];
 
-// Strumenti e servizi realmente disponibili (verificati sul codice il 16/11/2026). Ciò che è ancora in sviluppo non compare qui
-// (es. accesso API, scouting dei bandi). Lo `stato` dice come si ottiene, senza prezzi: i prezzi stanno solo nella pagina dei piani.
-const STRUMENTI = [
+// Strumenti realmente disponibili (verificati sul codice il 16/11/2026), divisi tra ciò che l'abbonamento comprende e i servizi
+// aggiuntivi. Ciò che è ancora in sviluppo non compare (accesso API, scouting dei bandi). Nessun prezzo: stanno nella pagina dei piani.
+const COMPRESI = [
   {
     titolo: "Offerta tecnica in Word",
-    testo: "La relazione tecnica completa, organizzata per criterio di valutazione, con indice, intestazioni con il tuo logo, stili e numerazione già impostati.",
-    stato: "Compreso nell'abbonamento",
+    testo: "La relazione completa, organizzata per criterio, con indice, intestazioni con il tuo logo, stili e numerazione già impostati.",
   },
   {
     titolo: "Analisi dei documenti di gara",
-    testo: "Estrazione automatica di criteri, sotto-criteri e punteggi, scadenze e proroghe; un assistente a cui fare domande sui documenti, che indica i riferimenti da cui risponde.",
-    stato: "Compreso nell'abbonamento",
+    testo: "Criteri, sotto-criteri e punteggi, scadenze e proroghe; un assistente a cui fare domande sui documenti, con i riferimenti delle risposte.",
   },
   {
     titolo: "Tabelle, schemi e indicatori",
-    testo: "Tabelle formattate, cronoprogrammi, organigrammi, schemi di processo e quadri di indicatori (KPI) inseriti direttamente nel documento, dove servono.",
-    stato: "Compreso nell'abbonamento",
+    testo: "Tabelle formattate, cronoprogrammi, organigrammi, schemi di processo e quadri di indicatori (KPI), inseriti nel documento dove servono.",
   },
+];
+const AGGIUNTIVI = [
   {
     titolo: "Piano di lavoro in Excel",
-    testo: "Per le gare di servizi di pulizia: monte ore, organico e attrezzature con formule attive, come base per organizzare la commessa.",
-    stato: "Servizio della singola gara",
+    testo: "Per le gare di servizi di pulizia: monte ore, organico e attrezzature con formule attive.",
+    stato: "Compreso o acquistabile, secondo il piano",
+    href: "#piano-di-lavoro",
   },
   {
     titolo: "Copertina della relazione",
-    testo: "La copertina grafica della relazione tecnica, in PDF e PNG, con i loghi che carichi, da rifinire chiedendo le modifiche in chat.",
-    stato: "Secondo il piano",
+    testo: "La copertina grafica in PDF e PNG, con i loghi che carichi, da rifinire chiedendo le modifiche in chat.",
+    stato: "Compresa o acquistabile, secondo il piano",
+    href: "/piani",
   },
   {
     titolo: "Revisione umana",
-    testo: "Quando la posta in gioco è alta, i consulenti di Omnia Consulting rivedono il documento generato prima della consegna.",
+    testo: "I consulenti di Omnia Consulting rivedono il documento generato prima della consegna.",
     stato: "Servizio a pagamento",
+    href: "/piani",
   },
 ];
 
-// Perché OMNIA AI: solo vantaggi verificabili, nessuna affermazione assoluta.
+// Perché OMNIA AI: quattro differenze verificabili (il formato Word e la revisione umana sono già spiegati sopra).
 const PERCHE = [
   {
-    titolo: "Dieci anni di offerte tecniche",
-    testo: "Il metodo viene da oltre dieci anni di offerte tecniche scritte per gare di soft e hard facility management da Omnia Consulting.",
+    titolo: "Il metodo di chi scrive offerte tecniche",
+    testo: "Nasce dall'esperienza di professionisti che da oltre dieci anni preparano offerte tecniche per gare di facility management.",
   },
   {
     titolo: "Ragiona sulla griglia di valutazione",
-    testo: "Riconosce criteri, sotto-criteri, pesi e formule di attribuzione e dimensiona lo spazio di ogni criterio sul suo peso e sul limite di pagine della gara.",
+    testo: "Riconosce criteri, sotto-criteri, pesi e formule di attribuzione, e dimensiona ogni criterio sul suo peso e sul limite di pagine.",
   },
   {
     titolo: "Il vocabolario del settore",
     testo: "CAM, Ecolabel, UNI EN 13549, LQA e KPI, monte ore, DPI, non conformità: termini usati come li usa una commissione.",
-  },
-  {
-    titolo: "Word modificabile, già impaginato",
-    testo: "Non un testo da copiare e riformattare: un file .docx con indice, tabelle a piena larghezza e parole chiave evidenziate per criterio.",
-  },
-  {
-    titolo: "Persone vere, quando serve",
-    testo: "Dalla piattaforma puoi chiedere la revisione dei consulenti di Omnia Consulting, o affidarci la redazione completa dell'offerta.",
   },
   {
     titolo: "Riservatezza dei documenti",
@@ -155,11 +149,6 @@ const FAQ = [
     domanda: "Su quali gare funziona davvero?",
     risposta:
       "Su gare di soft e hard facility management: pulizie e sanificazione, facchinaggio, ausiliariato, portierato, manutenzione edile, idrica ed elettrica, sorveglianza armata e non armata, gestione e manutenzione di elisuperfici. È una specializzazione verticale, non una piattaforma buona per tutto: fuori da questi settori non ti darebbe lo stesso livello di dettaglio, e preferiamo dirtelo prima.",
-  },
-  {
-    domanda: "Che differenza c'è con un'intelligenza artificiale generica?",
-    risposta:
-      "Un'AI generica scrive testi. OMNIA AI parte dai documenti della tua gara: riconosce la griglia di valutazione, distribuisce lo spazio in base ai punteggi e al limite di pagine, usa il vocabolario delle gare di facility management e restituisce un documento Word già impaginato. Dietro c'è il metodo di oltre dieci anni di offerte tecniche scritte da Omnia Consulting.",
   },
   {
     domanda: "Il documento è pronto da consegnare in gara?",
@@ -184,9 +173,9 @@ const FAQ = [
   // il piano di lavoro in Excel (testo in piano-lavoro-testi.ts, lo stesso che si fa vedere al legale)
   SITO_FAQ_PIANO_LAVORO,
   {
-    domanda: "Posso far rivedere il testo da un consulente vero?",
+    domanda: "Che differenza c'è tra le rielaborazioni e la revisione umana?",
     risposta:
-      "Sì. Le rielaborazioni che chiedi a OMNIA AI sulla stessa gara sono comprese nell'abbonamento; la revisione umana è un servizio diverso. Da dentro la piattaforma la richiedi ai consulenti di Omnia Consulting, che rivedono il documento generato, oppure ci affidi la redazione completa dell'offerta. È un servizio a pagamento separato dall'abbonamento.",
+      "Le rielaborazioni sono le modifiche che chiedi a OMNIA AI sulla stessa gara: sono comprese nell'abbonamento. La revisione umana è un servizio a pagamento, separato dall'abbonamento: la richiedi dalla piattaforma e i consulenti di Omnia Consulting rivedono il documento generato. Puoi anche affidarci la redazione completa dell'offerta.",
   },
 ];
 
@@ -200,7 +189,7 @@ export default function OmniaAiHomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD).replace(/</g, "\\u003c") }}
       />
       <SiteHeader />
-      {/* Hero e «Scopri cosa genera OMNIA AI» (con la console animata) stanno nel componente client; l'anteprima del documento
+      {/* Hero e «Scopri cosa genera OMNIA AI» (esempi consultabili) stanno nel componente client; l'anteprima del documento
           è un componente server passato come contenuto. */}
       <HeroDemo anteprimaDocumento={<AnteprimaRelazione />} />
 
@@ -209,25 +198,21 @@ export default function OmniaAiHomePage() {
         <section className="omnia-section" id="piattaforma" aria-labelledby="omnia-piattaforma-titolo">
           <p className="omnia-occhiello">Dentro la piattaforma</p>
           <h2 id="omnia-piattaforma-titolo">Uno spazio di lavoro pensato per chi prepara le gare</h2>
-          <p className="omnia-guida">
-            Tutte le gare, le scadenze e i documenti in un unico posto, con le sezioni che servono per
-            gestire l&apos;azienda, l&apos;abbonamento e i servizi aggiuntivi.
-          </p>
+          <p className="omnia-guida">Interfaccia reale, dati sostituiti per riservatezza.</p>
           <div className="omnia-schermate">
             <SchermataPiattaforma
               schermata="dashboard"
-              titolo="La dashboard"
-              testo="Gare attive e completate, gare del piano ancora disponibili, prossima scadenza e stato di ogni relazione. A sinistra, tutte le sezioni dell'area riservata."
+              titolo="Tutte le gare sotto controllo"
+              testo="Scadenze, gare del piano disponibili e stato di ogni relazione in una sola schermata."
+              dettagli={["gare"]}
             />
             <SchermataPiattaforma
               schermata="datiGara"
-              titolo="La pagina della gara"
-              testo="Dai documenti caricati, i dati che contano: scadenza, importo, formattazione richiesta, limite di pagine, criteri di valutazione con i punteggi e requisiti chiave."
+              titolo="I dati della gara, già estratti"
+              testo="Scadenza, formattazione richiesta, limite di pagine, criteri e requisiti ricavati dai documenti, pronti da verificare."
+              dettagli={["vincoli", "criteri"]}
             />
           </div>
-          <p className="omnia-nota-illustrativa">
-            Schermate reali della piattaforma
-          </p>
         </section>
 
         <section className="omnia-section" id="funziona" aria-labelledby="omnia-funziona-titolo">
@@ -244,26 +229,40 @@ export default function OmniaAiHomePage() {
               </li>
             ))}
           </ol>
-          <p className="omnia-nota-sezione">
-            OMNIA AI non sostituisce il controllo di chi firma l&apos;offerta: il documento va sempre
-            verificato prima della consegna.{" "}
-            <Link href="/come-funziona">Scopri nel dettaglio come funziona</Link>.
-          </p>
+          {/* richiamo intermedio alla demo: una riga, senza barre fisse */}
+          <div className="omnia-richiamo">
+            <p>
+              <b>Vuoi vederlo su una gara a cui stai lavorando?</b> In demo partiamo da un bando che ti
+              interessa.
+            </p>
+            <Link className="omnia-btn omnia-btn-p" href="/demo">
+              Richiedi la demo
+            </Link>
+          </div>
         </section>
 
         <section className="omnia-section" id="strumenti" aria-labelledby="omnia-strumenti-titolo">
           <p className="omnia-occhiello">Strumenti e servizi</p>
           <h2 id="omnia-strumenti-titolo">Molto più di un&apos;offerta tecnica</h2>
-          <p className="omnia-guida">
-            Gli strumenti che servono per preparare la gara, nello stesso spazio di lavoro: dall&apos;analisi
-            dei documenti all&apos;organizzazione del servizio, fino alla revisione di un consulente.
-          </p>
+          <h3 className="omnia-gruppo-titolo">Compreso nell&apos;abbonamento</h3>
           <ul className="omnia-schede">
-            {STRUMENTI.map((s) => (
+            {COMPRESI.map((s) => (
+              <li key={s.titolo} className="omnia-scheda">
+                <h3>{s.titolo}</h3>
+                <p>{s.testo}</p>
+              </li>
+            ))}
+          </ul>
+          <h3 className="omnia-gruppo-titolo">Servizi aggiuntivi, quando servono</h3>
+          <ul className="omnia-schede omnia-schede-aggiuntive">
+            {AGGIUNTIVI.map((s) => (
               <li key={s.titolo} className="omnia-scheda">
                 <span className="omnia-scheda-stato">{s.stato}</span>
                 <h3>{s.titolo}</h3>
                 <p>{s.testo}</p>
+                <Link className="omnia-scheda-link" href={s.href}>
+                  {s.href === "#piano-di-lavoro" ? "Cosa contiene" : "Condizioni nella pagina dei piani"}
+                </Link>
               </li>
             ))}
           </ul>
@@ -299,7 +298,7 @@ export default function OmniaAiHomePage() {
             La differenza non è il modello linguistico. È sapere come si prepara un&apos;offerta tecnica
             che una commissione legge, confronta e valuta.
           </p>
-          <ul className="omnia-tre omnia-tre-sei">
+          <ul className="omnia-tre omnia-quattro">
             {PERCHE.map((v) => (
               <li key={v.titolo} className="omnia-cella">
                 <h3>{v.titolo}</h3>
@@ -323,20 +322,32 @@ export default function OmniaAiHomePage() {
               </p>
             </div>
             <div>
-              <p className="omnia-firma">
-                <strong>Omnia Consulting SRLS</strong> redige offerte tecniche per gare di soft e
-                hard facility management da oltre dieci anni: pulizie e sanificazione,
-                facchinaggio, ausiliariato, portierato, manutenzione edile, idrica ed elettrica,
-                sorveglianza armata e non armata, gestione e manutenzione di elisuperfici. OMNIA
-                AI nasce da quel lavoro: è il metodo di uno studio di consulenza messo in mano a
-                te.
-              </p>
-              <p className="omnia-firma" style={{ marginTop: 14 }}>
-                La tecnologia lavora dove fa risparmiare tempo; le persone intervengono dove serve
-                giudizio. Quando la posta in gioco è alta, puoi affidare il documento generato ai
-                nostri consulenti per una revisione completa, oppure commissionarci l&apos;intera
-                offerta.
-              </p>
+              {/* Società, esperienza delle persone e metodo, tenuti distinti: i «dieci anni» sono l'esperienza dei professionisti,
+                  non l'età della società (non verificata). */}
+              <dl className="omnia-dietro-elenco">
+                <div>
+                  <dt>La società</dt>
+                  <dd>
+                    OMNIA AI è sviluppata da <strong>Omnia Consulting SRLS</strong>, società di consulenza per
+                    le gare d&apos;appalto.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Le persone</dt>
+                  <dd>
+                    Professionisti che da oltre dieci anni preparano offerte tecniche per gare di soft e hard
+                    facility management: pulizie e sanificazione, facchinaggio, ausiliariato, portierato,
+                    manutenzioni, vigilanza, elisuperfici.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Il metodo</dt>
+                  <dd>
+                    OMNIA AI applica quel modo di lavorare: la tecnologia dove fa risparmiare tempo, le persone
+                    dove serve giudizio, con la revisione dei consulenti quando la posta in gioco è alta.
+                  </dd>
+                </div>
+              </dl>
               <div className="omnia-azioni omnia-azioni-sinistra">
                 <a className="omnia-btn omnia-btn-s" href="https://omniaitalia.com">
                   Scopri Omnia Consulting
@@ -351,7 +362,7 @@ export default function OmniaAiHomePage() {
           <h2 id="omnia-piani-titolo">Un piano per ogni ritmo di partecipazione</h2>
           <p className="omnia-guida">
             Abbonamento mensile con un numero di gare incluso. Una gara si consuma quando avvii
-            l&apos;analisi dei documenti: da lì in poi generazioni e revisioni sulla stessa gara sono
+            l&apos;analisi dei documenti: da lì in poi generazioni e rielaborazioni sulla stessa gara sono
             comprese.
           </p>
           {/* Nomi, gare incluse e descrizioni dalla stessa costante della pagina dei piani; i prezzi NO: stanno solo lì, letti
@@ -375,6 +386,7 @@ export default function OmniaAiHomePage() {
               Confronta piani e prezzi
             </Link>
           </div>
+          <p className="micro omnia-piani-nota-home">Puoi acquistare l&apos;abbonamento online dalla pagina dei piani; la demo è facoltativa.</p>
         </section>
 
         <section className="omnia-section" id="domande" aria-labelledby="omnia-faq-titolo">

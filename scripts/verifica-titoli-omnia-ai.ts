@@ -83,7 +83,7 @@ const testi: [string, string][] = [
   ["RISERVATEZZA_DOCUMENTI_TITOLO", RISERVATEZZA_DOCUMENTI_TITOLO],
 ];
 atteso("i titoli scritti nei testi condivisi (piano di lavoro, categorie, OMNIA FOOD MENU, riservatezza) non finiscono con il punto", testi.every(([, t]) => !/[.]\s*$/.test(t)), testi.filter(([, t]) => /[.]\s*$/.test(t)).map(([n]) => n).join(", "));
-atteso("il titolo di una frase intera resta una frase: i punti DENTRO il titolo non si toccano (es. «non indovina. Recupera…»)", /OMNIA AI non indovina\. Recupera, e cita la fonte<\/h1>/.test(leggi("src/app/site-omnia-ai/come-funziona/page.tsx")) && /Portaci una gara vera\. Ti mostriamo cosa esce<\/h2>/.test(leggi("src/app/site-omnia-ai/page.tsx")));
+atteso("il titolo di una frase intera resta una frase: i punti DENTRO il titolo non si toccano (es. «Portaci una gara vera. Ti mostriamo…»)", /Portaci una gara vera\. Ti mostriamo cosa esce<\/h2>/.test(leggi("src/app/site-omnia-ai/page.tsx")) && /OMNIA AI: portaci una gara vera\. Ti mostriamo cosa esce<\/h1>/.test(leggi("src/app/site-omnia-ai/demo/page.tsx")));
 
 if (fallimenti.length > 0) {
   console.log(`\n${fallimenti.length} controlli falliti:\n- ${fallimenti.join("\n- ")}`);
