@@ -122,14 +122,14 @@ export const SITO_HOME_PIANO_LAVORO = {
     "Macchinari e attrezzature, con prezzi standard di mercato da sostituire con quelli dei tuoi fornitori",
     "Formule attive: cambi un valore e tutti i fogli si aggiornano",
   ],
-  nota: "È un dimensionamento di partenza, non un preventivo. Lo compri dentro la singola gara, quando ti serve.",
+  nota: "È un dimensionamento di partenza, non un preventivo. Con Professional ed Enterprise è compreso nelle gare del piano; con Starter lo compri dentro la singola gara, quando ti serve.",
   collegamento: "Vedi i piani e il prezzo",
 } as const;
 
 export const SITO_FAQ_PIANO_LAVORO = {
   domanda: "Genera anche il piano di lavoro?",
   risposta:
-    "Sì, per le gare di servizi di pulizia. Oltre alla relazione tecnica in Word, OMNIA AI può costruire un piano di lavoro in Excel con formule attive: monte ore per sede, organico per livello, quadratura con il monte ore dichiarato dal bando, macchinari e attrezzature. È un dimensionamento di partenza, non un preventivo: le rese sono ipotesi da validare e i prezzi dei macchinari sono standard di mercato, da sostituire con quelli dei tuoi fornitori. Lo compri dentro la singola gara: il prezzo è nella pagina dei piani.",
+    "Sì, per le gare di servizi di pulizia. Oltre alla relazione tecnica in Word, OMNIA AI può costruire un piano di lavoro in Excel con formule attive: monte ore per sede, organico per livello, quadratura con il monte ore dichiarato dal bando, macchinari e attrezzature. È un dimensionamento di partenza, non un preventivo: le rese sono ipotesi da validare e i prezzi dei macchinari sono standard di mercato, da sostituire con quelli dei tuoi fornitori. Con Professional ed Enterprise è compreso nelle gare del piano; con Starter, e per le gare acquistate con i crediti, lo compri dentro la singola gara: il prezzo è nella pagina dei piani.",
 } as const;
 
 export const SITO_COME_FUNZIONA_PIANO_LAVORO = {

@@ -20,6 +20,11 @@ export default function ServiziPerCategoria({ prezzoSingolaGara, categoriaInizia
     <section className="omnia-revisione" id="servizi" aria-labelledby="omnia-servizi-titolo">
       <p className="omnia-revisione-etichetta">{SEZIONE_SERVIZI.etichetta}</p>
       <h2 id="omnia-servizi-titolo">{SEZIONE_SERVIZI.titolo}</h2>
+      {/* il menu riguarda solo i servizi aggiuntivi: la relazione tecnica non dipende dalla categoria (vedi IN_LAVORAZIONE.testo) */}
+      <p className="omnia-revisione-testo">
+        Il menu riguarda solo i servizi specialistici che si aggiungono alla relazione tecnica. Una categoria indicata «stiamo
+        lavorando» non ha ancora questi servizi aggiuntivi, ma la relazione tecnica la generi lo stesso.
+      </p>
 
       <div className="omnia-servizi-menu">
         <label className="omnia-etichetta" htmlFor={idMenu}>
@@ -43,9 +48,13 @@ export default function ServiziPerCategoria({ prezzoSingolaGara, categoriaInizia
             <h3>{BANDA_PIANO_LAVORO.titolo}</h3>
             <p className="omnia-revisione-testo">{BANDA_PIANO_LAVORO.testo}</p>
             <ul className="omnia-revisione-punti due">
+              {/* nello stesso punto: quando è compreso e quanto costa quando non lo è (stessa regola della tabella dei piani) */}
               <li>
                 <b>{p.singola.titolo}</b>
-                <span>{p.singola.dettaglio(prezzoSingolaGara)}</span>
+                <span>
+                  {prezzoSingolaGara} IVA inclusa con Starter e per le gare acquistate con i crediti; compreso nelle gare del piano con
+                  Professional ed Enterprise
+                </span>
               </li>
               <li>
                 <b>{p.formule.titolo}</b>

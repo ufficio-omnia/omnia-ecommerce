@@ -163,7 +163,7 @@ async function main() {
     atteso("il modulo dei testi resta senza dipendenze di server anche con le sezioni del sito (le pagine pubbliche sono statiche)", !/^import /m.test(testi));
 
     const data = (percorso: string) => new RegExp(`\\{ path: "${percorso}", lastModified: "([0-9-]+)" \\}`).exec(sitemap)?.[1] ?? "";
-    atteso("mappa del sito: home, «Come funziona» e piani portano la data dell'ultima modifica vera (6 novembre 2026), non quella vecchia", ["/", "/come-funziona", "/piani"].every((p) => data(p) === "2026-11-06") && !/condizioni-piano-lavoro/.test(sitemap));
+    atteso("mappa del sito: home, «Come funziona» e piani portano la data dell'ultima modifica vera (16 novembre 2026, restyling del sito), non quella vecchia", ["/", "/come-funziona", "/piani"].every((p) => data(p) === "2026-11-16") && !/condizioni-piano-lavoro/.test(sitemap));
   }
 
   // ═════ 4. email e console ═════

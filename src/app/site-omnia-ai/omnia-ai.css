@@ -118,6 +118,27 @@
     U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* Bebas Neue: SOLO per lo slogan in grande (sezione «Chi c'è dietro» della home), scelto dall'utente il 16/11/2026. SIL Open Font
+   License (public/fonts/bebas-neue-LICENSE-OFL.txt), file dal pacchetto @fontsource/bebas-neue 5.0.8, stessi unicode-range di Google Fonts. */
+@font-face {
+  font-family: "Bebas Neue";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/bebas-neue-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Bebas Neue";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/bebas-neue-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* ---------- Reset ----------
    Questa zona non importa Tailwind (resta solo nell'e-commerce, vedi
    src/app/(ecommerce)/globals.css): serve un reset minimo proprio. */
@@ -282,6 +303,9 @@ li {
   text-align: justify;
   hyphens: auto;
   -webkit-hyphens: auto;
+  /* si va a capo con il trattino solo in parole di almeno 6 lettere, lasciandone almeno 3 per parte: niente sillabe di due
+     lettere isolate, soprattutto sui telefoni (restyling 16/11/2026) */
+  hyphenate-limit-chars: 6 3 3;
 }
 .micro {
   text-align: center;
@@ -333,7 +357,13 @@ li {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background: var(--nero);
+  /* leggere sfumature lavanda sul fondo (restyling 16/11/2026); i punti trasparenti sono la stessa tinta a opacità zero, mai
+     «transparent» (vedi .omnia-vel) */
+  background:
+    radial-gradient(55% 45% at 12% 0%, rgba(var(--viola-rgb), 0.11), rgba(var(--viola-rgb), 0) 70%),
+    radial-gradient(45% 40% at 92% 8%, rgba(var(--viola-rgb), 0.08), rgba(var(--viola-rgb), 0) 70%),
+    radial-gradient(40% 35% at 70% 100%, rgba(var(--verde-rgb), 0.05), rgba(var(--verde-rgb), 0) 70%),
+    var(--nero);
 }
 .omnia-campo {
   position: fixed;
@@ -341,6 +371,25 @@ li {
   width: 100%;
   height: 100%;
   z-index: 0;
+}
+/* Le parole che galleggiano passavano dietro a titolo e testi (sui telefoni sembravano sovrapposte al contenuto). Ora restano
+   solo ai margini laterali degli schermi larghi, sfumando verso il centro dove stanno i testi; sotto i 1100px non ci sono affatto
+   (lo script non le disegna nemmeno, vedi LARGHEZZA_MIN_PAROLE in hero-demo.tsx). La maschera usa solo la trasparenza. */
+.omnia-campo {
+  mask-image: linear-gradient(
+    90deg,
+    rgba(var(--ombra-rgb), 1) 0%,
+    rgba(var(--ombra-rgb), 1) 7%,
+    rgba(var(--ombra-rgb), 0) 17%,
+    rgba(var(--ombra-rgb), 0) 83%,
+    rgba(var(--ombra-rgb), 1) 93%,
+    rgba(var(--ombra-rgb), 1) 100%
+  );
+}
+@media (max-width: 1099px) {
+  .omnia-campo {
+    display: none;
+  }
 }
 .omnia-vel {
   position: fixed;
@@ -423,9 +472,23 @@ li {
   cursor: pointer;
   font-family: inherit;
 }
+.omnia-btn {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
 .omnia-btn-p {
   background: var(--viola);
   color: var(--su-viola);
+  box-shadow: 0 10px 24px -12px rgba(var(--viola-rgb), 0.65);
+}
+.omnia-btn-p:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px -12px rgba(var(--viola-rgb), 0.75);
+}
+.omnia-btn-s:hover {
+  border-color: var(--bordo-f);
 }
 .omnia-btn-s {
   background: var(--vetro);
@@ -433,19 +496,125 @@ li {
   color: var(--testo);
 }
 
-/* Hero */
+/* Hero (restyling 16/11/2026): slogan, titolo in due frasi con l'accento viola, sottotitolo in due livelli */
 .omnia-hero {
-  padding: 104px 0 88px;
+  padding: 84px 0 76px;
   text-align: center;
   border: 0;
 }
 .omnia-hero h1 {
-  font-size: clamp(36px, 5.9vw, 74px);
-  line-height: 1.02;
-  letter-spacing: -0.032em;
-  max-width: 17ch;
+  font-size: clamp(31px, 5.3vw, 66px);
+  line-height: 1.07;
+  letter-spacing: -0.03em;
+  max-width: 1000px;
   margin: 0 auto;
+  /* i titoli non si sillabano: una parola lunga va a capo intera */
+  hyphens: manual;
+  overflow-wrap: break-word;
 }
+/* le due frasi del titolo su due blocchi: la seconda sempre su una riga nuova */
+.omnia-h1-riga {
+  display: block;
+}
+/* la prima frase (il percorso) apre il titolo in un corpo minore; la seconda (la promessa) è quella grande */
+.omnia-h1-riga:first-child {
+  margin-bottom: 0.32em;
+  font-size: 0.56em;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--testo-2);
+}
+/* «10 anni di esperienza»: il viola del marchio come accento, con una leggera sottolineatura a fascia */
+.omnia-accento {
+  color: var(--viola);
+  background: linear-gradient(rgba(var(--viola-rgb), 0.14), rgba(var(--viola-rgb), 0.14)) 0 88% / 100% 0.22em no-repeat;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+/* sottotitolo della home: giustificato, con l'ultima riga centrata come il resto della hero */
+.omnia-hero .omnia-sotto {
+  margin-top: 26px;
+  max-width: 62ch;
+  font-size: clamp(16px, 1.55vw, 18.5px);
+  line-height: 1.65;
+  color: var(--testo-2);
+  text-align-last: center;
+}
+.omnia-sotto-2 {
+  margin: 14px auto 0;
+  max-width: 62ch;
+  font-size: clamp(14.5px, 1.3vw, 16px);
+  line-height: 1.65;
+  color: var(--fioco);
+  font-weight: 300;
+  text-align-last: center;
+}
+.omnia-hero-nota {
+  margin-top: 18px;
+  font-size: 13.5px;
+  color: var(--fioco);
+}
+
+/* Slogan ufficiale: TECH WHEN POSSIBLE. HUMAN WHEN IT MATTERS. (mai tradotto né modificato). Nella hero una «pillola» sopra il
+   titolo; nella sezione «Chi c'è dietro» in grande, su due righe. Le due metà: viola (la tecnologia) e verde (le persone). */
+.omnia-slogan {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 8px;
+  margin: 0 auto 28px;
+  padding: 8px 18px;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--vetro);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  line-height: 1.5;
+  text-align: center;
+  hyphens: manual;
+}
+.omnia-slogan-tech {
+  color: var(--viola);
+}
+.omnia-slogan-human {
+  color: var(--verde);
+}
+/* doppia classe: vince sempre sulle regole della pillola (anche quelle per i telefoni) */
+.omnia-slogan.omnia-slogan-grande {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 22px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-family: "Bebas Neue", "Arial Narrow", sans-serif;
+  font-weight: 400;
+  font-size: clamp(30px, 3.3vw, 42px);
+  line-height: 1;
+  letter-spacing: 0.035em;
+  text-align: left;
+}
+/* ognuna delle due frasi resta intera sulla sua riga */
+.omnia-slogan-grande span {
+  white-space: nowrap;
+}
+
+/* Occhiello: la piccola etichetta sopra il titolo di ogni sezione */
+.omnia-occhiello {
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--viola);
+  text-align: left;
+  hyphens: manual;
+}
+
 .omnia-sotto {
   margin: 30px auto 0;
   max-width: 64ch;
@@ -527,6 +696,226 @@ li {
   opacity: 1;
 }
 
+/* «Scopri cosa genera OMNIA AI»: anteprima illustrativa del documento Word e console delle domande, affiancate */
+.omnia-genera-griglia {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 24px;
+  margin-top: 44px;
+  align-items: stretch;
+}
+.omnia-genera-scheda {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 22px;
+  border: 1px solid var(--bordo);
+  border-radius: 20px;
+  background: var(--vetro);
+  box-shadow:
+    0 1px 2px rgba(var(--ombra-rgb), 0.04),
+    0 18px 40px -24px rgba(var(--viola-rgb), 0.35);
+}
+.omnia-genera-etichetta {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.omnia-genera-etichetta b {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-genera-etichetta span {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fioco);
+  font-weight: 300;
+}
+.omnia-genera-scheda .omnia-console {
+  flex: 1;
+  max-width: none;
+  margin: 0;
+}
+.omnia-nota-illustrativa {
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--fioco);
+  text-align: center;
+}
+
+/* L'anteprima del foglio Word: carta e inchiostro fissi (come un documento vero), uguali nei due temi */
+.omnia-foglio {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px 18px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(var(--viola-rgb), 0.12), rgba(var(--verde-rgb), 0.06));
+}
+.omnia-foglio-pagina {
+  width: 100%;
+  max-width: 430px;
+  padding: 18px 22px 12px;
+  border-radius: 6px;
+  background: var(--carta);
+  color: var(--inchiostro);
+  box-shadow:
+    0 2px 4px rgba(var(--ombra-rgb), 0.06),
+    0 18px 36px -18px rgba(var(--ombra-rgb), 0.35);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+.omnia-foglio-pagina p {
+  text-align: left;
+  hyphens: manual;
+}
+.omnia-foglio-testata,
+.omnia-foglio-piede {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.omnia-foglio-testata {
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--viola-2);
+}
+.omnia-foglio-logo {
+  flex: none;
+  padding: 3px 7px;
+  border: 1px dashed rgba(var(--sovrapposto-rgb), 0.35);
+  border-radius: 4px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.omnia-foglio-testata-testo {
+  font-size: 9px;
+  color: rgba(var(--sovrapposto-rgb), 0.6);
+  text-align: right;
+}
+.omnia-foglio-criterio {
+  margin-top: 14px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--viola-2);
+}
+.omnia-foglio-titolo {
+  margin: 4px 0 8px;
+  font-family: "Syne", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+}
+.omnia-foglio-riga {
+  display: block;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: rgba(var(--sovrapposto-rgb), 0.1);
+}
+/* una parola chiave evidenziata, come nel documento vero */
+.omnia-foglio-riga-chiave {
+  position: relative;
+  height: 12px;
+  background: none;
+}
+.omnia-foglio-riga-chiave::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(var(--sovrapposto-rgb), 0.1);
+}
+.omnia-foglio-riga-chiave i {
+  position: relative;
+  margin-left: 26%;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: rgba(var(--viola-rgb), 0.22);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 600;
+}
+.omnia-foglio-tabella {
+  margin: 12px 0 8px;
+  border: 1px solid rgba(var(--sovrapposto-rgb), 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 8.5px;
+}
+.omnia-foglio-tabella-testa,
+.omnia-foglio-tabella-riga {
+  display: grid;
+  grid-template-columns: 1.3fr 1.1fr 1fr;
+}
+.omnia-foglio-tabella-testa {
+  background: var(--viola-2);
+  color: var(--carta);
+  font-weight: 600;
+}
+.omnia-foglio-tabella-riga:nth-child(odd) {
+  background: rgba(var(--viola-rgb), 0.07);
+}
+.omnia-foglio-tabella span {
+  padding: 4px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.omnia-foglio-piede {
+  margin-top: 14px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(var(--sovrapposto-rgb), 0.12);
+  font-size: 8px;
+  color: rgba(var(--sovrapposto-rgb), 0.55);
+}
+.omnia-foglio-file {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.omnia-foglio-file li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--vetro);
+  font-size: 13px;
+  color: var(--testo-2);
+  text-align: left;
+}
+.omnia-foglio-est {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(var(--viola-rgb), 0.14);
+  color: var(--viola);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.omnia-foglio-est.verde {
+  background: rgba(var(--verde-rgb), 0.14);
+  color: var(--verde);
+}
+.omnia-foglio-nota {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fioco);
+}
+
 /* Sezioni generiche */
 .omnia-section {
   padding: 92px 0;
@@ -536,7 +925,8 @@ li {
   font-size: clamp(27px, 3.4vw, 40px);
   line-height: 1.1;
   letter-spacing: -0.025em;
-  max-width: 20ch;
+  max-width: 24ch;
+  hyphens: manual;
 }
 .omnia-guida {
   margin-top: 20px;
@@ -713,6 +1103,26 @@ li {
   font-size: 14px;
   color: var(--fioco);
 }
+/* Marchio, descrizione e slogan in testa al piè di pagina (restyling 16/11/2026) */
+.omnia-footer-marchio {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.omnia-footer-descrizione {
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 300;
+  text-align: left;
+}
+.omnia-footer .omnia-footer-slogan {
+  margin: 4px 0 0;
+  font-size: 11px;
+}
+.omnia-footer nav a:hover {
+  color: var(--testo);
+}
 /* Livello alto: collegamenti a sinistra, badge a destra, allineati al centro; se non ci stanno insieme il badge va sotto. */
 .omnia-footer .omnia-footer-alto {
   display: flex;
@@ -784,6 +1194,245 @@ li {
     padding: 68px 0;
   }
 }
+/* ---------- Sezioni della home (restyling 16/11/2026) ---------- */
+
+/* ombra leggera e uniforme delle schede (quasi invisibile nel tema scuro, discreta nel chiaro) */
+.omnia-revisione,
+.omnia-prezzo,
+.omnia-passo,
+.omnia-dietro,
+.omnia-cella,
+.omnia-tappa,
+.omnia-scheda,
+.omnia-piano-sintesi {
+  box-shadow:
+    0 1px 2px rgba(var(--ombra-rgb), 0.03),
+    0 16px 36px -26px rgba(var(--viola-rgb), 0.4);
+}
+.omnia-cella h3,
+.omnia-tappa h3,
+.omnia-scheda h3,
+.omnia-piano-sintesi h3 {
+  /* le schede sono voci di elenco (li, giustificate): i titoletti no */
+  text-align: left;
+  hyphens: manual;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.3;
+  margin-bottom: 10px;
+}
+ul.omnia-tre {
+  list-style: none;
+}
+.omnia-cella p {
+  text-align: justify;
+}
+
+/* Come funziona in tre passaggi */
+.omnia-tappe {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 44px;
+}
+.omnia-tappa {
+  position: relative;
+  padding: 28px 26px;
+  border: 1px solid var(--bordo);
+  border-radius: 18px;
+  background: var(--vetro);
+}
+.omnia-tappa-numero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--bordo-f);
+  background: rgba(var(--viola-rgb), 0.08);
+  color: var(--viola);
+  font-family: "Syne", sans-serif;
+  font-weight: 800;
+  font-size: 17px;
+}
+.omnia-tappa p,
+.omnia-scheda p,
+.omnia-piano-sintesi p {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--fioco);
+  font-weight: 300;
+}
+.omnia-nota-sezione {
+  margin-top: 24px;
+  max-width: 80ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--fioco);
+  font-weight: 300;
+}
+.omnia-nota-sezione a {
+  color: var(--viola);
+  text-underline-offset: 3px;
+}
+
+/* Molto più di un'offerta tecnica: sei schede con lo stato (come si ottiene) in alto */
+.omnia-schede {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 44px;
+}
+.omnia-scheda {
+  display: flex;
+  flex-direction: column;
+  padding: 26px 24px;
+  border: 1px solid var(--bordo);
+  border-radius: 18px;
+  background: var(--vetro);
+  text-align: left;
+}
+.omnia-scheda-stato {
+  align-self: flex-start;
+  margin-bottom: 16px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(var(--verde-rgb), 0.12);
+  color: var(--verde);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Le sei ragioni (Perché OMNIA AI): stessa griglia a tre di .omnia-tre, su due righe */
+.omnia-tre-sei {
+  row-gap: 20px;
+}
+
+/* Piani in sintesi: nomi, gare incluse e descrizione; i prezzi solo nella pagina dei piani */
+.omnia-piani-sintesi {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 44px;
+}
+.omnia-piano-sintesi {
+  padding: 28px 26px;
+  border: 1px solid var(--bordo);
+  border-radius: 18px;
+  background: var(--vetro);
+  text-align: left;
+}
+.omnia-piano-sintesi.in-evidenza {
+  border-color: var(--bordo-f);
+  background: var(--vetro-2);
+}
+.omnia-piano-sintesi p.omnia-piano-gare {
+  margin-bottom: 10px;
+  font-size: 15px;
+  color: var(--testo-2);
+  text-align: left;
+}
+.omnia-piano-gare strong {
+  font-family: "Montserrat", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  color: var(--viola);
+  margin-right: 4px;
+}
+.omnia-azioni-sinistra {
+  justify-content: flex-start;
+  margin-top: 28px;
+}
+.omnia-nota-sinistra {
+  margin-top: 16px;
+  text-align: left;
+}
+
+@media (max-width: 1024px) {
+  .omnia-schede {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .omnia-genera-griglia,
+  .omnia-tappe,
+  .omnia-piani-sintesi {
+    grid-template-columns: 1fr;
+  }
+  .omnia-tappe,
+  .omnia-schede,
+  .omnia-piani-sintesi,
+  .omnia-genera-griglia {
+    margin-top: 32px;
+  }
+}
+@media (max-width: 640px) {
+  .omnia-schede {
+    grid-template-columns: 1fr;
+  }
+  .omnia-wrap {
+    padding: 0 18px;
+  }
+  .omnia-bar {
+    padding: 12px 18px;
+  }
+  .omnia-hero {
+    padding: 44px 0 52px;
+  }
+  .omnia-slogan {
+    margin-bottom: 22px;
+    padding: 7px 14px;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+  }
+  .omnia-hero .omnia-sotto {
+    margin-top: 20px;
+  }
+  .omnia-section {
+    padding: 56px 0;
+  }
+  .omnia-section h2 {
+    font-size: clamp(25px, 7vw, 30px);
+  }
+  .omnia-guida {
+    font-size: 16px;
+  }
+  /* pulsanti a tutta larghezza, uno sotto l'altro: più facili da toccare */
+  .omnia-hero .omnia-azioni,
+  .omnia-finale .omnia-azioni {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 30px;
+  }
+  .omnia-hero .omnia-btn,
+  .omnia-finale .omnia-btn {
+    text-align: center;
+  }
+  .omnia-genera-scheda,
+  .omnia-dietro {
+    padding: 18px;
+  }
+  .omnia-foglio {
+    padding: 14px 10px;
+  }
+  .omnia-foglio-pagina {
+    padding: 14px 14px 10px;
+  }
+  .omnia-tappa,
+  .omnia-scheda,
+  .omnia-cella,
+  .omnia-piano-sintesi {
+    padding: 22px 20px;
+  }
+}
+
 /* ==================== Pagine interne (come funziona, piani, demo, contatti, privacy, cookie) ==================== */
 
 .omnia-pagina-hero {
@@ -1275,6 +1924,1107 @@ li {
   .omnia-r {
     transition: none;
   }
+}
+
+/* ---------- Pagine interne: aggiunte del restyling (16/11/2026) ---------- */
+.omnia-occhiello-centro {
+  text-align: center;
+}
+/* sottotitoli delle pagine interne: giustificati, ultima riga centrata come il titolo sopra */
+.omnia-pagina-hero .omnia-sotto {
+  text-align-last: center;
+}
+/* titoli di sezione delle pagine interne: stessa scala (più contenuta) di quelli della home */
+.omnia-pagina-corpo > h2,
+.omnia-regole-gare > h2 {
+  font-size: clamp(24px, 2.8vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  hyphens: manual;
+}
+/* i numeri dei passaggi nel carattere dei titoli, più leggibile del Syne per le cifre */
+.omnia-passo::before,
+.omnia-tappa-numero {
+  font-family: "Montserrat", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+.omnia-pagina-corpo ul.omnia-tre {
+  margin-top: 28px;
+}
+.omnia-chiusura,
+.omnia-contatti-demo {
+  margin-top: 64px;
+}
+.omnia-pagina-corpo .omnia-dietro h2 {
+  margin-top: 0;
+}
+
+/* Demo: i due passaggi (modulo, poi orario nel calendario) sopra il modulo, che sta in un riquadro */
+.omnia-percorso-demo {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.omnia-percorso-demo li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border: 1px solid var(--bordo);
+  border-radius: 16px;
+  background: var(--vetro);
+  text-align: left;
+}
+.omnia-percorso-demo .omnia-tappa-numero {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  font-size: 15px;
+}
+.omnia-percorso-demo b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.omnia-percorso-demo p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fioco);
+  font-weight: 300;
+}
+.omnia-modulo-riquadro {
+  max-width: 720px;
+  margin: 20px auto 0;
+  padding: 32px 36px;
+  border: 1px solid var(--bordo);
+  border-radius: 20px;
+  background: var(--vetro);
+  box-shadow:
+    0 1px 2px rgba(var(--ombra-rgb), 0.03),
+    0 16px 36px -26px rgba(var(--viola-rgb), 0.4);
+}
+.omnia-modulo-riquadro .omnia-modulo {
+  margin-top: 0;
+}
+
+/* Contatti: tre schede con i riferimenti ufficiali */
+.omnia-contatti {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.omnia-pagina-corpo .omnia-contatti-titolo {
+  margin: 0 0 12px;
+  font-size: 17px;
+  line-height: 1.3;
+}
+.omnia-contatti .omnia-cella p + p {
+  margin-top: 10px;
+}
+.omnia-contatti-valore {
+  color: var(--viola);
+  font-weight: 500;
+  font-size: 15.5px;
+  overflow-wrap: anywhere;
+}
+.omnia-contatti .omnia-cella a {
+  color: var(--viola);
+  text-underline-offset: 3px;
+}
+
+/* Piani: come funzionano gare e crediti, in quattro punti */
+.omnia-regole-gare {
+  margin-top: 40px;
+}
+.omnia-regole-elenco {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.omnia-regole-elenco li {
+  padding: 20px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--vetro);
+}
+.omnia-regole-elenco h3 {
+  margin-bottom: 8px;
+  font-weight: 700;
+  font-size: 15.5px;
+  line-height: 1.3;
+  text-align: left;
+  hyphens: manual;
+}
+.omnia-regole-elenco p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fioco);
+  font-weight: 300;
+}
+
+@media (max-width: 1024px) {
+  .omnia-regole-elenco {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .omnia-contatti {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .omnia-percorso-demo,
+  .omnia-regole-elenco {
+    grid-template-columns: 1fr;
+  }
+  .omnia-modulo-riquadro {
+    padding: 22px 18px;
+  }
+  .omnia-pagina-hero {
+    padding: 44px 0 36px;
+  }
+  .omnia-pagina-corpo {
+    padding-bottom: 64px;
+  }
+}
+
+/* Schermate vere (anonime) dell'area riservata, in una cornice da finestra del browser; sotto, i ritagli dei dettagli */
+.omnia-schermate {
+  display: grid;
+  gap: 48px;
+  margin-top: 40px;
+}
+.omnia-schermata {
+  margin: 0;
+}
+.omnia-schermata-cornice {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: zoom-in;
+  overflow: hidden;
+  border: 1px solid var(--bordo);
+  border-radius: 16px;
+  background: var(--carta);
+  box-shadow:
+    0 2px 4px rgba(var(--ombra-rgb), 0.05),
+    0 28px 56px -30px rgba(var(--viola-rgb), 0.45);
+}
+.omnia-schermata-barra {
+  display: flex;
+  gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(var(--sovrapposto-rgb), 0.08);
+  background: rgba(var(--sovrapposto-rgb), 0.03);
+}
+.omnia-schermata-barra span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(var(--sovrapposto-rgb), 0.14);
+}
+.omnia-schermata-immagine {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* l'indicazione visibile che l'immagine si ingrandisce */
+.omnia-schermata-lente {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(var(--sovrapposto-rgb), 0.78);
+  color: var(--su-sovrapposto);
+  font-size: 13px;
+  font-weight: 500;
+}
+.omnia-schermata-cornice:hover .omnia-schermata-lente,
+.omnia-schermata-cornice:focus-visible .omnia-schermata-lente {
+  background: var(--viola);
+  color: var(--su-viola);
+}
+.omnia-schermata figcaption {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+  max-width: 72ch;
+}
+.omnia-schermata figcaption b {
+  font-size: 16.5px;
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-schermata figcaption span {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--testo-3);
+}
+.omnia-schermata-dettagli {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+.omnia-schermata-dettagli li {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+.omnia-schermata-dettagli button {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: var(--vetro);
+  color: var(--testo);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: zoom-in;
+}
+.omnia-schermata-dettagli button:hover {
+  border-color: var(--bordo-f);
+}
+.omnia-schermata-dettagli img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: var(--carta);
+}
+.omnia-schermata-singola {
+  margin-top: 40px;
+}
+
+/* Finestra di ingrandimento: copre lo schermo con uno sfondo scuro (colori fissi, uguali nei due temi). In alto il titolo, «Ingrandisci» e
+   la X; sotto, l'area dell'immagine, che con l'ingrandimento si sposta col dito o con la rotellina. */
+.omnia-schermata-finestra {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgba(var(--sovrapposto-rgb), 0.9);
+  color: var(--su-sovrapposto);
+}
+.omnia-schermata-finestra[open] {
+  display: flex;
+  flex-direction: column;
+}
+.omnia-schermata-finestra::backdrop {
+  background: none;
+}
+.omnia-schermata-comandi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.omnia-schermata-comandi > span {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.omnia-schermata-zoom,
+.omnia-schermata-chiudi {
+  min-height: 44px;
+  border: 1px solid rgba(var(--chiaro-rgb), 0.35);
+  background: rgba(var(--chiaro-rgb), 0.12);
+  color: var(--su-sovrapposto);
+  font: inherit;
+  cursor: pointer;
+}
+.omnia-schermata-zoom {
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.omnia-schermata-chiudi {
+  width: 44px;
+  border-radius: 50%;
+  font-size: 26px;
+  line-height: 1;
+}
+.omnia-schermata-zoom:hover,
+.omnia-schermata-chiudi:hover {
+  background: rgba(var(--chiaro-rgb), 0.24);
+}
+.omnia-schermata-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.omnia-schermata-area.zoom {
+  display: block;
+}
+.omnia-schermata-grande {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(var(--ombra-rgb), 0.5);
+  cursor: zoom-in;
+}
+.omnia-schermata-area.zoom .omnia-schermata-grande {
+  cursor: zoom-out;
+}
+.omnia-schermata-suggerimento {
+  padding: 0 16px 16px;
+  font-size: 13.5px;
+  text-align: center;
+  color: var(--su-sovrapposto);
+  opacity: 0.85;
+}
+html.omnia-scorrimento-bloccato,
+html.omnia-scorrimento-bloccato body {
+  overflow: hidden;
+}
+@media (max-width: 640px) {
+  .omnia-schermate {
+    gap: 36px;
+    margin-top: 28px;
+  }
+  .omnia-schermata-cornice {
+    border-radius: 10px;
+  }
+  .omnia-schermata-barra {
+    padding: 8px 10px;
+  }
+  .omnia-schermata-barra span {
+    width: 7px;
+    height: 7px;
+  }
+  .omnia-schermata-lente {
+    right: 8px;
+    bottom: 8px;
+    font-size: 12.5px;
+  }
+  .omnia-schermata-area {
+    padding: 4px 8px 12px;
+  }
+}
+
+/* ---------- Home: hero compatta ed esempi consultabili (revisione del 16/11/2026) ---------- */
+.omnia-hero {
+  padding: 64px 0 56px;
+}
+.omnia-hero .omnia-sotto {
+  max-width: 58ch;
+}
+/* il percorso in tre tappe: documenti di gara → analisi → offerta tecnica in Word */
+.omnia-flusso {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0;
+  max-width: 760px;
+  margin: 28px auto 0;
+  counter-reset: none;
+}
+.omnia-flusso li {
+  position: relative;
+  flex: 1 1 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 14px 12px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--vetro);
+  text-align: center;
+}
+.omnia-flusso li + li {
+  margin-left: 28px;
+}
+/* la freccia tra una tappa e l'altra */
+.omnia-flusso li + li::before {
+  content: "";
+  position: absolute;
+  left: -21px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid var(--viola);
+  border-right: 2px solid var(--viola);
+  transform: translateY(-50%) rotate(45deg);
+}
+.omnia-flusso b {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--testo);
+}
+.omnia-flusso-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(var(--viola-rgb), 0.12);
+  color: var(--viola);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.omnia-flusso-arrivo {
+  border-color: var(--bordo-f) !important;
+  background: var(--vetro-2) !important;
+}
+.omnia-flusso-arrivo .omnia-flusso-tag {
+  background: rgba(var(--verde-rgb), 0.14);
+  color: var(--verde);
+}
+.omnia-hero .omnia-azioni {
+  margin-top: 28px;
+}
+/* collegamento ai piani per chi è già pronto ad acquistare */
+.omnia-wrap .omnia-hero-piani {
+  margin-top: 14px;
+  font-size: 14.5px;
+  color: var(--testo-3);
+  text-align: center;
+}
+.omnia-hero-piani a,
+.omnia-piani-nota-home a {
+  color: var(--viola);
+  font-weight: 500;
+  text-underline-offset: 3px;
+}
+.omnia-wrap .omnia-piani-nota-home {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--testo-3);
+}
+/* settori in cui è specializzata */
+.omnia-settori {
+  margin-top: 26px;
+}
+.omnia-wrap .omnia-settori p {
+  font-size: 14px;
+  color: var(--testo-3);
+  text-align: center;
+}
+.omnia-settori ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.omnia-wrap .omnia-settori li {
+  padding: 5px 12px;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--vetro);
+  font-size: 13.5px;
+  color: var(--testo-2);
+}
+
+/* esempi di domande: schede sopra, tutti gli esempi nella stessa cella (altezza stabile), nessun testo che si scrive da solo */
+.omnia-esempi-schede {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.omnia-esempi-schede button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--vetro);
+  color: var(--testo-2);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.omnia-esempi-schede button[aria-selected="true"] {
+  border-color: var(--viola);
+  background: rgba(var(--viola-rgb), 0.12);
+  color: var(--viola);
+  font-weight: 600;
+}
+.omnia-esempi {
+  display: grid;
+  flex: 1;
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+.omnia-esempio {
+  grid-area: 1 / 1;
+  padding: 18px 18px 6px;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.omnia-esempio.attivo {
+  visibility: visible;
+  opacity: 1;
+}
+.omnia-wrap .omnia-esempio-domanda {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-wrap .omnia-esempio-risposta {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bordo);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--testo-2b);
+}
+.omnia-esempio .omnia-fonti {
+  padding: 14px 0 12px;
+}
+.omnia-wrap .omnia-esempio-nota {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--fioco);
+}
+
+@media (max-width: 640px) {
+  .omnia-hero {
+    padding: 32px 0 36px;
+  }
+  .omnia-hero h1 {
+    font-size: clamp(27px, 7.6vw, 34px);
+  }
+  .omnia-hero .omnia-sotto {
+    font-size: 16px;
+  }
+  .omnia-flusso {
+    flex-direction: column;
+    margin-top: 20px;
+  }
+  .omnia-flusso li {
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    text-align: left;
+  }
+  .omnia-flusso li + li {
+    margin-left: 0;
+    margin-top: 18px;
+  }
+  .omnia-flusso li + li::before {
+    left: 50%;
+    top: -15px;
+    width: 9px;
+    height: 9px;
+    transform: translateX(-50%) rotate(135deg);
+  }
+  .omnia-hero .omnia-azioni {
+    margin-top: 22px;
+  }
+  .omnia-settori {
+    margin-top: 22px;
+  }
+  .omnia-wrap .omnia-settori li {
+    font-size: 13px;
+    padding: 4px 10px;
+  }
+  .omnia-section {
+    padding: 44px 0;
+  }
+}
+
+/* richiamo intermedio alla demo (una riga, dentro la sezione «Come funziona») */
+.omnia-richiamo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+  padding: 18px 22px;
+  border: 1px solid var(--bordo-f);
+  border-radius: 16px;
+  background: var(--vetro-2);
+}
+.omnia-wrap .omnia-richiamo p {
+  flex: 1 1 320px;
+  font-size: 15.5px;
+  color: var(--testo-2);
+}
+.omnia-richiamo b {
+  color: var(--testo);
+  font-weight: 600;
+}
+/* strumenti: i due gruppi (compreso / aggiuntivo) */
+.omnia-gruppo-titolo {
+  margin-top: 36px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--testo);
+}
+.omnia-gruppo-titolo + .omnia-schede {
+  margin-top: 16px;
+}
+.omnia-schede-aggiuntive .omnia-scheda {
+  background: var(--vetro-2);
+}
+.omnia-scheda-link {
+  margin-top: auto;
+  padding-top: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--viola);
+  text-underline-offset: 3px;
+}
+/* «Perché OMNIA AI»: quattro celle, due per riga */
+.omnia-quattro {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* «Chi c'è dietro»: società, persone e metodo */
+.omnia-dietro-elenco {
+  display: grid;
+  gap: 16px;
+}
+.omnia-dietro-elenco dt {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--viola);
+}
+.omnia-dietro-elenco dd {
+  margin-top: 4px;
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--testo-2);
+}
+.omnia-dietro-elenco strong {
+  color: var(--testo);
+  font-weight: 600;
+}
+@media (max-width: 900px) {
+  .omnia-quattro {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .omnia-richiamo {
+    padding: 16px;
+  }
+  .omnia-richiamo .omnia-btn {
+    width: 100%;
+    text-align: center;
+  }
+  .omnia-gruppo-titolo {
+    margin-top: 28px;
+  }
+}
+
+/* ---------- Piani: confronto sintetico (revisione del 16/11/2026) ---------- */
+.omnia-solo-lettori {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.omnia-confronto {
+  margin-bottom: 56px;
+}
+.omnia-confronto-scorrimento {
+  margin-top: 20px;
+  overflow-x: auto;
+  border: 1px solid var(--bordo);
+  border-radius: 16px;
+  background: var(--vetro);
+}
+.omnia-confronto-tabella {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.omnia-confronto-tabella th,
+.omnia-confronto-tabella td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bordo);
+  text-align: center;
+  vertical-align: middle;
+  color: var(--testo-2);
+}
+.omnia-confronto-tabella tbody tr:last-child th,
+.omnia-confronto-tabella tbody tr:last-child td {
+  border-bottom: 0;
+}
+.omnia-confronto-tabella thead th {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--testo);
+}
+.omnia-confronto-tabella thead th.in-evidenza {
+  color: var(--viola);
+}
+.omnia-confronto-tabella tbody th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--testo);
+}
+.omnia-confronto-tabella strong {
+  color: var(--testo);
+  font-weight: 700;
+}
+.omnia-confronto-prezzo s {
+  display: block;
+  font-size: 13px;
+  color: var(--fioco);
+}
+.omnia-confronto-prezzo strong {
+  font-size: 17px;
+}
+.omnia-wrap .omnia-confronto-nota {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--testo-3);
+}
+/* schede dei piani sintetiche: a chi serve, prezzo con l'offerta subito sotto, differenze essenziali, acquisto e demo */
+.omnia-piani-hero {
+  padding-bottom: 36px;
+}
+.omnia-wrap .omnia-piani-acquisto {
+  font-size: 16px;
+  color: var(--testo);
+}
+.omnia-piani-acquisto a {
+  color: var(--viola);
+  font-weight: 500;
+  text-underline-offset: 3px;
+}
+.omnia-wrap .omnia-prezzo-per {
+  margin-top: 6px;
+  font-size: 14.5px;
+  color: var(--testo-3);
+}
+.omnia-wrap .omnia-prezzo-offerta {
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.omnia-prezzo-elenco strong {
+  color: var(--testo);
+  font-weight: 600;
+}
+.omnia-wrap .omnia-prezzo-dopo {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--fioco);
+  text-align: center;
+}
+.omnia-prezzi + .omnia-confronto {
+  margin-top: 56px;
+}
+.omnia-pagina-corpo .omnia-dettaglio-titolo {
+  margin-top: 0;
+}
+.omnia-dettaglio-titolo + .omnia-prezzi {
+  margin-top: 20px;
+}
+/* Su telefono ogni riga diventa: il nome della voce su tutta la larghezza, sotto i tre valori affiancati (niente scorrimento laterale).
+   I ruoli ARIA espliciti nella tabella mantengono la lettura corretta anche con display:grid. */
+@media (max-width: 640px) {
+  .omnia-confronto-tabella {
+    font-size: 13.5px;
+  }
+  .omnia-confronto-tabella tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-bottom: 1px solid var(--bordo);
+  }
+  .omnia-confronto-tabella tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .omnia-confronto-tabella th,
+  .omnia-confronto-tabella td {
+    padding: 4px 6px 10px;
+    border-bottom: 0;
+  }
+  .omnia-confronto-tabella thead td {
+    display: none;
+  }
+  .omnia-confronto-tabella thead th {
+    padding: 12px 4px;
+    font-size: 14px;
+  }
+  .omnia-confronto-tabella tbody th {
+    grid-column: 1 / -1;
+    padding: 10px 12px 2px;
+    font-size: 13px;
+    color: var(--testo-3);
+    text-align: left;
+  }
+  .omnia-confronto-prezzo strong {
+    font-size: 14.5px;
+  }
+}
+
+/* ---------- Come funziona: esempio statico, distinzione, approfondimento (revisione del 16/11/2026) ---------- */
+.omnia-esempio-cf {
+  max-width: 720px;
+  margin: 24px 0 0;
+}
+.omnia-esempio-statico {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  animation: omnia-comparsa 0.5s ease both;
+}
+@keyframes omnia-comparsa {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.omnia-esempio-statico-parte {
+  padding: 16px 18px;
+}
+.omnia-esempio-statico-parte + .omnia-esempio-statico-parte {
+  border-top: 1px solid var(--bordo);
+}
+.omnia-wrap .omnia-esempio-statico-etichetta {
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fioco);
+}
+.omnia-wrap .omnia-esempio-risposta-cf {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--testo-2b);
+}
+.omnia-esempio-statico .omnia-frammenti {
+  margin-top: 0;
+}
+.omnia-wrap .omnia-frammento-testo {
+  font-size: 14px;
+}
+.omnia-distinzione {
+  margin-top: 24px;
+}
+.omnia-approfondimento {
+  margin-top: 48px;
+  border: 1px solid var(--bordo);
+  border-radius: 16px;
+  background: var(--vetro);
+}
+.omnia-approfondimento summary {
+  padding: 18px 22px;
+  font-size: 16.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.omnia-approfondimento[open] summary {
+  border-bottom: 1px solid var(--bordo);
+}
+.omnia-approfondimento .omnia-passi {
+  margin: 0;
+  padding: 18px;
+}
+.omnia-approfondimento .omnia-passo {
+  background: none;
+  box-shadow: none;
+}
+
+/* ---------- Demo: modulo più vicino alla prima schermata (revisione del 16/11/2026) ---------- */
+.omnia-demo-hero {
+  padding: 48px 0 28px;
+}
+.omnia-percorso-demo {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 720px;
+}
+.omnia-percorso-demo li {
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.omnia-percorso-demo .omnia-tappa-numero {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+.omnia-wrap .omnia-percorso-demo p {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--testo-2);
+}
+.omnia-wrap .omnia-demo-preparati {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--bordo);
+  font-size: 14.5px;
+  color: var(--testo-2);
+}
+.omnia-modulo-riquadro {
+  margin-top: 14px;
+}
+/* Su telefono: niente occhiello, titolo più piccolo, solo la frase essenziale; i tre passaggi in una riga di tre caselle compatte, così il
+   primo campo del modulo arriva nella prima schermata anche a 360 px. */
+@media (max-width: 640px) {
+  .omnia-demo-hero {
+    padding: 18px 0 12px;
+  }
+  .omnia-demo-hero .omnia-occhiello {
+    display: none;
+  }
+  .omnia-demo-hero h1 {
+    font-size: 24px;
+  }
+  .omnia-demo-hero .omnia-sotto {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .omnia-demo-solo-ampio {
+    display: none;
+  }
+  .omnia-percorso-demo {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .omnia-percorso-demo li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 10px;
+  }
+  .omnia-percorso-demo .omnia-tappa-numero {
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+  }
+  .omnia-wrap .omnia-percorso-demo p {
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+  .omnia-modulo-riquadro {
+    margin-top: 10px;
+    padding: 16px 14px;
+  }
+  .omnia-wrap .omnia-demo-preparati {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    font-size: 13.5px;
+  }
+}
+
+/* ---------- Leggibilità del sito pubblico (revisione del 16/11/2026) ----------
+   Vale solo dentro .omnia-wrap (pagine pubbliche: l'area riservata non lo usa). Descrizioni, schede, elenchi, didascalie e FAQ allineati a
+   sinistra e senza sillabazione automatica (niente spazi irregolari né parole spezzate); centrati solo titoli e introduzioni brevi.
+   I testi secondari passano dal peso sottile (300) al normale (400): sul fondo chiaro il 300 a 14-15 px risultava debole. */
+.omnia-wrap p,
+.omnia-wrap li {
+  text-align: left;
+  text-align-last: auto;
+  hyphens: manual;
+  -webkit-hyphens: manual;
+}
+.omnia-wrap .micro,
+.omnia-wrap .omnia-hero .omnia-sotto,
+.omnia-wrap .omnia-sotto-2,
+.omnia-wrap .omnia-pagina-hero .omnia-sotto,
+.omnia-wrap .omnia-finale .omnia-guida,
+.omnia-wrap .omnia-nota-illustrativa,
+.omnia-wrap .omnia-occhiello-centro,
+.omnia-wrap .omnia-slogan:not(.omnia-slogan-grande) {
+  text-align: center;
+}
+.omnia-wrap .omnia-nota-sinistra {
+  text-align: left;
+}
+.omnia-wrap .omnia-guida,
+.omnia-wrap .omnia-sotto,
+.omnia-wrap .omnia-sotto-2,
+.omnia-wrap .omnia-cella p,
+.omnia-wrap .omnia-tappa p,
+.omnia-wrap .omnia-scheda p,
+.omnia-wrap .omnia-piano-sintesi p,
+.omnia-wrap .omnia-elenco li,
+.omnia-wrap .omnia-firma,
+.omnia-wrap .omnia-r p,
+.omnia-wrap .omnia-passo p,
+.omnia-wrap .omnia-prosa p,
+.omnia-wrap .omnia-prosa ul,
+.omnia-wrap .omnia-prosa ol,
+.omnia-wrap .omnia-revisione-testo,
+.omnia-wrap .omnia-revisione-punti span,
+.omnia-wrap .omnia-regole-elenco p,
+.omnia-wrap .omnia-prezzo-elenco li,
+.omnia-wrap .omnia-percorso-demo p,
+.omnia-wrap .omnia-nota-sezione,
+.omnia-wrap .omnia-genera-etichetta span,
+.omnia-wrap .omnia-footer-descrizione,
+.omnia-wrap .omnia-frammento-testo,
+.omnia-wrap .omnia-risposta {
+  font-weight: 400;
+}
+/* testi piccoli: mai sotto i 13 px */
+.omnia-wrap .omnia-nota-illustrativa,
+.omnia-wrap .omnia-foglio-nota {
+  font-size: 13.5px;
+}
+.omnia-wrap .omnia-scheda-stato {
+  font-size: 12.5px;
+}
+/* il testo dei paragrafi secondari un tono più scuro di --fioco dove è corpo di lettura (contrasto più alto, stessa palette) */
+.omnia-wrap .omnia-cella p,
+.omnia-wrap .omnia-tappa p,
+.omnia-wrap .omnia-scheda p,
+.omnia-wrap .omnia-piano-sintesi p,
+.omnia-wrap .omnia-r p,
+.omnia-wrap .omnia-passo p,
+.omnia-wrap .omnia-regole-elenco p {
+  color: var(--testo-3);
+}
+/* collegamenti del piè di pagina: area di tocco più alta */
+.omnia-footer nav a,
+.omnia-footer nav button {
+  padding: 6px 0;
 }
 
 /* ==================== Area riservata (dashboard/omnia-ai) ====================
