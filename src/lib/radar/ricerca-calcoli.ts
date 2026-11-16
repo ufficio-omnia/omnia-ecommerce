@@ -104,6 +104,16 @@ export function parametriDaFiltri(f: FiltriRicerca, modifiche: Partial<FiltriRic
   return s ? `?${s}` : "";
 }
 
+// Le condizioni sul database per «aperte» e «storico», con la regola del giorno (una gara senza ora è aperta per tutto il suo giorno; un giorno
+// già finito è scaduto). oggi = giorno di Roma (AAAA-MM-GG), adesso = istante ISO. Sintassi dei filtri «or» di PostgREST.
+export function condizioneAperte(oggi: string, adesso: string): string {
+  return `scadenza_giorno.is.null,scadenza_giorno.gt.${oggi},and(scadenza_giorno.eq.${oggi},or(scadenza_offerte.is.null,scadenza_offerte.gt.${adesso}))`;
+}
+
+export function condizioneStorico(oggi: string, adesso: string): string {
+  return `stato.neq.aperta,scadenza_giorno.lt.${oggi},and(scadenza_giorno.eq.${oggi},scadenza_offerte.lte.${adesso})`;
+}
+
 export function filtriAttivi(f: FiltriRicerca): number {
   return f.settori.length + f.regioni.length + (f.importoMin !== null ? 1 : 0) + (f.importoMax !== null ? 1 : 0) + (f.scadenzaEntroGiorni !== null ? 1 : 0) + (f.pubblicataNegliUltimiGiorni !== null ? 1 : 0) + f.procedure.length + (f.stato !== "aperte" ? 1 : 0);
 }
@@ -165,6 +175,7 @@ export type CandidatoRicerca = {
   sa_denominazione: string | null;
   settori: string[];
   metodo_settore: string | null;
+  scadenza_giorno: string | null;
   scadenza_offerte: string | null;
   data_pubblicazione: string | null;
   valore_stimato: number | null;
@@ -211,9 +222,10 @@ export function punteggioRilevanza(c: CandidatoRicerca, domanda: DomandaAnalizza
     }
   }
 
-  const giorni = giorniAllaScadenza(c.scadenza_offerte, adesso);
+  const giorni = giorniAllaScadenza(c.scadenza_giorno, adesso);
   if (giorni !== null) {
     if (giorni < 0) punti -= 40;
+    else if (giorni === 0) motivi.push("scade oggi");
     else if (giorni >= 10) {
       punti += 10;
       motivi.push(`${giorni} giorni per preparare l'offerta`);
@@ -234,14 +246,15 @@ export function punteggioRilevanza(c: CandidatoRicerca, domanda: DomandaAnalizza
 }
 
 export function ordinaCandidati<T extends CandidatoRicerca>(righe: (T & { punteggio: Punteggio })[], ordina: Ordinamento): (T & { punteggio: Punteggio })[] {
-  const scad = (x: CandidatoRicerca) => (x.scadenza_offerte ? Date.parse(x.scadenza_offerte) : Number.POSITIVE_INFINITY);
+  // per giorno, poi per ora (a parità di giorno, quella con l'ora prima di quella senza); senza scadenza in fondo
+  const scad = (x: CandidatoRicerca) => `${x.scadenza_giorno ?? "9999-99-99"}|${x.scadenza_offerte ?? "~"}`;
   const pub = (x: CandidatoRicerca) => x.data_pubblicazione ?? "";
   const copia = [...righe];
   copia.sort((a, b) => {
     if (ordina === "recenti") return pub(b).localeCompare(pub(a)) || a.id.localeCompare(b.id);
-    if (ordina === "scadenza") return scad(a) - scad(b) || a.id.localeCompare(b.id);
+    if (ordina === "scadenza") return scad(a).localeCompare(scad(b)) || a.id.localeCompare(b.id);
     if (ordina === "importo") return (b.valore_stimato ?? -1) - (a.valore_stimato ?? -1) || a.id.localeCompare(b.id);
-    return b.punteggio.punti - a.punteggio.punti || scad(a) - scad(b) || a.id.localeCompare(b.id);
+    return b.punteggio.punti - a.punteggio.punti || scad(a).localeCompare(scad(b)) || a.id.localeCompare(b.id);
   });
   return copia;
 }

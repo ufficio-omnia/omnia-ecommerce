@@ -121,7 +121,9 @@ export type RecordProcedura = {
   natura: "servizi" | "forniture" | "lavori" | "misto" | null;
   settoriSpeciali: boolean | null;
   dataPubblicazione: string | null; // AAAA-MM-GG
-  scadenzaOfferte: string | null; // ISO con fuso
+  // giorno della scadenza (AAAA-MM-GG, giorno di calendario della fonte) e istante esatto SOLO se la fonte indica l'ora (mai presunta)
+  scadenzaGiorno: string | null;
+  scadenzaOfferte: string | null; // ISO con fuso, null senza ora
   scadenzaOraIndicata: boolean;
   valoreStimato: number | null;
   valoreBase: number | null;

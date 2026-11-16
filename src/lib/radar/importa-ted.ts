@@ -114,7 +114,8 @@ export async function eseguiImportazioneTed(admin: SupabaseClient, opzioni: Opzi
       conteggi,
       aggiornata_il: fine.toISOString(),
       ...(errore ? { ultimo_errore: errore, ultimo_errore_il: fine.toISOString() } : { ultimo_successo_il: fine.toISOString() }),
-      ...(cursore.ultimoGiorno ? { dati_aggiornati_al: new Date(`${cursore.ultimoGiorno}T23:59:59+01:00`).toISOString() } : {}),
+      // «avvisi letti fino al giorno X»: conta il giorno, l'ora salvata (mezzogiorno UTC, sempre lo stesso giorno a Roma) non si mostra
+      ...(cursore.ultimoGiorno ? { dati_aggiornati_al: `${cursore.ultimoGiorno}T12:00:00Z` } : {}),
     })
     .eq("fonte", "ted");
 

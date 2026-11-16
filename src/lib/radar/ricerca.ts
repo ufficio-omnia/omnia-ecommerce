@@ -7,6 +7,8 @@ import {
   PROCEDURE_RICERCA,
   RISULTATI_PER_PAGINA,
   analizzaDomanda,
+  condizioneAperte,
+  condizioneStorico,
   ordinaCandidati,
   punteggioRilevanza,
   type CandidatoRicerca,
@@ -18,7 +20,7 @@ import { aggiungiGiorni, giornoIso } from "./importa-ted-calcoli";
 import type { StatoProcedura } from "./importa-calcoli";
 
 export const COLONNE_RISULTATO =
-  "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale";
+  "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale";
 
 export type RigaRisultato = CandidatoRicerca & {
   sa_comune: string | null;
@@ -61,13 +63,14 @@ export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, ad
   if (idDaCig) q = q.in("id", idDaCig);
   if (domanda.codiceFiscale) q = q.eq("sa_codice_fiscale", domanda.codiceFiscale);
   if (domanda.tsquery) q = q.textSearch("ricerca", domanda.tsquery, { config: "italian" });
-  if (filtri.stato === "aperte") q = q.eq("stato", "aperta").or(`scadenza_offerte.is.null,scadenza_offerte.gt.${iso}`);
-  else if (filtri.stato === "storico") q = q.or(`stato.neq.aperta,scadenza_offerte.lte.${iso}`);
+  const oggi = giornoIso(adesso);
+  if (filtri.stato === "aperte") q = q.eq("stato", "aperta").or(condizioneAperte(oggi, iso));
+  else if (filtri.stato === "storico") q = q.or(condizioneStorico(oggi, iso));
   if (filtri.settori.length) q = q.overlaps("settori", filtri.settori);
   if (filtri.regioni.length) q = q.overlaps("luogo_regioni", filtri.regioni);
   if (filtri.importoMin !== null) q = q.gte("valore_stimato", filtri.importoMin);
   if (filtri.importoMax !== null) q = q.lte("valore_stimato", filtri.importoMax);
-  if (filtri.scadenzaEntroGiorni !== null) q = q.gte("scadenza_offerte", iso).lte("scadenza_offerte", new Date(adesso.getTime() + filtri.scadenzaEntroGiorni * 86_400_000).toISOString());
+  if (filtri.scadenzaEntroGiorni !== null) q = q.gte("scadenza_giorno", oggi).lte("scadenza_giorno", aggiungiGiorni(oggi, filtri.scadenzaEntroGiorni));
   if (filtri.pubblicataNegliUltimiGiorni !== null) q = q.gte("data_pubblicazione", aggiungiGiorni(giornoIso(adesso), -filtri.pubblicataNegliUltimiGiorni));
   if (filtri.procedure.length) q = q.in("tipo_procedura", PROCEDURE_RICERCA.filter((p) => filtri.procedure.includes(p.id)).flatMap((p) => [...p.valori]));
 

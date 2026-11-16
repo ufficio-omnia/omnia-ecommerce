@@ -14,7 +14,7 @@ import { giorno } from "@/components/omnia-ai/opportunita/formato";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Aggiunta = { id: string; cig: string | null; url: string | null; oggetto: string | null; ente: string | null; scadenza_offerte: string | null; scadenza_ora_indicata: boolean; importo: number | string | null; procedura_id: string | null; collegata_il: string | null; creata_il: string };
+type Aggiunta = { id: string; cig: string | null; url: string | null; oggetto: string | null; ente: string | null; scadenza_giorno: string | null; scadenza_offerte: string | null; scadenza_ora_indicata: boolean; importo: number | string | null; procedura_id: string | null; collegata_il: string | null; creata_il: string };
 
 export default async function GaraAggiuntaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sessione = await richiediTitolarePagina();
@@ -25,7 +25,7 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
   const da = (await searchParams).da;
   const supabase = await createClient();
   const [{ data: a }, { data: salvata }] = await Promise.all([
-    supabase.from("omnia_ai_radar_gare_aggiunte").select("id, cig, url, oggetto, ente, scadenza_offerte, scadenza_ora_indicata, importo, procedura_id, collegata_il, creata_il").eq("id", id).maybeSingle<Aggiunta>(),
+    supabase.from("omnia_ai_radar_gare_aggiunte").select("id, cig, url, oggetto, ente, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, importo, procedura_id, collegata_il, creata_il").eq("id", id).maybeSingle<Aggiunta>(),
     supabase.from("omnia_ai_radar_salvate").select("id, monitorata").eq("aggiunta_id", id).maybeSingle<{ id: string; monitorata: boolean }>(),
   ]);
   if (!a) notFound();
@@ -35,7 +35,7 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
       await supabase.from("omnia_ai_radar_salvate").update({ ultimo_aggiornamento_visto_il: new Date().toISOString() }).eq("id", salvata.id);
     });
   }
-  const giorni = giorniAllaScadenza(a.scadenza_offerte, new Date());
+  const giorni = giorniAllaScadenza(a.scadenza_giorno, new Date());
 
   return (
     <div className="omnia-app-shell largo">
@@ -57,7 +57,7 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
           <div className="omnia-opp-sintesi-riga">
             <div className="omnia-opp-sintesi-etichetta">Entro quando</div>
             <div className="omnia-opp-sintesi-valore">
-              {a.scadenza_offerte ? `${scadenzaLeggibile(a.scadenza_offerte, a.scadenza_ora_indicata)}${giorni !== null && giorni >= 0 ? ` · tra ${giorni} giorni` : ""}` : "non indicata"}
+              {a.scadenza_giorno ? `${scadenzaLeggibile(a.scadenza_giorno, a.scadenza_offerte)}${giorni !== null && giorni >= 0 ? ` · tra ${giorni} giorni` : ""}` : "non indicata"}
             </div>
           </div>
           <div className="omnia-opp-sintesi-riga">

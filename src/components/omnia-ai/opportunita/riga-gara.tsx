@@ -10,8 +10,9 @@ export type DatiRigaGara = {
   comune: string | null;
   provincia: string | null;
   regioni: string[];
+  scadenzaGiorno: string | null;
+  // istante solo con l'ora indicata
   scadenza: string | null;
-  scadenzaOraIndicata: boolean;
   valore: number | null;
   tipoValore: string;
   durataMesi: number | null;
@@ -31,8 +32,8 @@ export type DatiRigaGara = {
 // La riga di una gara negli elenchi (Cerca, Salvate e monitorate): le quattro informazioni chiave (cosa, chi, quanto, entro quando),
 // poi pertinenza e requisiti separati, fonte e data di verifica. Si apre la scheda con un clic.
 export default function RigaGara({ d, adesso }: { d: DatiRigaGara; adesso: Date }) {
-  const stato = statoMostrato(d.stato, d.scadenza, adesso);
-  const conto = stato === "aperta" ? contoAllaRovescia(d.scadenza, adesso) : null;
+  const stato = statoMostrato(d.stato, { giorno: d.scadenzaGiorno, iso: d.scadenza }, adesso);
+  const conto = stato === "aperta" ? contoAllaRovescia(d.scadenzaGiorno, adesso) : null;
   const valore = importoBreve(d.valore);
   const dove = [d.comune ? `${d.comune}${d.provincia ? ` (${d.provincia})` : ""}` : null, d.regioni.length ? regioniLeggibili(d.regioni) : null].filter(Boolean).join(" · ");
   return (
@@ -41,7 +42,7 @@ export default function RigaGara({ d, adesso }: { d: DatiRigaGara; adesso: Date 
         <div className="omnia-opp-riga-titolo">{d.titolo}</div>
         <div className={`omnia-opp-riga-scadenza${conto?.urgente ? " urgente" : ""}`}>
           {conto && <strong>{conto.testo}</strong>}
-          <span>{scadenzaBreve(d.scadenza, d.scadenzaOraIndicata)}</span>
+          <span>{scadenzaBreve(d.scadenzaGiorno, d.scadenza)}</span>
         </div>
       </div>
       <div className="omnia-opp-riga-ente">

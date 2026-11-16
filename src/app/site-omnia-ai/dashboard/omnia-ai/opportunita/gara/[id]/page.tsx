@@ -7,7 +7,7 @@ import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { leggiGaraPubblica, leggiSalvataggi, type AggiornamentoGara } from "@/lib/radar/gara";
 import { ETICHETTA_STATO, statoMostrato } from "@/lib/radar/importa-calcoli";
-import { sintesiDeterministica, scadenzaLeggibile, euro, giorniAllaScadenza } from "@/lib/radar/sintesi-calcoli";
+import { sintesiDeterministica, scadenzaLeggibile, euro, giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import { confrontaConSoglia, sogliaApplicabile } from "@/lib/radar/soglie-ue";
 import { tipoEnteTed, fusoItaliano } from "@/lib/radar/fonti/ted-calcoli";
 import { nomeSettore, voceCpv, type SettoreRadar } from "@/lib/radar/settori";
@@ -38,7 +38,7 @@ function descriviAggiornamento(a: AggiornamentoGara): string {
   if (a.tipo === "annullamento") return `Annullata secondo l'avviso ${a.id_fonte ?? ""}.`;
   if (a.tipo === "esito") return `Esito pubblicato (avviso ${a.id_fonte ?? ""}): ${a.valore_nuovo === "aggiudicata" ? "aggiudicata" : "chiusa senza aggiudicazione"}.`;
   const verbo = a.tipo === "proroga" ? "Proroga" : "Rettifica";
-  if (a.campo === "scadenza_offerte") return `${verbo} (avviso ${a.id_fonte ?? ""}): scadenza da ${scadenzaLeggibile(a.valore_precedente, true) ?? "non indicata"} a ${scadenzaLeggibile(a.valore_nuovo, true) ?? "non indicata"}.`;
+  if (a.campo === "scadenza_offerte") return `${verbo} (avviso ${a.id_fonte ?? ""}): scadenza da ${leggibileDaValore(a.valore_precedente) ?? "non indicata"} a ${leggibileDaValore(a.valore_nuovo) ?? "non indicata"}.`;
   if (a.campo === "valore_stimato") return `${verbo} (avviso ${a.id_fonte ?? ""}): valore stimato da ${euro(a.valore_precedente ? Number(a.valore_precedente) : null) ?? "non indicato"} a ${euro(a.valore_nuovo ? Number(a.valore_nuovo) : null) ?? "non indicato"}.`;
   if (a.campo === "oggetto") return `${verbo} (avviso ${a.id_fonte ?? ""}): oggetto modificato.`;
   if (a.campo === "url_documenti") return `${verbo} (avviso ${a.id_fonte ?? ""}): cambiato il collegamento ai documenti.`;
@@ -81,8 +81,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     });
   }
 
-  const stato = statoMostrato(g.stato, g.scadenza_offerte, adesso);
-  const giorni = stato === "aperta" ? giorniAllaScadenza(g.scadenza_offerte, adesso) : null;
+  const stato = statoMostrato(g.stato, { giorno: g.scadenza_giorno, iso: g.scadenza_offerte }, adesso);
+  const giorni = stato === "aperta" ? giorniAllaScadenza(g.scadenza_giorno, adesso) : null;
   const numeroAvviso = g.ultima_versione_id;
   const primoAvviso = [...provenienze].filter((p) => p.tipo_avviso?.startsWith("cn") || p.tipo_avviso?.startsWith("pin") || p.tipo_avviso?.startsWith("qu")).sort((a, b) => (a.pubblicato_il ?? "").localeCompare(b.pubblicato_il ?? ""))[0];
   const settori = g.settori as SettoreRadar[];
@@ -99,7 +99,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     tipoProcedura: g.tipo_procedura,
     criterio: g.criterio_aggiudicazione,
     scadenza: g.scadenza_offerte,
-    scadenzaOraIndicata: g.scadenza_ora_indicata,
+    scadenzaGiorno: g.scadenza_giorno,
     fonte: "TED",
     numeroAvviso: primoAvviso?.id_fonte ?? numeroAvviso,
     dataPubblicazione: primoAvviso?.pubblicato_il ?? g.data_pubblicazione,
@@ -149,7 +149,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           />
           <Dato
             etichetta="Entro quando"
-            valore={g.scadenza_offerte ? `${scadenzaLeggibile(g.scadenza_offerte, g.scadenza_ora_indicata)}${giorni !== null && giorni >= 0 ? ` · tra ${giorni} giorni` : ""}` : `Scadenza ${NON_INDICATO}`}
+            valore={g.scadenza_giorno ? `${scadenzaLeggibile(g.scadenza_giorno, g.scadenza_offerte)}${giorni !== null && giorni >= 0 ? ` · tra ${giorni} giorni` : ""}` : `Scadenza ${NON_INDICATO}`}
             nota={!fusoItaliano(g.scadenza_fonte) ? `Ora convertita in ora italiana; come scritta su TED: ${g.scadenza_fonte}. Verificala sull'avviso ufficiale.` : g.rettificata ? "Dati aggiornati all'ultima rettifica letta" : undefined}
           />
           <Dato etichetta="Stato" valore={ETICHETTA_STATO[stato]} />
@@ -259,7 +259,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
                     <td>{l.numero_lotto ?? "—"}</td>
                     <td>{l.oggetto ?? NON_INDICATO}</td>
                     <td className="num">{euro(l.valore_stimato) ?? "—"}</td>
-                    <td>{scadenzaLeggibile(l.scadenza_offerte, l.scadenza_ora_indicata) ?? "—"}</td>
+                    <td>{scadenzaLeggibile(l.scadenza_giorno, l.scadenza_offerte) ?? "—"}</td>
                     <td>{l.cig ?? "non indicato"}</td>
                   </tr>
                 ))}

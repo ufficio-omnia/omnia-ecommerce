@@ -5,7 +5,7 @@ import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { COLONNE_RISULTATO, type RigaRisultato } from "@/lib/radar/ricerca";
 import { statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
-import { giorniAllaScadenza, scadenzaLeggibile } from "@/lib/radar/sintesi-calcoli";
+import { giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import RigaGara, { hrefGara, type DatiRigaGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
@@ -15,14 +15,14 @@ import { giorno } from "@/components/omnia-ai/opportunita/formato";
 // nessun controllo periodico nel browser. Le notifiche nella campanella e i promemoria arrivano in B2.
 
 type Salvata = { id: string; procedura_id: string | null; aggiunta_id: string | null; monitorata: boolean; ultimo_aggiornamento_visto_il: string | null; creata_il: string };
-type Aggiunta = { id: string; cig: string | null; url: string | null; oggetto: string | null; ente: string | null; scadenza_offerte: string | null; scadenza_ora_indicata: boolean; importo: number | string | null; procedura_id: string | null };
+type Aggiunta = { id: string; cig: string | null; url: string | null; oggetto: string | null; ente: string | null; scadenza_giorno: string | null; scadenza_offerte: string | null; scadenza_ora_indicata: boolean; importo: number | string | null; procedura_id: string | null };
 type Novita = { procedura_id: string; tipo: string; campo: string | null; valore_nuovo: string | null; id_fonte: string | null; rilevato_il: string };
 
 function testoNovita(n: Novita): string {
   const quando = giorno(n.rilevato_il);
   if (n.tipo === "annullamento") return `Novità del ${quando}: gara annullata dalla fonte.`;
   if (n.tipo === "esito") return `Novità del ${quando}: esito pubblicato (${n.valore_nuovo === "aggiudicata" ? "aggiudicata" : "chiusa senza aggiudicazione"}).`;
-  if (n.campo === "scadenza_offerte") return `${n.tipo === "proroga" ? "Proroga" : "Rettifica"} del ${quando}: scadenza ora ${scadenzaLeggibile(n.valore_nuovo, true) ?? "non indicata"}.`;
+  if (n.campo === "scadenza_offerte") return `${n.tipo === "proroga" ? "Proroga" : "Rettifica"} del ${quando}: scadenza ora ${leggibileDaValore(n.valore_nuovo) ?? "non indicata"}.`;
   return `Rettifica del ${quando} (avviso ${n.id_fonte ?? ""}).`;
 }
 
@@ -44,7 +44,7 @@ export default async function MonitoratePage() {
   const salvate = salvateRaw ?? [];
   const idAggiunte = salvate.map((s) => s.aggiunta_id).filter((x): x is string => !!x);
   const { data: aggiunteRaw } = idAggiunte.length
-    ? await supabase.from("omnia_ai_radar_gare_aggiunte").select("id, cig, url, oggetto, ente, scadenza_offerte, scadenza_ora_indicata, importo, procedura_id").in("id", idAggiunte).returns<Aggiunta[]>()
+    ? await supabase.from("omnia_ai_radar_gare_aggiunte").select("id, cig, url, oggetto, ente, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, importo, procedura_id").in("id", idAggiunte).returns<Aggiunta[]>()
     : { data: [] as Aggiunta[] };
   const aggiunte = new Map((aggiunteRaw ?? []).map((a) => [a.id, a]));
 
@@ -64,7 +64,7 @@ export default async function MonitoratePage() {
     : [{ data: [] as RigaRisultato[] }, { data: [] as Novita[] }];
   const procedure = new Map((procedureRaw ?? []).map((p) => [p.id, { ...p, valore_stimato: p.valore_stimato === null ? null : Number(p.valore_stimato) }]));
 
-  const righe: (DatiRigaGara & { chiave: string; scadenzaOrd: number; gruppo: "settimana" | "prossime" | "senza_data" | "chiuse" })[] = [];
+  const righe: (DatiRigaGara & { chiave: string; scadenzaOrd: string; gruppo: "settimana" | "prossime" | "senza_data" | "chiuse" })[] = [];
   for (const s of salvate) {
     const aggiunta = s.aggiunta_id ? aggiunte.get(s.aggiunta_id) : undefined;
     const p = s.procedura_id ? procedure.get(s.procedura_id) : aggiunta?.procedura_id ? procedure.get(aggiunta.procedura_id) : undefined;
@@ -80,7 +80,7 @@ export default async function MonitoratePage() {
         provincia: p.sa_provincia,
         regioni: p.luogo_regioni,
         scadenza: p.scadenza_offerte,
-        scadenzaOraIndicata: p.scadenza_ora_indicata,
+        scadenzaGiorno: p.scadenza_giorno,
         valore: p.valore_stimato,
         tipoValore: "Valore stimato",
         durataMesi: p.durata_mesi,
@@ -105,7 +105,7 @@ export default async function MonitoratePage() {
         provincia: null,
         regioni: [],
         scadenza: aggiunta.scadenza_offerte,
-        scadenzaOraIndicata: aggiunta.scadenza_ora_indicata,
+        scadenzaGiorno: aggiunta.scadenza_giorno,
         valore: aggiunta.importo === null ? null : Number(aggiunta.importo),
         tipoValore: "Importo indicato da te",
         durataMesi: null,
@@ -121,10 +121,10 @@ export default async function MonitoratePage() {
         monitorata: s.monitorata,
       };
     } else continue;
-    const stato = statoMostrato(d.stato, d.scadenza, adesso);
-    const g = giorniAllaScadenza(d.scadenza, adesso);
+    const stato = statoMostrato(d.stato, { giorno: d.scadenzaGiorno, iso: d.scadenza }, adesso);
+    const g = giorniAllaScadenza(d.scadenzaGiorno, adesso);
     const gruppo = stato !== "aperta" ? "chiuse" : g === null ? "senza_data" : g <= 7 ? "settimana" : "prossime";
-    righe.push({ ...d, chiave: s.id, scadenzaOrd: d.scadenza ? Date.parse(d.scadenza) : Number.POSITIVE_INFINITY, gruppo });
+    righe.push({ ...d, chiave: s.id, scadenzaOrd: `${d.scadenzaGiorno ?? "9999-99-99"}|${d.scadenza ?? "~"}`, gruppo });
   }
 
   const gruppi = [
@@ -147,7 +147,7 @@ export default async function MonitoratePage() {
         </div>
       ) : (
         gruppi.map((gr) => {
-          const elenco = righe.filter((r) => r.gruppo === gr.id).sort((a, b) => (gr.id === "chiuse" ? b.scadenzaOrd - a.scadenzaOrd : a.scadenzaOrd - b.scadenzaOrd));
+          const elenco = righe.filter((r) => r.gruppo === gr.id).sort((a, b) => (gr.id === "chiuse" ? b.scadenzaOrd.localeCompare(a.scadenzaOrd) : a.scadenzaOrd.localeCompare(b.scadenzaOrd)));
           if (elenco.length === 0) return null;
           return (
             <section key={gr.id} className="omnia-opp-gruppo-monitorate" aria-label={gr.titolo}>

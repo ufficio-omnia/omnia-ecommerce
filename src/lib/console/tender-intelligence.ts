@@ -7,6 +7,8 @@ import { FONTI_RADAR, type DescrizioneFonte } from "@/lib/radar/fonti/tipi";
 import { leggiParametriRadar } from "@/lib/radar/impostazioni";
 import { AZIONI_RADAR, type AzioneRadar, type ParametriRadar } from "@/lib/radar/diritto-calcoli";
 import { STATI_LAVORO, type StatoLavoro } from "@/lib/radar/lavori-calcoli";
+import { condizioneAperte } from "@/lib/radar/ricerca-calcoli";
+import { giornoIso } from "@/lib/radar/importa-ted-calcoli";
 
 export type StatoFonteDb = {
   attiva: boolean;
@@ -95,7 +97,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     conta("radar_procedure", "id"),
     // aperte davvero: stato «aperta» e scadenza assente o futura
     (async () => {
-      const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).eq("stato", "aperta").or(`scadenza_offerte.is.null,scadenza_offerte.gt.${adesso}`);
+      const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).eq("stato", "aperta").or(condizioneAperte(giornoIso(new Date(adesso)), adesso));
       return error ? null : (count ?? 0);
     })(),
     conta("radar_aggiudicazioni", "id"),

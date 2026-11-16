@@ -115,7 +115,7 @@ export async function aggiungiGaraAMano(_stato: StatoAzioneRadar, formData: Form
   if (!destinazione) {
     const { data: nuova, error } = await supabase
       .from("omnia_ai_radar_gare_aggiunte")
-      .insert({ user_id: g.contesto.accountId, creata_da: g.contesto.userId, cig: v.cig, url: v.url, oggetto: v.oggetto, ente: v.ente, scadenza_offerte: v.scadenzaOfferte, scadenza_ora_indicata: v.scadenzaOraIndicata, importo: v.importo })
+      .insert({ user_id: g.contesto.accountId, creata_da: g.contesto.userId, cig: v.cig, url: v.url, oggetto: v.oggetto, ente: v.ente, scadenza_giorno: v.scadenzaGiorno, scadenza_offerte: v.scadenzaOfferte, scadenza_ora_indicata: v.scadenzaOraIndicata, importo: v.importo })
       .select("id")
       .single<{ id: string }>();
     if (error || !nuova) {

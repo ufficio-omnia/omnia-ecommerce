@@ -22,6 +22,7 @@ export type GaraPubblica = {
   natura_contratto: "servizi" | "forniture" | "lavori" | "misto" | null;
   settori_speciali: boolean | null;
   data_pubblicazione: string | null;
+  scadenza_giorno: string | null;
   scadenza_offerte: string | null;
   scadenza_ora_indicata: boolean;
   scadenza_fonte: string | null;
@@ -50,6 +51,7 @@ export type LottoPubblico = {
   cpv_principale: string | null;
   valore_stimato: number | null;
   durata_mesi: number | null;
+  scadenza_giorno: string | null;
   scadenza_offerte: string | null;
   scadenza_ora_indicata: boolean;
   url_documenti: string | null;
@@ -59,7 +61,7 @@ export type ProvenienzaAvviso = { fonte: string; id_fonte: string; url: string |
 export type AggiornamentoGara = { id: string; tipo: string; campo: string | null; valore_precedente: string | null; valore_nuovo: string | null; fonte: string; id_fonte: string | null; rilevato_il: string };
 
 const COLONNE_GARA =
-  "id, chiave, oggetto, oggetto_breve, descrizione, sa_codice_fiscale, sa_denominazione, sa_comune, sa_provincia, codice_nuts, luogo_regioni, ente_tipo, tipo_avviso, tipo_procedura, criterio_aggiudicazione, natura_contratto, settori_speciali, data_pubblicazione, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, valore_stimato, durata_mesi, n_lotti, stato, rettificata, url_avviso, url_documenti, piattaforma_host, cpv_principale, cpv_tutti, settori, metodo_settore, ultima_versione_id, prima_rilevazione_il, ultima_rilevazione_il";
+  "id, chiave, oggetto, oggetto_breve, descrizione, sa_codice_fiscale, sa_denominazione, sa_comune, sa_provincia, codice_nuts, luogo_regioni, ente_tipo, tipo_avviso, tipo_procedura, criterio_aggiudicazione, natura_contratto, settori_speciali, data_pubblicazione, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, valore_stimato, durata_mesi, n_lotti, stato, rettificata, url_avviso, url_documenti, piattaforma_host, cpv_principale, cpv_tutti, settori, metodo_settore, ultima_versione_id, prima_rilevazione_il, ultima_rilevazione_il";
 
 const numero = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 
@@ -67,7 +69,7 @@ export async function leggiGaraPubblica(admin: SupabaseClient, id: string): Prom
   const { data: gara, error } = await admin.from("radar_procedure").select(COLONNE_GARA).eq("id", id).maybeSingle<GaraPubblica>();
   if (error || !gara) return null;
   const [lotti, provenienze, aggiornamenti] = await Promise.all([
-    admin.from("radar_lotti").select("id, numero_lotto, cig, oggetto, cpv_principale, valore_stimato, durata_mesi, scadenza_offerte, scadenza_ora_indicata, url_documenti").eq("procedura_id", id).order("numero_lotto").returns<LottoPubblico[]>(),
+    admin.from("radar_lotti").select("id, numero_lotto, cig, oggetto, cpv_principale, valore_stimato, durata_mesi, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, url_documenti").eq("procedura_id", id).order("numero_lotto").returns<LottoPubblico[]>(),
     admin.from("radar_procedure_fonti").select("fonte, id_fonte, url, pubblicato_il, versione, tipo_avviso, motivo_modifica, rilevato_il").eq("procedura_id", id).order("pubblicato_il", { ascending: false }).returns<ProvenienzaAvviso[]>(),
     admin.from("radar_aggiornamenti").select("id, tipo, campo, valore_precedente, valore_nuovo, fonte, id_fonte, rilevato_il").eq("procedura_id", id).order("rilevato_il", { ascending: false }).limit(50).returns<AggiornamentoGara[]>(),
   ]);

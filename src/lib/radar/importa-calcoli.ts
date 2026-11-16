@@ -7,7 +7,7 @@
 //   - la data di pubblicazione della gara resta quella del primo avviso; la prima rilevazione non si riscrive mai;
 //   - un cambiamento è «notificabile» solo se arriva dalla sincronizzazione quotidiana E la gara è ancora aperta: niente notifiche per gli
 //     avvisi dello storico recuperato, né per gare già scadute.
-import { ordinePubblicazione, type BandoTed } from "./fonti/ted-calcoli";
+import { giornoDiRoma, ordinePubblicazione, type BandoTed } from "./fonti/ted-calcoli";
 import { titoloBreve } from "./sintesi-calcoli";
 
 export type ModoImportazione = "recupero" | "incrementale";
@@ -34,6 +34,7 @@ export type RigaProcedura = {
   natura_contratto: string | null;
   settori_speciali: boolean | null;
   data_pubblicazione: string | null;
+  scadenza_giorno: string | null;
   scadenza_offerte: string | null;
   scadenza_ora_indicata: boolean;
   scadenza_fonte: string | null;
@@ -107,6 +108,7 @@ export function rigaDaBando(b: BandoTed, precedente: RigaProcedura | null, adess
     natura_contratto: r.natura,
     settori_speciali: r.settoriSpeciali,
     data_pubblicazione: dataPubblicazione,
+    scadenza_giorno: r.scadenzaGiorno,
     scadenza_offerte: r.scadenzaOfferte,
     scadenza_ora_indicata: r.scadenzaOraIndicata,
     scadenza_fonte: b.scadenzaFonte,
@@ -147,11 +149,12 @@ function stessoValore(a: number | null, b: number | null): boolean {
 export function cambiamentiTraVersioni(prima: RigaProcedura, dopo: RigaProcedura): Cambiamento[] {
   const c: Cambiamento[] = [];
   if (dopo.stato === "annullata" && prima.stato !== "annullata") c.push({ tipo: "annullamento", campo: "stato", prima: prima.stato, dopo: "annullata" });
-  const tPrima = prima.scadenza_offerte ? Date.parse(prima.scadenza_offerte) : null;
-  const tDopo = dopo.scadenza_offerte ? Date.parse(dopo.scadenza_offerte) : null;
-  if (tPrima !== tDopo || prima.scadenza_ora_indicata !== dopo.scadenza_ora_indicata) {
-    const proroga = tPrima !== null && tDopo !== null && tDopo > tPrima;
-    c.push({ tipo: proroga ? "proroga" : "rettifica", campo: "scadenza_offerte", prima: prima.scadenza_offerte, dopo: dopo.scadenza_offerte });
+  const sPrima = { giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte };
+  const sDopo = { giorno: dopo.scadenza_giorno, iso: dopo.scadenza_offerte };
+  if (valoreScadenza(sPrima) !== valoreScadenza(sDopo)) {
+    // proroga: giorno successivo, oppure stesso giorno con un'ora più tarda
+    const proroga = !!sPrima.giorno && !!sDopo.giorno && (sDopo.giorno > sPrima.giorno || (sDopo.giorno === sPrima.giorno && !!sPrima.iso && !!sDopo.iso && Date.parse(sDopo.iso) > Date.parse(sPrima.iso)));
+    c.push({ tipo: proroga ? "proroga" : "rettifica", campo: "scadenza_offerte", prima: valoreScadenza(sPrima), dopo: valoreScadenza(sDopo) });
   }
   if (!stessoValore(prima.valore_stimato, dopo.valore_stimato)) c.push({ tipo: "rettifica", campo: "valore_stimato", prima: testo(prima.valore_stimato), dopo: testo(dopo.valore_stimato) });
   if (prima.oggetto !== dopo.oggetto) c.push({ tipo: "rettifica", campo: "oggetto", prima: prima.oggetto.slice(0, 2000), dopo: dopo.oggetto.slice(0, 2000) });
@@ -160,16 +163,33 @@ export function cambiamentiTraVersioni(prima: RigaProcedura, dopo: RigaProcedura
   return c;
 }
 
-// Una gara è aperta in questo momento? Stato «aperta» e scadenza assente o futura.
-export function aperta(stato: StatoProcedura, scadenza: string | null, adesso: Date): boolean {
+// La scadenza di una gara: il giorno e, SOLO se l'ora è indicata, l'istante. Mai un'ora presunta (regola del progetto, migrazione 0102).
+export type Scadenza = { giorno: string | null; iso: string | null };
+
+// Come si conserva nel registro dei cambiamenti: l'istante se c'è l'ora, altrimenti il solo giorno (AAAA-MM-GG).
+export function valoreScadenza(s: Scadenza): string | null {
+  return s.iso ?? s.giorno;
+}
+
+export function scadenzaDaValore(v: string | null): Scadenza {
+  if (!v) return { giorno: null, iso: null };
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? { giorno: v, iso: null } : { giorno: giornoDiRoma(new Date(v)), iso: v };
+}
+
+// Una gara è aperta in questo momento? Stato «aperta» e: nessuna scadenza; oppure un giorno futuro; oppure oggi, senza ora (aperta per tutto
+// il giorno) o con un'ora non ancora passata. Un giorno già finito è scaduto, con o senza ora.
+export function aperta(stato: StatoProcedura, s: Scadenza, adesso: Date): boolean {
   if (stato !== "aperta") return false;
-  if (!scadenza) return true;
-  const t = Date.parse(scadenza);
+  if (!s.giorno) return true;
+  const oggi = giornoDiRoma(adesso);
+  if (s.giorno !== oggi) return s.giorno > oggi;
+  if (!s.iso) return true;
+  const t = Date.parse(s.iso);
   return Number.isNaN(t) ? true : t > adesso.getTime();
 }
 
-export function notificabile(modo: ModoImportazione, stato: StatoProcedura, scadenza: string | null, adesso: Date): boolean {
-  return modo === "incrementale" && aperta(stato, scadenza, adesso);
+export function notificabile(modo: ModoImportazione, stato: StatoProcedura, s: Scadenza, adesso: Date): boolean {
+  return modo === "incrementale" && aperta(stato, s, adesso);
 }
 
 // Lo stato dopo un avviso di esito: una gara annullata resta annullata; altrimenti vale l'esito, se ne dice uno.
@@ -179,8 +199,8 @@ export function statoDopoEsito(attuale: StatoProcedura, esito: "aggiudicata" | "
 }
 
 // Stato da mostrare: «scaduta» si calcola dalla data, non si scrive.
-export function statoMostrato(stato: StatoProcedura, scadenza: string | null, adesso: Date): StatoProcedura {
-  if (stato === "aperta" && scadenza && !aperta(stato, scadenza, adesso)) return "scaduta";
+export function statoMostrato(stato: StatoProcedura, s: Scadenza, adesso: Date): StatoProcedura {
+  if (stato === "aperta" && s.giorno && !aperta(stato, s, adesso)) return "scaduta";
   return stato;
 }
 

@@ -37,7 +37,7 @@ export type EsitoPaginaBandi = {
 export type EsitoPaginaEsiti = { letti: number; applicati: number; senzaBando: number; invariati: number; senzaStato: number };
 
 const COLONNE_RIGA =
-  "id, chiave, oggetto, oggetto_breve, descrizione, sa_codice_fiscale, sa_denominazione, sa_comune, sa_provincia, sa_regione, codice_nuts, luogo_regioni, ente_tipo, tipo_avviso, tipo_procedura, criterio_aggiudicazione, natura_contratto, settori_speciali, data_pubblicazione, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, valore_stimato, durata_mesi, n_lotti, stato, rettificata, url_avviso, url_documenti, piattaforma_host, cpv_principale, cpv_tutti, settori, metodo_settore, ultima_versione_il, ultima_versione_id, ultima_rilevazione_il, aggiornata_il";
+  "id, chiave, oggetto, oggetto_breve, descrizione, sa_codice_fiscale, sa_denominazione, sa_comune, sa_provincia, sa_regione, codice_nuts, luogo_regioni, ente_tipo, tipo_avviso, tipo_procedura, criterio_aggiudicazione, natura_contratto, settori_speciali, data_pubblicazione, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, valore_stimato, durata_mesi, n_lotti, stato, rettificata, url_avviso, url_documenti, piattaforma_host, cpv_principale, cpv_tutti, settori, metodo_settore, ultima_versione_il, ultima_versione_id, ultima_rilevazione_il, aggiornata_il";
 
 class ErroreDb extends Error {}
 
@@ -152,6 +152,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         cpv_tutti: l.cpvTutti,
         valore_stimato: l.valoreStimato,
         durata_mesi: l.durataMesi,
+        scadenza_giorno: b.lottiScadenze[i]?.giorno ?? null,
         scadenza_offerte: b.lottiScadenze[i]?.iso ?? null,
         scadenza_ora_indicata: b.lottiScadenze[i]?.oraIndicata ?? false,
         scadenza_fonte: b.lottiScadenze[i]?.fonte ?? null,
@@ -203,9 +204,10 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     if (!id) return [];
     const r = s.riga!;
     const prima = s.iniziale;
-    const eraAperta = prima ? aperta(prima.stato as StatoProcedura, prima.scadenza_offerte, adesso) : false;
+    const scadenzaOra = { giorno: r.scadenza_giorno, iso: r.scadenza_offerte };
+    const eraAperta = prima ? aperta(prima.stato as StatoProcedura, { giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte }, adesso) : false;
     const righe: Record<string, unknown>[] = [];
-    if (!prima) righe.push({ procedura_id: id, tipo: "nuova", campo: null, valore_precedente: null, valore_nuovo: null, fonte: "ted", id_fonte: s.bando!.meta.numero, notificabile: notificabile(modo, r.stato, r.scadenza_offerte, adesso) });
+    if (!prima) righe.push({ procedura_id: id, tipo: "nuova", campo: null, valore_precedente: null, valore_nuovo: null, fonte: "ted", id_fonte: s.bando!.meta.numero, notificabile: notificabile(modo, r.stato, scadenzaOra, adesso) });
     for (const c of s.cambiamenti) {
       righe.push({
         procedura_id: id,
@@ -215,7 +217,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         valore_nuovo: c.dopo?.slice(0, 2000) ?? null,
         fonte: "ted",
         id_fonte: c.idFonte,
-        notificabile: modo === "incrementale" && (eraAperta || aperta(r.stato, r.scadenza_offerte, adesso)),
+        notificabile: modo === "incrementale" && (eraAperta || aperta(r.stato, scadenzaOra, adesso)),
       });
     }
     return righe;

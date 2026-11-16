@@ -7,14 +7,18 @@ const FMT_BREVE = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", da
 const FMT_ORA = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const FMT_GIORNO = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric" });
 
-export function scadenzaBreve(iso: string | null, oraIndicata: boolean): string {
-  if (!iso) return "Scadenza non indicata";
-  const d = new Date(iso);
-  return oraIndicata ? `${FMT_BREVE.format(d)}, ${FMT_ORA.format(d)}` : `${FMT_BREVE.format(d)} · ora non indicata`;
+// Giorno sempre; l'ora solo se la fonte (o il cliente) la indica: mai presunta.
+export function scadenzaBreve(giorno: string | null, iso: string | null): string {
+  if (iso) {
+    const d = new Date(iso);
+    return `${FMT_BREVE.format(d)}, ${FMT_ORA.format(d)}`;
+  }
+  if (!giorno) return "Scadenza non indicata";
+  return `${FMT_BREVE.format(new Date(`${giorno}T12:00:00Z`))} · ora non indicata`;
 }
 
-export function contoAllaRovescia(iso: string | null, adesso: Date): { testo: string; urgente: boolean } | null {
-  const g = giorniAllaScadenza(iso, adesso);
+export function contoAllaRovescia(giorno: string | null, adesso: Date): { testo: string; urgente: boolean } | null {
+  const g = giorniAllaScadenza(giorno, adesso);
   if (g === null) return null;
   if (g < 0) return { testo: "Scaduta", urgente: false };
   if (g === 0) return { testo: "Scade oggi", urgente: true };

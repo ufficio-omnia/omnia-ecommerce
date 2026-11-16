@@ -230,7 +230,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
                       provincia: r.sa_provincia,
                       regioni: r.luogo_regioni,
                       scadenza: r.scadenza_offerte,
-                      scadenzaOraIndicata: r.scadenza_ora_indicata,
+                      scadenzaGiorno: r.scadenza_giorno,
                       valore: r.valore_stimato,
                       tipoValore: "Valore stimato",
                       durataMesi: r.durata_mesi,

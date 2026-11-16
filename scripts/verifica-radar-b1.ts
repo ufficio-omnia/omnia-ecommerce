@@ -12,7 +12,6 @@ import {
   cigEtichettati,
   corpoRichiesta,
   eEsclusione,
-  fineGiornoRoma,
   fusoItaliano,
   impronta,
   leggiBandoTed,
@@ -21,13 +20,13 @@ import {
   queryAvvisi,
   type BandoTed,
 } from "../src/lib/radar/fonti/ted-calcoli";
-import { aperta, cambiamentiTraVersioni, notificabile, piuRecente, rigaDaBando, statoDopoEsito, statoMostrato } from "../src/lib/radar/importa-calcoli";
+import { aperta, cambiamentiTraVersioni, notificabile, piuRecente, rigaDaBando, scadenzaDaValore, statoDopoEsito, statoMostrato, valoreScadenza } from "../src/lib/radar/importa-calcoli";
 import { cursoreAllAvvio, cursoreDopoPagina, cursoreIniziale, finestraCorrente, serveNuovoRecupero, type CursoreTed } from "../src/lib/radar/importa-ted-calcoli";
 import { SINONIMI, espandiDomanda } from "../src/lib/radar/sinonimi";
-import { CANDIDATI_MASSIMI, PAGINE_MASSIME, analizzaDomanda, filtriDaParametri, ordinaCandidati, parametriDaFiltri, punteggioRilevanza } from "../src/lib/radar/ricerca-calcoli";
+import { CANDIDATI_MASSIMI, PAGINE_MASSIME, analizzaDomanda, condizioneAperte, condizioneStorico, filtriDaParametri, ordinaCandidati, parametriDaFiltri, punteggioRilevanza } from "../src/lib/radar/ricerca-calcoli";
 import { scadenzaDaCampi, validaGaraAggiunta } from "../src/lib/radar/aggiunte-calcoli";
 import { CHIAVI_MODIFICABILI, etichettaParametro, modificheParametri, validaParametro } from "../src/lib/console/tender-intelligence-calcoli";
-import { euro, sintesiDeterministica, titoloBreve } from "../src/lib/radar/sintesi-calcoli";
+import { euro, giorniAllaScadenza, leggibileDaValore, scadenzaLeggibile, sintesiDeterministica, titoloBreve } from "../src/lib/radar/sintesi-calcoli";
 import { comuneEProvincia, regioneDaNuts } from "../src/lib/radar/territorio";
 import { classificaGara, settoriDaParole, testoPerConfronto, vociCpv } from "../src/lib/radar/settori";
 
@@ -87,7 +86,7 @@ const comeBando = (n: Record<string, unknown>) => {
 const b1 = comeBando(BANDO);
 uguale("chiave stabile della procedura", b1.record.chiaveProcedura, "ted:sintetica-procedura-1");
 uguale("settore dal CPV del file", [b1.settori, b1.metodoSettore], [["pulizia"], "cpv"]);
-uguale("scadenza con ora e fuso italiano", [b1.record.scadenzaOfferte, b1.record.scadenzaOraIndicata], ["2026-12-14T12:00:00.000Z", true]);
+uguale("scadenza con ora e fuso italiano: giorno e istante", [b1.record.scadenzaGiorno, b1.record.scadenzaOfferte, b1.record.scadenzaOraIndicata], ["2026-12-14", "2026-12-14T12:00:00.000Z", true]);
 uguale("valore stimato, durata, lotti", [b1.record.valoreStimato, b1.record.durataMesi, b1.record.lotti.length], [334750, 36, 1]);
 uguale("ente: comune e provincia dalla sigla, codice fiscale", [b1.record.ente.comune, b1.record.ente.provincia, b1.record.ente.codiceFiscale], ["Venezia", "VE", "00000000000"]);
 uguale("regione dal luogo di esecuzione (NUTS)", b1.regioni, ["veneto"]);
@@ -96,10 +95,11 @@ atteso("collegamento all'avviso ufficiale e ai documenti", b1.record.urlAvviso =
 atteso("scadenza della fonte conservata", b1.scadenzaFonte === "2026-12-14+01:00 13:00:00+01:00" && fusoItaliano(b1.scadenzaFonte));
 
 const senzaOra = comeBando({ ...BANDO, "deadline-receipt-tender-time-lot": [] });
-uguale("scadenza senza ora: ora non indicata, fine del giorno solo per la scadenza", [senzaOra.record.scadenzaOraIndicata, senzaOra.record.scadenzaOfferte], [false, fineGiornoRoma("2026-12-14")]);
-uguale("fine del giorno a Roma in inverno e in estate", [fineGiornoRoma("2026-12-14"), fineGiornoRoma("2026-07-14")], ["2026-12-14T22:59:59.000Z", "2026-07-14T21:59:59.000Z"]);
+uguale("scadenza senza ora: solo il giorno, nessun istante presunto", [senzaOra.record.scadenzaGiorno, senzaOra.record.scadenzaOfferte, senzaOra.record.scadenzaOraIndicata], ["2026-12-14", null, false]);
 const inUtc = comeBando({ ...BANDO, "deadline-receipt-tender-date-lot": ["2026-12-09Z"], "deadline-receipt-tender-time-lot": ["13:00:00Z"] });
-atteso("ora in UTC («Z»): istante esatto e fuso segnalato come non italiano", inUtc.record.scadenzaOfferte === "2026-12-09T13:00:00.000Z" && !fusoItaliano(inUtc.scadenzaFonte));
+atteso("ora in UTC («Z»): istante esatto e fuso segnalato come non italiano", inUtc.record.scadenzaOfferte === "2026-12-09T13:00:00.000Z" && inUtc.record.scadenzaGiorno === "2026-12-09" && !fusoItaliano(inUtc.scadenzaFonte));
+const utcSera = comeBando({ ...BANDO, "deadline-receipt-tender-date-lot": ["2026-12-09Z"], "deadline-receipt-tender-time-lot": ["23:30:00Z"] });
+uguale("ora UTC a tarda sera: il giorno è quello italiano dell'istante", utcSera.record.scadenzaGiorno, "2026-12-10");
 
 const multilotto = comeBando({
   ...BANDO,
@@ -110,7 +110,7 @@ const multilotto = comeBando({
   "deadline-receipt-tender-time-lot": ["12:00:00+01:00", "12:00:00+01:00"],
 });
 atteso("array dei lotti sfalsati: nessun valore attribuito al lotto sbagliato", multilotto.record.lotti.every((l) => l.valoreStimato === null) && multilotto.record.valoreStimato === 334750);
-uguale("più lotti: la scadenza della gara è la più vicina", multilotto.record.scadenzaOfferte, "2026-12-10T11:00:00.000Z");
+uguale("più lotti: la scadenza della gara è la più vicina", [multilotto.record.scadenzaGiorno, multilotto.record.scadenzaOfferte], ["2026-12-10", "2026-12-10T11:00:00.000Z"]);
 
 const perParola = leggiBandoTed({ ...BANDO, "title-proc": { ita: "Servizio di mensa per la residenza per anziani (dati sintetici)" }, "title-lot": { ita: ["Mensa (dati sintetici)"] }, "main-classification-proc": ["85311000"], "classification-cpv": ["85311000"], "main-classification-lot": ["85311000"] });
 atteso("trovata per parola chiave sull'oggetto (servizi)", !eEsclusione(perParola) && (perParola as BandoTed).metodoSettore === "parole_chiave" && (perParola as BandoTed).settori.includes("ristorazione"));
@@ -159,10 +159,23 @@ atteso("stesso giorno: vale il numero di pubblicazione più alto", piuRecente({ 
 const rigaAggiudicata = { ...riga1, stato: "aggiudicata" as const };
 uguale("una correzione del bando non riapre una gara già aggiudicata", rigaDaBando(b2, rigaAggiudicata, adesso).stato, "aggiudicata");
 uguale("esiti: aggiudicata, annullata resta annullata, nessun esito nessun cambio", [statoDopoEsito("aperta", "aggiudicata"), statoDopoEsito("annullata", "aggiudicata"), statoDopoEsito("aperta", null)], ["aggiudicata", null, null]);
-const futura = "2026-12-14T12:00:00.000Z";
-const passata = "2026-11-01T12:00:00.000Z";
+const futura = { giorno: "2026-12-14", iso: "2026-12-14T12:00:00.000Z" };
+const passata = { giorno: "2026-11-01", iso: "2026-11-01T12:00:00.000Z" };
 uguale("notificabile solo in sincronizzazione e su gare aperte (mai dallo storico)", [notificabile("recupero", "aperta", futura, adesso), notificabile("incrementale", "aperta", futura, adesso), notificabile("incrementale", "aperta", passata, adesso), notificabile("incrementale", "annullata", futura, adesso)], [false, true, false, false]);
-uguale("«scaduta» si calcola dalla data", [statoMostrato("aperta", passata, adesso), statoMostrato("aperta", futura, adesso), aperta("aperta", null, adesso)], ["scaduta", "aperta", true]);
+uguale("«scaduta» si calcola dalla data", [statoMostrato("aperta", passata, adesso), statoMostrato("aperta", futura, adesso), aperta("aperta", { giorno: null, iso: null }, adesso)], ["scaduta", "aperta", true]);
+uguale(
+  "regola del giorno: senza ora aperta per tutto il giorno, con l'ora fino a quell'ora, giorno finito = scaduta",
+  [aperta("aperta", { giorno: "2026-11-16", iso: null }, adesso), aperta("aperta", { giorno: "2026-11-16", iso: "2026-11-16T09:00:00.000Z" }, adesso), aperta("aperta", { giorno: "2026-11-16", iso: "2026-11-16T15:00:00.000Z" }, adesso), aperta("aperta", { giorno: "2026-11-15", iso: null }, adesso)],
+  [true, false, true, false],
+);
+uguale("registro: giorno senza ora o istante, e ritorno", [valoreScadenza({ giorno: "2026-12-14", iso: null }), scadenzaDaValore("2026-12-14"), scadenzaDaValore("2026-12-14T12:00:00.000Z")], ["2026-12-14", { giorno: "2026-12-14", iso: null }, { giorno: "2026-12-14", iso: "2026-12-14T12:00:00.000Z" }]);
+uguale("scadenza in parole: con l'ora o «ora non indicata»", [scadenzaLeggibile("2026-12-14", "2026-12-14T12:00:00.000Z"), scadenzaLeggibile("2026-12-14", null), leggibileDaValore("2026-12-14")], ["14 dicembre 2026, ore 13:00", "14 dicembre 2026 (ora non indicata)", "14 dicembre 2026 (ora non indicata)"]);
+uguale("giorni alla scadenza per giorno di calendario", [giorniAllaScadenza("2026-11-16", adesso), giorniAllaScadenza("2026-11-17", adesso), giorniAllaScadenza("2026-11-15", adesso)], [0, 1, -1]);
+const senzaOraRiga = rigaDaBando(senzaOra, null, adesso);
+const conOraTardi = rigaDaBando(comeBando({ ...BANDO, "publication-number": "730001-2026", "publication-date": "2026-10-25+02:00", "deadline-receipt-tender-time-lot": ["18:00:00+01:00"] }), senzaOraRiga, adesso);
+uguale("dal solo giorno all'ora indicata nello stesso giorno: rettifica (non proroga)", cambiamentiTraVersioni(senzaOraRiga, conOraTardi).map((c) => [c.tipo, c.prima, c.dopo]), [["rettifica", "2026-12-14", "2026-12-14T17:00:00.000Z"]]);
+uguale("stesso giorno, ora più tarda: proroga", cambiamentiTraVersioni(riga1, rigaDaBando(comeBando({ ...BANDO, "publication-number": "740001-2026", "publication-date": "2026-10-26+02:00", "deadline-receipt-tender-time-lot": ["18:00:00+01:00"] }), riga1, adesso)).map((c) => c.tipo), ["proroga"]);
+atteso("condizioni «aperte» e «storico» sul giorno, senza ore presunte", condizioneAperte("2026-11-16", adesso.toISOString()) === "scadenza_giorno.is.null,scadenza_giorno.gt.2026-11-16,and(scadenza_giorno.eq.2026-11-16,or(scadenza_offerte.is.null,scadenza_offerte.gt.2026-11-16T10:00:00.000Z))" && condizioneStorico("2026-11-16", adesso.toISOString()).startsWith("stato.neq.aperta,scadenza_giorno.lt.2026-11-16,"));
 
 // ───── 3. punto di ripresa dell'importazione ─────
 const c0 = cursoreIniziale("2026-11-16");
@@ -213,8 +226,8 @@ uguale("domanda con sinonimi in un unico gruppo", d1.tsquery, "(pulizie | sanifi
 atteso("domanda ripulita: solo lettere, cifre e operatori", /^[a-z0-9 &|()]+$/.test(analizzaDomanda("l'affidamento; DROP TABLE x -- 'pulizia'").tsquery ?? ""));
 uguale("parole vuote ignorate", analizzaDomanda("di per la gara").tsquery, null);
 const base = { oggetto_breve: null, sa_denominazione: "Comune di Prova", settori: ["pulizia"], valore_stimato: 100000, rettificata: false };
-const buona = { ...base, id: "a", oggetto: "Servizio di pulizia delle scuole", metodo_settore: "cpv", scadenza_offerte: "2026-12-06T10:00:00Z", data_pubblicazione: "2026-11-14" };
-const scaduta = { ...base, id: "b", oggetto: "Servizio di pulizia delle scuole", metodo_settore: "parole_chiave", scadenza_offerte: "2026-11-10T10:00:00Z", data_pubblicazione: "2026-10-01" };
+const buona = { ...base, id: "a", oggetto: "Servizio di pulizia delle scuole", metodo_settore: "cpv", scadenza_giorno: "2026-12-06", scadenza_offerte: "2026-12-06T10:00:00Z", data_pubblicazione: "2026-11-14" };
+const scaduta = { ...base, id: "b", oggetto: "Servizio di pulizia delle scuole", metodo_settore: "parole_chiave", scadenza_giorno: "2026-11-10", scadenza_offerte: null, data_pubblicazione: "2026-10-01" };
 const pb = punteggioRilevanza(buona, d1, { settori: [] }, adesso);
 atteso("rilevanza spiegata: testo, CPV, tempo utile, novità", pb.motivi.some((m) => m.includes("nell'oggetto")) && pb.motivi.includes("settore riconosciuto dal CPV") && pb.motivi.some((m) => m.includes("giorni per preparare")) && pb.motivi.includes("pubblicata negli ultimi 7 giorni"));
 const ordinati = ordinaCandidati([{ ...scaduta, punteggio: punteggioRilevanza(scaduta, d1, { settori: [] }, adesso) }, { ...buona, punteggio: pb }], "rilevanza");
@@ -224,10 +237,10 @@ uguale("per rilevanza la gara aperta e riconosciuta dal CPV viene prima", ordina
 const campi = { cig: "", url: "", oggetto: "", ente: "", scadenzaGiorno: "", scadenzaOra: "", importo: "" };
 atteso("serve il CIG o il collegamento", !validaGaraAggiunta(campi).ok);
 const v1 = validaGaraAggiunta({ ...campi, cig: " b6bc58dfba ", importo: "250.000,00", scadenzaGiorno: "2026-07-15", scadenzaOra: "12:00" });
-uguale("CIG in maiuscolo, importo all'italiana, ora d'estate", v1.ok ? [v1.valori.cig, v1.valori.importo, v1.valori.scadenzaOfferte, v1.valori.scadenzaOraIndicata] : v1, ["B6BC58DFBA", 250000, "2026-07-15T10:00:00.000Z", true]);
+uguale("CIG in maiuscolo, importo all'italiana, ora d'estate", v1.ok ? [v1.valori.cig, v1.valori.importo, v1.valori.scadenzaGiorno, v1.valori.scadenzaOfferte, v1.valori.scadenzaOraIndicata] : v1, ["B6BC58DFBA", 250000, "2026-07-15", "2026-07-15T10:00:00.000Z", true]);
 atteso("collegamenti non web rifiutati", !validaGaraAggiunta({ ...campi, url: "javascript:alert(1)" }).ok && !validaGaraAggiunta({ ...campi, url: "ftp://x.test/a" }).ok && validaGaraAggiunta({ ...campi, url: "https://piattaforma.esempio.test/g/1" }).ok);
 atteso("CIG malformato, ora senza giorno, importo non numerico: rifiutati", !validaGaraAggiunta({ ...campi, cig: "ABC" }).ok && !validaGaraAggiunta({ ...campi, cig: "B6BC58DFBA", scadenzaOra: "12:00" }).ok && !validaGaraAggiunta({ ...campi, cig: "B6BC58DFBA", importo: "molti" }).ok);
-uguale("scadenza senza ora: non si presume", scadenzaDaCampi("2026-12-15", ""), { iso: fineGiornoRoma("2026-12-15"), oraIndicata: false });
+uguale("scadenza senza ora: non si presume", scadenzaDaCampi("2026-12-15", ""), { giorno: "2026-12-15", iso: null, oraIndicata: false });
 uguale("migliaia con il punto", validaGaraAggiunta({ ...campi, cig: "B6BC58DFBA", importo: "1.234.567" }).ok ? (validaGaraAggiunta({ ...campi, cig: "B6BC58DFBA", importo: "1.234.567" }) as { valori: { importo: number } }).valori.importo : null, 1234567);
 
 // ───── 7. parametri della console ─────
@@ -247,7 +260,7 @@ uguale("titolo breve: maiuscolo riportato in minuscolo", titoloBreve("SERVIZIO D
 atteso("titolo breve: l'appalto riservato resta scritto", titoloBreve("APPALTO RISERVATO AI SENSI DELL'ART. 61 D. LGS. 36/2023 DEI SERVIZI DI PULIZIA").startsWith("Appalto riservato: servizi di pulizia"));
 atteso("titolo breve: al massimo 90 caratteri", titoloBreve(`Servizio di ${"pulizia ".repeat(30)}`).length <= 90);
 uguale("importi con i centesimi", [euro(285504.8), euro(334750)], ["285.504,80 €", "334.750 €"]);
-const sintesi = sintesiDeterministica({ oggetto: "x", settori: ["pulizia"], cpvPrincipale: "90919200", ente: "Comune di Prova", comune: "Venezia", provincia: "VE", valoreStimato: 334750, durataMesi: 36, nLotti: 1, tipoProcedura: "Procedura aperta", criterio: "Minor prezzo", scadenza: "2026-12-14T12:00:00.000Z", scadenzaOraIndicata: true, fonte: "TED", numeroAvviso: "700001-2026", dataPubblicazione: "2026-10-01" });
+const sintesi = sintesiDeterministica({ oggetto: "x", settori: ["pulizia"], cpvPrincipale: "90919200", ente: "Comune di Prova", comune: "Venezia", provincia: "VE", valoreStimato: 334750, durataMesi: 36, nLotti: 1, tipoProcedura: "Procedura aperta", criterio: "Minor prezzo", scadenzaGiorno: "2026-12-14", scadenza: "2026-12-14T12:00:00.000Z", fonte: "TED", numeroAvviso: "700001-2026", dataPubblicazione: "2026-10-01" });
 atteso("sintesi: solo dati dell'avviso", sintesi.includes("Servizi di pulizia di uffici: gara indetta da Comune di Prova (Venezia, VE).") && sintesi.includes("Valore stimato 334.750 €, durata 36 mesi.") && sintesi.includes("Offerte entro il 14 dicembre 2026, ore 13:00.") && sintesi.includes("Fonte: TED, avviso 700001-2026 pubblicato il 1 ottobre 2026."), sintesi.join(" | "));
 const numeriSintesi = sintesi.join(" ").match(/\d[\d.,]*/g) ?? [];
 atteso("sintesi: nessun numero che non venga dai dati", numeriSintesi.every((n) => ["334.750", "36", "14", "2026", "13:00", "13", "00", "700001-2026", "700001", "1", "2026."].some((x) => n.replace(/[.,]$/, "") === x.replace(/[.,]$/, "") || x.startsWith(n))), numeriSintesi.join(" "));
@@ -269,6 +282,14 @@ atteso("0112: registro della console chiuso agli utenti, solo lettura e inserime
 atteso("0112: registro senza chiavi esterne sulle colonne di registro", !/radar_console_registro[\s\S]*references/i.test(sql112.slice(sql112.indexOf("create table if not exists public.radar_console_registro"), sql112.indexOf("create index if not exists radar_console_registro_data_idx"))));
 atteso("0112: fonte TED creata SPENTA", sql112.includes("insert into public.radar_fonti_stato (fonte, attiva) values ('ted', false) on conflict (fonte) do nothing"));
 atteso("0112: nessuna notifica per lo storico per difetto (notificabile = falso)", sql112.includes("add column if not exists notificabile boolean not null default false"));
+const sql114 = leggi("supabase/migrations/0114_radar_scadenza_giorno.sql").replace(/--[^\n]*/g, "");
+atteso(
+  "0114: il giorno della scadenza su procedure, lotti e gare aggiunte; additiva; aggiornamenti solo sulle tabelle del Radar",
+  ["radar_procedure", "radar_lotti", "omnia_ai_radar_gare_aggiunte"].every((t) => sql114.includes(`alter table public.${t} add column if not exists scadenza_giorno date`)) &&
+    !/\bdrop\b|truncate|delete\s+from/i.test(sql114) &&
+    [...sql114.matchAll(/update public\.([a-z_]+)/g)].every((m) => /^(radar_|omnia_ai_radar_)/.test(m[1])),
+);
+atteso("0114: senza ora l'istante si toglie, non se ne inventa uno", /set scadenza_offerte = null where scadenza_ora_indicata = false/.test(sql114) && !/23:59|interval/.test(sql114));
 
 const cartellaPagine = "src/app/site-omnia-ai/dashboard/omnia-ai/opportunita";
 const pagine = (fs.readdirSync(path.join(RADICE, cartellaPagine), { recursive: true }) as string[]).map(String).filter((p) => p.endsWith("page.tsx"));

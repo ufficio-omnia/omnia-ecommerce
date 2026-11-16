@@ -164,31 +164,32 @@ export function dataTed(v: unknown): string | null {
   return m ? m[1] : null;
 }
 
-// Fine del giorno a Roma (23:59:59) in UTC: si usa SOLO per sapere quando una gara senza ora è scaduta; l'ora non si mostra mai.
-export function fineGiornoRoma(giorno: string): string {
-  for (const fuso of ["+01:00", "+02:00"]) {
-    const d = new Date(`${giorno}T23:59:59${fuso}`);
-    const ora = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
-    if (ora === "23:59") return d.toISOString();
-  }
-  return new Date(`${giorno}T23:59:59+01:00`).toISOString();
+// Il giorno di calendario di Roma di un istante («2026-12-14»).
+export function giornoDiRoma(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
-export type ScadenzaTed = { iso: string; oraIndicata: boolean; fonte: string };
+// giorno: sempre, quando la fonte lo indica. iso: l'istante esatto SOLO con l'ora indicata (regola del progetto: l'ora non si presume mai;
+// senza ora la gara è aperta per tutto il suo giorno). «fonte» conserva il testo originale, da mostrare se il fuso non è quello italiano.
+export type ScadenzaTed = { giorno: string; iso: string | null; oraIndicata: boolean; fonte: string };
 
-// Giorno e ora come li scrive TED. Ora presente → istante esatto con il fuso dichiarato. Ora assente → «ora non indicata».
-// «fonte» conserva il testo originale, da mostrare se il fuso non è quello italiano (per esempio «Z»).
 export function scadenzaTed(giorno: unknown, ora: unknown): ScadenzaTed | null {
   const g = typeof giorno === "string" ? giorno.trim() : "";
   const d = dataTed(g);
   if (!d) return null;
   const o = typeof ora === "string" ? ora.trim() : "";
   const m = o.match(/^(\d{2}):(\d{2})(?::(\d{2}))?(Z|[+-]\d{2}:\d{2})?$/);
-  if (!m) return { iso: fineGiornoRoma(d), oraIndicata: false, fonte: g };
+  if (!m) return { giorno: d, iso: null, oraIndicata: false, fonte: g };
   const fuso = m[4] ?? (g.match(/(Z|[+-]\d{2}:\d{2})$/)?.[1] ?? "+01:00");
   const istante = new Date(`${d}T${m[1]}:${m[2]}:${m[3] ?? "00"}${fuso}`);
-  if (Number.isNaN(istante.getTime())) return { iso: fineGiornoRoma(d), oraIndicata: false, fonte: g };
-  return { iso: istante.toISOString(), oraIndicata: true, fonte: `${g} ${o}` };
+  if (Number.isNaN(istante.getTime())) return { giorno: d, iso: null, oraIndicata: false, fonte: g };
+  // con l'ora, il giorno è quello italiano dell'istante (un'ora in UTC a tarda sera può cadere nel giorno dopo a Roma)
+  return { giorno: giornoDiRoma(istante), iso: istante.toISOString(), oraIndicata: true, fonte: `${g} ${o}` };
+}
+
+// Ordine delle scadenze: prima il giorno, poi l'ora (a parità di giorno, quella con l'ora viene prima di quella senza).
+export function confrontaScadenze(a: Pick<ScadenzaTed, "giorno" | "iso">, b: Pick<ScadenzaTed, "giorno" | "iso">): number {
+  return a.giorno !== b.giorno ? a.giorno.localeCompare(b.giorno) : (a.iso ?? "~").localeCompare(b.iso ?? "~");
 }
 
 // Il fuso della scadenza scritta dalla fonte è quello italiano? Se no (es. «Z»), l'interfaccia mostra anche il testo originale.
@@ -400,7 +401,7 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
   const singola = (campoData: string, campoOra: string) => (nLotti <= 1 ? scadenzaTed(comeArray(n[campoData])[0], comeArray(n[campoOra])[0]) : null);
   const lottiScadenze = idLotti.map((_, i) => scadenzeOfferta[i] ?? scadenzeDomanda[i] ?? (nLotti === 1 ? (singola("deadline-receipt-tender-date-lot", "deadline-receipt-tender-time-lot") ?? singola("deadline-receipt-request-date-lot", "deadline-receipt-request-time-lot")) : null));
   const scadenzaProc =
-    lottiScadenze.filter((s): s is ScadenzaTed => !!s).sort((a, b) => a.iso.localeCompare(b.iso))[0] ??
+    lottiScadenze.filter((s): s is ScadenzaTed => !!s).sort(confrontaScadenze)[0] ??
     singola("deadline-receipt-tender-date-lot", "deadline-receipt-tender-time-lot") ??
     singola("deadline-receipt-request-date-lot", "deadline-receipt-request-time-lot") ??
     // più lotti con array sfalsati: la scadenza più vicina tra quelle dichiarate (la gara si chiude per il primo lotto che scade)
@@ -408,7 +409,7 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
       ? comeArray(n["deadline-receipt-tender-date-lot"])
           .map((x) => scadenzaTed(x, null))
           .filter((s): s is ScadenzaTed => !!s)
-          .sort((a, b) => a.iso.localeCompare(b.iso))[0] ?? null
+          .sort(confrontaScadenze)[0] ?? null
       : null);
 
   const durateLotti = idLotti.map((_, i) => {
@@ -465,6 +466,7 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
     natura,
     settoriSpeciali: settoriSpecialiTed(n["legal-basis"]),
     dataPubblicazione: meta.data,
+    scadenzaGiorno: scadenzaProc?.giorno ?? null,
     scadenzaOfferte: scadenzaProc?.iso ?? null,
     scadenzaOraIndicata: scadenzaProc?.oraIndicata ?? false,
     valoreStimato,
