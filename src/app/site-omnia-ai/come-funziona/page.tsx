@@ -3,12 +3,13 @@ import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { SITO_COME_FUNZIONA_PIANO_LAVORO } from "@/lib/piano-lavoro-testi";
 import ComeFunzionaDemo from "@/components/omnia-ai/come-funziona-demo";
+import SchermataPiattaforma from "@/components/omnia-ai/schermata-piattaforma";
 import { paginaMetadata } from "@/lib/omnia-ai-seo";
 
 export const metadata: Metadata = paginaMetadata({
   title: "Come funziona — OMNIA AI",
   description:
-    "Come OMNIA AI legge bando, disciplinare e capitolato, recupera i frammenti pertinenti e scrive la relazione tecnica citando la fonte esatta.",
+    "Come OMNIA AI analizza bando, disciplinare e capitolato e scrive l'offerta tecnica in Word citando la fonte: i vantaggi e il percorso, passo per passo.",
   path: "/come-funziona",
 });
 
@@ -31,10 +32,27 @@ const PASSI = [
   },
 ];
 
+// Prima i vantaggi pratici, poi i dettagli tecnici (restyling 16/11/2026). Nessuna promessa di conformità o di aggiudicazione.
+const VANTAGGI = [
+  {
+    titolo: "Meno ore su stesura e impaginazione",
+    testo: "Il documento esce già strutturato e impaginato in Word: il tuo tempo va sui contenuti che solo tu conosci e sulla verifica finale.",
+  },
+  {
+    titolo: "Un'offerta costruita sui punteggi",
+    testo: "Lo spazio di ogni criterio segue il suo peso e il limite di pagine della gara: niente sezioni gonfie e criteri pesanti trattati in tre righe.",
+  },
+  {
+    titolo: "Riferimenti che puoi verificare",
+    testo: "Le affermazioni della bozza sono ancorate ai passaggi del bando da cui vengono, così il controllo prima della consegna è più rapido.",
+  },
+];
+
 export default function ComeFunzionaPage() {
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
+        <p className="omnia-occhiello omnia-occhiello-centro">Come funziona</p>
         <h1>OMNIA AI non indovina. Recupera, e cita la fonte</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           La differenza tra un&apos;AI generica e OMNIA AI non è il modello linguistico: è cosa
@@ -43,6 +61,17 @@ export default function ComeFunzionaPage() {
       </section>
 
       <section className="omnia-pagina-corpo">
+        <h2>Cosa cambia nel tuo lavoro</h2>
+        <ul className="omnia-tre">
+          {VANTAGGI.map((v) => (
+            <li key={v.titolo} className="omnia-cella">
+              <h3>{v.titolo}</h3>
+              <p>{v.testo}</p>
+            </li>
+          ))}
+        </ul>
+
+        <h2>Il percorso, passo per passo</h2>
         <ol className="omnia-passi">
           {PASSI.map((p) => (
             <li key={p.titolo} className="omnia-passo">
@@ -53,6 +82,14 @@ export default function ComeFunzionaPage() {
             </li>
           ))}
         </ol>
+
+        <div className="omnia-schermata-singola">
+          <SchermataPiattaforma
+            schermata="datiGara"
+            titolo="Il risultato dell'analisi, in una schermata"
+            testo="Schermata reale di una gara in OMNIA AI, con nomi, ente e importi sostituiti da dati di esempio: scadenza, formattazione richiesta, limite di pagine, criteri con i punteggi e requisiti chiave, ricavati dai documenti caricati."
+          />
+        </div>
 
         <h2>Un esempio, dal vivo</h2>
         <p className="omnia-guida">
@@ -82,6 +119,27 @@ export default function ComeFunzionaPage() {
           </Link>
           .
         </p>
+
+        <div className="omnia-dietro omnia-chiusura">
+          <div>
+            <h2>Vuoi vederlo su una tua gara?</h2>
+          </div>
+          <div>
+            <p className="omnia-firma">
+              Nella demo lavoriamo su un bando che ti interessa davvero. E se vuoi un controllo in più,
+              dalla piattaforma puoi chiedere la revisione umana dei consulenti di Omnia Consulting, un
+              servizio a pagamento separato dall&apos;abbonamento.
+            </p>
+            <div className="omnia-azioni omnia-azioni-sinistra">
+              <Link className="omnia-btn omnia-btn-p" href="/demo">
+                Richiedi la demo
+              </Link>
+              <Link className="omnia-btn omnia-btn-s" href="/piani">
+                Vedi i piani
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
     </PageShell>
   );

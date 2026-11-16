@@ -10,6 +10,27 @@ import ServiziPerCategoria from "./servizi-per-categoria";
 // `prezzoSingolaGaraCentesimi`: il prezzo del piano di lavoro di una singola gara (letto dalla console), mostrato nella sezione «cosa puoi elaborare
 // in una gara oltre alla relazione tecnica». Il piano di lavoro NON si acquista con l'abbonamento (decisione del 09/11/2026): sulle schede dei piani non
 // c'è più nessuna opzione né prezzo aggiuntivo, e la sezione dei servizi non ha nessun «Abbonati».
+// Come funzionano gare e crediti, in quattro punti: stesse regole dell'art. 5 delle Condizioni di abbonamento (quando si consuma una gara,
+// cosa è compreso, gare non cumulabili, crediti aggiuntivi validi fino alla cessazione). Nessun prezzo: i prezzi sono solo sulle schede.
+const REGOLE_GARE = [
+  {
+    titolo: "Quando si consuma una gara",
+    testo: "Quando avvii l'analisi dei documenti caricati. Creare una gara senza avviare l'analisi non consuma nulla.",
+  },
+  {
+    titolo: "Cosa è compreso",
+    testo: "Da quel momento generazioni, revisioni e rielaborazioni della stessa gara sono comprese, senza altri consumi.",
+  },
+  {
+    titolo: "Gare non usate e crediti",
+    testo: "Le gare incluse valgono per il periodo e non si cumulano. Se non bastano acquisti crediti aggiuntivi: si usano dopo le gare incluse e restano validi finché l'abbonamento è attivo.",
+  },
+  {
+    titolo: "Cosa si paga a parte",
+    testo: "I servizi aggiuntivi della singola gara, quando non sono compresi nel piano, e la revisione umana dei consulenti: li trovi descritti qui sotto.",
+  },
+];
+
 export default function PianiVista({
   catalogo,
   condizioniUrl,
@@ -24,6 +45,7 @@ export default function PianiVista({
   return (
     <PageShell>
       <section className="omnia-pagina-hero">
+        <p className="omnia-occhiello omnia-occhiello-centro">Piani e prezzi</p>
         <h1>OMNIA AI: un piano per ogni ritmo di partecipazione a gara</h1>
         <p className="omnia-sotto" style={{ margin: "24px auto 0" }}>
           Abbonamento mensile con un numero di gare incluso. Una gara si consuma quando parte
@@ -90,6 +112,18 @@ export default function PianiVista({
           })}
         </div>
 
+        <section className="omnia-regole-gare" aria-labelledby="omnia-regole-titolo">
+          <h2 id="omnia-regole-titolo">Come funzionano gare e crediti</h2>
+          <ul className="omnia-regole-elenco">
+            {REGOLE_GARE.map((r) => (
+              <li key={r.titolo}>
+                <h3>{r.titolo}</h3>
+                <p>{r.testo}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         {/* Cosa si può elaborare dentro una gara oltre alla relazione tecnica, per categoria: solo dentro la singola gara, mai con l'abbonamento. */}
         <ServiziPerCategoria prezzoSingolaGara={formatEuro(prezzoSingolaGaraCentesimi)} />
 
@@ -97,8 +131,8 @@ export default function PianiVista({
 
         <p className="micro" style={{ marginTop: 32 }}>
           Le gare incluse si azzerano ad ogni rinnovo e non si cumulano. Se non bastano, puoi
-          acquistare crediti aggiuntivi in qualsiasi momento: restano validi fino
-          all&apos;utilizzo, senza scadenza mensile.
+          acquistare crediti aggiuntivi in qualsiasi momento: non hanno scadenza mensile e restano
+          validi fino all&apos;utilizzo, finché l&apos;abbonamento è attivo.
         </p>
         <p className="micro" style={{ marginTop: 8 }}>
           Iscrivendoti accetti le{" "}

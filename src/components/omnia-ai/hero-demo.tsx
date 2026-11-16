@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { useMarchioStato } from "./marchio-stato-context";
 
@@ -53,7 +53,14 @@ const SCENARI: Scenario[] = [
 
 type Particella = { t: string; x: number; y: number; vx: number; vy: number; r: boolean; o: number };
 
-export default function HeroDemo() {
+// Sotto questa larghezza le parole che galleggiano non si disegnano affatto (e il canvas è nascosto dal CSS): su telefoni e
+// tablet passavano dietro al titolo e ai testi e sembravano sovrapposte al contenuto. Sopra, il CSS le lascia vedere solo ai
+// margini laterali. Stesso valore della regola in omnia-ai.css (max-width: 1099px).
+const LARGHEZZA_MIN_PAROLE = 1100;
+
+// `anteprimaDocumento`: l'anteprima illustrativa della relazione in Word (componente server), mostrata accanto alla console
+// nella sezione «Scopri cosa genera OMNIA AI».
+export default function HeroDemo({ anteprimaDocumento }: { anteprimaDocumento?: ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const domandaRef = useRef<HTMLParagraphElement>(null);
   const rispostaRef = useRef<HTMLDivElement>(null);
@@ -85,7 +92,12 @@ export default function HeroDemo() {
     let fase = 0;
     let centro = ANCORE[0];
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let attiva = true;
+    // attiva: la scheda è visibile; stretto: schermo da telefono (niente parole). Il ciclo di disegno gira solo quando servono
+    // entrambe le cose: prima continuava a girare a vuoto anche a scheda nascosta.
+    let attiva = !document.hidden;
+    const mqStretto = matchMedia(`(max-width: ${LARGHEZZA_MIN_PAROLE - 1}px)`);
+    let stretto = mqStretto.matches;
+    let inCorso = false;
     const timeout: ReturnType<typeof setTimeout>[] = [];
     const differita = (fn: () => void, ms: number) => {
       const id = setTimeout(fn, ms);
@@ -108,7 +120,7 @@ export default function HeroDemo() {
         vx: (Math.random() - 0.5) * 0.15 * dpr,
         vy: (Math.random() - 0.5) * 0.15 * dpr,
         r: false,
-        o: 0.08 + Math.random() * 0.18,
+        o: 0.05 + Math.random() * 0.1,
       }));
     }
     dim();
@@ -117,16 +129,28 @@ export default function HeroDemo() {
       dim();
       semina();
     };
+    let raf = 0;
+    const avvia = () => {
+      if (ridotto || inCorso || !attiva || stretto) return;
+      inCorso = true;
+      raf = requestAnimationFrame(disegna);
+    };
     const onVisibility = () => {
       attiva = !document.hidden;
+      avvia();
+    };
+    const onLarghezza = () => {
+      stretto = mqStretto.matches;
+      avvia();
     };
     addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVisibility);
+    mqStretto.addEventListener("change", onLarghezza);
 
-    let raf = 0;
     function disegna() {
-      if (!attiva) {
-        raf = requestAnimationFrame(disegna);
+      if (!attiva || stretto) {
+        inCorso = false;
+        cx!.clearRect(0, 0, W, H);
         return;
       }
       cx!.clearRect(0, 0, W, H);
@@ -140,7 +164,7 @@ export default function HeroDemo() {
           const ty = c.y + Math.sin(a) * 105 * dpr;
           p.x += (tx - p.x) * 0.05;
           p.y += (ty - p.y) * 0.05;
-          p.o += (0.85 - p.o) * 0.05;
+          p.o += (0.5 - p.o) * 0.05;
           cx!.beginPath();
           cx!.moveTo(c.x, c.y);
           cx!.lineTo(p.x, p.y);
@@ -154,7 +178,7 @@ export default function HeroDemo() {
           if (p.x > W) p.x = 0;
           if (p.y < 0) p.y = H;
           if (p.y > H) p.y = 0;
-          p.o += (0.14 - p.o) * 0.02;
+          p.o += (0.09 - p.o) * 0.02;
         }
         cx!.font = 13 * dpr + 'px "Space Grotesk", sans-serif';
         cx!.fillStyle = "rgba(" + (fase === 1 && p.r ? rgbVerde : rgbParticella) + "," + p.o.toFixed(3) + ")";
@@ -162,15 +186,14 @@ export default function HeroDemo() {
       });
       raf = requestAnimationFrame(disegna);
     }
-    if (!ridotto) {
-      raf = requestAnimationFrame(disegna);
-    }
+    avvia();
     // Con il movimento ridotto le parole si disegnano una volta sola: si ridisegnano se cambia il tema.
     const disegnaFermo = () => {
       cx.clearRect(0, 0, W, H);
+      if (stretto) return;
       cx.font = 13 * dpr + "px sans-serif";
       P.forEach((p) => {
-        cx.fillStyle = "rgba(" + rgbParticella + ",.14)";
+        cx.fillStyle = "rgba(" + rgbParticella + ",.09)";
         cx.fillText(p.t, p.x, p.y);
       });
     };
@@ -266,6 +289,7 @@ export default function HeroDemo() {
       cancelAnimationFrame(raf);
       removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibility);
+      mqStretto.removeEventListener("change", onLarghezza);
       osservatoreTema.disconnect();
       timeout.forEach(clearTimeout);
     };
@@ -287,19 +311,28 @@ export default function HeroDemo() {
       <div className="omnia-vel" aria-hidden="true" />
 
       <div className="omnia-wrap">
-        <section className="omnia-hero">
-          <h1>L&apos;unica AI per gare scritta da chi le gare le ha scritte</h1>
+        <section className="omnia-hero" aria-labelledby="omnia-hero-titolo">
+          {/* Lo slogan ufficiale: mai tradotto né modificato. lang="en" perché i lettori di schermo lo pronuncino in inglese. */}
+          <p className="omnia-slogan" lang="en">
+            <span className="omnia-slogan-tech">TECH WHEN POSSIBLE.</span>{" "}
+            <span className="omnia-slogan-human">HUMAN WHEN IT MATTERS.</span>
+          </p>
+          <h1 id="omnia-hero-titolo">
+            <span className="omnia-h1-riga">Dalla gara d&apos;appalto all&apos;offerta tecnica</span>{" "}
+            <span className="omnia-h1-riga">
+              L&apos;intelligenza artificiale incontra{" "}
+              <span className="omnia-accento">10&nbsp;anni di esperienza</span>
+            </span>
+          </h1>
           <p className="omnia-sotto">
-            OMNIA AI è l&apos;intelligenza artificiale per le gare d&apos;appalto. Legge bando,
-            disciplinare e capitolato e ti restituisce la relazione tecnica in Word: indice,
-            intestazioni con il tuo logo, tabelle formattate, stili e numerazione già a posto.
-            Dietro non c&apos;è un modello generico, ci sono dieci anni di offerte tecniche
-            scritte a mano per soft e hard&nbsp;
-            {/* "facility" è inglese: hyphens:auto lo sillaba con le regole
-                dell'italiano ("facili-ty") e lascia "ty." da solo sull'ultima
-                riga. nowrap lo tiene intero, lo spazio non separabile lo lega
-                a "hard". */}
-            <span style={{ whiteSpace: "nowrap" }}>facility.</span>
+            Nata dall&apos;esperienza di professionisti del settore, OMNIA AI analizza bandi,
+            disciplinari e capitolati e trasforma la documentazione di gara in offerte tecniche
+            Word strutturate, personalizzate e pronte per la revisione finale.
+          </p>
+          <p className="omnia-sotto-2">
+            Una piattaforma completa, con strumenti e servizi specialistici per l&apos;analisi, la
+            pianificazione e la formulazione delle offerte: semplifica ogni fase del lavoro e
+            valorizza le competenze dei professionisti.
           </p>
           <div className="omnia-azioni">
             <Link className="omnia-btn omnia-btn-p" href="/demo">
@@ -309,18 +342,42 @@ export default function HeroDemo() {
               Come funziona
             </Link>
           </div>
-          <p className="micro" style={{ marginTop: 18, fontSize: 13.5, color: "var(--fioco)" }}>
-            Demo su una gara vera, non su un esempio preconfezionato. Rispondiamo entro 24 ore.
+          <p className="micro omnia-hero-nota">
+            Demo su una gara vera, non su un esempio preconfezionato: compili il modulo e scegli
+            subito giorno e ora.
+          </p>
+        </section>
+
+        <section className="omnia-section omnia-genera" id="cosa-genera" aria-labelledby="omnia-genera-titolo">
+          <p className="omnia-occhiello">Il risultato</p>
+          <h2 id="omnia-genera-titolo">Scopri cosa genera OMNIA AI</h2>
+          <p className="omnia-guida">
+            Non un testo da riformattare: una relazione tecnica in Word già organizzata sulla griglia
+            di valutazione, e risposte sui documenti di gara che indicano sempre da dove vengono.
           </p>
 
-          <div className="omnia-console">
-            <div className="omnia-riga-q">
-              <p ref={domandaRef} />
-              <span className="omnia-cursore" />
-            </div>
-            <div className="omnia-risposta" ref={rispostaRef} />
-            <div className="omnia-fonti" ref={fontiRef} />
+          <div className="omnia-genera-griglia">
+            {anteprimaDocumento}
+
+            <figure className="omnia-genera-scheda">
+              <figcaption className="omnia-genera-etichetta">
+                <b>Domande sui documenti di gara</b>
+                <span>Ogni risposta indica articolo, paragrafo o tabella da cui viene.</span>
+              </figcaption>
+              <div className="omnia-console">
+                <div className="omnia-riga-q">
+                  <p ref={domandaRef} />
+                  <span className="omnia-cursore" />
+                </div>
+                <div className="omnia-risposta" ref={rispostaRef} />
+                <div className="omnia-fonti" ref={fontiRef} />
+              </div>
+            </figure>
           </div>
+          <p className="omnia-nota-illustrativa">
+            Anteprime illustrative con contenuti di esempio: non riproducono documenti di gare o di
+            clienti reali.
+          </p>
         </section>
       </div>
     </>
