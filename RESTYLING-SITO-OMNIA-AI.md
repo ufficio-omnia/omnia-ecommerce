@@ -38,4 +38,11 @@ Nessuna nuova lettura dal database: la sintesi dei piani in home legge solo la c
 - L'«immagine allegata» citata nel brief non era nel messaggio: la direzione grafica segue il testo del brief.
 - L'anteprima della relazione Word resta un disegno illustrativo (dichiarato). Le schermate di dashboard e gara invece sono VERE, scattate il 16/11 dall'account del titolare e rese anonime prima dello scatto: titoli delle gare, enti, nome azienda, email, nomi dei file e importi sostituiti con dati di esempio (importi in scala coerente: 1,25 M€, fatturato 2,5 M€, garanzia 2%); scadenze della dashboard cambiate in «Fra X giorni». Criteri e punteggi sono quelli di una gara vera, ma senza ente né importi non è riconoscibile. Da ricontrollare a occhio prima di andare online.
 - Il testo del sottotitolo e i paragrafi sono giustificati come richiesto; su schermi molto stretti la giustificazione può lasciare qualche spazio più largo.
-- La batteria completa `verifica:livello1` non è stata lanciata intera da qui: un filtro di sicurezza blocca l'esecuzione di uno script che contiene l'indirizzo email dell'account. Lanciati e superati gli script del sito (vedi il messaggio di chiusura).
+- `verifica:livello1`: in locale 76 script su 77 superati (con VERCEL=1 NODE_ENV=production); lo script della revisione umana è bloccato qui da un filtro di sicurezza (contiene l'email dell'account) ed è stato eseguito dalla build Vercel della Preview (prebuild), riuscita.
+
+## 4. Verifiche finali (16/11/2026)
+
+- TypeScript ed ESLint: nessun errore. Build di produzione locale (VERCEL=1 NODE_ENV=production): riuscita, nessun errore o avviso.
+- Preview Vercel del commit a13011d: build riuscita (batteria completa compresa), protetta dall'accesso Vercel. Le Preview servono la zona e-commerce (la zona si decide dal dominio): le pagine di omnia-ai sono state verificate in locale, sia in sviluppo sia con `next start` e Host omnia-ai.it.
+- Nessuno scroll orizzontale su 9 pagine pubbliche a 320, 390, 768, 1024 e 1440 px; collegamenti interni tutti 200; un solo H1 per pagina, canonical, JSON-LD valido, sitemap aggiornata, robots invariato.
+- Nessuna nuova chiamata al database, polling o richiesta di rete. Peso JS+CSS della home praticamente invariato (+1%); HTML più lungo per i contenuti in più (circa +10 KB compresso); schermate da circa 27 KB servite ottimizzate e caricate solo quando arrivano a schermo.
