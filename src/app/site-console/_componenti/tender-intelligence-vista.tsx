@@ -43,6 +43,7 @@ function numero(n: number | null): string {
 export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
   const { parametri } = dati;
   const inCoda = dati.coda ? dati.coda.in_coda + dati.coda.in_corso : null;
+  const conErrori = dati.fonti.some((f) => f.db?.ultimo_errore);
 
   return (
     <>
@@ -76,17 +77,16 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
                   <th>Stato</th>
                   <th>Copertura</th>
                   <th>Aggiornamento</th>
-                  <th>Ultima lettura riuscita</th>
-                  <th>Dati aggiornati al</th>
-                  <th>Ultimo errore</th>
+                  <th>Ultima lettura</th>
+                  <th>Dati al</th>
+                  {conErrori && <th>Ultimo errore</th>}
                 </tr>
               </thead>
               <tbody>
-                {dati.fonti.map((f) => (
+                {dati.fonti.flatMap((f) => [
                   <tr key={f.id}>
                     <td>
                       <strong>{f.nome}</strong>
-                      <div className="cn-nota-inline">Limiti: {f.limiti.join("; ")}</div>
                     </td>
                     <td>
                       <Badge tono={STATO_FONTE[f.stato].tono}>{STATO_FONTE[f.stato].testo}</Badge>
@@ -95,9 +95,14 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
                     <td>{f.aggiornamento}</td>
                     <td>{data(f.db?.ultimo_successo_il ?? null)}</td>
                     <td>{data(f.db?.dati_aggiornati_al ?? null)}</td>
-                    <td>{f.db?.ultimo_errore ? `${data(f.db.ultimo_errore_il)}: ${f.db.ultimo_errore}` : "—"}</td>
-                  </tr>
-                ))}
+                    {conErrori && <td>{f.db?.ultimo_errore ? `${data(f.db.ultimo_errore_il)}: ${f.db.ultimo_errore}` : "—"}</td>}
+                  </tr>,
+                  <tr key={`${f.id}-limiti`}>
+                    <td colSpan={conErrori ? 7 : 6} className="cn-nota-inline">
+                      Limiti: {f.limiti.join(" · ")}. Licenza: {f.licenza}.
+                    </td>
+                  </tr>,
+                ])}
               </tbody>
             </table>
           </div>
