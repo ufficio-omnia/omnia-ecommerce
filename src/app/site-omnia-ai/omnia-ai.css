@@ -5812,3 +5812,17 @@ html.omnia-scorrimento-bloccato body {
     margin-top: 0;
   }
 }
+
+/* Tender Intelligence, fase B1-bis: fonti di una gara nella scheda (TED, PVL), una per riga con data di pubblicazione e di verifica */
+.omnia-opp-fonti-gara {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.omnia-opp-fonti-gara li {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}

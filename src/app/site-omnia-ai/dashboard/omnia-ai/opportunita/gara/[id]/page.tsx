@@ -11,6 +11,7 @@ import { distanzaScadenza, sintesiDeterministica, scadenzaLeggibile, euro, giorn
 import { confrontaConSoglia, sogliaApplicabile } from "@/lib/radar/soglie-ue";
 import { tipoEnteTed, fusoItaliano } from "@/lib/radar/fonti/ted-calcoli";
 import { nomeSettore, voceCpv, type SettoreRadar } from "@/lib/radar/settori";
+import { ATTRIBUZIONE_FONTE, NOME_FONTE, descriviAvvisoLetto, etichettaFonti, fontiDellaGara, fonteDelDato, riepilogoFonti } from "@/lib/radar/fonti-gara-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
@@ -71,8 +72,12 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
   const supabase = await createClient();
   const [dati, salvataggi] = await Promise.all([leggiGaraPubblica(admin, id), leggiSalvataggi(supabase, [id])]);
   if (!dati) notFound();
-  const { gara: g, lotti, provenienze, aggiornamenti } = dati;
+  const { gara: g, lotti, provenienze, aggiornamenti, controlli } = dati;
   const salvataggio = salvataggi.get(id) ?? null;
+  // fonti della gara (TED, PVL o entrambe), riepilogo per fonte con collegamento ufficiale, e fonte dei dati principali
+  const fonti = fontiDellaGara(g.chiave, g.provenienza_campi);
+  const perFonte = riepilogoFonti(provenienze, controlli);
+  const fonteDi = (gruppo: string) => NOME_FONTE[fonteDelDato(g.provenienza_campi, gruppo, g.chiave)];
   const adesso = new Date();
   // aperta la scheda, le novità di una gara salvata risultano viste (dopo la risposta, senza rallentare la pagina)
   if (salvataggio) {
@@ -83,8 +88,10 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
 
   const stato = statoMostrato(g.stato, { giorno: g.scadenza_giorno, iso: g.scadenza_offerte }, adesso);
   const giorni = stato === "aperta" ? giorniAllaScadenza(g.scadenza_giorno, adesso) : null;
-  const numeroAvviso = g.ultima_versione_id;
-  const primoAvviso = [...provenienze].filter((p) => p.tipo_avviso?.startsWith("cn") || p.tipo_avviso?.startsWith("pin") || p.tipo_avviso?.startsWith("qu")).sort((a, b) => (a.pubblicato_il ?? "").localeCompare(b.pubblicato_il ?? ""))[0];
+  // il primo bando pubblicato: su TED col suo numero; sulla PVL con la sola data (l'identificativo interno non dice nulla al cliente)
+  const bandi = [...provenienze].filter((p) => (p.fonte === "ted" ? /^(cn|pin|qu)/.test(p.tipo_avviso ?? "") : /^P[12]_/.test(p.tipo_avviso ?? ""))).sort((a, b) => (a.pubblicato_il ?? "").localeCompare(b.pubblicato_il ?? ""));
+  const primoTed = bandi.find((p) => p.fonte === "ted");
+  const primoAvviso = bandi[0];
   const settori = g.settori as SettoreRadar[];
   const sintesi = sintesiDeterministica({
     oggetto: g.oggetto,
@@ -100,8 +107,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     criterio: g.criterio_aggiudicazione,
     scadenza: g.scadenza_offerte,
     scadenzaGiorno: g.scadenza_giorno,
-    fonte: "TED",
-    numeroAvviso: primoAvviso?.id_fonte ?? numeroAvviso,
+    fonte: primoAvviso?.fonte === "pvl" ? "PVL di ANAC" : "TED",
+    numeroAvviso: primoAvviso?.fonte === "pvl" ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.startsWith("pvl:") ? null : g.ultima_versione_id)),
     dataPubblicazione: primoAvviso?.pubblicato_il ?? g.data_pubblicazione,
   });
   const soglia = sogliaApplicabile({
@@ -145,27 +152,53 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           <Dato
             etichetta="Quanto"
             valore={g.valore_stimato !== null ? `${euro(g.valore_stimato)} valore stimato` : `Valore stimato ${NON_INDICATO}`}
-            nota={[g.durata_mesi ? `${g.durata_mesi} mesi` : null, g.n_lotti && g.n_lotti > 1 ? `${g.n_lotti} lotti` : null, "il valore stimato TED comprende di solito opzioni e rinnovi: non è la base di gara"].filter(Boolean).join(" · ")}
+            nota={[
+              g.durata_mesi ? `${g.durata_mesi} mesi` : null,
+              g.n_lotti && g.n_lotti > 1 ? `${g.n_lotti} lotti` : null,
+              g.valore_stimato !== null ? `dato ${fonteDi("valore_stimato")}: il valore stimato comprende di solito opzioni e rinnovi, non è la base di gara` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           />
           <Dato
             etichetta="Entro quando"
             valore={g.scadenza_giorno ? `${scadenzaLeggibile(g.scadenza_giorno, g.scadenza_offerte)}${distanzaScadenza(giorni)}` : `Scadenza ${NON_INDICATO}`}
-            nota={!fusoItaliano(g.scadenza_fonte) ? `Ora convertita in ora italiana; come scritta su TED: ${g.scadenza_fonte}. Verificala sull'avviso ufficiale.` : g.rettificata ? "Dati aggiornati all'ultima rettifica letta" : undefined}
+            nota={
+              !fusoItaliano(g.scadenza_fonte)
+                ? `Ora convertita in ora italiana; come scritta su ${fonteDi("scadenza")}: ${g.scadenza_fonte}. Verificala sull'avviso ufficiale.`
+                : g.scadenza_giorno
+                  ? `Dato ${fonteDi("scadenza")}${g.rettificata ? ", aggiornato all'ultima rettifica letta" : ""}`
+                  : undefined
+            }
           />
           <Dato etichetta="Stato" valore={ETICHETTA_STATO[stato]} />
           <Dato etichetta="Requisiti" valore="Non ancora analizzati" nota="L'analisi dei requisiti sui documenti di gara arriverà nelle prossime fasi." />
           <Dato
-            etichetta="Fonte"
+            etichetta={fonti.length > 1 ? "Fonti" : "Fonte"}
             valore={
-              g.url_avviso ? (
-                <a href={g.url_avviso} target="_blank" rel="noopener noreferrer">
-                  TED, avviso {numeroAvviso}
-                </a>
+              perFonte.length > 0 ? (
+                <ul className="omnia-opp-fonti-gara">
+                  {perFonte.map((f) => (
+                    <li key={f.fonte}>
+                      {f.url ? (
+                        <a href={f.url} target="_blank" rel="noopener noreferrer">
+                          {f.etichettaAvviso}
+                        </a>
+                      ) : (
+                        f.etichettaAvviso
+                      )}
+                      <span className="omnia-opp-nota">
+                        {f.primaPubblicazione ? `pubblicato il ${giorno(f.primaPubblicazione)}` : ""}
+                        {f.verificataIl ? ` · fonte verificata il ${giorno(f.verificataIl)}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                "TED"
+                etichettaFonti(fonti)
               )
             }
-            nota={`Prima rilevazione ${giorno(g.prima_rilevazione_il)} · verificata il ${giorno(g.ultima_rilevazione_il)}`}
+            nota={`Prima rilevazione ${giorno(g.prima_rilevazione_il)} · dati aggiornati il ${giorno(g.ultima_rilevazione_il)}${fonti.length > 1 ? " · stessa gara pubblicata su più fonti: un'unica scheda" : ""}`}
           />
         </section>
 
@@ -267,7 +300,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
             </table>
           </div>
         )}
-        {lotti.length > 0 && lotti.every((l) => !l.cig) && <p className="omnia-opp-nota">Nei bandi TED il CIG quasi sempre manca: lo trovi nei documenti di gara.</p>}
+        {lotti.length > 0 && lotti.every((l) => !l.cig) && !fonti.includes("pvl") && <p className="omnia-opp-nota">Nei bandi TED il CIG quasi sempre manca: lo trovi nei documenti di gara.</p>}
       </section>
 
       <section className="omnia-riquadro" aria-labelledby="attivita">
@@ -285,22 +318,32 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
         <h3 className="omnia-opp-sottotitolo">Avvisi letti</h3>
         <ul className="omnia-opp-elenco-semplice">
           {provenienze.map((p) => (
-            <li key={p.id_fonte}>
+            <li key={`${p.fonte}:${p.id_fonte}`}>
               {p.url ? (
                 <a href={p.url} target="_blank" rel="noopener noreferrer">
-                  TED {p.id_fonte}
+                  {descriviAvvisoLetto(p)}
                 </a>
               ) : (
-                `TED ${p.id_fonte}`
+                descriviAvvisoLetto(p)
               )}
               {p.pubblicato_il ? ` · pubblicato il ${giorno(p.pubblicato_il)}` : ""}
               {p.versione ? ` · versione ${p.versione}` : ""}
-              {p.motivo_modifica ? ` · ${MOTIVI_MODIFICA[p.motivo_modifica] ?? p.motivo_modifica}` : ""}
-              {p.tipo_avviso?.startsWith("can") ? " · esito" : ""}
+              {p.motivo_modifica ? ` · ${MOTIVI_MODIFICA[p.motivo_modifica] ?? p.motivo_modifica.toLowerCase()}` : ""}
+              {p.fonte === "ted" && p.tipo_avviso?.startsWith("can") ? " · esito" : ""}
             </li>
           ))}
         </ul>
-        <p className="omnia-opp-nota">Fonte: TED, Ufficio delle pubblicazioni dell&apos;Unione europea (riuso libero citando la fonte). Fa fede solo l&apos;avviso ufficiale.</p>
+        {fonti.length > 1 && (
+          <>
+            <h3 className="omnia-opp-sottotitolo">Da dove vengono i dati</h3>
+            <p className="omnia-opp-prosa">
+              Scadenza: {fonteDi("scadenza")} · valore: {fonteDi("valore_stimato")} · ente: {fonteDi("ente")} · documenti: {fonteDi("url_documenti")} · durata: {g.durata_mesi ? fonteDi("durata_mesi") : "non indicata"} · CIG: {lotti.some((l) => l.cig) ? NOME_FONTE[fonti.includes("pvl") ? "pvl" : "ted"] : "non indicato"}
+            </p>
+          </>
+        )}
+        <p className="omnia-opp-nota">
+          Fonti: {fonti.map((f) => ATTRIBUZIONE_FONTE[f]).join("; ")}. Fa fede solo l&apos;avviso ufficiale.
+        </p>
       </section>
     </div>
   );

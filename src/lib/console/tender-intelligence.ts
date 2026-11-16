@@ -9,6 +9,9 @@ import { AZIONI_RADAR, type AzioneRadar, type ParametriRadar } from "@/lib/radar
 import { STATI_LAVORO, type StatoLavoro } from "@/lib/radar/lavori-calcoli";
 import { condizioneAperte } from "@/lib/radar/ricerca-calcoli";
 import { giornoIso } from "@/lib/radar/importa-ted-calcoli";
+import { ambienteDb, scrittureRadarConsentite } from "@/lib/radar/ambiente";
+import { limitiPvlDaRighe, type LimitiPvl } from "@/lib/radar/fonti/pvl-calcoli";
+import { CRON_PVL_PROPOSTO, ORE_GIRI_PVL, prossimoGiroPvl, type StatistichePvl } from "@/lib/radar/importa-pvl-calcoli";
 
 export type StatoFonteDb = {
   attiva: boolean;
@@ -35,6 +38,32 @@ export type DatiTenderIntelligenceConsole = {
   ted: { fase: string | null; recuperoCompletatoIl: string | null; ultimoGiorno: string | null; ultimoGiro: UltimoGiroTed | null } | null;
   imprese: { email: string; attivo: boolean; aggiornataIl: string; aggiornataDa: string }[] | null;
   registro: { oggetto: string; clienteEmail: string | null; prima: string | null; dopo: string | null; autore: string; il: string }[] | null;
+  // fase B1-bis (migrazioni 0115-0116): connettore PVL, solo staging
+  pvl: DatiPvlConsole | null;
+};
+
+export type UltimoGiroPvl = StatistichePvl & {
+  iniziato_il: string;
+  durata_ms: number;
+  modo: "finestra" | "incrementale";
+  finestra: { da: string; a: string };
+  giro_finito: boolean;
+  limiti: LimitiPvl;
+  db: { richiesteDb: number; msDb: number };
+  errore: string | null;
+};
+
+export type DatiPvlConsole = {
+  // l'accensione è consentita solo sullo staging (guardia nel codice)
+  accensioneConsentita: boolean;
+  ambiente: "produzione" | "staging" | "sconosciuto";
+  sospensione: { il: string; motivo: string | null } | null;
+  inCorso: boolean;
+  ultimoGiorno: string | null;
+  ultimoGiro: UltimoGiroPvl | null;
+  limiti: LimitiPvl;
+  giriProgrammati: { attivi: boolean; orari: string; cronProposto: string; prossimo: string };
+  archivio: { avvisi: number | null; gareNateDallaPvl: number | null; avvisiCheCitanoTed: number | null; cambiamentiPvl: number | null };
 };
 
 export type UltimoGiroTed = {
@@ -81,7 +110,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
   });
 
   if (!schemaPresente) {
-    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null };
+    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null };
   }
 
   // conteggio con un filtro di uguaglianza facoltativo; null = conteggio non riuscito
@@ -93,7 +122,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
 
   const adesso = new Date().toISOString();
   const dal = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [procedure, procedureAperte, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw] = await Promise.all([
+  const [procedure, procedureAperte, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl] = await Promise.all([
     conta("radar_procedure", "id"),
     // aperte davvero: stato «aperta» e scadenza assente o futura
     (async () => {
@@ -107,6 +136,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     admin.from("radar_fonti_stato").select("cursore, conteggi").eq("fonte", "ted").maybeSingle<{ cursore: Record<string, unknown> | null; conteggi: Record<string, unknown> | null }>(),
     admin.from("omnia_ai_radar_impostazioni").select("user_id, attivo, aggiornata_il, aggiornata_da_email").order("aggiornata_il", { ascending: false }).limit(200).returns<{ user_id: string; attivo: boolean; aggiornata_il: string; aggiornata_da_email: string }[]>(),
     admin.from("radar_console_registro").select("oggetto, cliente_id, valore_precedente, valore_nuovo, autore_email, creato_il").order("creato_il", { ascending: false }).limit(30).returns<{ oggetto: string; cliente_id: string | null; valore_precedente: string | null; valore_nuovo: string | null; autore_email: string; creato_il: string }[]>(),
+    leggiDatiPvl(admin),
   ]);
 
   // email delle imprese (abilitate e citate nel registro), lette in una volta sola
@@ -128,6 +158,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
         },
     imprese: impostazioni.error ? null : (impostazioni.data ?? []).map((r) => ({ email: emailDi.get(r.user_id) ?? "(utente non trovato)", attivo: r.attivo, aggiornataIl: r.aggiornata_il, aggiornataDa: r.aggiornata_da_email })),
     registro: registroRaw.error ? null : (registroRaw.data ?? []).map((r) => ({ oggetto: r.oggetto, clienteEmail: r.cliente_id ? (emailDi.get(r.cliente_id) ?? "(utente non trovato)") : null, prima: r.valore_precedente, dopo: r.valore_nuovo, autore: r.autore_email, il: r.creato_il })),
+    pvl,
     schemaPresente,
     parametri,
     fonti,
@@ -137,5 +168,38 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     coda,
     clientiAbilitati,
     utilizzi30Giorni: utilizzi.error ? null : riepilogaUtilizzi(utilizzi.data ?? []),
+  };
+}
+
+// Stato del connettore PVL per la console: riga della fonte, limiti, conteggi dell'archivio (solo conteggi «head», nessuna scansione).
+// null = migrazione 0115 non eseguita in questo database.
+async function leggiDatiPvl(admin: ReturnType<typeof createAdminClient>): Promise<DatiPvlConsole | null> {
+  const { data: riga, error } = await admin.from("radar_fonti_stato").select("cursore, conteggi").eq("fonte", "pvl").maybeSingle<{ cursore: Record<string, unknown> | null; conteggi: Record<string, unknown> | null }>();
+  if (error || !riga) return null;
+  const conta = async (f: (q: ReturnType<ReturnType<typeof admin.from>["select"]>) => PromiseLike<{ count: number | null; error: unknown }>, tabella: string): Promise<number | null> => {
+    const { count, error: e } = await f(admin.from(tabella).select("id", { count: "exact", head: true }));
+    return e ? null : (count ?? 0);
+  };
+  const [righeLimiti, avvisi, gareNateDallaPvl, avvisiCheCitanoTed, cambiamentiPvl] = await Promise.all([
+    admin.from("console_impostazioni").select("chiave, valore").like("chiave", "radar_pvl_%").returns<{ chiave: string; valore: string }[]>(),
+    conta((q) => q.eq("fonte", "pvl"), "radar_procedure_fonti"),
+    conta((q) => q.like("chiave", "pvl:%"), "radar_procedure"),
+    conta((q) => q.eq("fonte", "pvl").not("rif_ted", "is", null), "radar_procedure_fonti"),
+    conta((q) => q.eq("fonte", "pvl").in("tipo", ["rettifica", "proroga", "annullamento", "esito"]), "radar_aggiornamenti"),
+  ]);
+  const cursore = riga.cursore ?? null;
+  const sospensione = riga.conteggi?.sospensione as { il: string; motivo: string | null } | undefined;
+  const ambiente = ambienteDb(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const attivi = process.env.RADAR_PVL_CRON === "attivo";
+  return {
+    accensioneConsentita: scrittureRadarConsentite("pvl", process.env).ok,
+    ambiente,
+    sospensione: sospensione ?? null,
+    inCorso: cursore?.inCorso === true,
+    ultimoGiorno: typeof cursore?.ultimoGiorno === "string" ? cursore.ultimoGiorno : null,
+    ultimoGiro: (riga.conteggi?.ultimo_giro as UltimoGiroPvl | undefined) ?? null,
+    limiti: limitiPvlDaRighe(righeLimiti.data ?? []),
+    giriProgrammati: { attivi, orari: ORE_GIRI_PVL.map((o) => `${o}:00`).join(", "), cronProposto: CRON_PVL_PROPOSTO, prossimo: prossimoGiroPvl(new Date()).toISOString() },
+    archivio: { avvisi, gareNateDallaPvl, avvisiCheCitanoTed, cambiamentiPvl },
   };
 }

@@ -68,7 +68,7 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
             <div className="omnia-opp-sintesi-etichetta">Fonte</div>
             <div className="omnia-opp-sintesi-valore">
               Aggiunta a mano il {giorno(a.creata_il)}
-              <div className="omnia-opp-nota">Non ancora trovata nelle fonti pubbliche attive (TED). Le gare sotto soglia arriveranno con i dati ANAC.</div>
+              <div className="omnia-opp-nota">Non ancora trovata nelle fonti pubbliche attive. Quando il suo CIG compare in una fonte, la colleghiamo da sola.</div>
             </div>
           </div>
         </section>

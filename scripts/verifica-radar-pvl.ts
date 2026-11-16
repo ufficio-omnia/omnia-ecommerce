@@ -34,6 +34,8 @@ import { confrontaVersioni, provenienzaImplicita, unisciLotti, unisciVersione, t
 import { ambienteDb, scrittureRadarConsentite, PROGETTO_PRODUZIONE, PROGETTO_STAGING } from "../src/lib/radar/ambiente";
 import { validaParametro } from "../src/lib/console/tender-intelligence-calcoli";
 import { rigaDaScrivere } from "../src/lib/radar/importa";
+import { descriviAvvisoLetto, etichettaFonti, fonteDelDato, fontiDellaGara, riepilogoFonti } from "../src/lib/radar/fonti-gara-calcoli";
+import { sintesiDeterministica } from "../src/lib/radar/sintesi-calcoli";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -309,6 +311,27 @@ async function principale() {
   uguale("lotti con valori diversi: abbinamento non sicuro, nessun CIG assegnato", [u3.allineati, u3.lotti.map((l) => l.cig)], [false, [null, null]]);
   const u4 = unisciLotti([lotto("LOT-0001", "BAAAAAAAA1", 240000)], [lotto("LOT-0001", "BBBBBBBBB2", 240000)], "pvl", false);
   uguale("CIG diverso sullo stesso lotto: si tiene quello già presente e si conta", [u4.lotti[0].cig, u4.cigScartati], ["BAAAAAAAA1", 1]);
+
+  // ───── 8bis. fonti mostrate al cliente ─────
+  uguale("fonti della gara: dalla provenienza dei campi, altrimenti dalla chiave", [fontiDellaGara("ted:x", poiPvl.provenienza), fontiDellaGara("ted:x", {}), fontiDellaGara("pvl:y", null)], [["ted", "pvl"], ["ted"], ["pvl"]]);
+  uguale("etichetta negli elenchi", [etichettaFonti(["ted", "pvl"]), etichettaFonti(["pvl"])], ["TED e PVL ANAC", "PVL ANAC"]);
+  uguale("fonte di ogni dato", [fonteDelDato(poiTed.provenienza, "durata_mesi", "pvl:z"), fonteDelDato(poiTed.provenienza, "scadenza", "pvl:z"), fonteDelDato({}, "scadenza", "ted:z")], ["ted", "pvl", "ted"]);
+  uguale("avvisi letti descritti senza identificativi interni", [descriviAvvisoLetto({ fonte: "ted", id_fonte: "787530-2026", tipo_avviso: "cn-standard" }), descriviAvvisoLetto({ fonte: "pvl", id_fonte: "uuid", tipo_avviso: "P1_16" }), descriviAvvisoLetto({ fonte: "pvl", id_fonte: "uuid", tipo_avviso: "A1_29" })], ["TED 787530-2026", "PVL ANAC, bando (scheda P1_16)", "PVL ANAC, esito (scheda A1_29)"]);
+  const riep = riepilogoFonti(
+    [
+      { fonte: "ted", id_fonte: "787530-2026", url: "https://ted.europa.eu/it/notice/-/detail/787530-2026", pubblicato_il: "2026-11-17", tipo_avviso: "cn-standard", rilevato_il: "2026-11-17T10:00:00Z" },
+      { fonte: "pvl", id_fonte: "a", url: "https://pubblicitalegale.anticorruzione.it/bandi/a", pubblicato_il: "2026-11-13", tipo_avviso: "P1_16", rilevato_il: "2026-11-16T19:00:00Z" },
+      { fonte: "pvl", id_fonte: "b", url: null, pubblicato_il: "2026-11-20", tipo_avviso: "A1_29", rilevato_il: "2026-11-20T10:00:00Z" },
+    ],
+    { ted: "2026-11-18T09:20:00Z", pvl: "2026-11-20T17:05:00Z" },
+  );
+  uguale(
+    "riepilogo per fonte: collegamento al bando (non all'esito), prima pubblicazione, ultima verifica della fonte",
+    riep.map((r) => [r.fonte, r.url, r.avvisi, r.primaPubblicazione, r.verificataIl]),
+    [["ted", "https://ted.europa.eu/it/notice/-/detail/787530-2026", 1, "2026-11-17", "2026-11-18T09:20:00Z"], ["pvl", "https://pubblicitalegale.anticorruzione.it/bandi/a", 2, "2026-11-13", "2026-11-20T17:05:00Z"]],
+  );
+  const frasiPvl = sintesiDeterministica({ oggetto: "x", settori: ["ristorazione"], cpvPrincipale: "55524000", ente: "Comune di Prova", comune: null, provincia: null, valoreStimato: 100000, durataMesi: null, nLotti: 1, tipoProcedura: null, criterio: null, scadenzaGiorno: "2026-12-01", scadenza: null, fonte: "PVL di ANAC", numeroAvviso: null, dataPubblicazione: "2026-11-13" });
+  uguale("sintesi di una gara solo PVL: fonte e data, senza identificativo interno", frasiPvl.at(-1), "Fonte: PVL di ANAC, avviso pubblicato il 13 novembre 2026.");
 
   // ───── 9. punto di ripresa e finestre ─────
   const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);

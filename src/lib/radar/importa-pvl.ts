@@ -92,7 +92,11 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
       const bandi: BandoPvl[] = [];
       const esiti: EsitoPvl[] = [];
       for (const l of letti) {
-        if (l.meta) aggiungi(stat.avvisi.perScheda, l.meta.scheda);
+        if (l.meta) {
+          aggiungi(stat.avvisi.perScheda, l.meta.scheda);
+          if (l.meta.sostituitoDa || l.meta.tipoSostituzione) aggiungi(stat.avvisi.sostituiti, l.meta.tipoSostituzione ?? "senza_tipo");
+          if (!l.meta.attivo) stat.avvisi.nonAttivi++;
+        }
         if (l.tipo === "bando") bandi.push(l);
         else if (l.tipo === "esito") esiti.push(l);
         else aggiungi(stat.avvisi.esclusi, l.motivo);

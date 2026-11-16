@@ -122,7 +122,8 @@ export function rigaDaBandoPvl(b: BandoPvl, adesso: Date): RigaProcedura {
 
 export type StatistichePvl = {
   pvl: { richieste: number; byte: number; ms: number; risposte: Record<string, number>; conteggioDichiarato: number | null };
-  avvisi: { letti: number; perScheda: Record<string, number>; bandi: number; esiti: number; esclusi: Record<string, number> };
+  // sostituiti = avvisi che la PVL dichiara superati da un avviso nuovo (rettifiche, annullamenti), per tipo; non attivi = ritirati
+  avvisi: { letti: number; perScheda: Record<string, number>; bandi: number; esiti: number; esclusi: Record<string, number>; sostituiti: Record<string, number>; nonAttivi: number };
   bandi: {
     invariati: number;
     // gare nuove nell'archivio: nazionali (senza avviso TED) e sopra soglia non ancora arrivate da TED
@@ -151,7 +152,7 @@ export type StatistichePvl = {
 export function statistichePvlVuote(): StatistichePvl {
   return {
     pvl: { richieste: 0, byte: 0, ms: 0, risposte: {}, conteggioDichiarato: null },
-    avvisi: { letti: 0, perScheda: {}, bandi: 0, esiti: 0, esclusi: {} },
+    avvisi: { letti: 0, perScheda: {}, bandi: 0, esiti: 0, esclusi: {}, sostituiti: {}, nonAttivi: 0 },
     bandi: {
       invariati: 0,
       nuoveNazionali: 0,

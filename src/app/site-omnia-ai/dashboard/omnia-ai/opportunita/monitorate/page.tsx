@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { COLONNE_RISULTATO, type RigaRisultato } from "@/lib/radar/ricerca";
+import { leggiFontiGare } from "@/lib/radar/gara";
+import { etichettaFonti, type FonteGara } from "@/lib/radar/fonti-gara-calcoli";
 import { statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
 import { giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
@@ -49,7 +51,7 @@ export default async function MonitoratePage() {
   const aggiunte = new Map((aggiunteRaw ?? []).map((a) => [a.id, a]));
 
   const idProcedure = [...new Set([...salvate.map((s) => s.procedura_id), ...(aggiunteRaw ?? []).map((a) => a.procedura_id)].filter((x): x is string => !!x))];
-  const [{ data: procedureRaw }, { data: novitaRaw }] = idProcedure.length
+  const [{ data: procedureRaw }, { data: novitaRaw }, fontiGare] = idProcedure.length
     ? await Promise.all([
         admin.from("radar_procedure").select(COLONNE_RISULTATO).in("id", idProcedure).returns<RigaRisultato[]>(),
         admin
@@ -60,8 +62,9 @@ export default async function MonitoratePage() {
           .order("rilevato_il", { ascending: false })
           .limit(1000)
           .returns<Novita[]>(),
+        leggiFontiGare(admin, idProcedure),
       ])
-    : [{ data: [] as RigaRisultato[] }, { data: [] as Novita[] }];
+    : [{ data: [] as RigaRisultato[] }, { data: [] as Novita[] }, new Map<string, FonteGara[]>()];
   const procedure = new Map((procedureRaw ?? []).map((p) => [p.id, { ...p, valore_stimato: p.valore_stimato === null ? null : Number(p.valore_stimato) }]));
 
   const righe: (DatiRigaGara & { chiave: string; scadenzaOrd: string; gruppo: "settimana" | "prossime" | "senza_data" | "chiuse" })[] = [];
@@ -90,7 +93,7 @@ export default async function MonitoratePage() {
         stato: p.stato,
         rettificata: p.rettificata,
         motivi: aggiunta ? ["aggiunta da te, poi trovata nelle fonti"] : [],
-        fonte: "TED",
+        fonte: etichettaFonti(fontiGare.get(p.id) ?? ["ted"]),
         verificataIl: p.ultima_rilevazione_il,
         salvata: true,
         monitorata: s.monitorata,

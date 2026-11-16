@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { cercaGare, type RisultatoRicerca } from "@/lib/radar/ricerca";
-import { leggiSalvataggi } from "@/lib/radar/gara";
+import { leggiFontiGare, leggiSalvataggi } from "@/lib/radar/gara";
 import { contaUtilizziRadar, registraUtilizzoRadar } from "@/lib/radar/utilizzi";
 import { inizioFinestra, limiteEffettivo, verificaLimite } from "@/lib/radar/diritto-calcoli";
 import { PROCEDURE_RICERCA, SCADENZE_RAPIDE, filtriAttivi, filtriDaParametri, parametriDaFiltri, type FiltriRicerca } from "@/lib/radar/ricerca-calcoli";
@@ -15,6 +15,7 @@ import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opport
 import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import PannelloFiltri from "@/components/omnia-ai/opportunita/pannello-filtri";
 import FontiRicerca from "@/components/omnia-ai/opportunita/fonti-ricerca";
+import { etichettaFonti } from "@/lib/radar/fonti-gara-calcoli";
 import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 
 // «Cerca» (fase B1): filtri deterministici applicati dal database, ricerca testuale in italiano con i sinonimi della mappa CPV (mostrati),
@@ -65,10 +66,12 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
     }
   }
 
-  const [salvataggi, { data: fonteTed }] = await Promise.all([
+  const [salvataggi, { data: righeFonti }, fontiGare] = await Promise.all([
     leggiSalvataggi(await createClient(), (risultato?.righe ?? []).map((r) => r.id)),
-    admin.from("radar_fonti_stato").select("attiva, dati_aggiornati_al, ultimo_successo_il").eq("fonte", "ted").maybeSingle<{ attiva: boolean; dati_aggiornati_al: string | null; ultimo_successo_il: string | null }>(),
+    admin.from("radar_fonti_stato").select("fonte, attiva, dati_aggiornati_al, ultimo_successo_il").in("fonte", ["ted", "pvl"]).returns<{ fonte: "ted" | "pvl"; attiva: boolean; dati_aggiornati_al: string | null; ultimo_successo_il: string | null }[]>(),
+    leggiFontiGare(admin, (risultato?.righe ?? []).map((r) => r.id)),
   ]);
+  const statiFonti = (righeFonti ?? []).map((f) => ({ fonte: f.fonte, attiva: f.attiva, datiAl: f.dati_aggiornati_al, ultimoSuccesso: f.ultimo_successo_il }));
   const attivi = filtriAttivi(filtri);
   const chip = filtriAttiviRimovibili(filtri);
   const sinonimi = (risultato?.domanda.espansioni ?? []).flatMap((e) => e.aggiunti.map((t) => ({ termine: t.termine, origine: t.origine, settore: e.settore })));
@@ -240,7 +243,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
                       stato: r.stato,
                       rettificata: r.rettificata,
                       motivi: r.punteggio.motivi,
-                      fonte: "TED",
+                      fonte: etichettaFonti(fontiGare.get(r.id) ?? ["ted"]),
                       verificataIl: r.ultima_rilevazione_il,
                       salvata: !!s,
                       monitorata: !!s?.monitorata,
@@ -260,7 +263,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
               </nav>
             )}
 
-            <FontiRicerca tedAttiva={!!fonteTed?.attiva} tedDatiAl={fonteTed?.dati_aggiornati_al ?? null} tedUltimoSuccesso={fonteTed?.ultimo_successo_il ?? null} />
+            <FontiRicerca fonti={statiFonti} />
           </div>
         </div>
       </form>

@@ -1,7 +1,9 @@
 import type { DatiTenderIntelligenceConsole } from "@/lib/console/tender-intelligence";
 import { AZIONI_RADAR, LIMITI_PREDEFINITI, PREFISSO_COSTO, PREFISSO_LIMITE, type AzioneRadar, type NomeLimite } from "@/lib/radar/diritto-calcoli";
 import type { StatoFonte } from "@/lib/radar/fonti/tipi";
-import { eseguiGiroTed, impostaFonteTed, impostaImpresaRadar, salvaParametriRadar } from "../azioni/tender-intelligence";
+import { eseguiGiroPvl, eseguiGiroTed, impostaFontePvl, impostaFonteTed, impostaImpresaRadar, salvaParametriRadar } from "../azioni/tender-intelligence";
+import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-calcoli";
+import { ETICHETTE_LIMITI_PVL } from "@/lib/console/tender-intelligence-calcoli";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
 import ModuloAzione from "./modulo-azione";
 
@@ -36,6 +38,7 @@ const STATO_FONTE: Record<StatoFonte, { testo: string; tono: Tono }> = {
 const ETICHETTA_OGGETTO: Record<string, string> = {
   "parametro:radar_attivo": "Interruttore generale del modulo",
   "fonte:ted:attiva": "Fonte TED",
+  "fonte:pvl:attiva": "Fonte PVL (staging)",
   "cliente:attivo": "Modulo per l'impresa",
 };
 
@@ -43,6 +46,8 @@ function etichettaOggetto(o: string): string {
   if (ETICHETTA_OGGETTO[o]) return ETICHETTA_OGGETTO[o];
   if (o.startsWith(`parametro:${PREFISSO_COSTO}`)) return `Costo: ${ETICHETTA_AZIONE[o.slice(`parametro:${PREFISSO_COSTO}`.length) as AzioneRadar] ?? o}`;
   if (o.startsWith(`parametro:${PREFISSO_LIMITE}`)) return `Limite: ${ETICHETTA_LIMITE[o.slice(`parametro:${PREFISSO_LIMITE}`.length) as NomeLimite] ?? o}`;
+  const pvl = (Object.entries(CHIAVI_LIMITI_PVL) as [keyof typeof CHIAVI_LIMITI_PVL, string][]).find(([, c]) => o === `parametro:${c}`);
+  if (pvl) return `PVL: ${ETICHETTE_LIMITI_PVL[pvl[0]]}`;
   return o;
 }
 
@@ -62,6 +67,166 @@ function data(valore: string | null): string {
 
 function numero(n: number | null): string {
   return n === null ? "—" : n.toLocaleString("it-IT");
+}
+
+function secondi(ms: number): string {
+  return `${(ms / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} s`;
+}
+
+const MOTIVI_ESCLUSIONE_PVL: Record<string, string> = {
+  modifica_contrattuale: "modifiche contrattuali",
+  indagine_o_negoziata: "indagini di mercato e negoziate senza bando",
+  affidamento: "affidamenti diretti e adesioni",
+  altra_scheda: "altri avvisi (esecuzione, elenchi…)",
+  fuori_settore: "fuori dai sei settori",
+  oscurato: "oscurati",
+  avviso_malformato: "malformati",
+  senza_oggetto: "senza oggetto",
+};
+
+const CAMPI_MANCANTI_PVL: Record<string, string> = {
+  cpv_non_riconosciuto: "CPV non del file approvato",
+  scadenza: "scadenza",
+  valore: "valore",
+  documenti: "collegamento ai documenti",
+  cig: "CIG",
+  regione: "regione",
+};
+
+function elenco(m: Record<string, number>, etichette: Record<string, string>): string {
+  const voci = Object.entries(m).filter(([, v]) => v > 0);
+  return voci.length ? voci.map(([k, v]) => `${numero(v)} ${etichette[k] ?? k.replaceAll("_", " ")}`).join(", ") : "nessuno";
+}
+
+// Connettore PVL di ANAC (fase B1-bis, SOLO STAGING): stato e sospensione, giri programmati (configurati, non attivi), ultimo giro con
+// richieste, gare importate, doppioni TED/PVL evitati, rettifiche, errori e tempi; limiti di cortesia modificabili entro intervalli fissi.
+function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceConsole["pvl"]>; attiva: boolean }) {
+  const g = pvl.ultimoGiro;
+  return (
+    <>
+      <div className="cn-colonne cn-colonne-pari">
+        <Pannello titolo="Fonte PVL di ANAC (solo staging)">
+          <p className="cn-nota">
+            Stato: <strong>{attiva ? "accesa" : pvl.sospensione ? "sospesa" : "spenta"}</strong>
+            {pvl.inCorso ? " · giro da continuare" : ""}
+            {pvl.ultimoGiorno ? ` · avvisi letti fino al ${data(pvl.ultimoGiorno)}` : ""} · database: {pvl.ambiente}
+          </p>
+          {pvl.sospensione && !attiva && (
+            <p className="cn-esito avviso" role="alert">
+              Sospesa dal connettore il {data(pvl.sospensione.il)}: {pvl.sospensione.motivo ?? "motivo non registrato"}. Si riaccende solo da qui, dopo averne verificato la causa.
+            </p>
+          )}
+          {pvl.accensioneConsentita || attiva ? (
+            <ModuloAzione azione={impostaFontePvl} etichetta={attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ azione: attiva ? "spegni" : "accendi" }}>
+              <span className="cn-nota">Uso sperimentale autorizzato solo sullo staging; non è un&apos;autorizzazione di ANAC né del riuso commerciale.</span>
+            </ModuloAzione>
+          ) : (
+            <p className="cn-nota">Accensione non consentita in questo database: la PVL è autorizzata solo sullo staging.</p>
+          )}
+          {attiva && (
+            <ModuloAzione azione={eseguiGiroPvl} etichetta="Esegui un giro adesso" etichettaInCorso="Leggo… (fino a 50 s)">
+              <span className="cn-nota">Dall&apos;ultimo giorno letto meno uno a oggi, entro il tetto di richieste qui sotto.</span>
+            </ModuloAzione>
+          )}
+          <p className="cn-nota">
+            Giri programmati alle {pvl.giriProgrammati.orari} ora italiana (ora legale compresa):{" "}
+            {pvl.giriProgrammati.attivi ? (
+              <>
+                <strong>attivi</strong>, prossimo il {data(pvl.giriProgrammati.prossimo)}
+              </>
+            ) : (
+              <>
+                <strong>configurati ma non attivi</strong> (servono l&apos;autorizzazione operativa, la riga «{pvl.giriProgrammati.cronProposto}» in vercel.json e RADAR_PVL_CRON=attivo). Se attivi, il prossimo sarebbe il {data(pvl.giriProgrammati.prossimo)}
+              </>
+            )}
+            .
+          </p>
+          <p className="cn-nota">
+            Archivio: {numero(pvl.archivio.avvisi)} avvisi letti dalla PVL, {numero(pvl.archivio.gareNateDallaPvl)} gare arrivate prima (o solo) dalla PVL, {numero(pvl.archivio.avvisiCheCitanoTed)} avvisi che citano un avviso TED (stessa gara, nessun doppione), {numero(pvl.archivio.cambiamentiPvl)} rettifiche, proroghe, annullamenti ed esiti registrati dalla PVL.
+          </p>
+        </Pannello>
+
+        <Pannello titolo="Limiti verso la PVL">
+          <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i limiti PVL" etichettaInCorso="Salvo…" classe="cn-modulo">
+            {(Object.keys(CHIAVI_LIMITI_PVL) as (keyof typeof CHIAVI_LIMITI_PVL)[]).map((k) => (
+              <div key={k} className="cn-campo">
+                <label className="cn-etichetta" htmlFor={`pvl-${k}`}>
+                  {ETICHETTE_LIMITI_PVL[k]}{" "}
+                  <span className="cn-nota">
+                    (da {numero(LIMITI_PVL_INTERVALLI[k].min)} a {numero(LIMITI_PVL_INTERVALLI[k].max)})
+                  </span>
+                </label>
+                <input id={`pvl-${k}`} name={CHIAVI_LIMITI_PVL[k]} inputMode="numeric" className="cn-input" defaultValue={String(pvl.limiti[k])} />
+              </div>
+            ))}
+          </ModuloAzione>
+          <p className="cn-nota">Su 401, 403 o 429, o su una risposta che non sono i dati attesi, il connettore si sospende da solo e non ripete la richiesta.</p>
+        </Pannello>
+      </div>
+
+      {g && (
+        <div className="cn-sezione">
+          <Pannello titolo="Ultimo giro PVL">
+            <div className="cn-scorri">
+              <table className="cn-tab">
+                <tbody>
+                  <tr>
+                    <th>Iniziato</th>
+                    <td>
+                      {data(g.iniziato_il)} · {g.modo === "finestra" ? "finestra controllata" : "giro incrementale"} dal {data(g.finestra.da)} al {data(g.finestra.a)} · durata {secondi(g.durata_ms)} · {g.giro_finito ? "finito" : "da continuare"}
+                      {g.errore ? ` · interrotto: ${g.errore}` : ""}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Richieste alla PVL</th>
+                    <td>
+                      {numero(g.pvl.richieste)} ({elenco(g.pvl.risposte, { rete: "senza risposta" })}), {(g.pvl.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {secondi(g.pvl.ms)} · avvisi dichiarati dalla fonte: {numero(g.pvl.conteggioDichiarato)} · limiti: pausa {secondi(g.limiti.pausaMs)}, tetto {numero(g.limiti.richiesteMassime)} richieste
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Avvisi</th>
+                    <td>
+                      {numero(g.avvisi.letti)} letti: {numero(g.avvisi.bandi)} bandi, {numero(g.avvisi.esiti)} esiti; esclusi: {elenco(g.avvisi.esclusi, MOTIVI_ESCLUSIONE_PVL)}
+                      {g.avvisi.sostituiti && Object.keys(g.avvisi.sostituiti).length > 0 ? ` · sostituiti da un avviso nuovo: ${elenco(g.avvisi.sostituiti, {})}` : ""}
+                      {g.avvisi.nonAttivi ? ` · non attivi: ${numero(g.avvisi.nonAttivi)}` : ""}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Gare</th>
+                    <td>
+                      {numero(g.bandi.nuoveNazionali)} nuove nazionali, {numero(g.bandi.nuoveSopraSogliaSenzaTed)} sopra soglia non ancora su TED, <strong>{numero(g.bandi.giaPresentiTed)} già presenti da TED</strong> (unite, nessun doppione), {numero(g.bandi.nuoveVersioni)} nuove versioni di gare PVL, {numero(g.bandi.rettifiche)} con rettifiche o proroghe, {numero(g.bandi.annullate)} annullate, {numero(g.bandi.invariati)} già note; {numero(g.bandi.scaduteAllImportazione)} già scadute all&apos;importazione (mai mostrate aperte)
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Lotti e CIG</th>
+                    <td>
+                      {numero(g.bandi.lotti)} lotti, {numero(g.bandi.cigAssegnati)} CIG nuovi, {numero(g.bandi.cigScartati)} CIG scartati, {numero(g.bandi.lottiNonAllineati)} gare con lotti non allineati, {numero(g.bandi.conflitti)} conflitti tra riferimenti, {numero(g.bandi.aggiunteCollegate)} gare aggiunte a mano collegate
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Dati mancanti</th>
+                    <td>{elenco(g.bandi.mancanti, CAMPI_MANCANTI_PVL)}</td>
+                  </tr>
+                  <tr>
+                    <th>Esiti</th>
+                    <td>
+                      {numero(g.esiti.letti)} letti, {numero(g.esiti.applicati)} applicati, {numero(g.esiti.senzaGara)} senza la gara in archivio, {numero(g.esiti.invariati)} già noti
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Database</th>
+                    <td>
+                      {numero(g.db.richiesteDb)} richieste, {secondi(g.db.msDb)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Pannello>
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
@@ -162,6 +327,8 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
           </Pannello>
         </div>
       )}
+
+      {dati.pvl && <SezionePvl pvl={dati.pvl} attiva={dati.fonti.find((f) => f.id === "pvl")?.db?.attiva === true} />}
 
       <div className="cn-sezione">
         <Pannello titolo="Fonti">

@@ -137,9 +137,10 @@ export function sintesiDeterministica(d: DatiSintesi): string[] {
   const entro = scadenzaLeggibile(d.scadenzaGiorno, d.scadenza);
   if (entro) frasi.push(`Offerte entro il ${entro}.`);
 
-  if (d.numeroAvviso && d.dataPubblicazione) {
+  if (d.dataPubblicazione) {
     const pub = new Date(`${d.dataPubblicazione}T12:00:00Z`);
-    frasi.push(`Fonte: ${d.fonte}, avviso ${d.numeroAvviso} pubblicato il ${FMT_GIORNO.format(pub)}.`);
+    // con il numero dell'avviso (TED) o con la sola data (PVL: l'identificativo interno non si mostra)
+    frasi.push(d.numeroAvviso ? `Fonte: ${d.fonte}, avviso ${d.numeroAvviso} pubblicato il ${FMT_GIORNO.format(pub)}.` : `Fonte: ${d.fonte}, avviso pubblicato il ${FMT_GIORNO.format(pub)}.`);
   }
   return frasi;
 }
