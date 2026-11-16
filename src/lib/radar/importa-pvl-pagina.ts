@@ -10,7 +10,7 @@
 // cambiamenti, collegamento delle gare aggiunte a mano).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cigPvl, confrontaVersioniPvl, type BandoPvl, type EsitoPvl } from "./fonti/pvl-calcoli";
-import { COLONNE_RIGA, blocchi, misura, rigaDaScrivere, type Misure } from "./importa";
+import { COLONNE_RIGA, blocchi, collegaAggiunte, misura, rigaDaScrivere, type Misure } from "./importa";
 import { aperta, notificabile, statoDopoEsito, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import { aggiungi, rigaDaBandoPvl, type StatistichePvl } from "./importa-pvl-calcoli";
 import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
@@ -280,12 +280,7 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
   }
 
   // 8) gare aggiunte a mano con lo stesso CIG: si collegano alla gara pubblica
-  for (const l of righeLotti.filter((x) => x.cig)) {
-    const { data } = await misura(misure, "collegamento delle gare aggiunte", () =>
-      admin.from("omnia_ai_radar_gare_aggiunte").update({ procedura_id: l.procedura_id, collegata_il: iso, aggiornata_il: iso }).eq("cig", l.cig as string).is("procedura_id", null).select("id"),
-    );
-    stat.bandi.aggiunteCollegate += (data ?? []).length;
-  }
+  stat.bandi.aggiunteCollegate += await collegaAggiunte(admin, righeLotti, iso, misure);
 }
 
 // Esiti PVL (aggiudicazioni, mancate aggiudicazioni): cambiano SOLO lo stato di una gara già in archivio, trovata per procedura PVL, numero

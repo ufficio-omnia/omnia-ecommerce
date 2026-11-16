@@ -138,6 +138,12 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
 
   const implicita = provenienzaImplicita(precedente);
   const prov: ProvenienzaCampi = { ...(provenienzaPrecedente ?? {}) };
+  // gara importata prima della 0115 (provenienza vuota): la provenienza implicita diventa esplicita per ogni dato presente, prima di
+  // qualunque unione, così i dati che restano della prima fonte non vengono poi attribuiti all'altra
+  if (Object.keys(prov).length === 0) {
+    prov._versione = implicita;
+    for (const g of GRUPPI_CAMPI) if (!vuoto(valoreGruppo(precedente, g))) prov[g.nome] = implicita;
+  }
   const ultimaPrecedente = prov._versione ?? implicita;
   const confrontoUltima = confrontaVersioni(versione, versioneDa(ultimaPrecedente));
   const unaSolaFonte = [ultimaPrecedente, ...Object.values(prov)].every((p) => p.f === versione.fonte);

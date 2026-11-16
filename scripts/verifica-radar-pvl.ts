@@ -255,6 +255,13 @@ async function principale() {
   const daLegacy = unisciVersione({ ...rigaTed }, null, rigaPvl, vPvl, iso);
   uguale("gara TED importata prima della 0115 (provenienza implicita): stesso risultato", [daLegacy.riga.chiave, daLegacy.cambiamenti.length, daLegacy.riga.oggetto === rigaPvl.oggetto], ["ted:proc-venezia", 0, true]);
   uguale("provenienza implicita di una gara TED", provenienzaImplicita(rigaTed), { f: "ted", id: "787530-2026", g: "2026-11-17", t: null, ted: "787530-2026" });
+  uguale(
+    "gara TED di prima della 0115 unita alla PVL: i dati rimasti a TED restano attribuiti a TED (provenienza resa esplicita)",
+    [daLegacy.provenienza.durata_mesi?.f, daLegacy.provenienza.codice_nuts?.f, daLegacy.provenienza.oggetto?.f, daLegacy.provenienza._versione?.f],
+    ["ted", "ted", "pvl", "pvl"],
+  );
+  const daLegacyPoi = unisciVersione(daLegacy.riga, daLegacy.provenienza, rigaTed, vTed, iso);
+  uguale("… e una nuova lettura TED della stessa versione non cambia nulla", [daLegacyPoi.cambiamenti.length, daLegacyPoi.riga.oggetto === rigaPvl.oggetto, daLegacyPoi.riga.durata_mesi], [0, true, 36]);
 
   // rettifica TED più recente (proroga), poi la stessa rettifica dalla PVL: un solo cambiamento
   const rettTed: RigaProcedura = { ...rigaTed, scadenza_giorno: "2026-12-21", scadenza_offerte: "2026-12-21T12:00:00.000Z", ultima_versione_il: "2026-11-25", ultima_versione_id: "800001-2026" };

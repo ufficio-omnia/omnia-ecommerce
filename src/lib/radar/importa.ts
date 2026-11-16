@@ -304,15 +304,30 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
   }
 
   // 7) gare aggiunte a mano con lo stesso CIG: si collegano alla gara pubblica (tabella riservata, scritta solo dal server)
-  const cigAssegnati = righeLotti.filter((l) => l.cig).map((l) => ({ cig: l.cig as string, procedura_id: l.procedura_id }));
-  for (const { cig: c, procedura_id } of cigAssegnati) {
-    const { data } = await misura(misure, "collegamento delle gare aggiunte", () =>
-      admin.from("omnia_ai_radar_gare_aggiunte").update({ procedura_id, collegata_il: iso, aggiornata_il: iso }).eq("cig", c).is("procedura_id", null).select("id"),
-    );
-    esito.aggiunteCollegate += (data ?? []).length;
-  }
+  esito.aggiunteCollegate += await collegaAggiunte(admin, righeLotti, iso, misure);
 
   return esito;
+}
+
+// Collega alle gare pubbliche le gare aggiunte a mano dalle imprese con lo stesso CIG: UNA lettura per blocco di CIG, poi una scrittura
+// solo per i CIG davvero in attesa (di solito nessuno). Prima: una scrittura per ogni CIG letto.
+export async function collegaAggiunte(admin: SupabaseClient, lotti: readonly { cig: string | null; procedura_id: string }[], iso: string, misure: Misure): Promise<number> {
+  const perCig = new Map<string, string>();
+  for (const l of lotti) if (l.cig) perCig.set(l.cig, l.procedura_id);
+  if (perCig.size === 0) return 0;
+  const inAttesa = new Set<string>();
+  for (const b of blocchi([...perCig.keys()], 150)) {
+    const { data } = await misura(misure, "gare aggiunte in attesa", () => admin.from("omnia_ai_radar_gare_aggiunte").select("cig").in("cig", b).is("procedura_id", null).returns<{ cig: string }[]>());
+    for (const r of data ?? []) inAttesa.add(r.cig);
+  }
+  let collegate = 0;
+  for (const c of inAttesa) {
+    const { data } = await misura(misure, "collegamento delle gare aggiunte", () =>
+      admin.from("omnia_ai_radar_gare_aggiunte").update({ procedura_id: perCig.get(c), collegata_il: iso, aggiornata_il: iso }).eq("cig", c).is("procedura_id", null).select("id"),
+    );
+    collegate += (data ?? []).length;
+  }
+  return collegate;
 }
 
 export async function applicaPaginaEsiti(admin: SupabaseClient, esiti: EsitoTed[], modo: ModoImportazione, adesso: Date, misure: Misure): Promise<EsitoPaginaEsiti> {
