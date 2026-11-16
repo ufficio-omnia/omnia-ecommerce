@@ -180,7 +180,11 @@ function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceCo
                   <tr>
                     <th>Richieste alla PVL</th>
                     <td>
-                      {numero(g.pvl.richieste)} ({elenco(g.pvl.risposte, { rete: "senza risposta" })}), {(g.pvl.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {secondi(g.pvl.ms)} · avvisi dichiarati dalla fonte: {numero(g.pvl.conteggioDichiarato)} · limiti: pausa {secondi(g.limiti.pausaMs)}, tetto {numero(g.limiti.richiesteMassime)} richieste
+                      {numero(g.pvl.richieste)} (
+                      {Object.entries(g.pvl.risposte)
+                        .map(([stato, n]) => (stato === "rete" ? `${numero(n)} senza risposta` : `${numero(n)} con esito ${stato}`))
+                        .join(", ") || "nessuna"}
+                      ), {(g.pvl.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {secondi(g.pvl.ms)} · avvisi dichiarati dalla fonte: {numero(g.pvl.conteggioDichiarato)} · limiti: pausa {secondi(g.limiti.pausaMs)}, tetto {numero(g.limiti.richiesteMassime)} richieste
                     </td>
                   </tr>
                   <tr>
