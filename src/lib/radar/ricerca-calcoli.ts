@@ -232,7 +232,7 @@ export function punteggioRilevanza(c: CandidatoRicerca, domanda: DomandaAnalizza
     } else if (giorni >= 5) {
       punti += 5;
       motivi.push(`${giorni} giorni alla scadenza`);
-    } else motivi.push(`scade tra ${giorni} giorni`);
+    } else motivi.push(giorni === 1 ? "scade domani" : `scade tra ${giorni} giorni`);
   }
 
   if (c.data_pubblicazione) {

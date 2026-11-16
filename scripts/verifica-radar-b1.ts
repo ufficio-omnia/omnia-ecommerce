@@ -170,6 +170,11 @@ uguale(
 );
 uguale("registro: giorno senza ora o istante, e ritorno", [valoreScadenza({ giorno: "2026-12-14", iso: null }), scadenzaDaValore("2026-12-14"), scadenzaDaValore("2026-12-14T12:00:00.000Z")], ["2026-12-14", { giorno: "2026-12-14", iso: null }, { giorno: "2026-12-14", iso: "2026-12-14T12:00:00.000Z" }]);
 uguale("scadenza in parole: con l'ora o «ora non indicata»", [scadenzaLeggibile("2026-12-14", "2026-12-14T12:00:00.000Z"), scadenzaLeggibile("2026-12-14", null), leggibileDaValore("2026-12-14")], ["14 dicembre 2026, ore 13:00", "14 dicembre 2026 (ora non indicata)", "14 dicembre 2026 (ora non indicata)"]);
+uguale(
+  "motivi della rilevanza: «scade oggi» e «scade domani», mai «tra 1 giorni»",
+  ["2026-11-16", "2026-11-17", "2026-11-19"].map((g) => punteggioRilevanza({ id: "x", oggetto: "o", oggetto_breve: null, sa_denominazione: null, settori: [], metodo_settore: null, scadenza_giorno: g, scadenza_offerte: null, data_pubblicazione: null, valore_stimato: null, rettificata: false }, analizzaDomanda(""), { settori: [] }, adesso).motivi[0]),
+  ["scade oggi", "scade domani", "scade tra 3 giorni"],
+);
 uguale("distanza dalla scadenza in parole", [distanzaScadenza(0), distanzaScadenza(1), distanzaScadenza(12), distanzaScadenza(-1), distanzaScadenza(null)], [" · scade oggi", " · scade domani", " · tra 12 giorni", "", ""]);
 uguale("giorni alla scadenza per giorno di calendario",[giorniAllaScadenza("2026-11-16", adesso), giorniAllaScadenza("2026-11-17", adesso), giorniAllaScadenza("2026-11-15", adesso)], [0, 1, -1]);
 const senzaOraRiga = rigaDaBando(senzaOra, null, adesso);
