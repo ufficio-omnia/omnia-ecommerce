@@ -120,19 +120,28 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
   }
   const senzaGara = daApplicare.filter((v) => !esistenti.has(v.record.chiaveProcedura));
   if (senzaGara.length > 0) {
+    // a) la stessa procedura TED già unita a una gara con un'altra chiave (gara nata dalla PVL): una rettifica TED con un numero nuovo
+    const perProcedura = new Map<string, string>();
+    for (const b of blocchi([...new Set(senzaGara.map((v) => v.meta.procedureId))], 100)) {
+      const { data } = await misura(misure, "lettura delle procedure TED già unite", () => admin.from("radar_procedure_fonti").select("id_procedura_fonte, procedura_id").eq("fonte", "ted").in("id_procedura_fonte", b).returns<{ id_procedura_fonte: string; procedura_id: string }[]>());
+      for (const r of data ?? []) perProcedura.set(r.id_procedura_fonte, r.procedura_id);
+    }
+    // b) l'avviso TED citato da un avviso PVL già letto
     const perTed = new Map<string, string>();
-    for (const b of blocchi([...new Set(senzaGara.map((v) => v.meta.numero))], 100)) {
+    const daCercare = [...new Set(senzaGara.filter((v) => !perProcedura.has(v.meta.procedureId)).map((v) => v.meta.numero))];
+    for (const b of blocchi(daCercare, 100)) {
       const { data } = await misura(misure, "lettura delle gare già arrivate dalla PVL", () => admin.from("radar_procedure_fonti").select("rif_ted, procedura_id").eq("fonte", "pvl").in("rif_ted", b).returns<{ rif_ted: string; procedura_id: string }[]>());
       for (const r of data ?? []) perTed.set(r.rif_ted, r.procedura_id);
     }
-    const ids = [...new Set(senzaGara.map((v) => perTed.get(v.meta.numero)).filter((x): x is string => !!x))];
+    const garaDi = (v: BandoTed) => perProcedura.get(v.meta.procedureId) ?? perTed.get(v.meta.numero);
+    const ids = [...new Set(senzaGara.map(garaDi).filter((x): x is string => !!x))];
     const perId = new Map<string, RigaArchivio>();
     for (const b of blocchi(ids, 80)) {
       const { data } = await misura(misure, "lettura delle gare PVL da unire", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi`).in("id", b).returns<RigaDb[]>());
       for (const r of data ?? []) perId.set(r.id, normalizzaRiga(r));
     }
     for (const v of senzaGara) {
-      const id = perTed.get(v.meta.numero);
+      const id = garaDi(v);
       const r = id ? perId.get(id) : undefined;
       // la chiave TED della procedura punta alla gara già esistente (che conserva la sua chiave)
       if (r) esistenti.set(v.record.chiaveProcedura, r);
