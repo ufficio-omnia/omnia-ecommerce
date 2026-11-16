@@ -26,7 +26,7 @@ import { SINONIMI, espandiDomanda } from "../src/lib/radar/sinonimi";
 import { CANDIDATI_MASSIMI, PAGINE_MASSIME, analizzaDomanda, condizioneAperte, condizioneStorico, filtriDaParametri, ordinaCandidati, parametriDaFiltri, punteggioRilevanza } from "../src/lib/radar/ricerca-calcoli";
 import { scadenzaDaCampi, validaGaraAggiunta } from "../src/lib/radar/aggiunte-calcoli";
 import { CHIAVI_MODIFICABILI, etichettaParametro, modificheParametri, validaParametro } from "../src/lib/console/tender-intelligence-calcoli";
-import { euro, giorniAllaScadenza, leggibileDaValore, scadenzaLeggibile, sintesiDeterministica, titoloBreve } from "../src/lib/radar/sintesi-calcoli";
+import { distanzaScadenza, euro, giorniAllaScadenza, leggibileDaValore, scadenzaLeggibile, sintesiDeterministica, titoloBreve } from "../src/lib/radar/sintesi-calcoli";
 import { comuneEProvincia, regioneDaNuts } from "../src/lib/radar/territorio";
 import { classificaGara, settoriDaParole, testoPerConfronto, vociCpv } from "../src/lib/radar/settori";
 
@@ -170,7 +170,8 @@ uguale(
 );
 uguale("registro: giorno senza ora o istante, e ritorno", [valoreScadenza({ giorno: "2026-12-14", iso: null }), scadenzaDaValore("2026-12-14"), scadenzaDaValore("2026-12-14T12:00:00.000Z")], ["2026-12-14", { giorno: "2026-12-14", iso: null }, { giorno: "2026-12-14", iso: "2026-12-14T12:00:00.000Z" }]);
 uguale("scadenza in parole: con l'ora o «ora non indicata»", [scadenzaLeggibile("2026-12-14", "2026-12-14T12:00:00.000Z"), scadenzaLeggibile("2026-12-14", null), leggibileDaValore("2026-12-14")], ["14 dicembre 2026, ore 13:00", "14 dicembre 2026 (ora non indicata)", "14 dicembre 2026 (ora non indicata)"]);
-uguale("giorni alla scadenza per giorno di calendario", [giorniAllaScadenza("2026-11-16", adesso), giorniAllaScadenza("2026-11-17", adesso), giorniAllaScadenza("2026-11-15", adesso)], [0, 1, -1]);
+uguale("distanza dalla scadenza in parole", [distanzaScadenza(0), distanzaScadenza(1), distanzaScadenza(12), distanzaScadenza(-1), distanzaScadenza(null)], [" · scade oggi", " · scade domani", " · tra 12 giorni", "", ""]);
+uguale("giorni alla scadenza per giorno di calendario",[giorniAllaScadenza("2026-11-16", adesso), giorniAllaScadenza("2026-11-17", adesso), giorniAllaScadenza("2026-11-15", adesso)], [0, 1, -1]);
 const senzaOraRiga = rigaDaBando(senzaOra, null, adesso);
 const conOraTardi = rigaDaBando(comeBando({ ...BANDO, "publication-number": "730001-2026", "publication-date": "2026-10-25+02:00", "deadline-receipt-tender-time-lot": ["18:00:00+01:00"] }), senzaOraRiga, adesso);
 uguale("dal solo giorno all'ora indicata nello stesso giorno: rettifica (non proroga)", cambiamentiTraVersioni(senzaOraRiga, conOraTardi).map((c) => [c.tipo, c.prima, c.dopo]), [["rettifica", "2026-12-14", "2026-12-14T17:00:00.000Z"]]);

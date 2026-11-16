@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
-import { euro, scadenzaLeggibile, giorniAllaScadenza } from "@/lib/radar/sintesi-calcoli";
+import { distanzaScadenza, euro, scadenzaLeggibile, giorniAllaScadenza } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
@@ -57,7 +57,7 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
           <div className="omnia-opp-sintesi-riga">
             <div className="omnia-opp-sintesi-etichetta">Entro quando</div>
             <div className="omnia-opp-sintesi-valore">
-              {a.scadenza_giorno ? `${scadenzaLeggibile(a.scadenza_giorno, a.scadenza_offerte)}${giorni !== null && giorni >= 0 ? ` · tra ${giorni} giorni` : ""}` : "non indicata"}
+              {a.scadenza_giorno ? `${scadenzaLeggibile(a.scadenza_giorno, a.scadenza_offerte)}${distanzaScadenza(giorni)}` : "non indicata"}
             </div>
           </div>
           <div className="omnia-opp-sintesi-riga">

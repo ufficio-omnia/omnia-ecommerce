@@ -74,6 +74,14 @@ export function scadenzaLeggibile(giorno: string | null, iso: string | null): st
   return `${FMT_GIORNO.format(new Date(`${giorno}T12:00:00Z`))} (ora non indicata)`;
 }
 
+// « · scade oggi», « · scade domani», « · tra 12 giorni»; niente per un giorno già passato o una scadenza non indicata.
+export function distanzaScadenza(giorni: number | null): string {
+  if (giorni === null || giorni < 0) return "";
+  if (giorni === 0) return " · scade oggi";
+  if (giorni === 1) return " · scade domani";
+  return ` · tra ${giorni} giorni`;
+}
+
 // Una scadenza come è conservata nel registro dei cambiamenti (giorno «AAAA-MM-GG» oppure istante con l'ora) in parole.
 export function leggibileDaValore(v: string | null): string | null {
   if (!v) return null;

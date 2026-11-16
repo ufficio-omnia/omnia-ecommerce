@@ -7,7 +7,7 @@ import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { leggiGaraPubblica, leggiSalvataggi, type AggiornamentoGara } from "@/lib/radar/gara";
 import { ETICHETTA_STATO, statoMostrato } from "@/lib/radar/importa-calcoli";
-import { sintesiDeterministica, scadenzaLeggibile, euro, giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
+import { distanzaScadenza, sintesiDeterministica, scadenzaLeggibile, euro, giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import { confrontaConSoglia, sogliaApplicabile } from "@/lib/radar/soglie-ue";
 import { tipoEnteTed, fusoItaliano } from "@/lib/radar/fonti/ted-calcoli";
 import { nomeSettore, voceCpv, type SettoreRadar } from "@/lib/radar/settori";
@@ -149,7 +149,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           />
           <Dato
             etichetta="Entro quando"
-            valore={g.scadenza_giorno ? `${scadenzaLeggibile(g.scadenza_giorno, g.scadenza_offerte)}${giorni !== null && giorni >= 0 ? ` · tra ${giorni} giorni` : ""}` : `Scadenza ${NON_INDICATO}`}
+            valore={g.scadenza_giorno ? `${scadenzaLeggibile(g.scadenza_giorno, g.scadenza_offerte)}${distanzaScadenza(giorni)}` : `Scadenza ${NON_INDICATO}`}
             nota={!fusoItaliano(g.scadenza_fonte) ? `Ora convertita in ora italiana; come scritta su TED: ${g.scadenza_fonte}. Verificala sull'avviso ufficiale.` : g.rettificata ? "Dati aggiornati all'ultima rettifica letta" : undefined}
           />
           <Dato etichetta="Stato" valore={ETICHETTA_STATO[stato]} />
