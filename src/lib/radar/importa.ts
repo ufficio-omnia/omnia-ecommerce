@@ -37,6 +37,19 @@ export const COLONNE_RIGA =
 
 const COLONNE_LOTTO = "procedura_id, numero_lotto, cig, oggetto, cpv_principale, cpv_tutti, valore_stimato, durata_mesi, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, url_documenti";
 
+const COLONNE_SCRITTE = COLONNE_RIGA.split(",")
+  .map((c) => c.trim())
+  .filter((c) => c !== "id") as (keyof RigaProcedura)[];
+
+// La riga da scrivere: SOLO le colonne della gara più la provenienza per campo. Mai «id» né altri campi letti dal database: in un upsert a
+// blocchi le righe devono avere tutte le stesse colonne (una gara nuova senza «id» accanto a una esistente con «id» farebbe fallire il blocco).
+export function rigaDaScrivere(r: RigaProcedura, provenienza: ProvenienzaCampi | null): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const c of COLONNE_SCRITTE) out[c] = r[c];
+  out.provenienza_campi = provenienza ?? {};
+  return out;
+}
+
 class ErroreDb extends Error {}
 
 export async function misura<T extends { error: { message: string } | null }>(misure: Misure, passo: string, f: () => PromiseLike<T>): Promise<T> {
@@ -164,7 +177,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       admin
         .from("radar_procedure")
         .upsert(
-          b.map((s) => ({ ...(s.riga as RigaProcedura), provenienza_campi: s.provenienza ?? {} })),
+          b.map((s) => rigaDaScrivere(s.riga as RigaProcedura, s.provenienza)),
           { onConflict: "chiave" },
         )
         .select("id, chiave")

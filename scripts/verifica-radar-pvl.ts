@@ -33,6 +33,7 @@ import { conteggioAnomalo, cursoreDopoPagina, cursoreFinestra, cursoreIncrementa
 import { confrontaVersioni, provenienzaImplicita, unisciLotti, unisciVersione, type LottoUnito, type VersioneFonte } from "../src/lib/radar/unione-calcoli";
 import { ambienteDb, scrittureRadarConsentite, PROGETTO_PRODUZIONE, PROGETTO_STAGING } from "../src/lib/radar/ambiente";
 import { validaParametro } from "../src/lib/console/tender-intelligence-calcoli";
+import { rigaDaScrivere } from "../src/lib/radar/importa";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -284,6 +285,9 @@ async function principale() {
   const tv = unisciVersione(t2, null, t1, vTed, iso);
   uguale("solo TED, versione più vecchia: nessun effetto", [tv.riga.scadenza_giorno, tv.cambiamenti.length, tv.campiPresi.length, tv.ultima], ["2026-12-28", 0, 0, false]);
   uguale("confronto versioni: numeri TED, istanti PVL, giorni", [confrontaVersioni(vRettTed, vTed) > 0, confrontaVersioni(vPvl, vTed), confrontaVersioni({ ...vPvl, ted: null, istante: "2026-11-13T08:00:00Z" }, { ...vPvl, ted: null }) > 0], [true, 0, true]);
+  const conId = rigaDaScrivere({ ...poiTed.riga, id: "x", provenienza_campi: {} } as RigaProcedura, poiTed.provenienza);
+  const senzaId = rigaDaScrivere(solo.riga, solo.provenienza);
+  uguale("righe scritte a blocchi: stesse colonne per gare nuove ed esistenti, mai «id»", [Object.keys(conId).join(","), "id" in conId], [Object.keys(senzaId).join(","), false]);
   atteso("rigaDaBando accetta un avviso di qualunque fonte (stessa riga per la PVL)", rigaDaBando({ record: venezia.record, regioni: venezia.regioni, enteTipo: null, scadenzaFonte: venezia.scadenzaFonte, settori: venezia.settori, metodoSettore: venezia.metodoSettore, meta: { data: venezia.meta.giorno, numero: "pvl:x" } }, null, adesso).chiave === rigaPvl.chiave);
 
   // ───── 8. lotti ─────

@@ -10,7 +10,7 @@
 // cambiamenti, collegamento delle gare aggiunte a mano).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cigPvl, confrontaVersioniPvl, type BandoPvl, type EsitoPvl } from "./fonti/pvl-calcoli";
-import { COLONNE_RIGA, blocchi, misura, type Misure } from "./importa";
+import { COLONNE_RIGA, blocchi, misura, rigaDaScrivere, type Misure } from "./importa";
 import { aperta, notificabile, statoDopoEsito, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import { aggiungi, rigaDaBandoPvl, type StatistichePvl } from "./importa-pvl-calcoli";
 import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
@@ -174,7 +174,7 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
       admin
         .from("radar_procedure")
         .upsert(
-          b.map((s) => ({ ...(s.riga as RigaProcedura), provenienza_campi: s.provenienza ?? {} })),
+          b.map((s) => rigaDaScrivere(s.riga as RigaProcedura, s.provenienza)),
           { onConflict: "chiave" },
         )
         .select("id, chiave")
