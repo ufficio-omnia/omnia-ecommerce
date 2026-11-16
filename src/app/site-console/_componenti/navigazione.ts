@@ -41,6 +41,7 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
       { href: "/prezzi", etichetta: "Piani e prezzi", pronto: true },
       { href: "/piano-lavoro", etichetta: "Piano di lavoro e pacchetti", pronto: true },
       { href: "/knowledge-base", etichetta: "Knowledge base AI", pronto: true },
+      { href: "/tender-intelligence", etichetta: "Tender Intelligence", pronto: true },
       { href: "/accessi-dati", etichetta: "Accessi ai dati", pronto: true },
       { href: "/impostazioni", etichetta: "Impostazioni", pronto: true },
     ],
