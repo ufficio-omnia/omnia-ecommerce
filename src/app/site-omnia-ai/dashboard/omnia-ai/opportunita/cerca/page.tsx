@@ -1,0 +1,269 @@
+import Link from "next/link";
+import { after } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
+import { cercaGare, type RisultatoRicerca } from "@/lib/radar/ricerca";
+import { leggiSalvataggi } from "@/lib/radar/gara";
+import { contaUtilizziRadar, registraUtilizzoRadar } from "@/lib/radar/utilizzi";
+import { inizioFinestra, limiteEffettivo, verificaLimite } from "@/lib/radar/diritto-calcoli";
+import { PROCEDURE_RICERCA, SCADENZE_RAPIDE, filtriAttivi, filtriDaParametri, parametriDaFiltri, type FiltriRicerca } from "@/lib/radar/ricerca-calcoli";
+import { SETTORI_RADAR, nomeSettore } from "@/lib/radar/settori";
+import { REGIONI, nomeRegione } from "@/lib/radar/territorio";
+import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
+import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara";
+import PannelloFiltri from "@/components/omnia-ai/opportunita/pannello-filtri";
+import FontiRicerca from "@/components/omnia-ai/opportunita/fonti-ricerca";
+import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
+
+// «Cerca» (fase B1): filtri deterministici applicati dal database, ricerca testuale in italiano con i sinonimi della mappa CPV (mostrati),
+// rilevanza spiegata riga per riga. Nessuna chiamata a fonti esterne né a modelli. Lo stato dei filtri sta nell'indirizzo della pagina.
+
+const ORDINAMENTI_ETICHETTE = { rilevanza: "Rilevanza", recenti: "Più recenti", scadenza: "Scadenza più vicina", importo: "Importo più alto" } as const;
+
+function FiltroRimovibile({ filtri, etichetta, senza }: { filtri: FiltriRicerca; etichetta: string; senza: Partial<FiltriRicerca> }) {
+  return (
+    <Link href={`${RADICE_OPPORTUNITA}/cerca${parametriDaFiltri(filtri, { ...senza, pagina: 1 })}`} className="omnia-opp-chip" aria-label={`Togli il filtro ${etichetta}`}>
+      {etichetta} <span aria-hidden>✕</span>
+    </Link>
+  );
+}
+
+function filtriAttiviRimovibili(f: FiltriRicerca) {
+  const chip: { etichetta: string; senza: Partial<FiltriRicerca> }[] = [];
+  for (const s of f.settori) chip.push({ etichetta: nomeSettore(s), senza: { settori: f.settori.filter((x) => x !== s) } });
+  for (const r of f.regioni) chip.push({ etichetta: nomeRegione(r) ?? r, senza: { regioni: f.regioni.filter((x) => x !== r) } });
+  if (f.importoMin !== null) chip.push({ etichetta: `da ${importoBreve(f.importoMin)}`, senza: { importoMin: null } });
+  if (f.importoMax !== null) chip.push({ etichetta: `fino a ${importoBreve(f.importoMax)}`, senza: { importoMax: null } });
+  if (f.scadenzaEntroGiorni !== null) chip.push({ etichetta: `scade entro ${f.scadenzaEntroGiorni} gg`, senza: { scadenzaEntroGiorni: null } });
+  if (f.pubblicataNegliUltimiGiorni !== null) chip.push({ etichetta: `pubblicata negli ultimi ${f.pubblicataNegliUltimiGiorni} gg`, senza: { pubblicataNegliUltimiGiorni: null } });
+  for (const p of f.procedure) chip.push({ etichetta: PROCEDURE_RICERCA.find((x) => x.id === p)?.etichetta ?? p, senza: { procedure: f.procedure.filter((x) => x !== p) } });
+  if (f.stato !== "aperte") chip.push({ etichetta: f.stato === "storico" ? "solo scadute e chiuse" : "aperte e storico", senza: { stato: "aperte" } });
+  return chip;
+}
+
+export default async function CercaOpportunitaPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sessione = await richiediTitolarePagina();
+  if (!sessione) return null;
+  const { contesto } = sessione;
+  const { diritto, parametri, cliente } = await dirittoRadarOppure404(contesto.accountId);
+  const filtri = filtriDaParametri(await searchParams);
+  const admin = createAdminClient();
+  const adesso = new Date();
+
+  // limite tecnico per impresa: ricerche al minuto (precisazione P4); un conteggio non riuscito non concede
+  let risultato: RisultatoRicerca | null = null;
+  let limitata = false;
+  if (diritto.operativo) {
+    const usate = await contaUtilizziRadar(admin, contesto.accountId, "ricerca", inizioFinestra("ricerche_minuto", adesso) as Date);
+    if (usate === null || !verificaLimite(usate, limiteEffettivo(parametri, cliente, "ricerche_minuto")).consentito) {
+      limitata = true;
+    } else {
+      risultato = await cercaGare(admin, filtri, adesso);
+      after(() => registraUtilizzoRadar({ accountId: contesto.accountId, membroId: contesto.userId, azione: "ricerca" }));
+    }
+  }
+
+  const [salvataggi, { data: fonteTed }] = await Promise.all([
+    leggiSalvataggi(await createClient(), (risultato?.righe ?? []).map((r) => r.id)),
+    admin.from("radar_fonti_stato").select("attiva, dati_aggiornati_al, ultimo_successo_il").eq("fonte", "ted").maybeSingle<{ attiva: boolean; dati_aggiornati_al: string | null; ultimo_successo_il: string | null }>(),
+  ]);
+  const attivi = filtriAttivi(filtri);
+  const chip = filtriAttiviRimovibili(filtri);
+  const sinonimi = (risultato?.domanda.espansioni ?? []).flatMap((e) => e.aggiunti.map((t) => ({ termine: t.termine, origine: t.origine, settore: e.settore })));
+  const base = `${RADICE_OPPORTUNITA}/cerca`;
+
+  return (
+    <div className="omnia-app-shell largo">
+      <TestataOpportunita attiva="cerca" sottotitolo="Cerca tra le gare pubbliche dei tuoi settori. Ogni risultato dice perché compare, da quale fonte viene e quando è stato verificato." />
+
+      {!diritto.operativo && <p className="omnia-messaggio-stato avviso">{diritto.messaggioSolaLettura}</p>}
+      {limitata && <p className="omnia-messaggio-stato avviso">Hai fatto molte ricerche nell&apos;ultimo minuto: riprova tra qualche secondo.</p>}
+
+      <form action={base} method="get" className="omnia-opp-ricerca" role="search">
+        <div className="omnia-opp-barra">
+          <label htmlFor="opp-q" className="omnia-solo-lettori">
+            Cerca per oggetto, ente o CIG
+          </label>
+          <input id="opp-q" name="q" type="search" defaultValue={filtri.q} placeholder="Cerca per oggetto, ente, codice fiscale dell'ente o CIG" className="omnia-input" maxLength={120} />
+          <button type="submit" className="omnia-btn omnia-btn-p">
+            Cerca
+          </button>
+        </div>
+
+        <div className="omnia-opp-colonne">
+          <PannelloFiltri attivi={attivi}>
+            <fieldset className="omnia-opp-gruppo">
+              <legend>Settore</legend>
+              {SETTORI_RADAR.map((s) => (
+                <label key={s.id} className="omnia-opp-scelta">
+                  <input type="checkbox" name="settore" value={s.id} defaultChecked={filtri.settori.includes(s.id)} /> {s.nome}
+                </label>
+              ))}
+            </fieldset>
+            <details className="omnia-opp-gruppo" open={filtri.regioni.length > 0}>
+              <summary>Territorio{filtri.regioni.length ? ` (${filtri.regioni.length})` : ""}</summary>
+              <div className="omnia-opp-regioni">
+                {REGIONI.map((r) => (
+                  <label key={r.id} className="omnia-opp-scelta">
+                    <input type="checkbox" name="regione" value={r.id} defaultChecked={filtri.regioni.includes(r.id)} /> {r.nome}
+                  </label>
+                ))}
+              </div>
+              <p className="omnia-opp-nota">Luogo di esecuzione indicato nell&apos;avviso (o, se manca, la sede dell&apos;ente).</p>
+            </details>
+            <fieldset className="omnia-opp-gruppo">
+              <legend>Importo stimato (€)</legend>
+              <div className="omnia-opp-due">
+                <label>
+                  <span className="omnia-etichetta">da</span>
+                  <input name="min" inputMode="numeric" defaultValue={filtri.importoMin ?? ""} className="omnia-input" placeholder="es. 100000" />
+                </label>
+                <label>
+                  <span className="omnia-etichetta">fino a</span>
+                  <input name="max" inputMode="numeric" defaultValue={filtri.importoMax ?? ""} className="omnia-input" placeholder="es. 5000000" />
+                </label>
+              </div>
+            </fieldset>
+            <fieldset className="omnia-opp-gruppo">
+              <legend>Date</legend>
+              <label>
+                <span className="omnia-etichetta">Scade entro</span>
+                <select name="scadenza" defaultValue={filtri.scadenzaEntroGiorni ?? ""} className="omnia-select">
+                  <option value="">qualsiasi data</option>
+                  {SCADENZE_RAPIDE.map((g) => (
+                    <option key={g} value={g}>
+                      {g} giorni
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="omnia-etichetta">Pubblicata negli ultimi</span>
+                <select name="pubblicata" defaultValue={filtri.pubblicataNegliUltimiGiorni ?? ""} className="omnia-select">
+                  <option value="">qualsiasi data</option>
+                  <option value="7">7 giorni</option>
+                  <option value="30">30 giorni</option>
+                  <option value="90">90 giorni</option>
+                </select>
+              </label>
+            </fieldset>
+            <details className="omnia-opp-gruppo" open={filtri.procedure.length > 0}>
+              <summary>Procedura{filtri.procedure.length ? ` (${filtri.procedure.length})` : ""}</summary>
+              {PROCEDURE_RICERCA.map((p) => (
+                <label key={p.id} className="omnia-opp-scelta">
+                  <input type="checkbox" name="procedura" value={p.id} defaultChecked={filtri.procedure.includes(p.id)} /> {p.etichetta}
+                </label>
+              ))}
+            </details>
+            <fieldset className="omnia-opp-gruppo">
+              <legend>Stato</legend>
+              <select name="stato" defaultValue={filtri.stato} className="omnia-select" aria-label="Stato delle gare">
+                <option value="aperte">Solo aperte</option>
+                <option value="storico">Solo scadute e chiuse (storico)</option>
+                <option value="tutte">Aperte e storico</option>
+              </select>
+            </fieldset>
+            <input type="hidden" name="ordina" value={filtri.ordina} />
+            <button type="submit" className="omnia-btn omnia-btn-s omnia-btn-piccolo">
+              Applica i filtri
+            </button>
+          </PannelloFiltri>
+
+          <div className="omnia-opp-risultati">
+            {(chip.length > 0 || filtri.q) && (
+              <div className="omnia-opp-chip-riga">
+                {chip.map((c) => (
+                  <FiltroRimovibile key={c.etichetta} filtri={filtri} etichetta={c.etichetta} senza={c.senza} />
+                ))}
+                <Link href={base} className="omnia-opp-azzera">
+                  Azzera
+                </Link>
+              </div>
+            )}
+
+            {sinonimi.length > 0 && (
+              <p className="omnia-opp-sinonimi">
+                Ho cercato anche: {sinonimi.map((s) => s.termine).join(", ")}{" "}
+                <span className="omnia-opp-nota">(sinonimi del settore {nomeSettore(sinonimi[0].settore).toLowerCase()} presi dalla mappa CPV approvata e dalle parole chiave del settore)</span>
+              </p>
+            )}
+
+            {risultato && (
+              <div className="omnia-opp-conteggio">
+                <span>
+                  {risultato.errore
+                    ? "Ricerca non riuscita: riprova tra poco."
+                    : risultato.candidati === 0
+                      ? "Nessuna gara con questi criteri."
+                      : `${risultato.candidati.toLocaleString("it-IT")}${risultato.oltreTetto ? "+" : ""} ${risultato.candidati === 1 ? "gara" : "gare"}${filtri.stato === "aperte" ? " aperte" : ""}`}
+                </span>
+                <span className="omnia-opp-ordina">
+                  Ordina:{" "}
+                  {(Object.keys(ORDINAMENTI_ETICHETTE) as (keyof typeof ORDINAMENTI_ETICHETTE)[]).map((o) =>
+                    o === filtri.ordina ? (
+                      <strong key={o}>{ORDINAMENTI_ETICHETTE[o]}</strong>
+                    ) : (
+                      <Link key={o} href={`${base}${parametriDaFiltri(filtri, { ordina: o, pagina: 1 })}`}>
+                        {ORDINAMENTI_ETICHETTE[o]}
+                      </Link>
+                    ),
+                  )}
+                </span>
+              </div>
+            )}
+            {risultato?.oltreTetto && <p className="omnia-opp-nota">Più di 500 gare: vedi le 500 pubblicate più di recente. Restringi i filtri per vederle tutte.</p>}
+
+            <div className="omnia-opp-elenco">
+              {(risultato?.righe ?? []).map((r) => {
+                const s = salvataggi.get(r.id);
+                return (
+                  <RigaGara
+                    key={r.id}
+                    adesso={adesso}
+                    d={{
+                      href: hrefGara(r.id),
+                      titolo: r.oggetto_breve ?? r.oggetto,
+                      ente: r.sa_denominazione,
+                      comune: r.sa_comune,
+                      provincia: r.sa_provincia,
+                      regioni: r.luogo_regioni,
+                      scadenza: r.scadenza_offerte,
+                      scadenzaOraIndicata: r.scadenza_ora_indicata,
+                      valore: r.valore_stimato,
+                      tipoValore: "Valore stimato",
+                      durataMesi: r.durata_mesi,
+                      nLotti: r.n_lotti,
+                      settori: r.settori,
+                      tipoProcedura: r.tipo_procedura,
+                      stato: r.stato,
+                      rettificata: r.rettificata,
+                      motivi: r.punteggio.motivi,
+                      fonte: "TED",
+                      verificataIl: r.ultima_rilevazione_il,
+                      salvata: !!s,
+                      monitorata: !!s?.monitorata,
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {risultato && risultato.pagine > 1 && (
+              <nav className="omnia-opp-pagine" aria-label="Pagine dei risultati">
+                {filtri.pagina > 1 && <Link href={`${base}${parametriDaFiltri(filtri, { pagina: filtri.pagina - 1 })}`}>← Precedente</Link>}
+                <span>
+                  Pagina {Math.min(filtri.pagina, risultato.pagine)} di {risultato.pagine}
+                </span>
+                {filtri.pagina < risultato.pagine && <Link href={`${base}${parametriDaFiltri(filtri, { pagina: filtri.pagina + 1 })}`}>Successiva →</Link>}
+              </nav>
+            )}
+
+            <FontiRicerca tedAttiva={!!fonteTed?.attiva} tedDatiAl={fonteTed?.dati_aggiornati_al ?? null} tedUltimoSuccesso={fonteTed?.ultimo_successo_il ?? null} />
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

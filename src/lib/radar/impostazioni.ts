@@ -46,7 +46,14 @@ export async function leggiImpostazioniClienteRadar(accountId: string, admin: Su
 // Il diritto dell'account effettivo (titolare o Ufficio Gare: vale quello del titolare). Lo stato dell'abbonamento si legge con la chiave di
 // servizio, filtrando SEMPRE per l'identificativo del titolare risolto dal server.
 export async function leggiDirittoRadar(accountId: string): Promise<DirittoRadar> {
+  return (await leggiContestoRadar(accountId)).diritto;
+}
+
+export type ContestoRadar = { diritto: DirittoRadar; parametri: ParametriRadar; cliente: ImpostazioniClienteRadar | null };
+
+// Diritto più parametri e impostazioni del cliente (per i limiti tecnici), letti una volta sola.
+export async function leggiContestoRadar(accountId: string): Promise<ContestoRadar> {
   const admin = createAdminClient();
   const [parametri, cliente, stato] = await Promise.all([leggiParametriRadar(admin), leggiImpostazioniClienteRadar(accountId, admin), getOmniaAiAccessState(accountId, admin)]);
-  return dirittoRadar({ parametri, cliente, statoAccesso: stato.stato, aperturaSviluppo: aperturaSviluppoRadar(process.env) });
+  return { diritto: dirittoRadar({ parametri, cliente, statoAccesso: stato.stato, aperturaSviluppo: aperturaSviluppoRadar(process.env) }), parametri, cliente };
 }

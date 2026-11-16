@@ -20,8 +20,11 @@ import {
   MESSAGGIO_UFFICIO_GARE_GARE_FINITE,
   MESSAGGIO_UFFICIO_GARE_SOSPESO,
   MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA,
+  VOCI_MENU_TITOLARE,
   VOCI_MENU_UFFICIO_GARE,
 } from "@/lib/omnia-ai-account-calcoli";
+import { radarNelMenu } from "@/lib/radar/visibilita";
+import { vociConOpportunita } from "@/lib/radar/area-cliente";
 import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
 import { surplusSeInVendita } from "@/lib/piano-lavoro-offerta";
 import type { User } from "@supabase/supabase-js";
@@ -197,7 +200,8 @@ async function LayoutInterno({
   // Tre letture indipendenti in parallelo invece che una dopo l'altra (ogni lettura è un giro fino al database): stato
   // dell'abbonamento, dati dell'azienda per saluto e avvisi, offerta pilot acquistata. Il pilot si legge sempre ma vale
   // solo con l'abbonamento attivo (come prima); la lettura non solleva mai errori (in caso di problemi restituisce null).
-  const [stato, { data: company }, pilotAcquistato] = await Promise.all([
+  // La quarta lettura (voce «Opportunità» di Tender Intelligence) passa dalla cache dei dati: a modulo spento non tocca il database.
+  const [stato, { data: company }, pilotAcquistato, conOpportunita] = await Promise.all([
     getOmniaAiAccessState(user.id, supabase),
     supabase
       .from("companies")
@@ -211,6 +215,7 @@ async function LayoutInterno({
         pec: string | null;
       }>(),
     leggiPilotAcquistato(user.id),
+    radarNelMenu(user.id),
   ]);
 
   if (stato.stato === "cessato") {
@@ -269,6 +274,7 @@ async function LayoutInterno({
       nomeSaluto={company?.ragione_sociale || user.email || ""}
       email={user.email ?? ""}
       nomeAzienda={company?.ragione_sociale ?? null}
+      voci={conOpportunita ? vociConOpportunita(VOCI_MENU_TITOLARE) : undefined}
       avvisi={
         <>
           {pilot && promemoriaDelPilot && pilot.prezzoPienoCentesimi !== null && <PilotAvviso promemoria={promemoriaDelPilot} prezzoPieno={pilot.prezzoPienoCentesimi} gareDopo={pilot.gareIncluse !== null ? PIANI[pilot.piano].gareIncluse : undefined} />}
