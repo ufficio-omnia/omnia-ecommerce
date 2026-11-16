@@ -204,16 +204,18 @@ export function scadenzaPvl(dataScadenza: unknown, termine: unknown): ScadenzaTe
     const istante = new Date(`${conOra[1]}T${conOra[2]}:${conOra[3]}:${conOra[4] ?? "00"}${conOra[5] ?? "+01:00"}`);
     if (!Number.isNaN(istante.getTime())) return { giorno: giornoDiRoma(istante), iso: istante.toISOString(), oraIndicata: true, fonte: t };
   }
+  // l'ora presa da dataScadenza (un istante di sistema in UTC, conversione esatta) si descrive in ora italiana: nessuna ambiguità di fuso
+  const oraItaliana = istanteAvviso ? FMT_ORA_ROMA.format(istanteAvviso).slice(0, 5) : "";
   const soloGiorno = t.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
   if (soloGiorno) {
     if (istanteAvviso && !mezzanotte && giornoDiRoma(istanteAvviso) === soloGiorno) {
-      return { giorno: soloGiorno, iso: istanteAvviso.toISOString(), oraIndicata: true, fonte: `${t} (ora da dataScadenza ${ds})` };
+      return { giorno: soloGiorno, iso: istanteAvviso.toISOString(), oraIndicata: true, fonte: `${t}; ore ${oraItaliana} italiane dalla data di scadenza della PVL` };
     }
     return { giorno: soloGiorno, iso: null, oraIndicata: false, fonte: t };
   }
   if (istanteAvviso) {
     const giorno = giornoDiRoma(istanteAvviso);
-    return mezzanotte ? { giorno, iso: null, oraIndicata: false, fonte: ds } : { giorno, iso: istanteAvviso.toISOString(), oraIndicata: true, fonte: ds };
+    return mezzanotte ? { giorno, iso: null, oraIndicata: false, fonte: `${giorno}; ora non indicata (data di scadenza della PVL a mezzanotte)` } : { giorno, iso: istanteAvviso.toISOString(), oraIndicata: true, fonte: `${giorno}; ore ${oraItaliana} italiane dalla data di scadenza della PVL` };
   }
   return null;
 }

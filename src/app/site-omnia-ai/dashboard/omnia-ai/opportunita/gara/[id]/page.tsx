@@ -33,18 +33,24 @@ const MOTIVI_MODIFICA: Record<string, string> = {
   "info-release": "informazioni rese disponibili",
 };
 
+// «avviso 787530-2026» per TED; «avviso PVL ANAC» per la PVL (l'identificativo interno non dice nulla al cliente)
+function avvisoDi(a: AggiornamentoGara): string {
+  return a.fonte === "pvl" ? `avviso ${NOME_FONTE.pvl}` : `avviso ${a.id_fonte ?? ""}`;
+}
+
 function descriviAggiornamento(a: AggiornamentoGara): string {
   const quando = giorno(a.rilevato_il);
-  if (a.tipo === "nuova") return `Gara entrata nell'archivio il ${quando} (avviso ${a.id_fonte ?? ""}).`;
-  if (a.tipo === "annullamento") return `Annullata secondo l'avviso ${a.id_fonte ?? ""}.`;
-  if (a.tipo === "esito") return `Esito pubblicato (avviso ${a.id_fonte ?? ""}): ${a.valore_nuovo === "aggiudicata" ? "aggiudicata" : "chiusa senza aggiudicazione"}.`;
+  const avv = avvisoDi(a);
+  if (a.tipo === "nuova") return `Gara entrata nell'archivio il ${quando} (${avv}).`;
+  if (a.tipo === "annullamento") return `Annullata secondo l'${avv}.`;
+  if (a.tipo === "esito") return `Esito pubblicato (${avv}): ${a.valore_nuovo === "aggiudicata" ? "aggiudicata" : "chiusa senza aggiudicazione"}.`;
   const verbo = a.tipo === "proroga" ? "Proroga" : "Rettifica";
-  if (a.campo === "scadenza_offerte") return `${verbo} (avviso ${a.id_fonte ?? ""}): scadenza da ${leggibileDaValore(a.valore_precedente) ?? "non indicata"} a ${leggibileDaValore(a.valore_nuovo) ?? "non indicata"}.`;
-  if (a.campo === "valore_stimato") return `${verbo} (avviso ${a.id_fonte ?? ""}): valore stimato da ${euro(a.valore_precedente ? Number(a.valore_precedente) : null) ?? "non indicato"} a ${euro(a.valore_nuovo ? Number(a.valore_nuovo) : null) ?? "non indicato"}.`;
-  if (a.campo === "oggetto") return `${verbo} (avviso ${a.id_fonte ?? ""}): oggetto modificato.`;
-  if (a.campo === "url_documenti") return `${verbo} (avviso ${a.id_fonte ?? ""}): cambiato il collegamento ai documenti.`;
-  if (a.campo === "n_lotti") return `${verbo} (avviso ${a.id_fonte ?? ""}): lotti da ${a.valore_precedente} a ${a.valore_nuovo}.`;
-  return `${verbo} (avviso ${a.id_fonte ?? ""}).`;
+  if (a.campo === "scadenza_offerte") return `${verbo} (${avv}): scadenza da ${leggibileDaValore(a.valore_precedente) ?? "non indicata"} a ${leggibileDaValore(a.valore_nuovo) ?? "non indicata"}.`;
+  if (a.campo === "valore_stimato") return `${verbo} (${avv}): valore stimato da ${euro(a.valore_precedente ? Number(a.valore_precedente) : null) ?? "non indicato"} a ${euro(a.valore_nuovo ? Number(a.valore_nuovo) : null) ?? "non indicato"}.`;
+  if (a.campo === "oggetto") return `${verbo} (${avv}): oggetto modificato.`;
+  if (a.campo === "url_documenti") return `${verbo} (${avv}): cambiato il collegamento ai documenti.`;
+  if (a.campo === "n_lotti") return `${verbo} (${avv}): lotti da ${a.valore_precedente} a ${a.valore_nuovo}.`;
+  return `${verbo} (${avv}).`;
 }
 
 function Dato({ etichetta, valore, nota }: { etichetta: string; valore: React.ReactNode; nota?: React.ReactNode }) {

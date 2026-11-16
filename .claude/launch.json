@@ -7,6 +7,12 @@
       "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "tender-intelligence-staging-protetta",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["scripts/avvia-anteprima-staging.mjs", "3111"],
+      "port": 3111
     }
   ]
 }

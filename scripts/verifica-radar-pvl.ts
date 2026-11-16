@@ -27,6 +27,7 @@ import {
 } from "../src/lib/radar/fonti/pvl-calcoli";
 import { ErrorePvl, SessionePvl } from "../src/lib/radar/fonti/pvl";
 import { provinciaDaTesto } from "../src/lib/radar/province";
+import { fusoItaliano } from "../src/lib/radar/fonti/ted-calcoli";
 import { REGIONI } from "../src/lib/radar/territorio";
 import { aperta, rigaDaBando, type RigaProcedura } from "../src/lib/radar/importa-calcoli";
 import { conteggioAnomalo, cursoreDopoPagina, cursoreFinestra, cursoreIncrementale, cursorePvlValido, eOraDiUnGiroPvl, prossimoGiroPvl, rigaDaBandoPvl, CRON_PVL_PROPOSTO } from "../src/lib/radar/importa-pvl-calcoli";
@@ -107,6 +108,7 @@ async function principale() {
   uguale("termine e dataScadenza in giorni diversi → solo il giorno del termine", scadenzaPvl("2026-12-11T10:00:00.000+00:00", "2026-12-10+01:00")?.iso ?? null, null);
   uguale("nessun termine, dataScadenza con ora → istante", scadenzaPvl("2026-12-11T10:00:00.000+00:00", null)?.iso ?? null, "2026-12-11T10:00:00.000Z");
   uguale("nessun dato → nessuna scadenza", scadenzaPvl(null, null), null);
+  uguale("ora dalla data di scadenza descritta in ora italiana (nessun avviso di fuso inutile)", [genova.scadenzaFonte, fusoItaliano(genova.scadenzaFonte)], ["2026-12-10+01:00; ore 12:00 italiane dalla data di scadenza della PVL", true]);
   const testoSrcPvl = ["src/lib/radar/fonti/pvl-calcoli.ts", "src/lib/radar/importa-pvl-calcoli.ts", "src/lib/radar/importa-pvl.ts", "src/lib/radar/importa-pvl-pagina.ts", "src/lib/radar/unione-calcoli.ts"].map(leggi).join("\n");
   atteso("nessuna ora predefinita nel connettore (regola del progetto)", !/23:59|fineGiornoRoma|ORA_SCADENZA_PREDEFINITA/.test(testoSrcPvl));
 
