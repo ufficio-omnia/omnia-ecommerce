@@ -98,7 +98,8 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
   {
     settore: "ristorazione",
     cerca: /\b(ristorazione|mensa|mense|refezione|pasti)\b/,
-    escludi: /\b(buon[oi] pasto|ticket\w*|attrezzatur\w*|arred\w*|derrat\w*)\b/,
+    // «rifiuti … di cucine e mense» (codice EER 20.01.08): caso reale di TED del 16/11/2026
+    escludi: /\b(buon[oi] pasto|ticket\w*|attrezzatur\w*|arred\w*|derrat\w*|rifiut\w*)\b/,
     esempio: "ristorazione, mensa, refezione",
   },
   {
@@ -114,6 +115,28 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
     esempio: "multiservizi, global service",
   },
 ];
+
+// Famiglie di CPV di mestieri diversi da quelli del Radar, che però usano le stesse parole («pulizia» delle strade, «rifiuti» delle mense,
+// «manutenzione del verde e pulizia delle aree esterne»): una gara con SOLO questi CPV non entra per parola chiave. Casi reali di TED del
+// 16/11/2026. Non toccano le gare riconosciute per CPV del file approvato.
+export const CPV_ESCLUSI_PER_PAROLE: readonly { prefisso: string; descrizione: string }[] = [
+  { prefisso: "905", descrizione: "Servizi connessi ai rifiuti" },
+  { prefisso: "906", descrizione: "Pulizia e spazzamento delle strade, sgombero della neve" },
+  { prefisso: "773", descrizione: "Servizi di orticoltura e manutenzione del verde" },
+  // dall'archivio di prova dello staging (16/11/2026): «servizi di ingegneria … lavori di adeguamento della mensa», «banche dati per la
+  // vigilanza ispettiva», «trasporto ferroviario … ristorazione a bordo», «navigazione wifi nelle mense universitarie»
+  { prefisso: "45", descrizione: "Lavori di costruzione" },
+  { prefisso: "48", descrizione: "Pacchetti software e sistemi di informazione" },
+  { prefisso: "60", descrizione: "Servizi di trasporto" },
+  { prefisso: "64", descrizione: "Servizi di poste e telecomunicazioni" },
+  { prefisso: "71", descrizione: "Servizi architettonici, di ingegneria e di ispezione" },
+  { prefisso: "72", descrizione: "Servizi informatici" },
+  { prefisso: "73", descrizione: "Servizi di ricerca e sviluppo" },
+];
+
+export function cpvSoloDiAltriMestieri(cpv: readonly string[]): boolean {
+  return cpv.length > 0 && cpv.every((c) => CPV_ESCLUSI_PER_PAROLE.some((e) => c.startsWith(e.prefisso)));
+}
 
 export function settoriDaParole(testo: string | null | undefined): SettoreRadar[] {
   const t = testoPerConfronto(testo);
@@ -155,7 +178,7 @@ export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?:
     };
   }
 
-  if (settoriParole.length > 0) {
+  if (settoriParole.length > 0 && !cpvSoloDiAltriMestieri(tutti)) {
     return {
       settori: settoriParole,
       settorePrincipale: settoriParole[0],
