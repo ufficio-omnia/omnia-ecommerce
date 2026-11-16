@@ -186,7 +186,9 @@ atteso("nessun uso del servizio non documentato della pubblicità legale ANAC (d
 // ───── 7. migrazioni ─────
 const migrazioni = ["0109_radar_archivio_pubblico.sql", "0110_radar_aggiudicazioni.sql", "0111_radar_coda_impostazioni.sql"];
 const precedenti = fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^\d{4}_/.test(f)).sort();
-uguale("le migrazioni nuove sono le ultime e partono da 0109 (0108 = chat delle copertine)", precedenti.slice(-3), migrazioni);
+const inizioRadar = precedenti.indexOf("0109_radar_archivio_pubblico.sql");
+uguale("le migrazioni della fase A partono da 0109, subito dopo la 0108 (chat delle copertine)", [precedenti[inizioRadar - 1], ...precedenti.slice(inizioRadar, inizioRadar + 3)], ["0108_copertine_chat.sql", ...migrazioni]);
+atteso("dopo la 0109 ci sono solo migrazioni di Tender Intelligence", precedenti.slice(inizioRadar).every((m) => /^01\d\d_radar_/.test(m)));
 for (const m of migrazioni) {
   const sql = leggi(`supabase/migrations/${m}`).replace(/--[^\n]*/g, "");
   const tabelle = [...sql.matchAll(/create table if not exists public\.([a-z_0-9]+)/g)].map((x) => x[1]);

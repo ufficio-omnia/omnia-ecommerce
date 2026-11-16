@@ -126,11 +126,12 @@ async function main() {
     .map((d) => d.name)
     // «ufficio-gare» nasce nel blocco successivo: finché la cartella non esiste non c'è nulla da cercare
     .sort();
-  atteso(
-    "ogni sezione dell'area riservata è aperta all'Ufficio Gare o compare nel menu del titolare",
-    cartelle.every((c) => percorsoConsentito("ufficio_gare", `${RADICE_AREA}/${c}`) || VOCI_MENU_TITOLARE.some((v) => v.href === `${RADICE_AREA}/${c}`)),
-    `sezioni senza voce: ${cartelle.filter((c) => !percorsoConsentito("ufficio_gare", `${RADICE_AREA}/${c}`) && !VOCI_MENU_TITOLARE.some((v) => v.href === `${RADICE_AREA}/${c}`)).join(", ")}`,
-  );
+  // «opportunita» (Tender Intelligence) ha una voce di menu CONDIZIONATA: compare solo con il modulo acceso per l'impresa
+  // (VOCE_MENU_OPPORTUNITA in src/lib/radar/area-cliente.ts, aggiunta dal layout del titolare)
+  const vocePerCondizione = (c: string) => c === "opportunita" && /VOCE_MENU_OPPORTUNITA: VoceMenu = \{ href: RADICE_OPPORTUNITA/.test(fs.readFileSync(path.join(__dirname, "../src/lib/radar/area-cliente.ts"), "utf8"));
+  const conVoce = (c: string) => percorsoConsentito("ufficio_gare", `${RADICE_AREA}/${c}`) || VOCI_MENU_TITOLARE.some((v) => v.href === `${RADICE_AREA}/${c}`) || vocePerCondizione(c);
+  atteso("ogni sezione dell'area riservata è aperta all'Ufficio Gare o compare nel menu del titolare", cartelle.every(conVoce), `sezioni senza voce: ${cartelle.filter((c) => !conVoce(c)).join(", ")}`);
+  atteso("Opportunità resta chiusa all'Ufficio Gare in B1", !percorsoConsentito("ufficio_gare", `${RADICE_AREA}/opportunita`));
 
   console.log("--- Invito ---");
   const buono = { email: "  Gare@Azienda.IT ", emailTitolare: "titolare@azienda.it", consenso: true };

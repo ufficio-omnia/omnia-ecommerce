@@ -56,6 +56,8 @@ async function main() {
     "gara-copertina.ts": ["acquistaCopertina"],
     "pacchetti-servizi.ts": ["acquistaPacchettoServizio"],
     "omnia-ai-ufficio-gare.ts": ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"],
+    // Tender Intelligence, fase B1: del solo titolare
+    "radar.ts": ["aggiornaSalvataggio", "aggiungiGaraAMano"],
   };
   const LAVORO: Record<string, string[]> = {
     "gare.ts": ["createGara", "renameGara", "deleteGara", "uploadGaraDocumento", "removeGaraDocumento", "uploadGaraLogoCliente"],
@@ -162,7 +164,29 @@ async function main() {
   uguale(
     "le pagine e le route dell'area sono quelle previste (una nuova va classificata)",
     pagine.map((p) => routeDi(p).slice(RADICE_AREA.length)).sort(),
-    ["", "/abbonamento", "/assistenza", "/documenti-aziendali", "/documenti-contrattuali", "/gare", "/gare/[id]", "/gare/[id]/revisione", "/impostazioni", "/pagamenti", "/pagamenti/fattura/[fonte]/[id]", "/profilo-azienda", "/servizi", "/ufficio-gare"].sort(),
+    [
+      "",
+      "/abbonamento",
+      "/assistenza",
+      "/documenti-aziendali",
+      "/documenti-contrattuali",
+      "/gare",
+      "/gare/[id]",
+      "/gare/[id]/revisione",
+      "/impostazioni",
+      // Tender Intelligence, fase B1: pagine del solo titolare (l'Ufficio Gare si aggiungerà con le sue prove)
+      "/opportunita",
+      "/opportunita/aggiungi",
+      "/opportunita/aggiunta/[id]",
+      "/opportunita/cerca",
+      "/opportunita/gara/[id]",
+      "/opportunita/monitorate",
+      "/pagamenti",
+      "/pagamenti/fattura/[fonte]/[id]",
+      "/profilo-azienda",
+      "/servizi",
+      "/ufficio-gare",
+    ].sort(),
   );
   for (const file of pagine) {
     const route = routeDi(file);
