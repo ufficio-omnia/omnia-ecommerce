@@ -77,8 +77,11 @@ function host(url: string | null): string | null {
   }
 }
 
+// Un avviso già normalizzato, da qualunque fonte (TED o PVL): quello che serve a costruire la riga della gara.
+export type BandoNormalizzato = Pick<BandoTed, "record" | "regioni" | "enteTipo" | "scadenzaFonte" | "settori" | "metodoSettore"> & { meta: { data: string; numero: string } };
+
 // La riga della procedura dopo aver applicato un avviso (più recente) a quella già in archivio (o a nessuna).
-export function rigaDaBando(b: BandoTed, precedente: RigaProcedura | null, adesso: Date): RigaProcedura {
+export function rigaDaBando(b: BandoNormalizzato, precedente: RigaProcedura | null, adesso: Date): RigaProcedura {
   const r = b.record;
   const iso = adesso.toISOString();
   // annullata dalla fonte = annullata; un esito già registrato non torna «aperta» per una correzione successiva del bando

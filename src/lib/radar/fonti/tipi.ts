@@ -2,12 +2,14 @@
 // aggiornamento e limiti da mostrare SEMPRE al cliente e in console (precisazione P3 del 16/11/2026). Nessuna rete, nessun database.
 //
 // Regole:
-//   - un adattatore legge solo fonti ufficiali e documentate; non scrive sul database: restituisce record già normalizzati e il nuovo cursore;
-//   - il servizio non documentato della piattaforma di pubblicità legale di ANAC NON si usa (decisione D5): la fornitura ANAC entrerà come
+//   - un adattatore legge solo fonti ufficiali; non scrive sul database: restituisce record già normalizzati e il nuovo cursore;
+//   - l'interfaccia del sito della piattaforma di pubblicità legale di ANAC (PVL) si usa SOLO sullo staging, in via sperimentale e con limiti
+//     dichiarati (decisione del titolare del 16/11/2026, che aggiorna la D5): non è un'autorizzazione di ANAC né del riuso commerciale; la
+//     produzione resta esclusa (guardia in ambiente.ts) finché non arrivano le verifiche formali e legali. La fornitura ANAC entrerà come
 //     fonte a sé quando l'istanza sarà accolta;
-//   - ogni campo di una gara conserva la fonte da cui viene.
+//   - ogni campo di una gara conserva la fonte da cui viene (radar_procedure.provenienza_campi, migrazione 0115).
 
-export type IdFonte = "ted" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
+export type IdFonte = "ted" | "pvl" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
 
 export type StatoFonte = "attiva" | "in_costruzione" | "transitoria" | "prevista";
 
@@ -38,6 +40,21 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     ],
     licenza: "Riuso libero, anche commerciale, citando la fonte (Ufficio delle pubblicazioni dell'Unione europea)",
     porta: { bandi: true, esiti: true, cig: "raramente", documenti: "collegamento" },
+  },
+  {
+    id: "pvl",
+    nome: "ANAC, Piattaforma di pubblicità a valore legale",
+    stato: "in_costruzione",
+    copertura: "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti)",
+    aggiornamento: "Prova sullo staging; giri previsti alle 8, alle 13 e alle 18 (non ancora attivi)",
+    limiti: [
+      "Uso sperimentale solo sullo staging: manca la conferma di ANAC all'uso automatico e il parere sul riuso commerciale",
+      "Il CPV è scritto come descrizione: si riconosce solo se è una voce del file approvato",
+      "La durata del contratto non ha unità di misura e non si usa",
+      "Indagini di mercato, negoziate senza bando e affidamenti diretti non entrano",
+    ],
+    licenza: "Da verificare con ANAC e con il legale prima di ogni uso in produzione",
+    porta: { bandi: true, esiti: true, cig: "sempre", documenti: "collegamento" },
   },
   {
     id: "anac_open_data",

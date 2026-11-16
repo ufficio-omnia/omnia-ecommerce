@@ -1,16 +1,21 @@
 // Console «Tender Intelligence» (fase B1): quali parametri si possono cambiare e con quali valori. Logica pura, provata da
 // scripts/verifica-radar-b1.ts. Ogni modifica passa da qui nel server: il modulo della pagina non è una garanzia.
 import { AZIONI_RADAR, CHIAVE_RADAR_ATTIVO, LIMITI_PREDEFINITI, PREFISSO_COSTO, PREFISSO_LIMITE, type NomeLimite } from "@/lib/radar/diritto-calcoli";
+import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI, type LimitiPvl } from "@/lib/radar/fonti/pvl-calcoli";
 
 export const MASSIMO_COSTO_CONSOLE = 1_000;
 export const MASSIMO_LIMITE_CONSOLE = 100_000;
 
-export type ChiaveModificabile = { chiave: string; tipo: "interruttore" | "costo" | "limite" };
+export type ChiaveModificabile = { chiave: string; tipo: "interruttore" | "costo" | "limite" | "limite_pvl" };
+
+const NOME_LIMITE_PVL = new Map((Object.entries(CHIAVI_LIMITI_PVL) as [keyof LimitiPvl, string][]).map(([k, chiave]) => [chiave, k]));
 
 export const CHIAVI_MODIFICABILI: readonly ChiaveModificabile[] = [
   { chiave: CHIAVE_RADAR_ATTIVO, tipo: "interruttore" },
   ...AZIONI_RADAR.map((a) => ({ chiave: `${PREFISSO_COSTO}${a}`, tipo: "costo" as const })),
   ...(Object.keys(LIMITI_PREDEFINITI) as NomeLimite[]).map((n) => ({ chiave: `${PREFISSO_LIMITE}${n}`, tipo: "limite" as const })),
+  // limiti di cortesia verso la PVL (fase B1-bis): ognuno con il suo intervallo, mai oltre
+  ...Object.values(CHIAVI_LIMITI_PVL).map((chiave) => ({ chiave, tipo: "limite_pvl" as const })),
 ];
 
 export type EsitoParametro = { ok: true; valore: string } | { ok: false; errore: string };
@@ -24,6 +29,10 @@ export function validaParametro(chiave: string, valore: string): EsitoParametro 
   if (voce.tipo === "interruttore") return v === "0" || v === "1" ? { ok: true, valore: v } : { ok: false, errore: "L'interruttore vale 0 (spento) o 1 (acceso)." };
   if (!/^\d{1,6}$/.test(v)) return { ok: false, errore: "Scrivi un numero intero senza segni né decimali." };
   const n = Number(v);
+  if (voce.tipo === "limite_pvl") {
+    const { min, max } = LIMITI_PVL_INTERVALLI[NOME_LIMITE_PVL.get(chiave) as keyof LimitiPvl];
+    return n >= min && n <= max ? { ok: true, valore: String(n) } : { ok: false, errore: `Ammesso da ${min.toLocaleString("it-IT")} a ${max.toLocaleString("it-IT")}.` };
+  }
   const massimo = voce.tipo === "costo" ? MASSIMO_COSTO_CONSOLE : MASSIMO_LIMITE_CONSOLE;
   if (n > massimo) return { ok: false, errore: `Il valore massimo è ${massimo.toLocaleString("it-IT")}.` };
   return { ok: true, valore: String(n) };
@@ -55,8 +64,18 @@ export function etichettaParametro(chiave: string): string {
   if (chiave === CHIAVE_RADAR_ATTIVO) return "Interruttore generale";
   if (chiave.startsWith(PREFISSO_COSTO)) return `Costo (${ETICHETTE_AZIONI[chiave.slice(PREFISSO_COSTO.length)] ?? chiave})`;
   if (chiave.startsWith(PREFISSO_LIMITE)) return `Limite (${ETICHETTE_LIMITI[chiave.slice(PREFISSO_LIMITE.length)] ?? chiave})`;
+  const pvl = NOME_LIMITE_PVL.get(chiave);
+  if (pvl) return `PVL (${ETICHETTE_LIMITI_PVL[pvl]})`;
   return chiave;
 }
+
+export const ETICHETTE_LIMITI_PVL: Record<keyof LimitiPvl, string> = {
+  avvisiPerPagina: "avvisi per pagina",
+  pausaMs: "pausa tra due richieste, in millisecondi",
+  timeoutMs: "tempo massimo per richiesta, in millisecondi",
+  tentativi: "tentativi per richiesta",
+  richiesteMassime: "richieste massime per giro",
+};
 
 export function normalizzaEmailConsole(email: string): string | null {
   const e = email.trim().toLowerCase();

@@ -250,8 +250,9 @@ uguale("scadenza senza ora: non si presume", scadenzaDaCampi("2026-12-15", ""), 
 uguale("migliaia con il punto", validaGaraAggiunta({ ...campi, cig: "B6BC58DFBA", importo: "1.234.567" }).ok ? (validaGaraAggiunta({ ...campi, cig: "B6BC58DFBA", importo: "1.234.567" }) as { valori: { importo: number } }).valori.importo : null, 1234567);
 
 // ───── 7. parametri della console ─────
-uguale("parametri modificabili: interruttore, 7 costi, 4 limiti (gli stessi della 0111)", CHIAVI_MODIFICABILI.length, 12);
-atteso("ogni parametro modificabile esiste nella migrazione 0111", CHIAVI_MODIFICABILI.every((c) => leggi("supabase/migrations/0111_radar_coda_impostazioni.sql").includes(`('${c.chiave}', '`)));
+uguale("parametri modificabili: interruttore, 7 costi, 4 limiti (gli stessi della 0111), 5 limiti PVL (0116, fase B1-bis)", CHIAVI_MODIFICABILI.length, 17);
+const seminati = leggi("supabase/migrations/0111_radar_coda_impostazioni.sql") + leggi("supabase/migrations/0116_radar_pvl_limiti.sql");
+atteso("ogni parametro modificabile esiste nelle migrazioni 0111 o 0116", CHIAVI_MODIFICABILI.every((c) => seminati.includes(`('${c.chiave}', '`)));
 uguale(
   "validazione nel server",
   [validaParametro("radar_attivo", "1"), validaParametro("radar_attivo", "2").ok, validaParametro("radar_costo_ricerca", "1001").ok, validaParametro("radar_costo_ricerca", "-1").ok, validaParametro("radar_costo_ricerca", "007"), validaParametro("radar_limite_ricerche_minuto", "30"), validaParametro("radar_limite_inventato", "1").ok],
@@ -314,7 +315,8 @@ for (const m of azioniRadar.matchAll(/export async function (\w+)\(([\s\S]*?)\n\
 const azioniConsole = leggi("src/app/site-console/azioni/tender-intelligence.ts");
 for (const m of azioniConsole.matchAll(/export async function (\w+)\(([\s\S]*?)\n\}/g)) {
   atteso(`console ${m[1]}: solo amministratori`, m[2].includes("const sessione = await richiediAdminAzione();\n  if (!sessione) return { errore: \"Non autorizzato.\" };"));
-  if (m[1] !== "eseguiGiroTed") atteso(`console ${m[1]}: senza registro non salva, e registra la modifica`, m[2].includes("registroDisponibile(admin)") && m[2].includes("await registra(admin"));
+  // i giri manuali (TED e, dalla B1-bis, PVL) non cambiano impostazioni: niente registro
+  if (m[1] !== "eseguiGiroTed" && m[1] !== "eseguiGiroPvl") atteso(`console ${m[1]}: senza registro non salva, e registra la modifica`, m[2].includes("registroDisponibile(admin)") && m[2].includes("await registra(admin"));
 }
 atteso("console: i cambi di interruttori svuotano subito la cache del menu", /salvaParametriRadar[\s\S]*updateTag\(TAG_PARAMETRI_RADAR\)/.test(azioniConsole) && /impostaImpresaRadar[\s\S]*updateTag\(TAG_CLIENTI_RADAR\)/.test(azioniConsole));
 const visibilita = leggi("src/lib/radar/visibilita.ts");

@@ -8,6 +8,7 @@
 //   - misure di ogni giro (richieste e tempi verso TED e verso il database) salvate in radar_fonti_stato.conteggi e mostrate in console.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { scrittureRadarConsentite } from "./ambiente";
 import { vociCpv } from "./settori";
 import { AVVISI_PER_PAGINA, leggiBandoTed, leggiEsitoTed, type EsitoTed } from "./fonti/ted-calcoli";
 import { leggiPaginaTed } from "./fonti/ted";
@@ -24,15 +25,15 @@ export type TotaliGiro = {
 };
 
 export type RisultatoImportazioneTed =
-  | { eseguita: false; motivo: "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura" }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
 
-export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number };
+export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number; env?: Record<string, string | undefined> };
 
 function totaliVuoti(): TotaliGiro {
   return {
     pagine: 0,
-    bandi: { letti: 0, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0 },
+    bandi: { letti: 0, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0, unitePvl: 0 },
     esiti: { letti: 0, applicati: 0, senzaBando: 0, invariati: 0, senzaStato: 0 },
     ted: { richieste: 0, byte: 0, ms: 0 },
     db: { richiesteDb: 0, msDb: 0 },
@@ -41,7 +42,7 @@ function totaliVuoti(): TotaliGiro {
 
 function somma(t: TotaliGiro, b: EsitoPaginaBandi | null, e: EsitoPaginaEsiti | null) {
   if (b) {
-    for (const k of ["letti", "invariati", "nuove", "aggiornate", "soloProvenienza", "rettifiche", "annullate", "lotti", "cigScartati", "aggiunteCollegate"] as const) t.bandi[k] += b[k];
+    for (const k of ["letti", "invariati", "nuove", "aggiornate", "soloProvenienza", "rettifiche", "annullate", "lotti", "cigScartati", "aggiunteCollegate", "unitePvl"] as const) t.bandi[k] += b[k];
     for (const [k, v] of Object.entries(b.esclusi)) t.bandi.esclusi[k] = (t.bandi.esclusi[k] ?? 0) + v;
   }
   if (e) for (const k of ["letti", "applicati", "senzaBando", "invariati", "senzaStato"] as const) t.esiti[k] += e[k];
@@ -50,6 +51,9 @@ function somma(t: TotaliGiro, b: EsitoPaginaBandi | null, e: EsitoPaginaEsiti | 
 type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
 export async function eseguiImportazioneTed(admin: SupabaseClient, opzioni: OpzioniImportazione): Promise<RisultatoImportazioneTed> {
+  // protezione contro le scritture accidentali in produzione (ambiente.ts): prima di qualunque lettura o scrittura
+  const permesso = scrittureRadarConsentite("ted", opzioni.env ?? process.env);
+  if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
   const { data: fonte, error } = await admin.from("radar_fonti_stato").select("attiva, cursore, blocco_fino_a, conteggi").eq("fonte", "ted").maybeSingle<RigaFonte>();

@@ -1,0 +1,377 @@
+// Verifica della fase B1-bis di Tender Intelligence: connettore PVL di ANAC (solo staging). Lettura degli avvisi (copie REALI dei soli campi
+// pubblici, senza aggiudicatari: scripts/dati/radar-pvl-campione.json), limiti e sospensioni verso la fonte (risposte simulate), unione con
+// TED nella stessa gara in tutti gli ordini di arrivo, rettifiche senza doppioni, punto di ripresa, orari dei giri con l'ora legale, guardia
+// anti-produzione, più controlli sul codice (nessuna AI, cron non attivo, migrazioni additive).
+import fs from "fs";
+import path from "path";
+import {
+  CHIAVI_LIMITI_PVL,
+  LIMITI_PVL_INTERVALLI,
+  LIMITI_PVL_PREDEFINITI,
+  codiceFiscaleSa,
+  confrontaVersioniPvl,
+  cpvDaDescrizione,
+  cpvRicercaPvl,
+  dataPvl,
+  leggiAvvisoPvl,
+  leggiPaginaGrezza,
+  limitiPvl,
+  limitiPvlDaRighe,
+  numeroTedDaLink,
+  parametriRicercaPvl,
+  scadenzaPvl,
+  urlAvvisoPvl,
+  type BandoPvl,
+  type EsitoPvl,
+  type LimitiPvl,
+} from "../src/lib/radar/fonti/pvl-calcoli";
+import { ErrorePvl, SessionePvl } from "../src/lib/radar/fonti/pvl";
+import { provinciaDaTesto } from "../src/lib/radar/province";
+import { REGIONI } from "../src/lib/radar/territorio";
+import { aperta, rigaDaBando, type RigaProcedura } from "../src/lib/radar/importa-calcoli";
+import { conteggioAnomalo, cursoreDopoPagina, cursoreFinestra, cursoreIncrementale, cursorePvlValido, eOraDiUnGiroPvl, prossimoGiroPvl, rigaDaBandoPvl, CRON_PVL_PROPOSTO } from "../src/lib/radar/importa-pvl-calcoli";
+import { confrontaVersioni, provenienzaImplicita, unisciLotti, unisciVersione, type LottoUnito, type VersioneFonte } from "../src/lib/radar/unione-calcoli";
+import { ambienteDb, scrittureRadarConsentite, PROGETTO_PRODUZIONE, PROGETTO_STAGING } from "../src/lib/radar/ambiente";
+import { validaParametro } from "../src/lib/console/tender-intelligence-calcoli";
+
+const RADICE = path.join(__dirname, "..");
+const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
+const fallimenti: string[] = [];
+function atteso(nome: string, ok: boolean, dettaglio = "") {
+  console.log(`${ok ? "ok    " : "FALLITO"} ${nome}${ok || !dettaglio ? "" : ` — ${dettaglio}`}`);
+  if (!ok) fallimenti.push(nome);
+}
+function uguale(nome: string, reale: unknown, previsto: unknown) {
+  const a = JSON.stringify(reale);
+  const b = JSON.stringify(previsto);
+  atteso(nome, a === b, `atteso ${b}, ottenuto ${a}`);
+}
+
+async function principale() {
+  const campione = JSON.parse(leggi("scripts/dati/radar-pvl-campione.json")) as { avvisi: Record<string, unknown>[] };
+  const letti = campione.avvisi.map(leggiAvvisoPvl);
+  const bando = (i: number) => letti[i] as BandoPvl;
+
+  // ───── 1. il campione non contiene dati di persone né aggiudicatari ─────
+  const testoCampione = leggi("scripts/dati/radar-pvl-campione.json");
+  atteso("campione senza aggiudicatari (decisione D6) né email", !/aggiudicatari|"soggetti"|@/.test(testoCampione.replace(/"nota": "[^"]*"/, "")));
+
+  // ───── 2. lettura degli avvisi reali ─────
+  uguale(
+    "tipi riconosciuti: 9 bandi (P1_16, P1_17, P2_16, P2_19), 2 esiti, indagine, modifica, affidamento esclusi",
+    letti.map((l) => (l.tipo === "esclusione" ? `x:${l.motivo}` : l.tipo)),
+    ["bando", "bando", "bando", "bando", "bando", "bando", "bando", "bando", "bando", "esito", "esito", "x:indagine_o_negoziata", "x:modifica_contrattuale", "x:affidamento"],
+  );
+  const genova = bando(0);
+  uguale("bando UE a tre lotti: chiave della procedura PVL", genova.record.chiaveProcedura, "pvl:194486c3-4660-4b96-b881-4b583af44acc");
+  uguale("numero dell'avviso TED citato dalla PVL", genova.meta.numeroTed, "776475-2026");
+  uguale("lotti numerati come TED, con un CIG ciascuno", genova.record.lotti.map((l) => [l.numero, l.cig]), [["LOT-0001", "BDAEC5A4B8"], ["LOT-0002", "BDAEC5B58B"], ["LOT-0003", "BDAEC5C65E"]]);
+  uguale("valore = somma dei lotti", genova.record.valoreStimato, 720000);
+  uguale("scadenza UE: giorno dal termine, ora da dataScadenza (stesso giorno a Roma)", [genova.record.scadenzaGiorno, genova.record.scadenzaOfferte, genova.record.scadenzaOraIndicata], ["2026-12-10", "2026-12-10T11:00:00.000Z", true]);
+  uguale("luogo: provincia di Genova → GE, Liguria", [genova.record.ente.comune, genova.record.ente.provincia, genova.regioni], ["Genova", "GE", ["liguria"]]);
+  uguale("collegamento ufficiale alla pagina della PVL", genova.record.urlAvviso, "https://pubblicitalegale.anticorruzione.it/bandi/560583c4-ac90-4e7e-bfb7-cbd656b11269");
+  atteso("collegamento ai documenti della piattaforma dell'ente", genova.record.urlDocumenti === "https://appalti.comune.genova.it/PortaleAppalti/it/procedure/codice/G11913");
+  atteso("CPV non del file approvato («pulitura di serbatoi»): nessun codice inventato, segnalato tra i dati mancanti", genova.record.cpvPrincipale === null && genova.mancanti.includes("cpv_non_riconosciuto"));
+  atteso("… ma la gara è di pulizia per parola chiave (servizi)", genova.settori.includes("pulizia") && genova.metodoSettore === "parole_chiave");
+  uguale("durata senza unità di misura: non letta", genova.record.durataMesi, null);
+  uguale("procedura e criterio", [genova.record.tipoProcedura, genova.record.criterioAggiudicazione], ["Procedura aperta", "Offerta economicamente più vantaggiosa"]);
+
+  const venezia = bando(1);
+  uguale("CPV come descrizione ufficiale → codice del file", [venezia.record.cpvPrincipale, venezia.settori, venezia.metodoSettore], ["90919200", ["pulizia"], "cpv"]);
+  uguale("scadenza UE con ora", [venezia.record.scadenzaGiorno, venezia.record.scadenzaOfferte], ["2026-12-14", "2026-12-14T12:00:00.000Z"]);
+  const nazionale = bando(4);
+  uguale("bando nazionale: nessun avviso TED citato", nazionale.meta.numeroTed, null);
+  uguale("bando nazionale: ora dal termine di ricezione", [nazionale.record.scadenzaGiorno, nazionale.record.scadenzaOfferte, nazionale.record.scadenzaOraIndicata], ["2026-11-13", "2026-11-13T11:00:00.000Z", true]);
+  uguale("ora a fine giornata scritta dalla fonte: si conserva com'è (non è presunta)", [bando(5).record.scadenzaGiorno, bando(5).record.scadenzaOfferte], ["2026-11-30", "2026-11-30T22:59:00.000Z"]);
+  uguale("termine in UTC («Z») convertito, giorno di Roma", [bando(6).record.scadenzaGiorno, bando(6).record.scadenzaOfferte], ["2026-12-17", "2026-12-17T11:00:00.000Z"]);
+  uguale("luogo assente: nessuna regione inventata", [bando(6).regioni, bando(6).mancanti.includes("regione")], [[], true]);
+  uguale("settori speciali dalla scheda (P1_17)", [bando(8).record.settoriSpeciali, bando(1).record.settoriSpeciali], [true, false]);
+  const esito = letti[9] as EsitoPvl;
+  uguale("esito: solo lo stato e i CIG (mai i nomi)", [esito.stato, esito.cig, Object.keys(esito)], ["aggiudicata", ["BBC85B0F92"], ["tipo", "meta", "stato", "cig"]]);
+  atteso("impronta stabile: due letture uguali, stessa impronta", leggiAvvisoPvl(campione.avvisi[0]).tipo === "bando" && (leggiAvvisoPvl(campione.avvisi[0]) as BandoPvl).record.impronta === genova.record.impronta);
+  const rettificato = structuredClone(campione.avvisi[1]) as Record<string, unknown>;
+  rettificato.dataScadenza = "2026-12-21T12:00:00.000+00:00";
+  ((((rettificato.templates as Record<string, unknown>[])[0].template as Record<string, unknown>).sections as Record<string, unknown>[])[2].items as Record<string, unknown>[])[0].termine_ricezione = "2026-12-21+01:00";
+  atteso("un dato cambiato cambia l'impronta", (leggiAvvisoPvl(rettificato) as BandoPvl).record.impronta !== venezia.record.impronta);
+  uguale("avviso oscurato: escluso", (leggiAvvisoPvl({ ...campione.avvisi[1], oscurato: true }) as { motivo: string }).motivo, "oscurato");
+  uguale("avviso malformato: escluso", (leggiAvvisoPvl({ idAvviso: "x" }) as { motivo: string }).motivo, "avviso_malformato");
+  const revocato = leggiAvvisoPvl({ ...campione.avvisi[1], nuovoAvviso: "11111111-2222-3333-4444-555555555555", tipoNuovoAvviso: "ANNULLAMENTO" }) as BandoPvl;
+  uguale("avviso sostituito da un annullamento → gara annullata", [revocato.record.annullata, revocato.meta.sostituitoDa], [true, "11111111-2222-3333-4444-555555555555"]);
+  atteso("ordine delle versioni PVL: istante di pubblicazione", confrontaVersioniPvl({ data: "2026-11-10T07:00:00.000Z", idAvviso: "b" }, { data: "2026-11-12T07:00:00.000Z", idAvviso: "a" }) < 0);
+
+  // ───── 3. scadenza: mai un'ora presunta ─────
+  uguale("termine senza ora e dataScadenza a mezzanotte di Roma → solo il giorno", scadenzaPvl("2026-12-09T23:00:00.000+00:00", "2026-12-10+01:00"), { giorno: "2026-12-10", iso: null, oraIndicata: false, fonte: "2026-12-10+01:00" });
+  uguale("termine e dataScadenza in giorni diversi → solo il giorno del termine", scadenzaPvl("2026-12-11T10:00:00.000+00:00", "2026-12-10+01:00")?.iso ?? null, null);
+  uguale("nessun termine, dataScadenza con ora → istante", scadenzaPvl("2026-12-11T10:00:00.000+00:00", null)?.iso ?? null, "2026-12-11T10:00:00.000Z");
+  uguale("nessun dato → nessuna scadenza", scadenzaPvl(null, null), null);
+  const testoSrcPvl = ["src/lib/radar/fonti/pvl-calcoli.ts", "src/lib/radar/importa-pvl-calcoli.ts", "src/lib/radar/importa-pvl.ts", "src/lib/radar/importa-pvl-pagina.ts", "src/lib/radar/unione-calcoli.ts"].map(leggi).join("\n");
+  atteso("nessuna ora predefinita nel connettore (regola del progetto)", !/23:59|fineGiornoRoma|ORA_SCADENZA_PREDEFINITA/.test(testoSrcPvl));
+
+  // ───── 4. campi ausiliari ─────
+  uguale("CPV: descrizione, codice con cifra di controllo, sconosciuto", [cpvDaDescrizione("Servizi di pulizia di uffici"), cpvDaDescrizione("90910000-9"), cpvDaDescrizione("Servizi di pulitura di serbatoi"), cpvDaDescrizione({ value: "Servizi di mensa" })], ["90919200", "90910000", null, "55510000"]);
+  uguale("codice fiscale: identificativi interni ANAC non sono codici fiscali", [codiceFiscaleSa("00856930102"), codiceFiscaleSa("CFAVCP-0000ABC"), codiceFiscaleSa(" 0085693010 ")], ["00856930102", null, null]);
+  uguale("numero TED dal collegamento", [numeroTedDaLink("https://ted.europa.eu/udl?uri=TED:NOTICE:787530-2026:TEXT:IT:HTML"), numeroTedDaLink("https://esempio.it")], ["787530-2026", null]);
+  uguale(
+    "province → sigla e regione; «ITALIA» e nomi sconosciuti → nulla",
+    ["Venezia", "Forlì-Cesena", "Reggio Calabria", "Bolzano/Bozen", "Città metropolitana di Roma", "Barletta-Andria-Trani", "ITALIA", "", "ITH35", "Atlantide"].map((p) => { const x = provinciaDaTesto(p); return `${x.sigla ?? "-"}/${x.regione ?? "-"}`; }),
+    ["VE/veneto", "FC/emilia_romagna", "RC/calabria", "BZ/trentino_alto_adige", "RM/lazio", "BT/puglia", "-/-", "-/-", "-/veneto", "-/-"],
+  );
+  atteso("ogni regione ha almeno una provincia", REGIONI.every((r) => ["Torino", "Aosta", "Genova", "Milano", "Trento", "Venezia", "Trieste", "Bologna", "Firenze", "Perugia", "Ancona", "Roma", "Pescara", "Campobasso", "Napoli", "Bari", "Potenza", "Catanzaro", "Palermo", "Cagliari"].some((p) => provinciaDaTesto(p).regione === r.id)));
+  uguale("URL pubblico dell'avviso", urlAvvisoPvl("abc"), "https://pubblicitalegale.anticorruzione.it/bandi/abc");
+
+  // ───── 5. interrogazione ─────
+  uguale("i 50 codici CPV del file approvato, esatti", [cpvRicercaPvl().length, cpvRicercaPvl().every((c) => /^\d{8}$/.test(c))], [50, true]);
+  uguale("data nel formato della ricerca", dataPvl("2026-11-09"), "09/11/2026");
+  const p1 = parametriRicercaPvl({ da: "2026-11-09", a: "2026-11-16", cpv: ["90910000", "55510000"], avvisiPerPagina: 100, token: null });
+  uguale("parametri della prima pagina", p1, { pageSize: "100", dataPubblicazioneStart: "09/11/2026", dataPubblicazioneEnd: "16/11/2026", sortField: "dataPubblicazione", sortDirection: "asc", operatore: "AND", cpv: "90910000,55510000" });
+  const p2 = parametriRicercaPvl({ da: "2026-11-09", a: "2026-11-16", cpv: ["90910000"], avvisiPerPagina: 100, token: "TOK" });
+  uguale("pagina successiva con il token", [p2.direzionePaginazione, p2.tokenPaginazione], ["AVANTI", "TOK"]);
+  uguale("forma della pagina riconosciuta", leggiPaginaGrezza({ content: [{ idAvviso: "a" }], count: 1, lastPaginationToken: "t" }), { content: [{ idAvviso: "a" }], count: 1, token: "t" });
+  uguale("forma cambiata → non riconosciuta", [leggiPaginaGrezza({ risultati: [] }), leggiPaginaGrezza({ content: [{ id: 1 }] }), leggiPaginaGrezza("<html>")], [null, null, null]);
+
+  // ───── 6. limiti di cortesia ─────
+  uguale("limiti predefiniti", LIMITI_PVL_PREDEFINITI, { avvisiPerPagina: 100, pausaMs: 3000, timeoutMs: 30000, tentativi: 2, richiesteMassime: 20 });
+  uguale("valori fuori intervallo ignorati (mai più aggressivi)", limitiPvl({ pausaMs: 100, richiesteMassime: 500, tentativi: 9, avvisiPerPagina: 1000 }), LIMITI_PVL_PREDEFINITI);
+  uguale("valori dalla console", limitiPvlDaRighe([{ chiave: "radar_pvl_pausa_ms", valore: "5000" }, { chiave: "radar_pvl_richieste_massime", valore: "8" }]), { ...LIMITI_PVL_PREDEFINITI, pausaMs: 5000, richiesteMassime: 8 });
+  uguale("console: validazione nel server degli stessi intervalli", [validaParametro(CHIAVI_LIMITI_PVL.pausaMs, "1999").ok, validaParametro(CHIAVI_LIMITI_PVL.pausaMs, "2000"), validaParametro(CHIAVI_LIMITI_PVL.richiesteMassime, "61").ok], [false, { ok: true, valore: "2000" }, false]);
+  atteso("pausa minima di 2 secondi, al massimo 3 tentativi, al massimo 60 richieste per giro", LIMITI_PVL_INTERVALLI.pausaMs.min === 2000 && LIMITI_PVL_INTERVALLI.tentativi.max === 3 && LIMITI_PVL_INTERVALLI.richiesteMassime.max === 60);
+
+  const rapidi: LimitiPvl = { avvisiPerPagina: 100, pausaMs: 1, timeoutMs: 500, tentativi: 2, richiesteMassime: 3 };
+  const risposte = (seq: (() => Response)[]) => {
+    let i = 0;
+    const chiamate: string[] = [];
+    const f = (async (url: string | URL | Request, init?: RequestInit) => {
+      chiamate.push(String(url));
+      const ua = (init?.headers as Record<string, string>)["User-Agent"];
+      if (!/^omnia-radar\//.test(ua)) throw new Error("user agent inatteso");
+      const r = seq[Math.min(i, seq.length - 1)];
+      i++;
+      return r();
+    }) as typeof fetch;
+    return { f, chiamate };
+  };
+  const json = (o: unknown, stato = 200) => () => new Response(JSON.stringify(o), { status: stato, headers: { "content-type": "application/json" } });
+  const pag = { content: [{ idAvviso: "a" }], count: 1, lastPaginationToken: null };
+  const lettura = { da: "2026-11-09", a: "2026-11-16", cpv: ["90910000"], token: null };
+  {
+    const { f, chiamate } = risposte([json(pag)]);
+    const s = new SessionePvl(rapidi, f);
+    const p = await s.leggiPagina(lettura);
+    uguale("200: pagina letta, una richiesta", [p.content.length, s.richieste, chiamate[0].startsWith("https://pubblicitalegale.anticorruzione.it/api/v0/avvisi-full-text-specializzata?")], [1, 1, true]);
+  }
+  for (const stato of [429, 403, 401]) {
+    const { f } = risposte([json({}, stato), json(pag)]);
+    const s = new SessionePvl(rapidi, f);
+    const e = await s.leggiPagina(lettura).catch((x) => x);
+    uguale(`${stato}: sospensione immediata, nessun nuovo tentativo`, [e instanceof ErrorePvl && e.sospendi, e.stato, s.richieste], [true, stato, 1]);
+  }
+  {
+    const { f } = risposte([json({}, 503), json(pag)]);
+    const s = new SessionePvl(rapidi, f);
+    const p = await s.leggiPagina(lettura);
+    uguale("503 poi 200: un nuovo tentativo, che conta come richiesta", [p.content.length, s.richieste], [1, 2]);
+  }
+  {
+    const { f } = risposte([() => new Response("<html>Verifica di sicurezza</html>", { status: 200, headers: { "content-type": "text/html" } })]);
+    const s = new SessionePvl(rapidi, f);
+    const e = await s.leggiPagina(lettura).catch((x) => x);
+    uguale("pagina HTML invece dei dati (verifica anti-robot): sospensione, nessun aggiramento", [e instanceof ErrorePvl && e.sospendi, s.richieste], [true, 1]);
+  }
+  {
+    const { f } = risposte([json({ risultati: [] })]);
+    const e = await new SessionePvl(rapidi, f).leggiPagina(lettura).catch((x) => x);
+    atteso("struttura cambiata: sospensione", e instanceof ErrorePvl && e.sospendi);
+  }
+  {
+    const { f } = risposte([json({}, 500)]);
+    const s = new SessionePvl(rapidi, f);
+    const e = await s.leggiPagina(lettura).catch((x) => x);
+    uguale("500 ripetuto: errore dopo i tentativi ammessi, senza sospendere", [e instanceof ErrorePvl && !e.sospendi, s.richieste], [true, 2]);
+  }
+  {
+    const { f } = risposte([json(pag)]);
+    const s = new SessionePvl({ ...rapidi, richiesteMassime: 2 }, f);
+    await s.leggiPagina(lettura);
+    await s.leggiPagina(lettura);
+    const e = await s.leggiPagina(lettura).catch((x) => x);
+    uguale("tetto di richieste per giro: mai superato", [e instanceof ErrorePvl && e.tetto, s.richieste], [true, 2]);
+  }
+  {
+    const lento = (async (_u: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_ok, ko) => init?.signal?.addEventListener("abort", () => ko(new Error("abort"))))) as typeof fetch;
+    const s = new SessionePvl({ ...rapidi, timeoutMs: 50, tentativi: 1 }, lento);
+    const e = await s.leggiPagina(lettura).catch((x) => x);
+    atteso("tempo massimo per richiesta", e instanceof ErrorePvl && /tempo massimo/.test(e.message));
+  }
+  {
+    const { f } = risposte([json(pag)]);
+    const s = new SessionePvl({ ...rapidi, pausaMs: 120 }, f);
+    const t0 = Date.now();
+    await s.leggiPagina(lettura);
+    await s.leggiPagina(lettura);
+    atteso("pausa tra due richieste rispettata", Date.now() - t0 >= 115);
+  }
+
+  // ───── 7. unione TED + PVL nella stessa gara ─────
+  const adesso = new Date("2026-11-16T12:00:00Z");
+  const iso = adesso.toISOString();
+  const rigaPvl = rigaDaBandoPvl(venezia, adesso);
+  const vPvl: VersioneFonte = { fonte: "pvl", id: venezia.meta.idAvviso, giorno: venezia.meta.giorno, istante: venezia.meta.data, ted: "787530-2026" };
+  // la stessa gara come la scriverebbe TED (testi diversi, durata e NUTS presenti, niente CIG né documenti diversi)
+  const rigaTed: RigaProcedura = {
+    ...rigaPvl,
+    chiave: "ted:proc-venezia",
+    oggetto: "Servizio triennale di pulizia della sede centrale (testo TED)",
+    oggetto_breve: "Servizio triennale di pulizia della sede centrale (testo TED)",
+    durata_mesi: 36,
+    codice_nuts: "ITH35",
+    ente_tipo: "body-pl",
+    url_avviso: "https://ted.europa.eu/it/notice/-/detail/787530-2026",
+    url_documenti: "https://venetostrade.esempio.it/doc",
+    tipo_avviso: "cn-standard",
+    data_pubblicazione: "2026-11-17",
+    ultima_versione_il: "2026-11-17",
+    ultima_versione_id: "787530-2026",
+  };
+  const vTed: VersioneFonte = { fonte: "ted", id: "787530-2026", giorno: "2026-11-17", istante: null, ted: "787530-2026" };
+
+  const solo = unisciVersione(null, null, rigaPvl, vPvl, iso);
+  uguale("PVL per prima: gara nuova con chiave PVL e provenienza per campo", [solo.riga.chiave, solo.provenienza.scadenza?.f, solo.provenienza._versione?.ted, solo.cambiamenti.length], [rigaPvl.chiave, "pvl", "787530-2026", 0]);
+  const poiTed = unisciVersione(solo.riga, solo.provenienza, rigaTed, vTed, iso);
+  uguale(
+    "poi TED, stessa versione: stessa gara (chiave PVL), nessun cambiamento registrato",
+    [poiTed.riga.chiave, poiTed.cambiamenti.length, poiTed.riga.rettificata],
+    [rigaPvl.chiave, 0, false],
+  );
+  uguale("… TED riempie i dati che la PVL non dà (durata, NUTS), la PVL tiene testi e documenti", [poiTed.riga.durata_mesi, poiTed.riga.codice_nuts, poiTed.riga.oggetto === rigaPvl.oggetto, poiTed.riga.url_documenti === rigaPvl.url_documenti], [36, "ITH35", true, true]);
+  uguale("… provenienza dei singoli dati conservata", [poiTed.provenienza.durata_mesi?.f, poiTed.provenienza.oggetto?.f, poiTed.provenienza.scadenza?.f], ["ted", "pvl", "pvl"]);
+  uguale("… data di pubblicazione: la prima delle due fonti", poiTed.riga.data_pubblicazione, rigaPvl.data_pubblicazione);
+
+  const tedPrima = unisciVersione(null, null, rigaTed, vTed, iso);
+  const poiPvl = unisciVersione(tedPrima.riga, tedPrima.provenienza, rigaPvl, vPvl, iso);
+  uguale("TED per primo, poi la PVL: stessa gara (chiave TED), nessun cambiamento", [poiPvl.riga.chiave, poiPvl.cambiamenti.length], ["ted:proc-venezia", 0]);
+  uguale("… precedenza alla PVL per testi e documenti, TED tiene la durata", [poiPvl.riga.oggetto === rigaPvl.oggetto, poiPvl.riga.url_documenti === rigaPvl.url_documenti, poiPvl.riga.durata_mesi], [true, true, 36]);
+  const daLegacy = unisciVersione({ ...rigaTed }, null, rigaPvl, vPvl, iso);
+  uguale("gara TED importata prima della 0115 (provenienza implicita): stesso risultato", [daLegacy.riga.chiave, daLegacy.cambiamenti.length, daLegacy.riga.oggetto === rigaPvl.oggetto], ["ted:proc-venezia", 0, true]);
+  uguale("provenienza implicita di una gara TED", provenienzaImplicita(rigaTed), { f: "ted", id: "787530-2026", g: "2026-11-17", t: null, ted: "787530-2026" });
+
+  // rettifica TED più recente (proroga), poi la stessa rettifica dalla PVL: un solo cambiamento
+  const rettTed: RigaProcedura = { ...rigaTed, scadenza_giorno: "2026-12-21", scadenza_offerte: "2026-12-21T12:00:00.000Z", ultima_versione_il: "2026-11-25", ultima_versione_id: "800001-2026" };
+  const vRettTed: VersioneFonte = { fonte: "ted", id: "800001-2026", giorno: "2026-11-25", istante: null, ted: "800001-2026" };
+  const dopoRett = unisciVersione(poiTed.riga, poiTed.provenienza, rettTed, vRettTed, iso);
+  uguale("rettifica TED più recente: proroga registrata una volta", [dopoRett.cambiamenti.map((c) => `${c.tipo}:${c.campo}`), dopoRett.riga.scadenza_giorno, dopoRett.riga.rettificata], [["proroga:scadenza_offerte"], "2026-12-21", true]);
+  uguale("… ma l'oggetto resta quello della PVL (non è una rettifica dell'oggetto)", dopoRett.riga.oggetto === rigaPvl.oggetto, true);
+  const rettPvl: RigaProcedura = { ...rigaPvl, scadenza_giorno: "2026-12-21", scadenza_offerte: "2026-12-21T12:00:00.000Z" };
+  const vRettPvl: VersioneFonte = { fonte: "pvl", id: "rett-pvl", giorno: "2026-11-24", istante: "2026-11-24T07:00:00.000Z", ted: "800001-2026" };
+  const dopoRettPvl = unisciVersione(dopoRett.riga, dopoRett.provenienza, rettPvl, vRettPvl, iso);
+  uguale("la stessa rettifica dalla PVL: nessun cambiamento in più (niente notifiche doppie)", dopoRettPvl.cambiamenti.length, 0);
+  // una versione più vecchia arriva in ritardo: non sovrascrive
+  const vecchia = unisciVersione(dopoRett.riga, dopoRett.provenienza, rigaPvl, vPvl, iso);
+  uguale("versione più vecchia arrivata dopo: la scadenza più recente resta", [vecchia.riga.scadenza_giorno, vecchia.cambiamenti.length], ["2026-12-21", 0]);
+  // un dato vuoto non cancella quello dell'altra fonte
+  const senzaValore = unisciVersione(poiTed.riga, poiTed.provenienza, { ...rigaTed, valore_stimato: null, ultima_versione_il: "2026-11-26", ultima_versione_id: "800002-2026" }, { ...vRettTed, id: "800002-2026", ted: "800002-2026", giorno: "2026-11-26" }, iso);
+  uguale("un dato vuoto non cancella quello dell'altra fonte", senzaValore.riga.valore_stimato, rigaPvl.valore_stimato);
+  // annullamento più recente
+  const annullo = unisciVersione(poiTed.riga, poiTed.provenienza, { ...rigaPvl, stato: "annullata" }, { ...vPvl, id: "annullo", istante: "2026-11-30T07:00:00.000Z", giorno: "2026-11-30", ted: null }, iso);
+  uguale("annullamento da una versione più recente", [annullo.riga.stato, annullo.cambiamenti.map((c) => c.tipo)], ["annullata", ["annullamento"]]);
+  atteso("gara annullata mai mostrata aperta", !aperta(annullo.riga.stato, { giorno: annullo.riga.scadenza_giorno, iso: annullo.riga.scadenza_offerte }, adesso));
+
+  // una sola fonte: comportamento identico a prima della B1-bis
+  const t1: RigaProcedura = { ...rigaTed };
+  const t2: RigaProcedura = { ...rigaTed, valore_stimato: null, scadenza_giorno: "2026-12-28", scadenza_offerte: null, scadenza_ora_indicata: false, ultima_versione_il: "2026-11-25", ultima_versione_id: "800001-2026" };
+  const tt = unisciVersione(t1, null, t2, vRettTed, iso);
+  uguale("solo TED, versione più recente: sostituisce tutto (anche un dato tolto) e registra come prima", [tt.riga.valore_stimato, tt.riga.scadenza_giorno, tt.cambiamenti.map((c) => `${c.tipo}:${c.campo}`).sort()], [null, "2026-12-28", ["proroga:scadenza_offerte", "rettifica:valore_stimato"]]);
+  const tv = unisciVersione(t2, null, t1, vTed, iso);
+  uguale("solo TED, versione più vecchia: nessun effetto", [tv.riga.scadenza_giorno, tv.cambiamenti.length, tv.campiPresi.length, tv.ultima], ["2026-12-28", 0, 0, false]);
+  uguale("confronto versioni: numeri TED, istanti PVL, giorni", [confrontaVersioni(vRettTed, vTed) > 0, confrontaVersioni(vPvl, vTed), confrontaVersioni({ ...vPvl, ted: null, istante: "2026-11-13T08:00:00Z" }, { ...vPvl, ted: null }) > 0], [true, 0, true]);
+  atteso("rigaDaBando accetta un avviso di qualunque fonte (stessa riga per la PVL)", rigaDaBando({ record: venezia.record, regioni: venezia.regioni, enteTipo: null, scadenzaFonte: venezia.scadenzaFonte, settori: venezia.settori, metodoSettore: venezia.metodoSettore, meta: { data: venezia.meta.giorno, numero: "pvl:x" } }, null, adesso).chiave === rigaPvl.chiave);
+
+  // ───── 8. lotti ─────
+  const lotto = (n: string, cig: string | null, valore: number | null): LottoUnito => ({ numero_lotto: n, cig, oggetto: `lotto ${n}`, cpv_principale: null, cpv_tutti: [], valore_stimato: valore, durata_mesi: 24, scadenza_giorno: "2026-12-10", scadenza_offerte: null, scadenza_ora_indicata: false, scadenza_fonte: null, url_documenti: null });
+  const lottiTed = [lotto("LOT-0001", null, 240000), lotto("LOT-0002", null, 240000)];
+  const lottiPvl = [{ ...lotto("LOT-0001", "BDAEC5A4B8", 240000), url_documenti: "https://doc.esempio.it" }, lotto("LOT-0002", "BDAEC5B58B", 240000)];
+  const u1 = unisciLotti(lottiTed, lottiPvl, "pvl", false);
+  uguale("lotti allineati: i CIG della PVL sui lotti di TED, la durata di TED resta", [u1.allineati, u1.lotti.map((l) => l.cig), u1.lotti[0].durata_mesi, u1.lotti[0].url_documenti], [true, ["BDAEC5A4B8", "BDAEC5B58B"], 24, "https://doc.esempio.it"]);
+  const u2 = unisciLotti(u1.lotti, lottiTed, "ted", true);
+  uguale("TED dopo la PVL: i CIG non si cancellano", u2.lotti.map((l) => l.cig), ["BDAEC5A4B8", "BDAEC5B58B"]);
+  const u3 = unisciLotti(lottiTed, [lotto("LOT-0001", "BDAEC5A4B8", 100000), lotto("LOT-0002", "BDAEC5B58B", 380000)], "pvl", false);
+  uguale("lotti con valori diversi: abbinamento non sicuro, nessun CIG assegnato", [u3.allineati, u3.lotti.map((l) => l.cig)], [false, [null, null]]);
+  const u4 = unisciLotti([lotto("LOT-0001", "BAAAAAAAA1", 240000)], [lotto("LOT-0001", "BBBBBBBBB2", 240000)], "pvl", false);
+  uguale("CIG diverso sullo stesso lotto: si tiene quello già presente e si conta", [u4.lotti[0].cig, u4.cigScartati], ["BAAAAAAAA1", 1]);
+
+  // ───── 9. punto di ripresa e finestre ─────
+  const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);
+  uguale("finestra controllata di 7 giorni", [f7.modo, f7.da, f7.a, f7.inCorso, f7.token], ["finestra", "2026-11-09", "2026-11-16", true, null]);
+  const c1 = cursoreDopoPagina(f7, 100, "TOK1");
+  uguale("dopo una pagina piena: token salvato", [c1.token, c1.pagine, c1.inCorso], ["TOK1", 1, true]);
+  const c2 = cursoreDopoPagina(c1, 20, null);
+  uguale("ultima pagina: giro finito, giorno letto", [c2.inCorso, c2.token, c2.ultimoGiorno], [false, null, "2026-11-16"]);
+  uguale("giro programmato: dall'ultimo giorno meno uno a oggi", [cursoreIncrementale(c2, "2026-11-17").da, cursoreIncrementale(c2, "2026-11-17").a], ["2026-11-15", "2026-11-17"]);
+  uguale("dopo un fermo lungo: al massimo 7 giorni indietro (oltre serve una finestra concordata)", cursoreIncrementale({ ...c2, ultimoGiorno: "2026-10-01" }, "2026-11-17").da, "2026-11-10");
+  uguale("giro programmato interrotto: riprende dal suo token", cursoreIncrementale({ ...c1, modo: "incrementale" }, "2026-11-17").token, "TOK1");
+  uguale("cursore illeggibile → giro da ieri a oggi", [cursorePvlValido({ versione: 2 }), cursoreIncrementale({ x: 1 }, "2026-11-17").da], [null, "2026-11-16"]);
+  uguale("numero di avvisi anomalo per la finestra", [conteggioAnomalo(500, f7), conteggioAnomalo(5000, f7), conteggioAnomalo(null, f7)], [false, true, false]);
+
+  // ───── 10. giri programmati 8, 13, 18 ora italiana, con l'ora legale ─────
+  uguale(
+    "inverno (UTC+1): partono le 7:05, 12:05, 17:05 UTC, non le 6:05, 11:05, 16:05",
+    ["2026-12-01T07:05:00Z", "2026-12-01T12:05:00Z", "2026-12-01T17:05:00Z", "2026-12-01T06:05:00Z", "2026-12-01T11:05:00Z", "2026-12-01T16:05:00Z"].map((d) => eOraDiUnGiroPvl(new Date(d))),
+    [true, true, true, false, false, false],
+  );
+  uguale(
+    "estate (UTC+2): partono le 6:05, 11:05, 16:05 UTC",
+    ["2026-07-01T06:05:00Z", "2026-07-01T11:05:00Z", "2026-07-01T16:05:00Z", "2026-07-01T07:05:00Z"].map((d) => eOraDiUnGiroPvl(new Date(d))),
+    [true, true, true, false],
+  );
+  uguale("cambio d'ora (29/03/2026): le 8 italiane sono le 6 UTC", eOraDiUnGiroPvl(new Date("2026-03-29T06:05:00Z")), true);
+  uguale("prossimo giro previsto", [prossimoGiroPvl(new Date("2026-11-16T12:30:00Z")).toISOString(), prossimoGiroPvl(new Date("2026-11-16T17:30:00Z")).toISOString()], ["2026-11-16T17:00:00.000Z", "2026-11-17T07:00:00.000Z"]);
+  uguale("cron proposto: le due ore UTC possibili per ognuno dei tre giri", CRON_PVL_PROPOSTO, "5 6,7,11,12,16,17 * * *");
+
+  // ───── 11. protezione della produzione ─────
+  const urlProd = `https://${PROGETTO_PRODUZIONE}.supabase.co`;
+  const urlStaging = `https://${PROGETTO_STAGING}.supabase.co`;
+  uguale("ambiente del database", [ambienteDb(urlProd), ambienteDb(urlStaging), ambienteDb("https://altro.supabase.co"), ambienteDb(undefined)], ["produzione", "staging", "sconosciuto", "sconosciuto"]);
+  uguale(
+    "PVL: solo staging, mai la produzione (nemmeno dal deploy di produzione)",
+    [scrittureRadarConsentite("pvl", { NEXT_PUBLIC_SUPABASE_URL: urlStaging }).ok, scrittureRadarConsentite("pvl", { NEXT_PUBLIC_SUPABASE_URL: urlProd, VERCEL_ENV: "production" }).ok, scrittureRadarConsentite("pvl", { NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co" }).ok],
+    [true, false, false],
+  );
+  uguale(
+    "TED: produzione solo dal deploy di produzione; mai da un computer locale o da un'anteprima",
+    [scrittureRadarConsentite("ted", { NEXT_PUBLIC_SUPABASE_URL: urlProd }).ok, scrittureRadarConsentite("ted", { NEXT_PUBLIC_SUPABASE_URL: urlProd, VERCEL_ENV: "preview" }).ok, scrittureRadarConsentite("ted", { NEXT_PUBLIC_SUPABASE_URL: urlProd, VERCEL_ENV: "production" }).ok, scrittureRadarConsentite("ted", { NEXT_PUBLIC_SUPABASE_URL: urlStaging }).ok],
+    [false, false, true, true],
+  );
+  const importaPvl = leggi("src/lib/radar/importa-pvl.ts");
+  atteso("giro PVL: guardia prima di qualunque accesso al database", importaPvl.indexOf('scrittureRadarConsentite("pvl"') > 0 && importaPvl.indexOf('scrittureRadarConsentite("pvl"') < importaPvl.indexOf('from("radar_fonti_stato")'));
+  const importaTed = leggi("src/lib/radar/importa-ted.ts");
+  atteso("giro TED: guardia prima di qualunque accesso al database", importaTed.indexOf('scrittureRadarConsentite("ted"') > 0 && importaTed.indexOf('scrittureRadarConsentite("ted"') < importaTed.indexOf('from("radar_fonti_stato")'));
+  const azioni = leggi("src/app/site-console/azioni/tender-intelligence.ts");
+  atteso("console: accendere la PVL è possibile solo sullo staging; ogni azione solo per amministratori e registrata", /impostaFontePvl[\s\S]*richiediAdminAzione[\s\S]*scrittureRadarConsentite\("pvl"[\s\S]*registra\(admin, \[\{ oggetto: "fonte:pvl:attiva"/.test(azioni));
+  const script = leggi("scripts/radar-importa-pvl.ts");
+  atteso("script della prima importazione: rifiuta tutto ciò che non è lo staging", /PRODUZIONE|PROGETTO_PRODUZIONE/.test(script) && /RADAR_STAGING_REF/.test(script));
+
+  // ───── 12. giri programmati configurati ma NON attivi; nessun polling; nessuna AI ─────
+  const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
+  atteso("nessun cron PVL in vercel.json (serve l'autorizzazione operativa)", !vercel.crons.some((c) => /pvl/.test(c.path)));
+  const rotta = leggi("src/app/api/cron/radar-pvl/route.ts");
+  atteso("percorso del cron: segreto, interruttore RADAR_PVL_CRON=attivo, ora italiana", /CRON_SECRET/.test(rotta) && /RADAR_PVL_CRON/.test(rotta) && /"attivo"/.test(rotta) && /eOraDiUnGiroPvl/.test(rotta));
+  atteso("nessun modello AI nel connettore", !/anthropic|openai|@ai-sdk|claude-/i.test(testoSrcPvl + leggi("src/lib/radar/fonti/pvl.ts")));
+  const componenti = fs.readdirSync(path.join(RADICE, "src/components/omnia-ai/opportunita")).map((f) => leggi(`src/components/omnia-ai/opportunita/${f}`)).join("\n");
+  atteso("nessun controllo periodico nel browser", !/setInterval|refreshInterval|useSWR|router\.refresh\(\)\s*,\s*\d/.test(componenti));
+
+  // ───── 13. migrazioni 0115 e 0116 ─────
+  const sql115 = leggi("supabase/migrations/0115_radar_pvl_provenienza.sql").replace(/--[^\n]*/g, "");
+  const sql116 = leggi("supabase/migrations/0116_radar_pvl_limiti.sql").replace(/--[^\n]*/g, "");
+  atteso("0115/0116 additive (nessun drop, truncate, delete, update)", !/\bdrop\b|truncate|delete\s+from|\bupdate\s+public/i.test(sql115 + sql116));
+  atteso("0115: nessun permesso nuovo ai clienti", !/grant[^;]*(anon|authenticated)/i.test(sql115) && !/create policy/i.test(sql115));
+  atteso("0115: la fonte PVL nasce spenta", /\('pvl', false\)/.test(sql115));
+  atteso("0116: valori iniziali uguali a quelli del codice", Object.entries(CHIAVI_LIMITI_PVL).every(([k, c]) => sql116.includes(`('${c}', '${LIMITI_PVL_PREDEFINITI[k as keyof LimitiPvl]}')`)));
+
+  console.log(fallimenti.length === 0 ? "\nVerifica PVL: tutto a posto." : `\nVerifica PVL: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
+  process.exit(fallimenti.length === 0 ? 0 : 1);
+}
+
+principale().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

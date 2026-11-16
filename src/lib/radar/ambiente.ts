@@ -1,0 +1,31 @@
+// Protezione esplicita contro le scritture accidentali delle importazioni di Tender Intelligence nel database di PRODUZIONE (richiesta del
+// titolare del 16/11/2026, dopo l'anteprima partita con le variabili di produzione). Logica pura: legge solo l'ambiente che riceve.
+//
+// Regole:
+//   - PVL: scrive SOLO nello staging, sempre (uso sperimentale autorizzato solo lì). Con qualunque altro database il giro non parte;
+//   - TED: nello staging sempre; in produzione solo dal deploy di produzione su Vercel (VERCEL_ENV=production), mai da un computer
+//     locale né da un'anteprima che usi il database di produzione;
+//   - un database non riconosciuto (né staging né produzione) è trattato come produzione: niente scritture.
+// Gli identificativi dei progetti non sono segreti (compaiono negli indirizzi pubblici); le chiavi non si leggono mai qui.
+
+export const PROGETTO_PRODUZIONE = "bihfrzspqxsrzlbqqvqa";
+export const PROGETTO_STAGING = "ryawdldqiumqsskrnyps";
+
+export type AmbienteDb = "produzione" | "staging" | "sconosciuto";
+
+export function ambienteDb(url: string | undefined): AmbienteDb {
+  const u = (url ?? "").trim().toLowerCase().replace(/\/+$/, "");
+  if (u.includes(PROGETTO_PRODUZIONE)) return "produzione";
+  if (u === `https://${PROGETTO_STAGING}.supabase.co`) return "staging";
+  return "sconosciuto";
+}
+
+export type PermessoScrittura = { ok: true; ambiente: AmbienteDb } | { ok: false; ambiente: AmbienteDb; motivo: string };
+
+export function scrittureRadarConsentite(fonte: "ted" | "pvl", env: Record<string, string | undefined>): PermessoScrittura {
+  const ambiente = ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL);
+  if (ambiente === "staging") return { ok: true, ambiente };
+  if (fonte === "pvl") return { ok: false, ambiente, motivo: "La PVL è autorizzata solo sullo staging: nessuna scrittura in questo database." };
+  if (ambiente === "produzione" && env.VERCEL_ENV === "production") return { ok: true, ambiente };
+  return { ok: false, ambiente, motivo: "Scritture nell'archivio di produzione consentite solo dal deploy di produzione." };
+}

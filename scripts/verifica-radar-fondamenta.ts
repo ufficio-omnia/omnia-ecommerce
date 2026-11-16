@@ -177,11 +177,15 @@ atteso("errori conservati senza email, chiavi e token", !errore.includes("mario.
 
 // ───── 6. fonti ─────
 atteso("ogni fonte dichiara copertura, aggiornamento, limiti e licenza", FONTI_RADAR.every((f) => f.copertura && f.aggiornamento && f.limiti.length > 0 && f.licenza));
-uguale("nessuna fonte attiva prima della fase B", FONTI_RADAR.filter((f) => f.stato === "attiva").map((f) => f.id), []);
+uguale("nessuna fonte attiva prima della fase B (TED e PVL restano «in costruzione»)", FONTI_RADAR.filter((f) => f.stato === "attiva").map((f) => f.id), []);
 atteso("la fornitura ANAC è prevista, non attiva (istanza inviata)", FONTI_RADAR.find((f) => f.id === "anac_fornitura")?.stato === "prevista");
 const sorgentiRadar = fs.readdirSync(path.join(RADICE, "src/lib/radar"), { recursive: true }).map(String).filter((f) => f.endsWith(".ts"));
 const testoRadar = sorgentiRadar.map((f) => leggi(`src/lib/radar/${f.replace(/\\/g, "/")}`)).join("\n");
-atteso("nessun uso del servizio non documentato della pubblicità legale ANAC (decisione D5)", !/pubblicitalegale\.anticorruzione\.it\/api/.test(testoRadar));
+// D5 aggiornata dal titolare il 16/11/2026 (fase B1-bis): l'interfaccia della PVL si usa SOLO sullo staging. L'indirizzo compare in un
+// solo file (il connettore) e il giro passa dalla guardia che rifiuta ogni database diverso dallo staging.
+const conIndirizzoPvl = sorgentiRadar.filter((f) => /pubblicitalegale\.anticorruzione\.it\/api/.test(leggi(`src/lib/radar/${f.replace(/\\/g, "/")}`))).map((f) => f.replace(/\\/g, "/"));
+uguale("l'interfaccia della PVL compare solo nel connettore (decisione D5 aggiornata: solo staging)", conIndirizzoPvl, ["fonti/pvl-calcoli.ts"]);
+atteso("il giro PVL passa dalla guardia «solo staging» prima di leggere o scrivere", /scrittureRadarConsentite\("pvl"/.test(leggi("src/lib/radar/importa-pvl.ts")));
 
 // ───── 7. migrazioni ─────
 const migrazioni = ["0109_radar_archivio_pubblico.sql", "0110_radar_aggiudicazioni.sql", "0111_radar_coda_impostazioni.sql"];
