@@ -291,7 +291,7 @@ for (const m of azioniConsole.matchAll(/export async function (\w+)\(([\s\S]*?)\
 }
 atteso("console: i cambi di interruttori svuotano subito la cache del menu", /salvaParametriRadar[\s\S]*updateTag\(TAG_PARAMETRI_RADAR\)/.test(azioniConsole) && /impostaImpresaRadar[\s\S]*updateTag\(TAG_CLIENTI_RADAR\)/.test(azioniConsole));
 const visibilita = leggi("src/lib/radar/visibilita.ts");
-atteso("menu: interruttori letti dalla cache dei dati (nessuna lettura per pagina a modulo spento)", (visibilita.match(/unstable_cache\(/g) ?? []).length === 2 && visibilita.includes("revalidate: 300") && /radarNelMenu\(user\.id\),\r?\n\s*\]\);/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx")));
+atteso("menu: interruttori letti dalla cache dei dati (nessuna lettura per pagina a modulo spento)", (visibilita.match(/unstable_cache\(/g) ?? []).length === 2 && visibilita.includes("revalidate: 300") && /await Promise\.all\(\[\r?\n\s*radarNelMenu\(user\.id\),/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx")));
 
 const sorgentiNuove = [
   ...(fs.readdirSync(path.join(RADICE, "src/lib/radar"), { recursive: true }) as string[]).map((f) => `src/lib/radar/${String(f)}`),

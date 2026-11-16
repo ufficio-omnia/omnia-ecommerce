@@ -201,7 +201,8 @@ async function LayoutInterno({
   // dell'abbonamento, dati dell'azienda per saluto e avvisi, offerta pilot acquistata. Il pilot si legge sempre ma vale
   // solo con l'abbonamento attivo (come prima); la lettura non solleva mai errori (in caso di problemi restituisce null).
   // La quarta lettura (voce «Opportunità» di Tender Intelligence) passa dalla cache dei dati: a modulo spento non tocca il database.
-  const [stato, { data: company }, pilotAcquistato, conOpportunita] = await Promise.all([
+  const [conOpportunita, stato, { data: company }, pilotAcquistato] = await Promise.all([
+    radarNelMenu(user.id),
     getOmniaAiAccessState(user.id, supabase),
     supabase
       .from("companies")
@@ -215,7 +216,6 @@ async function LayoutInterno({
         pec: string | null;
       }>(),
     leggiPilotAcquistato(user.id),
-    radarNelMenu(user.id),
   ]);
 
   if (stato.stato === "cessato") {
