@@ -25,7 +25,18 @@ import type { FonteUnita } from "./unione-calcoli";
 export type DatiDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null; natura_contratto: string | null };
 export type LottoDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null };
 
-export type ValutazioneSettore = { livello: Livello; sottocategoria: string | null; regola: string };
+// Per settore: livello e, dall'interfaccia della PVL del 17/11 (additiva), PIÙ sottocategorie, regole, motivi e CPV. Finché classificaGara
+// non restituisce gli elenchi, si leggono dai campi singoli (sottocategoria, regola, motivo): stesso significato, primo elemento.
+export type ValutazioneSettore = {
+  livello: Livello;
+  sottocategoria: string | null;
+  regola: string;
+  sottocategorie: string[];
+  regole: string[];
+  motivi: string[];
+  da: "cpv" | "parole_chiave";
+  cpv: string[];
+};
 
 export type ClassificazioneArchivio = {
   // dove la gara compare (A e B), come la colonna «settori»
@@ -35,6 +46,8 @@ export type ClassificazioneArchivio = {
   livello: Livello | null;
   // per ogni settore considerato, anche quelli di livello C
   perSettore: Partial<Record<SettoreRadar, ValutazioneSettore>>;
+  // versione delle regole che l'ha prodotta
+  versione: string;
 };
 
 const NATURE_AMMESSE_PER_PAROLE = new Set(["servizi", "misto"]);
@@ -47,10 +60,20 @@ export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly Lot
     testo: [g.oggetto, ...lotti.map((l) => l.oggetto ?? "")].join(" "),
   });
   const fuoriPerNatura = c.metodo === "parole_chiave" && !!g.natura_contratto && !NATURE_AMMESSE_PER_PAROLE.has(g.natura_contratto);
-  if (fuoriPerNatura) return { settori: [], metodo: null, livello: null, perSettore: {} };
+  const versione = (c as { versione?: string }).versione ?? VERSIONE_REGOLE_SETTORI;
+  if (fuoriPerNatura) return { settori: [], metodo: null, livello: null, perSettore: {}, versione };
   const perSettore: Partial<Record<SettoreRadar, ValutazioneSettore>> = {};
-  for (const v of c.valutazioni) if (!perSettore[v.settore]) perSettore[v.settore] = { livello: v.livello, sottocategoria: v.sottocategoria, regola: v.regola };
-  return { settori: c.settori.length ? [...c.settori] : [], metodo: c.settori.length ? c.metodo : null, livello: c.livello, perSettore };
+  for (const v of c.valutazioni) if (!perSettore[v.settore]) perSettore[v.settore] = valutazioneSettore(v);
+  return { settori: c.settori.length ? [...c.settori] : [], metodo: c.settori.length ? c.metodo : null, livello: c.livello, perSettore, versione };
+}
+
+// Lettura tollerante di una valutazione di classificaGara: gli elenchi se ci sono (interfaccia della PVL), altrimenti i campi singoli.
+function valutazioneSettore(v: { livello: Livello; sottocategoria: string | null; regola: string; motivo?: string; da: "cpv" | "parole_chiave" }): ValutazioneSettore {
+  const x = v as typeof v & { sottocategorie?: string[]; regole?: string[]; motivi?: string[]; cpv?: string[] };
+  const sottocategorie = v.livello === "C" ? [] : Array.isArray(x.sottocategorie) ? [...x.sottocategorie] : v.sottocategoria ? [v.sottocategoria] : [];
+  const regole = Array.isArray(x.regole) && x.regole.length ? [...x.regole] : [v.regola];
+  const motivi = Array.isArray(x.motivi) ? [...x.motivi] : v.motivo ? [v.motivo] : [];
+  return { livello: v.livello, sottocategoria: sottocategorie[0] ?? null, regola: regole[0], sottocategorie, regole, motivi, da: v.da, cpv: v.da === "cpv" && Array.isArray(x.cpv) ? [...x.cpv] : [] };
 }
 
 export type AmbiguitaClassificazione = {
