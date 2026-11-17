@@ -38,6 +38,7 @@ import { rigaDaScrivere } from "../src/lib/radar/importa";
 import { descriviAvvisoLetto, etichettaFonti, fonteDelDato, fontiDellaGara, riepilogoFonti } from "../src/lib/radar/fonti-gara-calcoli";
 import { sintesiDeterministica } from "../src/lib/radar/sintesi-calcoli";
 import { decidiCollegamento, garaDaMostrare } from "../src/lib/radar/collegamenti-calcoli";
+import { collegaDoppioniPerAvvisoTed, scollegaGara } from "../src/lib/radar/collegamenti";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -354,6 +355,42 @@ async function principale() {
   atteso("console: annullare un collegamento è solo per amministratori e registrato", /scollegaGaraDoppia[\s\S]*richiediAdminAzione[\s\S]*registroDisponibile\(admin\)[\s\S]*await registra\(admin, \[\{ oggetto: "gara:collegamento"/.test(azioniConsole0));
   atteso("collegamento mai notificabile e scrittura condizionata", /notificabile: false/.test(leggi("src/lib/radar/collegamenti.ts")) && /\.is\("unita_a", null\)\.select\("id"\)/.test(leggi("src/lib/radar/collegamenti.ts")));
 
+  // ───── 8quater. unione e annullamento SENZA perdita di dati, su un database in memoria (nessuna rete, nessuna scrittura) ─────
+  {
+    const mem = databaseInMemoria({
+      radar_procedure: [
+        { id: "g-ted", chiave: "ted:proc-x", oggetto: "Pulizia (TED)", scadenza_giorno: "2026-12-21", unita_a: null, unita_il: null, unita_motivo: null, unita_esclusa_con: [], aggiornata_il: "2026-11-01T00:00:00Z" },
+        { id: "g-pvl", chiave: "pvl:app-x", oggetto: "Pulizia (PVL)", scadenza_giorno: "2026-12-21", unita_a: null, unita_il: null, unita_motivo: null, unita_esclusa_con: [], aggiornata_il: "2026-11-01T00:00:00Z" },
+      ],
+      radar_procedure_fonti: [
+        { procedura_id: "g-ted", fonte: "ted", id_fonte: "800002-2026", rif_ted: null },
+        { procedura_id: "g-ted", fonte: "ted", id_fonte: "800001-2026", rif_ted: null },
+        { procedura_id: "g-pvl", fonte: "pvl", id_fonte: "avviso-r", rif_ted: "800002-2026" },
+      ],
+      radar_lotti: [{ procedura_id: "g-pvl", numero_lotto: "LOT-0001", cig: "Z00000000A" }],
+      radar_aggiornamenti: [{ procedura_id: "g-pvl", tipo: "nuova", campo: null, id_fonte: "avviso-r", notificabile: true }],
+      omnia_ai_radar_salvate: [{ id: "s1", user_id: "impresa-sintetica", procedura_id: "g-pvl", monitorata: true }],
+    });
+    const senzaCollegamento = (r: Record<string, unknown>) => Object.fromEntries(Object.entries(r).filter(([k]) => !["unita_a", "unita_il", "unita_motivo", "unita_esclusa_con", "aggiornata_il"].includes(k)));
+    const fotografia = () => JSON.stringify({ gare: mem.tabelle.radar_procedure.map(senzaCollegamento), fonti: mem.tabelle.radar_procedure_fonti, lotti: mem.tabelle.radar_lotti, salvate: mem.tabelle.omnia_ai_radar_salvate, aggiornamenti: mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo !== "correzione_dati") });
+    const prima = fotografia();
+    const misureMem = { richiesteDb: 0, msDb: 0 };
+    const u1 = await collegaDoppioniPerAvvisoTed(mem.client, ["800002-2026"], "2026-11-17T12:00:00.000Z", misureMem);
+    const pvlDopo = mem.tabelle.radar_procedure.find((r) => r.id === "g-pvl") as Record<string, unknown>;
+    uguale("in memoria: unione — resta la gara TED, la PVL indica la gara che resta", [u1.collegate, pvlDopo.unita_a, (mem.tabelle.radar_procedure.find((r) => r.id === "g-ted") as Record<string, unknown>).unita_a], [1, "g-ted", null]);
+    uguale("in memoria: unione senza perdita di dati (gare, fonti, lotti, gare salvate, cambiamenti invariati)", fotografia(), prima);
+    uguale("in memoria: registro dell'unione su entrambe le gare, mai notificabile", mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "correzione_dati").map((a) => [a.procedura_id, a.campo, a.valore_nuovo, a.notificabile]), [["g-pvl", "collegata_a", "g-ted", false], ["g-ted", "collegata_da", "g-pvl", false]]);
+    const u2 = await collegaDoppioniPerAvvisoTed(mem.client, ["800002-2026"], "2026-11-17T13:00:00.000Z", misureMem);
+    uguale("in memoria: ripetuta, non fa nulla (idempotente)", [u2.collegate, mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "correzione_dati").length], [0, 2]);
+    const a1 = await scollegaGara(mem.client, "g-pvl", "2026-11-17T14:00:00.000Z");
+    uguale("in memoria: annullamento — torna visibile, collegamento escluso per sempre", [a1.ok, pvlDopo.unita_a, pvlDopo.unita_esclusa_con], [true, null, ["g-ted"]]);
+    uguale("in memoria: annullamento senza perdita di dati", fotografia(), prima);
+    uguale("in memoria: registro dell'annullamento su entrambe le gare", mem.tabelle.radar_aggiornamenti.filter((a) => a.campo === "collegamento_annullato").map((a) => [a.procedura_id, a.valore_precedente]), [["g-pvl", "g-ted"], ["g-ted", "g-pvl"]]);
+    const u3 = await collegaDoppioniPerAvvisoTed(mem.client, ["800002-2026"], "2026-11-17T15:00:00.000Z", misureMem);
+    uguale("in memoria: dopo l'annullamento non si ricollega da sola", [u3.collegate, u3.saltate, pvlDopo.unita_a], [0, { annullato_a_mano: 1 }, null]);
+    uguale("in memoria: annullare una gara non collegata non cambia nulla", [(await scollegaGara(mem.client, "g-ted", "2026-11-17T16:00:00.000Z")).ok, fotografia()], [false, prima]);
+  }
+
   // ───── 9. punto di ripresa e finestre ─────
   const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);
   uguale("finestra controllata di 7 giorni", [f7.modo, f7.da, f7.a, f7.inCorso, f7.token], ["finestra", "2026-11-09", "2026-11-16", true, null]);
@@ -430,6 +467,52 @@ async function principale() {
 
   console.log(fallimenti.length === 0 ? "\nVerifica PVL: tutto a posto." : `\nVerifica PVL: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
   process.exit(fallimenti.length === 0 ? 0 : 1);
+}
+
+// Un database in memoria con il sottoinsieme di supabase-js usato dal collegamento delle gare doppie (select con filtri eq/in/is/not,
+// update condizionato, upsert con chiave unica e ignoreDuplicates, maybeSingle). Nessuna rete: serve a provare unione e annullamento
+// senza scrivere su nessun database vero.
+type RigaMem = Record<string, unknown>;
+function databaseInMemoria(iniziali: Record<string, RigaMem[]>) {
+  const tabelle: Record<string, RigaMem[]> = Object.fromEntries(Object.entries(iniziali).map(([k, v]) => [k, v.map((r) => structuredClone(r))]));
+  const client = {
+    from(nome: string) {
+      const righe = (tabelle[nome] ??= []);
+      const filtri: ((r: RigaMem) => boolean)[] = [];
+      let operazione: { tipo: "select" } | { tipo: "update"; valori: RigaMem } | { tipo: "upsert"; nuove: RigaMem[]; chiavi: string[]; ignora: boolean } = { tipo: "select" };
+      const esegui = () => {
+        if (operazione.tipo === "update") {
+          const colpite = righe.filter((r) => filtri.every((f) => f(r)));
+          for (const r of colpite) Object.assign(r, structuredClone(operazione.valori));
+          return { data: colpite.map((r) => ({ ...r })), error: null };
+        }
+        if (operazione.tipo === "upsert") {
+          const { chiavi, ignora } = operazione;
+          for (const n of operazione.nuove) {
+            const uguale = righe.find((r) => chiavi.every((k) => (r[k] ?? null) === (n[k] ?? null)));
+            if (!uguale) righe.push(structuredClone(n));
+            else if (!ignora) Object.assign(uguale, structuredClone(n));
+          }
+          return { data: null, error: null };
+        }
+        return { data: righe.filter((r) => filtri.every((f) => f(r))).map((r) => structuredClone(r)), error: null };
+      };
+      const q = {
+        select: () => q,
+        eq: (c: string, v: unknown) => (filtri.push((r) => r[c] === v), q),
+        in: (c: string, v: unknown[]) => (filtri.push((r) => v.includes(r[c])), q),
+        is: (c: string, v: null) => (filtri.push((r) => (r[c] ?? null) === v), q),
+        not: (c: string, _op: "is", v: null) => (filtri.push((r) => (r[c] ?? null) !== v), q),
+        update: (valori: RigaMem) => ((operazione = { tipo: "update", valori }), q),
+        upsert: (nuove: RigaMem[], o: { onConflict: string; ignoreDuplicates?: boolean }) => ((operazione = { tipo: "upsert", nuove, chiavi: o.onConflict.split(","), ignora: !!o.ignoreDuplicates }), q),
+        returns: () => q,
+        maybeSingle: () => Promise.resolve({ data: (esegui().data as RigaMem[] | null)?.[0] ?? null, error: null }),
+        then: (ok: (v: { data: unknown; error: null }) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve(esegui()).then(ok, ko),
+      };
+      return q;
+    },
+  };
+  return { tabelle, client: client as unknown as Parameters<typeof collegaDoppioniPerAvvisoTed>[0] };
 }
 
 principale().catch((e) => {
