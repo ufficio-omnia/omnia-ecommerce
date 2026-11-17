@@ -232,9 +232,9 @@ async function casoRettificaPrimaDelBando(misure: Misure, adesso: Date) {
   avviso.nuovoAvviso = null;
   const statR = statistichePvlVuote();
   await applicaPaginaBandiPvl(db, [leggiAvvisoPvl(avviso) as BandoPvl], "incrementale", adesso, misure, statR);
-  const conProc = (a: Record<string, unknown>) => ({ ...a, "procedure-identifier": PROC_TED_2 });
+  const conProc = (a: Record<string, unknown>): Record<string, unknown> => ({ ...a, "procedure-identifier": PROC_TED_2 });
   await applicaPaginaBandi(db, [leggiBandoTed(conProc(avvisoTed(TED_R1, "2026-11-17", "2026-12-14", null)))], "incrementale", adesso, misure);
-  let g2 = await gara2();
+  const g2 = await gara2();
   atteso("R1) rettifica PVL prima del bando TED: oggi nascono due gare (doppione atteso a questo punto)", g2.ids.length === 1 && g2.idsTed.length === 1 && g2.ids[0] !== g2.idsTed[0], JSON.stringify(g2));
   const idPvl = g2.ids[0];
   const idTed = g2.idsTed[0];
