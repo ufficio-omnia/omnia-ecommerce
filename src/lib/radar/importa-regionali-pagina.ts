@@ -11,7 +11,8 @@ import { applicaPaginaBandiFonte, type BandoUnificabile } from "./importa-fonti-
 import { conta, rigaDaBandoRegionale, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
 import { confrontaVersioni } from "./unione-calcoli";
 
-export type OpzioniPaginaRegionale = { fonte: FonteRegionale; modo: ModoImportazione; adesso: Date; misure: Misure; stat: StatisticheRegionali; nascoste: ReadonlySet<string>; proponi: boolean };
+// fase B2b: «classificazioni» = righe e stato della 0121 dentro il giro (interruttore di ambiente.ts, SPENTO di base)
+export type OpzioniPaginaRegionale = { fonte: FonteRegionale; modo: ModoImportazione; adesso: Date; misure: Misure; stat: StatisticheRegionali; nascoste: ReadonlySet<string>; proponi: boolean; classificazioni?: boolean; nuovoId?: () => string };
 
 export function bandoUnificabileRegionale(b: BandoRegionale, adesso: Date): BandoUnificabile {
   return {
@@ -38,7 +39,7 @@ export async function applicaPaginaBandiRegionali(admin: SupabaseClient, bandi: 
   const e = await applicaPaginaBandiFonte(
     admin,
     bandi.filter((b) => b.fonte === o.fonte).map((b) => bandoUnificabileRegionale(b, o.adesso)),
-    { fonte: o.fonte, modo: o.modo, adesso: o.adesso, misure: o.misure, nascoste: o.nascoste, confronta: (a, b) => confrontaVersioni(a.versione, b.versione), collegaPerCig: true, proponiEnteGiorno: o.proponi },
+    { fonte: o.fonte, modo: o.modo, adesso: o.adesso, misure: o.misure, nascoste: o.nascoste, confronta: (a, b) => confrontaVersioni(a.versione, b.versione), collegaPerCig: true, proponiEnteGiorno: o.proponi, classificazioni: o.classificazioni, nuovoId: o.nuovoId },
   );
   stat.invariati += e.invariati;
   stat.conflitti += e.conflitti;

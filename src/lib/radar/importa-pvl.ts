@@ -10,7 +10,7 @@
 // Un errore della PVL non tocca TED né la ricerca: il giro si chiude, la fonte PVL resta con il suo errore, il resto continua.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { scrittureRadarConsentite } from "./ambiente";
+import { classificazioniAttive, scrittureRadarConsentite } from "./ambiente";
 import { cpvRicercaPvl, leggiAvvisoPvl, limitiPvl, limitiPvlDaRighe, type BandoPvl, type EsitoPvl, type LimitiPvl } from "./fonti/pvl-calcoli";
 import { ErrorePvl, SessionePvl } from "./fonti/pvl";
 import type { Misure } from "./importa";
@@ -40,6 +40,8 @@ type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | nu
 export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl): Promise<RisultatoImportazionePvl> {
   const permesso = scrittureRadarConsentite("pvl", opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
+  // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
+  const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
 
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
@@ -104,7 +106,7 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
       stat.avvisi.bandi += bandi.length;
       stat.avvisi.esiti += esiti.length;
       const adesso = ora();
-      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat);
+      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni });
       await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
       // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
       const ultimaPerConteggio = pagina.count !== null && pagina.count < 1000 && (cursore.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;

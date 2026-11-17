@@ -37,7 +37,8 @@ export function bandoUnificabilePvl(v: BandoPvl, adesso: Date): BandoUnificabile
   };
 }
 
-export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoPvl[], modo: ModoImportazione, adesso: Date, misure: Misure, stat: StatistichePvl): Promise<void> {
+// fase B2b: «classificazioni» = righe e stato della 0121 dentro il giro (interruttore di ambiente.ts, SPENTO di base)
+export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoPvl[], modo: ModoImportazione, adesso: Date, misure: Misure, stat: StatistichePvl, opzioni: { classificazioni?: boolean; nuovoId?: () => string } = {}): Promise<void> {
   if (bandi.length === 0) return;
   const e = await applicaPaginaBandiFonte(
     admin,
@@ -52,6 +53,8 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
       confronta: (a, b) => confrontaVersioniPvl({ data: a.versione.istante as string, idAvviso: a.idAvviso }, { data: b.versione.istante as string, idAvviso: b.idAvviso }),
       collegaPerCig: false,
       proponiEnteGiorno: false,
+      classificazioni: opzioni.classificazioni,
+      nuovoId: opzioni.nuovoId,
     },
   );
   stat.bandi.invariati += e.invariati;

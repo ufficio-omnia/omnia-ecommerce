@@ -14,8 +14,13 @@
 // e la versione si riapplica quando la fonte diventa visibile.
 // Classificazione (classificazione-unita.ts): i settori restano l'unione delle fonti; quando una fonte si unisce a una gara che ne ha già
 // un'altra, il classificatore unico confronta la fonte, la gara di prima e i dati uniti, e segnala le ambiguità (mai risolte da sole).
+// Fase B2b, SOLO con l'interruttore acceso (opzione «classificazioni», spenta): la colonna «settori» diventa quella delle righe della 0121
+// (classificazioni-importazione.ts), il cambio su una gara esistente si traccia nel registro, e righe e stato si scrivono dentro questo
+// stesso giro (nessuna lettura periodica nuova).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ambiguitaTraFonti, classificaPerArchivio, rigaSegnalazioneClassificazione, type AmbiguitaClassificazione } from "./classificazione-unita";
+import { scriviClassificazioni, type EsitoClassificazioni } from "./classificazioni";
+import { cambiaColonna, classificaImportazione, righeImportate, rigaRegistroImportazione, type ClassificazioneImportata } from "./classificazioni-importazione";
 import { fontiDellaGara } from "./fonti-gara-calcoli";
 import { COLONNE_RIGA, blocchi, collegaAggiunte, misura, rigaDaScrivere, type Misure } from "./importa";
 import { collegaDoppioniPerAvvisoTed, collegaGare, proponiCollegamenti, type Proposta, type RichiestaCollegamento } from "./collegamenti";
@@ -59,6 +64,9 @@ export type OpzioniPaginaFonte = {
   collegaPerCig: boolean;
   // suggerimenti per stesso ente e stesso giorno di scadenza (regola S9)
   proponiEnteGiorno: boolean;
+  // fase B2b: classificazioni della 0121 tenute dentro il giro (interruttore di ambiente.ts, SPENTO di base)
+  classificazioni?: boolean;
+  nuovoId?: () => string;
 };
 
 type Via = "procedura" | "ted" | "cig" | "nuova";
@@ -94,6 +102,9 @@ export type EsitoPaginaFonte = {
   proposte: number;
   // classificazioni diverse tra le fonti della stessa gara, segnalate all'amministratore (classificazione-unita.ts)
   ambiguita: number;
+  // fase B2b (solo con l'interruttore acceso): righe e stato della 0121; null se spento o non scritte
+  classificazioni: EsitoClassificazioni | null;
+  classificazioniErrore: string | null;
 };
 
 type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | null; valore_base: number | string | null; provenienza_campi: ProvenienzaCampi | null; unita_a: string | null; fonti: string[] | null };
@@ -158,7 +169,7 @@ export async function destinazioniFonte(
 }
 
 export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: readonly BandoUnificabile[], o: OpzioniPaginaFonte): Promise<EsitoPaginaFonte> {
-  const esito: EsitoPaginaFonte = { invariati: 0, conflitti: 0, gare: [], lotti: 0, cigAssegnati: 0, cigScartati: 0, aggiunteCollegate: 0, collegateDoppie: 0, proposte: 0, ambiguita: 0 };
+  const esito: EsitoPaginaFonte = { invariati: 0, conflitti: 0, gare: [], lotti: 0, cigAssegnati: 0, cigScartati: 0, aggiunteCollegate: 0, collegateDoppie: 0, proposte: 0, ambiguita: 0, classificazioni: null, classificazioniErrore: null };
   const { fonte, modo, adesso, misure, nascoste } = o;
   const propri = bandi.filter((b) => b.fonte === fonte);
   if (propri.length === 0) return esito;
@@ -213,6 +224,10 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     lottiNonAllineati: boolean;
     cigScartati: number;
     ambiguita: Map<string, AmbiguitaClassificazione>;
+    // fase B2b: i lotti della gara prima di questa pagina, l'ultima versione letta dalla fonte, la classificazione calcolata
+    lottiPrima: LottoUnito[];
+    ultimaVersione: { riga: RigaProcedura; lotti: LottoUnito[] } | null;
+    classificazione: ClassificazioneImportata | null;
   };
   const stati = new Map<string, Stato>();
   for (const v of [...daApplicare].sort(o.confronta)) {
@@ -240,6 +255,9 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       lottiNonAllineati: false,
       cigScartati: 0,
       ambiguita: new Map(),
+      lottiPrima: d.proceduraId ? (lottiEsistenti.get(d.proceduraId) ?? []) : [],
+      ultimaVersione: null,
+      classificazione: null,
     };
     // fonte nascosta su una gara già visibile ai clienti: solo provenienza, nessun dato nella gara mostrata
     if (nascosta && iniziale && visibile(iniziale)) {
@@ -274,6 +292,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     s.lotti = ul.lotti;
     s.cigScartati += ul.cigScartati;
     if (!ul.allineati) s.lottiNonAllineati = true;
+    s.ultimaVersione = { riga: v.riga, lotti: lottiNuovi };
     // classificatore unico: solo se la gara aveva già un'altra fonte (una gara di una sola fonte si comporta come sempre)
     if (rigaPrima) {
       const amb = ambiguitaTraFonti({
@@ -286,6 +305,27 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       if (amb) s.ambiguita.set(amb.chiave, amb);
     }
     stati.set(chiaveGruppo, s);
+  }
+
+  // 3bis) fase B2b, SOLO con l'interruttore acceso: classificazione sui dati uniti con i lotti che resteranno in archivio; la colonna
+  //       «settori» diventa quella delle righe (se cambia, la gara si riscrive)
+  if (o.classificazioni) {
+    for (const s of stati.values()) {
+      if (!s.riga || s.avvisi.length === 0 || !s.ultimaVersione) continue;
+      const lottiFinali = s.lottiNonAllineati && s.iniziale ? s.lottiPrima : s.lotti;
+      const ci = classificaImportazione({
+        dati: s.riga,
+        lotti: lottiFinali,
+        fonte,
+        versioneFonte: { dati: s.ultimaVersione.riga, lotti: s.ultimaVersione.lotti },
+        prima: s.iniziale ? { dati: s.iniziale, lotti: s.lottiPrima, fonti: [...fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi), ...(s.iniziale.fonti ?? [])] } : null,
+      });
+      s.classificazione = ci;
+      if (cambiaColonna(s.riga, ci)) {
+        s.riga = { ...s.riga, settori: ci.settori, metodo_settore: ci.metodo ?? s.riga.metodo_settore, aggiornata_il: iso };
+        s.cambiata = true;
+      }
+    }
   }
 
   // 4) gare nuove o cambiate
@@ -414,10 +454,33 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     // classificazioni diverse tra le fonti: segnalazione per l'amministratore, mai notificabile, mai mostrata ai clienti
     for (const a of s.ambiguita.values()) righe.push(rigaSegnalazioneClassificazione(id, a));
     esito.ambiguita += s.ambiguita.size;
+    // fase B2b: il cambio della colonna «settori» di una gara che esisteva già (mai notificabile)
+    if (s.classificazione && s.iniziale) {
+      const traccia = rigaRegistroImportazione(id, { settori: [...s.iniziale.settori], metodo: s.iniziale.metodo_settore }, s.classificazione, fonte, s.avvisi[s.avvisi.length - 1].idCambiamento);
+      if (traccia) righe.push(traccia);
+    }
     return righe;
   });
   for (const b of blocchi(righeAggiornamenti, 200)) {
     await misura(misure, "registro dei cambiamenti", () => admin.from("radar_aggiornamenti").upsert(b, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true }));
+  }
+
+  // 7bis) fase B2b, SOLO con l'interruttore acceso: righe della 0121 e stato, dentro questo giro. Un errore qui non ferma l'importazione:
+  //       la gara resta com'era nella 0121 e lo script unico la ritrova (aggiornata dopo l'ultima classificazione)
+  if (o.classificazioni) {
+    const nuovoId = o.nuovoId ?? (() => crypto.randomUUID());
+    const voci = [...stati.values()].flatMap((s) => {
+      const id = ids.get(s.chiaveGruppo);
+      if (!id || !s.classificazione) return [];
+      const fonti = [...(s.iniziale ? [...fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi), ...(s.iniziale.fonti ?? [])] : []), fonte];
+      return [{ proceduraId: id, versione: s.classificazione.unita.versione, calcolate: righeImportate(s.classificazione, { proceduraId: id, fonti, fonte, adessoIso: iso, nuovoId }) }];
+    });
+    try {
+      esito.classificazioni = await scriviClassificazioni(admin, voci, misure, iso);
+    } catch (e) {
+      esito.classificazioniErrore = e instanceof Error ? e.message : String(e);
+      console.warn(`Classificazioni non scritte (${fonte}): ${esito.classificazioniErrore}`);
+    }
   }
 
   // 8) gare aggiunte a mano con lo stesso CIG: si collegano alla gara pubblica

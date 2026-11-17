@@ -63,11 +63,22 @@ export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly Lot
   });
   const fuoriPerNatura = c.metodo === "parole_chiave" && !!g.natura_contratto && !NATURE_AMMESSE_PER_PAROLE.has(g.natura_contratto);
   const versione = (c as { versione?: string }).versione ?? VERSIONE_REGOLE_SETTORI;
-  if (fuoriPerNatura) return { settori: [], metodo: null, livello: null, perSettore: {}, versione };
   const perSettore: Partial<Record<SettoreRadar, ValutazioneSettore>> = {};
   for (const v of c.valutazioni) if (!perSettore[v.settore]) perSettore[v.settore] = valutazioneSettore(v);
+  if (fuoriPerNatura) {
+    // fase B2b: la gara trovata SOLO per parola chiave che non è un servizio resta «considerata» ma non pertinente (C, con il motivo), invece
+    // di sparire senza righe: «una parola chiave da sola non rende pertinente una gara» (decisione dell'utente del 17/11)
+    for (const s of Object.keys(perSettore) as SettoreRadar[]) {
+      const v = perSettore[s] as ValutazioneSettore;
+      if (v.livello !== "C") perSettore[s] = { ...v, livello: "C", sottocategoria: null, sottocategorie: [], regola: REGOLA_NATURA, regole: [REGOLA_NATURA], motivi: [MOTIVO_NATURA], cpv: [] };
+    }
+    return { settori: [], metodo: null, livello: Object.keys(perSettore).length ? "C" : null, perSettore, versione };
+  }
   return { settori: c.settori.length ? [...c.settori] : [], metodo: c.settori.length ? c.metodo : null, livello: c.livello, perSettore, versione };
 }
+
+export const REGOLA_NATURA = "natura_non_servizio";
+const MOTIVO_NATURA = "Trovata solo per parola chiave, ma il contratto non è un appalto di servizi";
 
 // Lettura tollerante di una valutazione di classificaGara: gli elenchi se ci sono (interfaccia della PVL), altrimenti i campi singoli.
 function valutazioneSettore(v: { livello: Livello; sottocategoria: string | null; regola: string; motivo?: string; da: "cpv" | "parole_chiave" }): ValutazioneSettore {

@@ -8,7 +8,7 @@
 //   - misure di ogni giro (richieste e tempi verso TED e verso il database) salvate in radar_fonti_stato.conteggi e mostrate in console.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { scrittureRadarConsentite } from "./ambiente";
+import { classificazioniAttive, scrittureRadarConsentite } from "./ambiente";
 import { vociCpv } from "./settori";
 import { AVVISI_PER_PAGINA, leggiBandoTed, leggiEsitoTed, type EsitoTed } from "./fonti/ted-calcoli";
 import { leggiPaginaTed } from "./fonti/ted";
@@ -54,6 +54,8 @@ export async function eseguiImportazioneTed(admin: SupabaseClient, opzioni: Opzi
   // protezione contro le scritture accidentali in produzione (ambiente.ts): prima di qualunque lettura o scrittura
   const permesso = scrittureRadarConsentite("ted", opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
+  // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
+  const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
   const { data: fonte, error } = await admin.from("radar_fonti_stato").select("attiva, cursore, blocco_fino_a, conteggi").eq("fonte", "ted").maybeSingle<RigaFonte>();
@@ -89,7 +91,7 @@ export async function eseguiImportazioneTed(admin: SupabaseClient, opzioni: Opzi
       totali.ted.ms += pagina.ms;
       const adesso = ora();
       if (cursore.tipo === "bando") {
-        somma(totali, await applicaPaginaBandi(admin, pagina.avvisi.map(leggiBandoTed), modo, adesso, totali.db), null);
+        somma(totali, await applicaPaginaBandi(admin, pagina.avvisi.map(leggiBandoTed), modo, adesso, totali.db, { classificazioni }), null);
       } else {
         somma(totali, null, await applicaPaginaEsiti(admin, pagina.avvisi.map(leggiEsitoTed).filter((e): e is EsitoTed => !!e), modo, adesso, totali.db));
       }

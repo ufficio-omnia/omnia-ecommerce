@@ -1,6 +1,7 @@
-// Scrittura delle classificazioni per settore e del loro STATO (radar_classificazioni e radar_classificazioni_stato, migrazione 0121 —
-// PROGETTO non applicato). Solo server, chiave di servizio. Provata su database in memoria da scripts/verifica-radar-0121.ts; NON collegata
-// agli importatori finché l'utente non approva l'applicazione della 0121: senza le tabelle non fa nulla («saltata»).
+// Scrittura delle classificazioni per settore e del loro STATO (radar_classificazioni e radar_classificazioni_stato, migrazione 0121,
+// applicata sullo staging il 17/11/2026). Solo server, chiave di servizio. Provata su database in memoria (verifica-radar-0121.ts e
+// verifica-radar-popolamento.ts). Usata dallo script unico di popolamento e, fase B2b, dagli importatori SOLO con l'interruttore acceso
+// (ambiente.ts, spento): senza le tabelle non fa nulla («saltata»).
 //
 // Rilevanza settoriale, NON ammissibilità dell'impresa (vedi classificazioni-calcoli.ts).
 //
@@ -49,46 +50,86 @@ export async function scriviClassificazioni(
   }
 
   const nuoviStati: RigaStato[] = [];
+  // gare pronte per l'inserimento, con le loro righe (fase B2b: gli inserimenti si raggruppano tra più gare, poi lo stato)
+  const pronte: { v: (typeof voci)[number]; prima: RigaStato | null; righe: RigaClassificazione[] }[] = [];
+  const fallita = (v: (typeof voci)[number], prima: RigaStato | null, errore: string) => {
+    nuoviStati.push(statoDopoTentativo(prima, { ok: false, errore }, v.proceduraId, adessoIso));
+    esito.fallite++;
+  };
   for (const v of voci) {
     const prima = stati.get(v.proceduraId) ?? null;
     // 1) controlli della 0121, nel codice
     const errori = v.calcolate.flatMap((r) => erroriRiga(r).map((e) => `${r.settore}: ${e}`));
     if (errori.length > 0) {
-      nuoviStati.push(statoDopoTentativo(prima, { ok: false, errore: `Righe non valide: ${errori.join("; ")}` }, v.proceduraId, adessoIso));
-      esito.fallite++;
+      fallita(v, prima, `Righe non valide: ${errori.join("; ")}`);
       continue;
     }
     const a = aggiornamentoClassificazioni(attive.get(v.proceduraId) ?? [], v.calcolate, adessoIso);
     esito.invariate += a.invariate;
     esito.protette += a.protette.length;
     try {
-      // 2) disattivazioni condizionate, poi inserimenti
-      const bloccate = new Set<string>();
+      // 2) disattivazioni condizionate (prima delle nuove righe: una sola riga attiva per gara e settore)
+      let bloccata = false;
       for (const d of a.disattiva) {
         const { data } = await misura(misure, "disattivazione di una classificazione", () =>
           admin.from("radar_classificazioni").update({ attiva: false, sostituita_il: d.sostituita_il, sostituita_da: d.sostituita_da }).eq("id", d.id).eq("attiva", true).select("id"),
         );
         if ((data ?? []).length === 0) {
           esito.cambiateNelFrattempo++;
-          if (d.sostituita_da) bloccate.add(d.sostituita_da);
+          if (d.sostituita_da) bloccata = true;
         } else esito.disattivate++;
       }
-      const daInserire = a.inserisci.filter((n) => !bloccate.has(n.id));
-      for (const b of blocchi(daInserire, 200)) {
-        await misura(misure, "scrittura delle classificazioni", () => admin.from("radar_classificazioni").insert(b));
-        esito.inserite += b.length;
-      }
-      // 3) classificata solo se nulla è stato bloccato da una modifica concorrente
-      if (bloccate.size > 0) {
-        nuoviStati.push(statoDopoTentativo(prima, { ok: false, errore: "Classificazione cambiata nel frattempo: da rifare" }, v.proceduraId, adessoIso));
-        esito.fallite++;
-      } else {
-        nuoviStati.push(statoDopoTentativo(prima, { ok: true, versione: v.versione }, v.proceduraId, adessoIso));
-        esito.classificate++;
-      }
+      // classificata solo se nulla è stato bloccato da una modifica concorrente
+      if (bloccata) fallita(v, prima, "Classificazione cambiata nel frattempo: da rifare");
+      else pronte.push({ v, prima, righe: a.inserisci });
     } catch (e) {
-      nuoviStati.push(statoDopoTentativo(prima, { ok: false, errore: e instanceof Error ? e.message : String(e) }, v.proceduraId, adessoIso));
-      esito.fallite++;
+      fallita(v, prima, e instanceof Error ? e.message : String(e));
+    }
+  }
+  // 3) inserimenti a blocchi di circa 200 righe (le righe di una gara stanno sempre nello stesso blocco); se un blocco non passa, gara per
+  //    gara, così una gara con un problema non ferma le altre
+  const gruppi: (typeof pronte)[] = [];
+  let corrente: typeof pronte = [];
+  let n = 0;
+  for (const p of pronte) {
+    if (n > 0 && n + p.righe.length > 200) {
+      gruppi.push(corrente);
+      corrente = [];
+      n = 0;
+    }
+    corrente.push(p);
+    n += p.righe.length;
+  }
+  if (corrente.length) gruppi.push(corrente);
+  const riuscita = (p: (typeof pronte)[number]) => {
+    nuoviStati.push(statoDopoTentativo(p.prima, { ok: true, versione: p.v.versione }, p.v.proceduraId, adessoIso));
+    esito.classificate++;
+  };
+  for (const g of gruppi) {
+    const righe = g.flatMap((p) => p.righe);
+    if (righe.length === 0) {
+      g.forEach(riuscita);
+      continue;
+    }
+    const { error } = await admin.from("radar_classificazioni").insert(righe);
+    misure.richiesteDb++;
+    if (!error) {
+      esito.inserite += righe.length;
+      g.forEach(riuscita);
+      continue;
+    }
+    for (const p of g) {
+      if (p.righe.length === 0) {
+        riuscita(p);
+        continue;
+      }
+      const { error: e1 } = await admin.from("radar_classificazioni").insert(p.righe);
+      misure.richiesteDb++;
+      if (e1) fallita(p.v, p.prima, `scrittura delle classificazioni: ${e1.message}`);
+      else {
+        esito.inserite += p.righe.length;
+        riuscita(p);
+      }
     }
   }
   for (const b of blocchi(nuoviStati, 200)) {

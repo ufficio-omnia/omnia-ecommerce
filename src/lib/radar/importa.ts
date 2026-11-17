@@ -14,6 +14,8 @@ import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, ty
 import { collegaDoppioniPerAvvisoTed } from "./collegamenti";
 import { ambiguitaTraFonti, classificaPerArchivio, rigaSegnalazioneClassificazione } from "./classificazione-unita";
 import { fontiDellaGara } from "./fonti-gara-calcoli";
+import { scriviClassificazioni, type EsitoClassificazioni } from "./classificazioni";
+import { cambiaColonna, classificaImportazione, lottiDopoScrittura, righeImportate, rigaRegistroImportazione, type ClassificazioneImportata } from "./classificazioni-importazione";
 
 export type Misure = { richiesteDb: number; msDb: number };
 
@@ -33,7 +35,13 @@ export type EsitoPaginaBandi = {
   unitePvl: number;
   // gare doppie riconosciute dopo e collegate in modo reversibile (0117)
   collegateDoppie: number;
+  // fase B2b (solo con l'interruttore acceso): righe e stato della 0121; null se spento o non scritte
+  classificazioni?: EsitoClassificazioni | null;
+  classificazioniErrore?: string | null;
 };
+
+// Fase B2b: classificazioni della 0121 tenute dentro il giro TED (interruttore di ambiente.ts, SPENTO di base).
+export type OpzioniPaginaTed = { classificazioni?: boolean; nuovoId?: () => string };
 
 export type EsitoPaginaEsiti = { letti: number; applicati: number; senzaBando: number; invariati: number; senzaStato: number };
 
@@ -127,7 +135,28 @@ function haAltreFonti(r: RigaArchivio | null): boolean {
   return Object.values(r.provenienza_campi ?? {}).some((p) => p && p.f !== "ted");
 }
 
-export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTed | EsclusioneTed)[], modo: ModoImportazione, adesso: Date, misure: Misure): Promise<EsitoPaginaBandi> {
+// I lotti di un avviso TED nella forma dell'archivio (solo i lotti con il numero).
+function lottiDaBandoTed(b: BandoTed): LottoUnito[] {
+  return b.record.lotti
+    .map((l, i) => ({ l, i }))
+    .filter(({ l }) => !!l.numero)
+    .map(({ l, i }) => ({
+      numero_lotto: l.numero as string,
+      cig: l.cig,
+      oggetto: l.oggetto,
+      cpv_principale: l.cpvPrincipale,
+      cpv_tutti: l.cpvTutti,
+      valore_stimato: l.valoreStimato,
+      durata_mesi: l.durataMesi,
+      scadenza_giorno: b.lottiScadenze[i]?.giorno ?? null,
+      scadenza_offerte: b.lottiScadenze[i]?.iso ?? null,
+      scadenza_ora_indicata: b.lottiScadenze[i]?.oraIndicata ?? false,
+      scadenza_fonte: b.lottiScadenze[i]?.fonte ?? null,
+      url_documenti: b.lottiDocumenti[i] ?? null,
+    }));
+}
+
+export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTed | EsclusioneTed)[], modo: ModoImportazione, adesso: Date, misure: Misure, opzioni: OpzioniPaginaTed = {}): Promise<EsitoPaginaBandi> {
   const esito: EsitoPaginaBandi = { letti: avvisi.length, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0, unitePvl: 0, collegateDoppie: 0 };
   const validi: BandoTed[] = [];
   for (const a of avvisi) {
@@ -228,6 +257,32 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     stati.set(chiave, s);
   }
 
+  // 2ter) fase B2b, SOLO con l'interruttore acceso: classificazione sui dati uniti con i lotti che resteranno in archivio (una lettura dei
+  //       lotti delle gare esistenti, riusata per l'unione dei lotti); la colonna «settori» diventa quella delle righe
+  const classificazioni = new Map<Stato, ClassificazioneImportata>();
+  const lottiPrima = new Map<string, LottoUnito[]>();
+  if (opzioni.classificazioni) {
+    const toccate = [...stati.values()].filter((s) => s.cambiata && s.riga && s.bando);
+    for (const b of blocchi([...new Set(toccate.map((s) => s.iniziale?.id).filter((x): x is string => !!x))], 80)) {
+      const { data } = await misura(misure, "lettura dei lotti da classificare", () => admin.from("radar_lotti").select(COLONNE_LOTTO).in("procedura_id", b).returns<(LottoUnito & { procedura_id: string; valore_stimato: number | string | null })[]>());
+      for (const l of data ?? []) lottiPrima.set(l.procedura_id, [...(lottiPrima.get(l.procedura_id) ?? []), { ...l, valore_stimato: l.valore_stimato === null ? null : Number(l.valore_stimato), cpv_tutti: l.cpv_tutti ?? [] }]);
+    }
+    for (const s of toccate) {
+      const nuovi = lottiDaBandoTed(s.bando as BandoTed);
+      const prima = s.iniziale ? (lottiPrima.get(s.iniziale.id) ?? []) : [];
+      const lottiFinali = !s.iniziale ? nuovi : haAltreFonti(s.iniziale) || s.risolta ? unisciLotti(prima, nuovi, "ted", s.ultimaApplicata).lotti : lottiDopoScrittura(prima, nuovi);
+      const ci = classificaImportazione({
+        dati: s.riga as RigaProcedura,
+        lotti: lottiFinali,
+        fonte: "ted",
+        versioneFonte: { dati: rigaDaBando(s.bando as BandoTed, null, adesso), lotti: nuovi },
+        prima: s.iniziale ? { dati: s.iniziale, lotti: prima, fonti: fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi) } : null,
+      });
+      classificazioni.set(s, ci);
+      if (cambiaColonna(s.riga as RigaProcedura, ci)) s.riga = { ...(s.riga as RigaProcedura), settori: ci.settori, metodo_settore: ci.metodo ?? (s.riga as RigaProcedura).metodo_settore, aggiornata_il: iso };
+    }
+  }
+
   // 3) procedure nuove o cambiate
   const daScrivere = [...stati.values()].filter((s) => s.cambiata && s.riga);
   const ids = new Map<string, string>([...esistenti.values()].map((r) => [r.chiave, r.id]));
@@ -258,7 +313,9 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
   const conPvl = daScrivere.filter((s) => haAltreFonti(s.iniziale) || s.risolta);
   const lottiPvl = new Map<string, LottoUnito[]>();
   const idsPvl = conPvl.map((s) => s.iniziale?.id).filter((x): x is string => !!x);
-  for (const b of blocchi(idsPvl, 80)) {
+  // con l'interruttore acceso i lotti sono già stati letti (2ter): nessuna lettura in più
+  if (opzioni.classificazioni) for (const id of idsPvl) lottiPvl.set(id, lottiPrima.get(id) ?? []);
+  for (const b of opzioni.classificazioni ? [] : blocchi(idsPvl, 80)) {
     const { data } = await misura(misure, "lettura dei lotti da unire", () => admin.from("radar_lotti").select(COLONNE_LOTTO).in("procedura_id", b).returns<(LottoUnito & { procedura_id: string; valore_stimato: number | string | null })[]>());
     for (const l of data ?? []) {
       const v = lottiPvl.get(l.procedura_id) ?? [];
@@ -273,23 +330,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     const id = ids.get(s.riga!.chiave);
     const b = s.bando!;
     if (!id) return [];
-    const nuovi: LottoUnito[] = b.record.lotti
-      .map((l, i) => ({ l, i }))
-      .filter(({ l }) => !!l.numero)
-      .map(({ l, i }) => ({
-        numero_lotto: l.numero as string,
-        cig: l.cig,
-        oggetto: l.oggetto,
-        cpv_principale: l.cpvPrincipale,
-        cpv_tutti: l.cpvTutti,
-        valore_stimato: l.valoreStimato,
-        durata_mesi: l.durataMesi,
-        scadenza_giorno: b.lottiScadenze[i]?.giorno ?? null,
-        scadenza_offerte: b.lottiScadenze[i]?.iso ?? null,
-        scadenza_ora_indicata: b.lottiScadenze[i]?.oraIndicata ?? false,
-        scadenza_fonte: b.lottiScadenze[i]?.fonte ?? null,
-        url_documenti: b.lottiDocumenti[i] ?? null,
-      }));
+    const nuovi = lottiDaBandoTed(b);
     if (haAltreFonti(s.iniziale) || s.risolta) {
       const u = unisciLotti(lottiPvl.get(id) ?? [], nuovi, "ted", s.ultimaApplicata);
       esito.cigScartati += u.cigScartati;
@@ -369,12 +410,36 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         notificabile: modo === "incrementale" && !prima?.unita_a && (eraAperta || aperta(r.stato, scadenzaOra, adesso)),
       });
     }
+    // fase B2b: il cambio della colonna «settori» di una gara che esisteva già (mai notificabile)
+    const ci = classificazioni.get(s);
+    if (ci && prima) {
+      const traccia = rigaRegistroImportazione(id, { settori: [...prima.settori], metodo: prima.metodo_settore }, ci, "ted", s.bando!.meta.numero);
+      if (traccia) righe.push(traccia);
+    }
     return righe;
   });
   // classificazioni diverse tra le fonti: mai notificabili, mai mostrate ai clienti
   righeAggiornamenti.push(...segnalazioni);
   for (const b of blocchi(righeAggiornamenti, 200)) {
     await misura(misure, "registro dei cambiamenti", () => admin.from("radar_aggiornamenti").upsert(b, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true }));
+  }
+
+  // 6bis) fase B2b, SOLO con l'interruttore acceso: righe della 0121 e stato, dentro questo giro. Un errore qui non ferma l'importazione
+  if (opzioni.classificazioni) {
+    const nuovoId = opzioni.nuovoId ?? (() => crypto.randomUUID());
+    const voci = daScrivere.flatMap((s) => {
+      const id = ids.get(s.riga!.chiave);
+      const ci = classificazioni.get(s);
+      if (!id || !ci) return [];
+      const fonti = [...(s.iniziale ? fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi) : []), "ted"];
+      return [{ proceduraId: id, versione: ci.unita.versione, calcolate: righeImportate(ci, { proceduraId: id, fonti, fonte: "ted", adessoIso: iso, nuovoId }) }];
+    });
+    try {
+      esito.classificazioni = await scriviClassificazioni(admin, voci, misure, iso);
+    } catch (e) {
+      esito.classificazioniErrore = e instanceof Error ? e.message : String(e);
+      console.warn(`Classificazioni non scritte (ted): ${esito.classificazioniErrore}`);
+    }
   }
 
   // 7) gare aggiunte a mano con lo stesso CIG: si collegano alla gara pubblica (tabella riservata, scritta solo dal server)

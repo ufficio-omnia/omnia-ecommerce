@@ -336,7 +336,8 @@ async function principale() {
     for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-calcoli.ts", "src/lib/radar/fonti/sintel-calcoli.ts", "src/lib/radar/classificazione-unita.ts"]) {
       atteso(`8. ${f}: passa i lotti (oggetto e CPV di ciascuno) al classificatore`, /classificaGara\(\{[^;]*lotti: /.test(leggi(f).replace(/\/\/[^\n]*/g, "").replace(/\n\s*/g, " ")));
     }
-    atteso("8. il calcolo unico passa i lotti come la riclassificazione della PVL", leggi("src/lib/radar/riclassifica-settori.ts").includes("lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] }))") && leggi("src/lib/radar/classificazione-unita.ts").includes("lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] }))"));
+    // fase B2b: la riclassificazione (ora di B2) USA il calcolo unico invece di ripeterlo
+    atteso("8. il calcolo unico passa i lotti e la riclassificazione lo usa (nessun calcolo ripetuto)", leggi("src/lib/radar/classificazione-unita.ts").includes("lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] }))") && leggi("src/lib/radar/riclassifica-settori.ts").includes("const c = classificaPerArchivio(g, lotti);") && !/\bclassificaGara\(/.test(leggi("src/lib/radar/riclassifica-settori.ts")));
   }
 
   // ═════ 7. righe interne e fonti nascoste mai ai clienti ═════

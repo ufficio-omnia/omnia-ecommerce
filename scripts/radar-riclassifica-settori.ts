@@ -1,191 +1,183 @@
-// Riclassificazione delle gare GIÀ in archivio con le regole correnti di settori.ts (qualità delle gare, 17/11/2026), SOLO contro lo
-// staging. Esclusione ≠ cancellazione: cambia solo «settori» e «metodo_settore» delle gare escluse; nulla si cancella; ogni correzione si
-// traccia nel registro dei cambiamenti (correzione_dati, campo «settori», mai notificabile) e si può annullare.
+// SCRIPT UNICO e idempotente di riclassificazione delle gare in archivio e di POPOLAMENTO della 0121 (fase B2b, 17/11/2026; sostituisce la
+// riclassificazione della PVL, che toglieva soltanto). SOLO contro lo staging. Calcolo in src/lib/radar/riclassifica-settori.ts, letture e
+// scritture in src/lib/radar/riclassificazione.ts.
+//
+// Per ogni gara (con i lotti), regole correnti: colonna «settori» e «metodo_settore» COERENTI con le righe attive di radar_classificazioni
+// (anche AGGIUNGENDO settori), una riga attiva per gara e settore con lo storico, lo stato (classificata / in attesa / fallita). Le gare C
+// restano nell'archivio; nulla si cancella. Ogni cambio della colonna è tracciato nel registro (mai notificabile) con l'esecuzione.
+// Seconda esecuzione = nessuna scrittura.
 //
 // Uso (variabili dello staging nell'ambiente, mai quelle di produzione):
-//   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts prova
-//       sola lettura: elenca le gare che cambierebbero settore, nessuna scrittura (non serve autorizzazione)
+//   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts prova [--elenco <file.json>]
+//       SOLA LETTURA (ogni richiesta che non sia una lettura viene rifiutata prima di partire): il piano completo, nessuna scrittura
+//   npx tsx scripts/radar-riclassifica-settori.ts prova --da-file <archivio.json> [--elenco <file.json>]
+//       lo stesso calcolo su un'esportazione dell'archivio fatta in una transazione di sola lettura (nessun accesso al database)
 //   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts applica <massimo>
-//       scrive le correzioni; si ferma senza scrivere nulla se le correzioni sono più di <massimo>. Solo con il lanciatore
+//       scrive il piano; si ferma senza scrivere nulla se le gare da scrivere sono più di <massimo>. Solo con il lanciatore
 //       esegui-autorizzato.mjs e un'autorizzazione registrata del coordinatore (regola del 17/11/2026)
-//   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts annulla <massimo>
-//       rimette i settori di prima nelle gare corrette con questa versione delle regole (se nel frattempo nessuno li ha cambiati).
-//       Stesse condizioni di «applica»
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+//   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts annulla <esecuzione> <massimo>
+//       ripristino controllato di un'esecuzione (colonna, righe, stato «in attesa»). Stesse condizioni di «applica»
+import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import { PROGETTO_PRODUZIONE } from "../src/lib/radar/ambiente";
 import { VERSIONE_REGOLE_SETTORI } from "../src/lib/radar/settori";
-import {
-  notaCorrezione,
-  riclassificaGara,
-  statoDaRegistro,
-  valoreRegistro,
-  type GaraDaRiclassificare,
-  type LottoDaRiclassificare,
-  type StatoSettori,
-} from "../src/lib/radar/riclassifica-settori";
+import { idEsecuzione, riepilogoPiani, rigaElenco, type GaraArchivio, type LottoDaRiclassificare, type PianoGara } from "../src/lib/radar/riclassifica-settori";
+import { annullaEsecuzione, applicaPiani, leggiArchivio, pianiDaArchivio, TroppeGare, type ArchivioLetto } from "../src/lib/radar/riclassificazione";
+import type { RigaClassificazione, RigaStato } from "../src/lib/radar/classificazioni-calcoli";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const chiave = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-const staging = process.env.RADAR_STAGING_REF ?? "";
-const FONTE_REGISTRO = "regole_settori";
-const PAGINA = 1000;
+const MASSIMO_ASSOLUTO = 2000;
 
-if (!url || !chiave) {
-  console.error("Mancano le variabili del database.");
-  process.exit(2);
-}
-if (url.includes(PROGETTO_PRODUZIONE) || chiave.includes(PROGETTO_PRODUZIONE) || !staging || !url.includes(`${staging}.supabase.co`)) {
-  console.error("STOP: questo script gira solo contro lo staging dichiarato in RADAR_STAGING_REF.");
-  process.exit(2);
+// Sola lettura garantita per la prova: il client può fare solo GET e HEAD (nessun insert, update, upsert, delete né rpc).
+export function fetchSoloLettura(f: typeof fetch = fetch): typeof fetch {
+  return (input, init) => {
+    const metodo = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (metodo !== "GET" && metodo !== "HEAD") return Promise.reject(new Error(`STOP: richiesta ${metodo} rifiutata, la prova è in sola lettura.`));
+    return f(input, init);
+  };
 }
 
-async function tutte<T>(db: SupabaseClient, tabella: string, colonne: string): Promise<T[]> {
-  const righe: T[] = [];
-  for (let da = 0; ; da += PAGINA) {
-    const { data, error } = await db.from(tabella).select(colonne).order("id").range(da, da + PAGINA - 1).returns<T[]>();
-    if (error) throw new Error(`${tabella}: ${error.message}`);
-    righe.push(...(data ?? []));
-    if ((data ?? []).length < PAGINA) return righe;
+function ambienteStaging(): { url: string; chiave: string } {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const chiave = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const staging = process.env.RADAR_STAGING_REF ?? "";
+  if (!url || !chiave) {
+    console.error("Mancano le variabili del database.");
+    process.exit(2);
   }
-}
-
-type Gara = GaraDaRiclassificare & { chiave: string };
-type Lotto = LottoDaRiclassificare & { procedura_id: string };
-type Correzione = { gara: Gara; prima: StatoSettori; dopo: StatoSettori; idFonte: string; nota: string; regole: string[] };
-
-// Uguaglianza esatta dei settori nella scrittura condizionata: contiene E contenuto (l'ordine non conta).
-function stessiSettori<Q extends { contains: (c: string, v: string[]) => Q; containedBy: (c: string, v: string[]) => Q }>(q: Q, settori: string[]): Q {
-  return q.contains("settori", settori).containedBy("settori", settori);
-}
-
-async function calcola(db: SupabaseClient) {
-  const gare = await tutte<Gara>(db, "radar_procedure", "id, chiave, oggetto, cpv_principale, cpv_tutti, settori, metodo_settore, natura_contratto");
-  const lotti = await tutte<Lotto>(db, "radar_lotti", "id, procedura_id, oggetto, cpv_principale, cpv_tutti");
-  const perGara = new Map<string, Lotto[]>();
-  for (const l of lotti) perGara.set(l.procedura_id, [...(perGara.get(l.procedura_id) ?? []), l]);
-  const correzioni: Correzione[] = [];
-  const daDecidere: { gara: Gara; prima: StatoSettori; dopo: StatoSettori }[] = [];
-  for (const g of gare) {
-    const r = riclassificaGara(g, perGara.get(g.id) ?? []);
-    if (r.tipo === "correzione") correzioni.push({ gara: g, prima: r.prima, dopo: r.dopo, idFonte: r.idFonte, nota: notaCorrezione(r.esclusioni), regole: [...new Set(r.esclusioni.map((e) => `${e.settore}:${e.regola}`))] });
-    else if (r.tipo === "da_decidere") daDecidere.push({ gara: g, prima: r.prima, dopo: r.dopo });
+  if (url.includes(PROGETTO_PRODUZIONE) || chiave.includes(PROGETTO_PRODUZIONE) || !staging || !url.includes(`${staging}.supabase.co`)) {
+    console.error("STOP: questo script gira solo contro lo staging dichiarato in RADAR_STAGING_REF.");
+    process.exit(2);
   }
-  return { gare: gare.length, lotti: lotti.length, correzioni, daDecidere };
-}
-
-function stampa(c: Correzione) {
-  console.log(`  ${c.gara.chiave.split(":")[0]} ${c.gara.id.slice(0, 8)} ${JSON.stringify(c.prima.settori)} → ${JSON.stringify(c.dopo.settori)} [${c.regole.join(", ") || "parole chiave"}] ${c.gara.oggetto.replace(/\s+/g, " ").slice(0, 110)}`);
+  return { url, chiave };
 }
 
 async function porta() {
   // Regola del 17/11/2026: scritture sullo staging solo con un'autorizzazione registrata del coordinatore.
   const registro = process.env.TI_REGISTRO;
-  if (!registro) { console.error("STOP: lanciare con esegui-autorizzato.mjs (autorizzazione registrata del coordinatore)."); process.exit(2); }
+  if (!registro) {
+    console.error("STOP: lanciare con esegui-autorizzato.mjs (autorizzazione registrata del coordinatore).");
+    process.exit(2);
+  }
   const { controllaPorta } = await import(new URL(`file:///${registro.replace(/\\/g, "/").replace(/^\/+/, "")}/registro.mjs`).href);
-  try { controllaPorta({ script: "radar-riclassifica-settori.ts" }); } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(2); }
+  try {
+    controllaPorta({ script: "radar-riclassifica-settori.ts" });
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(2);
+  }
 }
 
-async function applica(db: SupabaseClient, correzioni: Correzione[]) {
-  const iso = new Date().toISOString();
-  const esito = { corrette: 0, cambiate_nel_frattempo: 0, errori: 0 };
-  for (const c of correzioni) {
-    const { data: fatte, error } = await stessiSettori(
-      db.from("radar_procedure").update({ settori: c.dopo.settori, metodo_settore: c.dopo.metodo, aggiornata_il: iso }).eq("id", c.gara.id),
-      c.prima.settori,
-    ).select("id");
-    if (error) { esito.errori++; console.error(`  errore su ${c.gara.id.slice(0, 8)}: ${error.message}`); continue; }
-    if ((fatte ?? []).length === 0) { esito.cambiate_nel_frattempo++; continue; }
-    const { error: e2 } = await db.from("radar_aggiornamenti").upsert(
-      { procedura_id: c.gara.id, tipo: "correzione_dati", campo: "settori", valore_precedente: valoreRegistro(c.prima), valore_nuovo: valoreRegistro(c.dopo), fonte: FONTE_REGISTRO, id_fonte: c.idFonte, nota: c.nota, notificabile: false },
-      { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true },
-    );
-    if (e2) {
-      // senza traccia la correzione non resta: si rimette il valore di prima (stessa scrittura condizionata)
-      await stessiSettori(db.from("radar_procedure").update({ settori: c.prima.settori, metodo_settore: c.prima.metodo, aggiornata_il: iso }).eq("id", c.gara.id), c.dopo.settori);
-      esito.errori++;
-      console.error(`  registro non scritto per ${c.gara.id.slice(0, 8)} (${e2.message}): correzione ritirata`);
-      continue;
-    }
-    esito.corrette++;
-  }
-  return esito;
+// Esportazione dell'archivio (sola lettura): { gare, lotti, classificazioni (solo attive), stati }.
+export function archivioDaFile(percorso: string): ArchivioLetto {
+  const j = JSON.parse(fs.readFileSync(percorso, "utf8")) as { gare: GaraArchivio[]; lotti: (LottoDaRiclassificare & { procedura_id: string; numero_lotto?: string })[]; classificazioni: RigaClassificazione[] | null; stati: RigaStato[] | null };
+  const lotti = new Map<string, LottoDaRiclassificare[]>();
+  for (const l of [...j.lotti].sort((a, b) => String(a.numero_lotto ?? "").localeCompare(String(b.numero_lotto ?? "")))) lotti.set(l.procedura_id, [...(lotti.get(l.procedura_id) ?? []), { oggetto: l.oggetto, cpv_principale: l.cpv_principale, cpv_tutti: l.cpv_tutti }]);
+  const attive = new Map<string, RigaClassificazione[]>();
+  for (const r of j.classificazioni ?? []) if (r.attiva) attive.set(r.procedura_id, [...(attive.get(r.procedura_id) ?? []), r]);
+  return { gare: j.gare, lotti, nLotti: j.lotti.length, attive, stati: new Map((j.stati ?? []).map((s) => [s.procedura_id, s])), tabelle0121: j.classificazioni !== null && j.stati !== null };
 }
 
-async function annulla(db: SupabaseClient, massimo: number) {
-  const { data: tracce, error } = await db
-    .from("radar_aggiornamenti")
-    .select("procedura_id, valore_precedente, valore_nuovo, id_fonte")
-    .eq("tipo", "correzione_dati")
-    .eq("campo", "settori")
-    .eq("fonte", FONTE_REGISTRO)
-    .like("id_fonte", `regole-settori-${VERSIONE_REGOLE_SETTORI}:%`)
-    .returns<{ procedura_id: string; valore_precedente: string | null; valore_nuovo: string | null; id_fonte: string }[]>();
-  if (error) throw new Error(error.message);
-  if ((tracce ?? []).length > massimo) {
-    console.error(`STOP: ${tracce?.length} correzioni da annullare, più del massimo ${massimo}. Nessuna scrittura.`);
-    process.exit(1);
-  }
-  const iso = new Date().toISOString();
-  const esito = { ripristinate: 0, cambiate_nel_frattempo: 0, illeggibili: 0, errori: 0 };
-  for (const t of tracce ?? []) {
-    const prima = statoDaRegistro(t.valore_precedente);
-    const dopo = statoDaRegistro(t.valore_nuovo);
-    if (!prima || !dopo) { esito.illeggibili++; continue; }
-    const { data: fatte, error: e1 } = await stessiSettori(
-      db.from("radar_procedure").update({ settori: prima.settori, metodo_settore: prima.metodo, aggiornata_il: iso }).eq("id", t.procedura_id),
-      dopo.settori,
-    ).select("id");
-    if (e1) { esito.errori++; continue; }
-    if ((fatte ?? []).length === 0) { esito.cambiate_nel_frattempo++; continue; }
-    await db.from("radar_aggiornamenti").upsert(
-      { procedura_id: t.procedura_id, tipo: "correzione_dati", campo: "settori_ripristinati", valore_precedente: t.valore_nuovo, valore_nuovo: t.valore_precedente, fonte: FONTE_REGISTRO, id_fonte: `annullato:${t.id_fonte}:${iso}`.slice(0, 200), nota: "Correzione dei settori annullata: rimessi i settori di prima", notificabile: false },
-      { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true },
-    );
-    esito.ripristinate++;
-  }
-  return esito;
+const breve = (p: PianoGara) => `${p.chiave.split(":")[0]} ${p.proceduraId.slice(0, 8)} ${p.oggetto.slice(0, 100)}`;
+
+function stampaPiano(a: ArchivioLetto, piani: PianoGara[], esecuzione: string) {
+  const r = riepilogoPiani(piani);
+  const daScrivere = piani.filter((p) => p.tipo === "da_scrivere");
+  console.log(`Regole ${VERSIONE_REGOLE_SETTORI}. Archivio: ${a.gare.length} gare, ${a.nLotti} lotti, ${[...a.attive.values()].flat().length} classificazioni attive, ${a.stati.size} stati. Esecuzione ${esecuzione}.`);
+  console.log(`Gare già classificate con queste regole e non cambiate: ${r.giaClassificate}; da scrivere: ${r.daScrivere}; con righe non valide (fallite): ${r.fallite}.`);
+  console.log(`Categorie: A ${r.categorie.A}, B ${r.categorie.B}, misti A+B ${r.categorie.misti}, C ${r.categorie.C}, nessun settore considerato ${r.categorie.nessun_settore}. Multisettore: ${r.multisettore}.`);
+  console.log(`Colonna settori: invariate ${r.colonna.invariate}, cambiano ${r.colonna.cambiate} (perdono ${r.colonna.perdono}, acquisiscono ${r.colonna.acquisiscono}, fuori da tutti ${r.colonna.fuoriDaTutti}, solo metodo ${r.colonna.soloMetodo}).`);
+  console.log(`Righe da scrivere: ${JSON.stringify(r.righe)}`);
+  const elenco = (titolo: string, v: PianoGara[], f: (p: PianoGara) => string) => {
+    console.log(`${titolo}: ${v.length}`);
+    for (const p of v) console.log(`  ${breve(p)} ${f(p)}`);
+  };
+  elenco("Gare che PERDONO settori", daScrivere.filter((p) => p.cambiaSettori && p.ric!.tolti.length), (p) => `${JSON.stringify(p.ric!.prima.settori)} → ${JSON.stringify(p.ric!.dopo.settori)} [${p.ric!.esclusioni.map((e) => e.regola).join(", ")}]`);
+  elenco("Gare che ACQUISISCONO settori", daScrivere.filter((p) => p.cambiaSettori && p.ric!.aggiunti.length), (p) => `${JSON.stringify(p.ric!.prima.settori)} → ${JSON.stringify(p.ric!.dopo.settori)}`);
+  elenco("Gare che cambiano SOLO il metodo", daScrivere.filter((p) => p.cambiaSettori && p.ric!.soloMetodo), (p) => `${p.ric!.prima.metodo} → ${p.ric!.dopo.metodo}`);
+  elenco("Gare MULTISETTORE", daScrivere.filter((p) => p.ric!.dopo.settori.length >= 2), (p) => p.calcolate.map((c) => `${c.settore}=${c.rilevanza}`).join(" "));
+  elenco("Gare con righe non valide (fallite)", daScrivere.filter((p) => p.errori.length), (p) => p.errori.join("; "));
 }
 
 async function main() {
-  const [modo, m] = process.argv.slice(2);
+  const argomenti = process.argv.slice(2);
+  const modo = argomenti[0];
+  const opzione = (n: string) => {
+    const i = argomenti.indexOf(n);
+    return i >= 0 ? argomenti[i + 1] : undefined;
+  };
   if (modo !== "prova" && modo !== "applica" && modo !== "annulla") {
-    console.error("Uso: prova | applica <massimo> | annulla <massimo>");
+    console.error("Uso: prova [--da-file <archivio.json>] [--elenco <file.json>] | applica <massimo> | annulla <esecuzione> <massimo>");
     process.exit(2);
   }
-  const massimo = Number(m);
-  if (modo !== "prova" && !(Number.isInteger(massimo) && massimo > 0 && massimo <= 500)) {
-    console.error("Indicare il numero massimo di gare (da 1 a 500).");
+  const massimo = Number(modo === "annulla" ? argomenti[2] : argomenti[1]);
+  if (modo !== "prova" && !(Number.isInteger(massimo) && massimo > 0 && massimo <= MASSIMO_ASSOLUTO)) {
+    console.error(`Indicare il numero massimo di gare (da 1 a ${MASSIMO_ASSOLUTO}).`);
     process.exit(2);
   }
+  const adessoIso = new Date().toISOString();
+  const esecuzione = idEsecuzione(adessoIso);
+  const misure = { richiesteDb: 0, msDb: 0 };
+  // applica e annulla: la porta delle autorizzazioni PRIMA di ogni accesso al database
   if (modo !== "prova") await porta();
+
+  if (modo === "prova") {
+    const daFile = opzione("--da-file");
+    let a: ArchivioLetto;
+    if (daFile) a = archivioDaFile(daFile);
+    else {
+      const { url, chiave } = ambienteStaging();
+      const lettura = createClient(url, chiave, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: fetchSoloLettura() } });
+      a = await leggiArchivio(lettura, misure);
+    }
+    const piani = pianiDaArchivio(a, esecuzione, adessoIso, randomUUID);
+    stampaPiano(a, piani, esecuzione);
+    const uscita = opzione("--elenco");
+    if (uscita) {
+      fs.writeFileSync(uscita, JSON.stringify({ versione: VERSIONE_REGOLE_SETTORI, riepilogo: riepilogoPiani(piani), gare: piani.map(rigaElenco) }, null, 1));
+      console.log(`Elenco gara per gara: ${uscita}`);
+    }
+    console.log(`Prova a vuoto: nessuna scrittura (letture: ${misure.richiesteDb}).`);
+    return;
+  }
+
+  const { url, chiave } = ambienteStaging();
   const db = createClient(url, chiave, { auth: { persistSession: false, autoRefreshToken: false } });
 
   if (modo === "annulla") {
-    console.log(`Annullamento delle correzioni con le regole ${VERSIONE_REGOLE_SETTORI}…`);
-    console.log(JSON.stringify(await annulla(db, massimo)));
+    const daAnnullare = argomenti[1] ?? "";
+    console.log(`Annullamento dell'esecuzione ${daAnnullare}…`);
+    try {
+      console.log(JSON.stringify(await annullaEsecuzione(db, daAnnullare, massimo, misure, adessoIso, randomUUID)));
+    } catch (e) {
+      if (e instanceof TroppeGare) {
+        console.error(`STOP: ${e.message}`);
+        process.exit(1);
+      }
+      throw e;
+    }
     return;
   }
 
-  const { gare, lotti, correzioni, daDecidere } = await calcola(db);
-  console.log(`Regole ${VERSIONE_REGOLE_SETTORI}. Archivio: ${gare} gare, ${lotti} lotti.`);
-  console.log(`Gare che cambiano settore: ${correzioni.length} (fuori da tutti i settori: ${correzioni.filter((c) => c.dopo.settori.length === 0).length}).`);
-  for (const c of correzioni) stampa(c);
-  if (daDecidere.length) {
-    console.log(`Gare che GUADAGNEREBBERO un settore (non si toccano, da decidere a parte): ${daDecidere.length}`);
-    for (const d of daDecidere) console.log(`  ${d.gara.id.slice(0, 8)} ${JSON.stringify(d.prima.settori)} → ${JSON.stringify(d.dopo.settori)} ${d.gara.oggetto.slice(0, 100)}`);
-  }
-  if (modo === "prova") {
-    console.log("Prova a vuoto: nessuna scrittura.");
-    return;
-  }
-  if (correzioni.length > massimo) {
-    console.error(`STOP: ${correzioni.length} correzioni, più del massimo autorizzato ${massimo}. Nessuna scrittura.`);
+  const a = await leggiArchivio(db, misure);
+  if (!a.tabelle0121) {
+    console.error("STOP: le tabelle della 0121 non ci sono in questo database. Nessuna scrittura.");
     process.exit(1);
   }
-  console.log(JSON.stringify(await applica(db, correzioni)));
+  const piani = pianiDaArchivio(a, esecuzione, adessoIso, randomUUID);
+  stampaPiano(a, piani, esecuzione);
+  const daScrivere = piani.filter((p) => p.tipo === "da_scrivere").length;
+  if (daScrivere > massimo) {
+    console.error(`STOP: ${daScrivere} gare da scrivere, più del massimo autorizzato ${massimo}. Nessuna scrittura.`);
+    process.exit(1);
+  }
+  console.log(`Esecuzione ${esecuzione} (per l'annullamento: annulla ${esecuzione} <massimo>).`);
+  console.log(JSON.stringify(await applicaPiani(db, piani, misure, adessoIso)));
 }
 
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
-  process.exit(1);
-});
+if (process.argv[1] && /radar-riclassifica-settori\.ts$/.test(process.argv[1].replace(/\\/g, "/"))) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+}

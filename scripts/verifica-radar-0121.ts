@@ -366,7 +366,8 @@ async function principale() {
     uguale("D2. con la classificazione fallita la gara NON è non pertinente: «da verificare», e non entra nei suggerimenti", [sit.tipo, etichettaRilevanza(sit), gareSuggeribili(righe as RigaClassificazione[], new Map([["G", stato() as RigaStato]]), ["ristorazione"])], ["fallita", "Classificazione da verificare", []]);
     const finto = { from: () => ({ select: () => ({ in: () => ({ eq: () => ({ returns: () => Promise.resolve({ data: null, error: { code: "PGRST205", message: "Could not find the table" } }) }) }) }) }) } as unknown as Parameters<typeof scriviClassificazioni>[0];
     uguale("C. senza la 0121 (tabelle assenti) la scrittura non fa nulla e non dà errore", (await scriviClassificazioni(finto, [voce(MENSA)], misure(), ISO)).saltata, true);
-    atteso("C. nessun importatore scrive ancora le classificazioni né lo stato (0121 non approvata)", ["src/lib/radar/importa.ts", "src/lib/radar/importa-fonti-pagina.ts", "src/lib/radar/importa-pvl-pagina.ts", "src/lib/radar/importa-regionali.ts"].every((f) => !/scriviClassificazioni|segnaInAttesa/.test(leggi(f))));
+    // fase B2b: gli importatori scrivono le classificazioni SOLO con l'interruttore acceso (spento di base): prove in verifica-radar-popolamento
+    atteso("C. gli importatori scrivono le classificazioni solo dentro «if (opzioni.classificazioni)» / «if (o.classificazioni)»", [["src/lib/radar/importa.ts", "opzioni.classificazioni"], ["src/lib/radar/importa-fonti-pagina.ts", "o.classificazioni"]].every(([f, k]) => { const t = leggi(f); const i = t.indexOf("scriviClassificazioni(admin"); return i > 0 && t.lastIndexOf(`if (${k})`, i) > 0; }) && ["src/lib/radar/importa-pvl-pagina.ts", "src/lib/radar/importa-regionali.ts"].every((f) => !/scriviClassificazioni|segnaInAttesa/.test(leggi(f))));
   }
   {
     // D3: l'arrivo di una NUOVA FONTE su una gara esistente aggiorna la classificazione con lo storico e segnala il conflitto
