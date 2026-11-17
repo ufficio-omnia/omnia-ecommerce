@@ -27,6 +27,8 @@
 //   - la ristorazione ha 8 sottocategorie (le 7 decise più i distributori automatici);
 //   - congresso di matematica: resta B, ma con la regola «organizzazione_eventi» invece di «cpv_secondario»;
 //   - versione delle regole «2026-11-17d». I 6 CPV nuovi sono nel file approvato (56 codici).
+// Controlli CAMBIATI con la versione «2026-11-17e» (rilievo di B2 sulle gare di Sintel, 17/11):
+//   - versione delle regole «2026-11-17e»; nessun altro controllo cambiato, uno nuovo (Treviglio, gestione integrata del bar: A).
 import fs from "fs";
 import path from "path";
 import {
@@ -533,6 +535,13 @@ for (const c of TED_RECUPERATE.slice(0, 4)) {
   const senza = c.cpv.filter((x) => !CPV_CON_CONTESTO.includes(x));
   atteso(`${c.nome}: entra grazie ai 6 CPV (senza, nessun settore)`, classificaGara({ cpvPrincipale: senza[0] ?? null, cpvTutti: senza, testo: c.testo }).settori.length === 0);
 }
+// gestione integrata DENTRO lo stesso servizio (il bar in due impianti): resta A, come i «servizi integrati di pulizia»
+provaCaso({
+  nome: "Sintel 225629817 Treviglio, gestione integrata del servizio bar in due impianti sportivi: A (segnalato da B2)",
+  cpv: ["55410000"],
+  testo: "Concessione del servizio di gestione integrata del servizio bar presso il Centro Sportivo e lo Stadio Comunale",
+  attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }],
+});
 // regola del contesto: un CPV nuovo da solo non basta
 provaCaso({
   nome: "solo un CPV nuovo e l'oggetto non nomina il servizio: C",
@@ -802,7 +811,7 @@ atteso(
   corr.tipo === "correzione" && corr.dopo.settori.length === 0 && corr.dopo.metodo === null && corr.idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
   JSON.stringify(corr),
 );
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17d");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17e");
 const lotti = riclassificaGara({ ...base, oggetto: "lotto1", cpv_principale: "90910000", cpv_tutti: ["90910000", "98341130"], settori: ["pulizia", "vigilanza_portierato"], metodo_settore: "cpv" }, [
   { oggetto: "SERVIZIO DI CUSTODIA, SICUREZZA E PULIZIA AMBIENTALE DEGLI IMPIANTI SPORTIVI", cpv_principale: "90910000", cpv_tutti: null },
 ]);
