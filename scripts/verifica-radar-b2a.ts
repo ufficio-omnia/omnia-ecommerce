@@ -228,11 +228,15 @@ async function principale() {
   {
     const mem = databaseInMemoria({ radar_procedure: [garaTed("T")], radar_lotti: [lottoTed("T")], radar_procedure_fonti: [provTed("T", "700001-2026")], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
     const s1 = await importa(mem, [bandoSardegna("700001")]);
-    uguale("4. SardegnaCAT trova la gara TED con l'identificativo della piattaforma: nessuna gara nuova", [s1.nuove, s1.suGaraEsistente, mem.tabelle.radar_procedure.length], [0, { piattaforma: 1 }, 1]);
-    uguale("4. stessa scadenza: la gara resta com'era, nessun cambiamento registrato", [gara(mem, "T").scadenza_offerte, mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "proroga").length], ["2026-12-10T09:00:00.000Z", 0]);
+    const sId = mem.tabelle.radar_procedure.find((r) => r.chiave === "sardegnacat:700001")?.id as string;
+    // l'identificativo della piattaforma è un numero TECNICO, non ufficiale: nessuna unione automatica, solo un suggerimento (17/11)
+    uguale("4. stesso identificativo della piattaforma: gara propria e SOLO un suggerimento, nessuna unione automatica", [s1.nuove, s1.proposte, gara(mem, sId).unita_a, gara(mem, "T").scadenza_offerte], [1, 1, null, "2026-12-10T09:00:00.000Z"]);
+    const proposta = (await leggiProposteAperte(mem.client))[0];
+    await confermaProposta(mem.client, proposta.a, proposta.b, "admin sintetico", ISO, misure());
+    uguale("4. dopo la conferma dell'amministratore: unione 0117, resta la gara TED", gara(mem, sId).unita_a, "T");
     const s2 = await importa(mem, [bandoSardegna("700001", { DtScadenzaBandoTecnical: "2026-12-17T10:00:00", dataUltimaModifica: "2026-11-16T09:00:00" })]);
     const proroghe = mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "proroga");
-    uguale("4. proroga pubblicata solo su SardegnaCAT: arriva alla gara che resta, una sola volta, notificabile", [s2.rettifiche, gara(mem, "T").scadenza_giorno, gara(mem, "T").scadenza_offerte, proroghe.length, proroghe[0]?.procedura_id, proroghe[0]?.notificabile], [1, "2026-12-17", "2026-12-17T09:00:00.000Z", 1, "T", true]);
+    uguale("4. proroga pubblicata solo su SardegnaCAT dopo l'unione: arriva alla gara che resta, una sola volta, notificabile", [s2.rettifiche, gara(mem, "T").scadenza_giorno, gara(mem, "T").scadenza_offerte, proroghe.length, proroghe[0]?.procedura_id, proroghe[0]?.notificabile], [1, "2026-12-17", "2026-12-17T09:00:00.000Z", 1, "T", true]);
   }
   {
     // la stessa procedura SardegnaCAT era una gara a sé, poi unita a TED: la proroga successiva va alla gara che resta, la copia non cambia
@@ -292,7 +296,13 @@ async function principale() {
     const nascoste = new Set(["sardegnacat"]);
     uguale("6. una gara di sola SardegnaCAT non si mostra; con anche TED sì", [garaVisibileAiClienti({ fonti: ["sardegnacat"], chiave: "sardegnacat:1" }, nascoste), garaVisibileAiClienti({ fonti: ["ted", "sardegnacat"], chiave: "ted:x" }, nascoste), garaVisibileAiClienti({ fonti: [], chiave: "ted:x" }, nascoste)], [false, true, true]);
     uguale("6. le fonti nascoste non compaiono nelle fonti della gara", fontiVisibili([{ fonte: "ted" }, { fonte: "sardegnacat" }], (x) => x.fonte, nascoste).map((x) => x.fonte), ["ted"]);
-    const mem = databaseInMemoria({ radar_procedure: [garaTed("T")], radar_lotti: [lottoTed("T")], radar_procedure_fonti: [provTed("T", "700001-2026")], radar_aggiornamenti: [] });
+    // la procedura SardegnaCAT è già unita (dopo una conferma) alla gara TED visibile: le sue versioni vanno alla gara che resta
+    const mem = databaseInMemoria({
+      radar_procedure: [garaTed("T"), garaTed("S", { chiave: "sardegnacat:700001", fonti: ["sardegnacat"], unita_a: "T" })],
+      radar_lotti: [lottoTed("T")],
+      radar_procedure_fonti: [provTed("T", "700001-2026"), { procedura_id: "S", fonte: "sardegnacat", id_fonte: "700001", impronta: "vecchia", id_procedura_fonte: "700001", rif_ted: null }],
+      radar_aggiornamenti: [],
+    });
     const prima = JSON.stringify(gara(mem, "T"));
     const s = await importa(mem, [bandoSardegna("700001", { DtScadenzaBandoTecnical: "2026-12-17T10:00:00" })], { nascoste: ["sardegnacat"] });
     const prov = mem.tabelle.radar_procedure_fonti.find((p) => p.fonte === "sardegnacat");
@@ -325,7 +335,14 @@ async function principale() {
     await importa(mem, [bandoSintel({ cig: "PRV0000077", id_procedura: "900000077", nome_procedura: "Servizio mensa (prova sintetica)", codice_cpv: "55524000-9", stazione_appaltante: "COMUNE DI PROVASINTETICA", cf_stazione_appaltante: "00000000001", data_fine_negoziazione: "2026-12-12T00:00:00.000" })]);
     const conCig = mem.tabelle.radar_procedure.filter((r) => mem.tabelle.radar_lotti.some((l) => l.procedura_id === r.id && l.cig === "PRV0000077") || (r.fonti as string[]).includes("sintel"));
     uguale("7. stesso CIG da Sintel e SardegnaCAT: una sola gara, con entrambe le fonti", [conCig.length, (conCig[0]?.fonti as string[] | undefined)?.sort()], [1, ["sardegnacat", "sintel"]]);
-    uguale("7. una sola gara visibile per ogni procedura (TED+SardegnaCAT, SardegnaCAT+Sintel)", visibili(mem).length, 2);
+    // TED e SardegnaCAT restano due gare finché un amministratore non conferma il suggerimento (identificativo della piattaforma non ufficiale)
+    uguale("7. prima della conferma: TED e SardegnaCAT due gare con un suggerimento; SardegnaCAT e Sintel (stesso CIG) già una", [visibili(mem).length, (await leggiProposteAperte(mem.client)).length], [3, 1]);
+    const pr = (await leggiProposteAperte(mem.client))[0];
+    await confermaProposta(mem.client, pr.a, pr.b, "admin sintetico", ISO, misure());
+    uguale("7. dopo la conferma: una sola gara visibile per ogni procedura", visibili(mem).length, 2);
+    const conti2 = JSON.stringify(Object.fromEntries(Object.entries(mem.tabelle).map(([k, v]) => [k, v.length])));
+    await importa(mem, pagina());
+    uguale("7. sincronizzazione successiva dopo l'unione: nessuna riga nuova, nessun doppione", [JSON.stringify(Object.fromEntries(Object.entries(mem.tabelle).map(([k, v]) => [k, v.length]))) === conti2, visibili(mem).length], [true, 2]);
     const proroghe = (mem.tabelle.radar_aggiornamenti ?? []).filter((a) => a.tipo === "nuova");
     uguale("7. «nuova» registrata una sola volta per gara", proroghe.length, new Set(proroghe.map((p) => p.procedura_id)).size);
   }
@@ -364,7 +381,7 @@ async function principale() {
   atteso("0120: riusa la 0117 senza ridefinirla", !/unita_a|unita_esclusa_con/.test(sql.replace(/^.*$/m, "")) || !/add column if not exists unita_/.test(sql));
   atteso("0120: le fonti nuove nascono spente", /\('sintel', false, false\)/.test(sql) && /\('sardegnacat', false, true\)/.test(sql));
 
-  const codice = ["src/lib/radar/importa-regionali-pagina.ts", "src/lib/radar/importa-regionali.ts", "src/lib/radar/collegamenti.ts"].map(leggi).join("\n");
+  const codice = ["src/lib/radar/importa-fonti-pagina.ts", "src/lib/radar/importa-regionali-pagina.ts", "src/lib/radar/importa-regionali.ts", "src/lib/radar/collegamenti.ts"].map(leggi).join("\n");
   atteso("un solo sistema di unione: nessuna fusione che cancella o sposta righe", !/\.delete\(|delete from/i.test(codice));
   atteso("le fonti regionali scrivono con il motore di unione (unisciVersione, unisciLotti, collegaGare)", /unisciVersione/.test(codice) && /unisciLotti/.test(codice) && /collegaGare/.test(codice));
   atteso("il giro rispetta il blocco e il semaforo (occupata, nessuna scrittura)", /blocco_fino_a\.is\.null,blocco_fino_a\.lt\./.test(leggi("src/lib/radar/importa-regionali.ts")) && /"occupata"/.test(leggi("src/lib/radar/importa-regionali.ts")));

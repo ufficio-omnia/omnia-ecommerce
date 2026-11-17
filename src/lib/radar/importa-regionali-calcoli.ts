@@ -131,9 +131,3 @@ export function statisticheRegionaliVuote(): StatisticheRegionali {
 export function conta(m: Record<string, number>, k: string, n = 1): void {
   m[k] = (m[k] ?? 0) + n;
 }
-
-// Impronta salvata nella provenienza quando la fonte è NASCOSTA ai clienti e la gara ha già una fonte visibile: i dati non entrano nella
-// gara mostrata; quando la fonte diventa visibile, l'impronta diversa fa riapplicare la versione al giro successivo.
-export function improntaNonApplicata(impronta: string): string {
-  return `nascosta:${impronta}`;
-}

@@ -9,8 +9,9 @@
 --   - la 0109: valore_base (base d'asta di Sintel e SardegnaCAT), piattaforma_host, radar_fonti_stato.
 -- AGGIUNGE solo ciò che serve alle fonti nuove:
 --   1) radar_procedure.piattaforma_id: identificativo della procedura sulla piattaforma di gara («sardegnacat:1031830»), letto dalla
---      piattaforma stessa o dal collegamento ai documenti di TED e PVL. È la chiave ESATTA per unire in automatico la stessa gara letta da
---      due fonti quando manca il CIG (SardegnaCAT↔TED verificato il 16/11). Non è unica: prima dell'unione due gare possono averla uguale;
+--      piattaforma stessa o dal collegamento ai documenti di TED e PVL. È un numero TECNICO della piattaforma, non un identificativo
+--      ufficiale: serve SOLO a proporre SUGGERIMENTI di unione da far confermare a un amministratore, mai a unire in automatico
+--      (decisione dell'utente del 17/11/2026). Non è unica: due gare possono averla uguale finché non vengono unite;
 --   2) radar_procedure.tipo_opportunita e partecipazione: bando, manifestazione di interesse, indagine di mercato, iscrizione a un sistema
 --      di qualificazione (le procedure su invito e gli affidamenti diretti non entrano nell'archivio);
 --   3) radar_procedure.fonti: le fonti che hanno pubblicato la gara, tenute aggiornate dal database (trigger sulla provenienza), per
