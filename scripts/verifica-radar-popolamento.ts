@@ -12,7 +12,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { databaseInMemoria, type RigaMem } from "./lib/db-in-memoria";
-import { VERSIONE_REGOLE_SETTORI, descriviCorrezioneSettori } from "../src/lib/radar/settori";
+import { MOTIVO_NON_RICONOSCIUTO, REGOLA_NON_RICONOSCIUTO, VERSIONE_REGOLE_SETTORI, descriviCorrezioneSettori } from "../src/lib/radar/settori";
 import { REGOLA_NATURA } from "../src/lib/radar/classificazione-unita";
 import {
   categoriaGara,
@@ -170,7 +170,7 @@ async function principale() {
     const agg = riclassificaGara({ ...base, oggetto: REFEZIONE, cpv_principale: "55524000", settori: [], metodo_settore: null }, []);
     uguale("A. una gara che ACQUISISCE un settore si corregge (prima restava com'era)", [agg.tipo, agg.aggiunti, agg.tolti, agg.dopo], ["correzione", ["ristorazione"], [], { settori: ["ristorazione"], metodo: "cpv" }]);
     const tolta = riclassificaGara({ ...base, oggetto: PIZZA, cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "cpv" }, []);
-    uguale("A. una gara esclusa perde il settore, con la regola", [tolta.tipo, tolta.dopo, tolta.esclusioni.map((e) => e.regola), tolta.idFonte], ["correzione", { settori: [], metodo: null }, ["forniture_di_beni"], `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`]);
+    uguale("A. una gara esclusa perde il settore, con la regola", [tolta.tipo, tolta.dopo, tolta.esclusioni.map((e) => e.regola)], ["correzione", { settori: [], metodo: null }, ["forniture_di_beni"]]);
     uguale("A. gara pertinente invariata", riclassificaGara({ ...base, oggetto: MENSA, cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "cpv" }, []).tipo, "invariata");
     uguale("A. gara correlata (B) invariata nella colonna", riclassificaGara({ ...base, oggetto: RSA, cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "cpv" }, []).tipo, "invariata");
     const metodo = riclassificaGara({ ...base, oggetto: MENSA, cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "parole_chiave" }, []);
@@ -191,7 +191,10 @@ async function principale() {
     uguale("A. la frase per il cliente legge le regole anche con l'esecuzione in fondo", descriviCorrezioneSettori("17/11/2026", valoreRegistro(tolta.prima), valoreRegistro(tolta.dopo), id), "Il 17/11/2026 abbiamo tolto la gara da: ristorazione collettiva (Fornitura di beni senza un servizio del settore). Resta consultabile nell'archivio.");
     // frase della PVL per i settori aggiunti (09034f2), con l'identificativo che lo script scrive davvero («aggiunta», senza motivo)
     uguale("A. la frase per il cliente quando lo script AGGIUNGE un settore (identificativo vero dello script)", descriviCorrezioneSettori("18/11/2026", valoreRegistro(agg.prima), valoreRegistro(agg.dopo), idFonteRiclassificazione(agg, es)), "Il 18/11/2026 abbiamo aggiunto la gara a: ristorazione collettiva. Ora è in: ristorazione collettiva.");
-    atteso("A. nota del registro: tolte e aggiunte, entro 1000 caratteri; anche dal solo elenco delle esclusioni", notaCorrezione(tolta).includes("Tolta da: ristorazione collettiva") && notaCorrezione(agg).includes("Aggiunta a: ristorazione collettiva") && notaCorrezione(Array.from({ length: 50 }, () => ({ settore: "ristorazione" as const, regola: "x", motivo: "m".repeat(80) }))).length <= 1000);
+    atteso("A. nota del registro: tolte e aggiunte, entro 1000 caratteri anche con molte esclusioni", notaCorrezione(tolta).includes("Tolta da: ristorazione collettiva") && notaCorrezione(agg).includes("Aggiunta a: ristorazione collettiva") && notaCorrezione({ ...tolta, esclusioni: Array.from({ length: 50 }, () => ({ settore: "ristorazione" as const, regola: "x", motivo: "m".repeat(80) })) }).length <= 1000);
+    // nome e motivo della regola del settore non più riconosciuto: quelli di settori.ts (scelti con la PVL), anche nella frase per il cliente
+    const nr = riclassificaGara({ ...base, oggetto: "Servizi integrati di gestione documentale (prova sintetica)", cpv_principale: "79999100", settori: ["multiservizi"], metodo_settore: "parole_chiave" }, []);
+    uguale("A. «non_riconosciuto»: regola e motivo di settori.ts nella riga, nel registro e nella frase per il cliente", [nr.esclusioni[0]?.regola === REGOLA_NON_RICONOSCIUTO, nr.esclusioni[0]?.motivo === MOTIVO_NON_RICONOSCIUTO, descriviCorrezioneSettori("18/11/2026", valoreRegistro(nr.prima), valoreRegistro(nr.dopo), idFonteRiclassificazione(nr, es))], [true, true, `Il 18/11/2026 abbiamo tolto la gara da: multiservizi e gestione edifici (${MOTIVO_NON_RICONOSCIUTO}). Resta consultabile nell'archivio.`]);
     const stato = { settori: ["ristorazione", "pulizia"], metodo: "cpv" };
     uguale("A. registro: valore di prima leggibile per il ripristino; forma breve; illeggibile = nessun ripristino", [statoDaRegistro(valoreRegistro(stato)), statoDaRegistro('["pulizia"]'), statoDaRegistro("{rotto")], [stato, { settori: ["pulizia"], metodo: null }, null]);
   }

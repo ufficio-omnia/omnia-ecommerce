@@ -15,7 +15,7 @@
 //     di prima, la versione delle regole e l'ESECUZIONE, così si può annullare;
 //   - idempotenza: una gara già classificata con le regole correnti e non cambiata dopo («classificata_il» non precedente ad
 //     «aggiornata_il») non si ricalcola; una gara invariata non si riscrive.
-import { VERSIONE_REGOLE_SETTORI, idFonteCorrezioneSettori, nomeSettore, type Esclusione, type SettoreRadar } from "./settori";
+import { MOTIVO_NON_RICONOSCIUTO, REGOLA_NON_RICONOSCIUTO, VERSIONE_REGOLE_SETTORI, nomeSettore, type Esclusione, type SettoreRadar } from "./settori";
 import { classificaPerArchivio, type ClassificazioneArchivio, type LottoDaClassificare } from "./classificazione-unita";
 import { aggiornamentoClassificazioni, erroriRiga, righeDaClassificazione, statoDopoTentativo, type Aggiornamento, type RigaClassificazione, type RigaStato } from "./classificazioni-calcoli";
 
@@ -43,8 +43,6 @@ export type Riclassificazione = {
   soloMetodo: boolean;
   // perché i settori tolti sono stati tolti
   esclusioni: Esclusione[];
-  // le regole della correzione senza l'esecuzione («regole-settori-<versione>:<regole>», la forma dei controlli della PVL)
-  idFonte: string;
   classificazione: ClassificazioneArchivio;
 };
 
@@ -74,19 +72,20 @@ export function riclassificaGara(g: GaraDaRiclassificare, lotti: readonly LottoD
     const v = c.perSettore[s as SettoreRadar];
     if (v && v.livello === "C") return { settore: s as SettoreRadar, regola: v.regola, motivo: v.motivi[0] ?? v.regola };
     if (decisioni.some((d) => d.attiva && d.origine === "amministratore" && d.settore === s)) return { settore: s as SettoreRadar, regola: "decisione_amministratore", motivo: "Decisione dell'amministratore" };
-    return { settore: s as SettoreRadar, regola: "non_riconosciuto", motivo: "Né i CPV né l'oggetto indicano più il settore" };
+    // regola e motivo di settori.ts (nome scelto con la PVL il 17/11)
+    return { settore: s as SettoreRadar, regola: REGOLA_NON_RICONOSCIUTO, motivo: MOTIVO_NON_RICONOSCIUTO };
   });
   const tipo = aggiunti.length || tolti.length || soloMetodo || (!stessi(prima.settori, dopo.settori)) ? "correzione" : "invariata";
   // un settore tolto che le regole non vedono più affatto (né CPV né parole chiave): riga C con il motivo, così ogni esclusione è spiegata
   // anche nelle righe e la gara è «fuori dai settori monitorati», mai una gara classificata senza righe (prova a vuoto del 17/11: 26 gare)
   const perSettore = { ...c.perSettore };
   for (const e of esclusioni) {
-    if (e.regola !== "non_riconosciuto" || perSettore[e.settore]) continue;
+    if (e.regola !== REGOLA_NON_RICONOSCIUTO || perSettore[e.settore]) continue;
     const da = prima.metodo === "parole_chiave" ? "parole_chiave" : "cpv";
     perSettore[e.settore] = { livello: "C", sottocategoria: null, regola: e.regola, sottocategorie: [], regole: [e.regola], motivi: [e.motivo], da, cpv: [] };
   }
   const classificazione = perSettore === c.perSettore || Object.keys(perSettore).length === Object.keys(c.perSettore).length ? c : { ...c, perSettore, livello: c.livello ?? "C" };
-  return { tipo, prima, dopo, aggiunti, tolti, soloMetodo, esclusioni, idFonte: idFonteCorrezioneSettori(esclusioni), classificazione };
+  return { tipo, prima, dopo, aggiunti, tolti, soloMetodo, esclusioni, classificazione };
 }
 
 // Identificativo dell'esecuzione: l'istante con i millisecondi, senza «:» (il registro separa con «:» versione, regole ed esecuzione).
@@ -106,7 +105,7 @@ export function idFonteRiclassificazione(r: Pick<Riclassificazione, "esclusioni"
   const regole = [...new Set([...r.esclusioni.map((e) => e.regola), ...(r.aggiunti.length ? ["aggiunta"] : []), ...(r.soloMetodo ? ["metodo"] : [])])].sort();
   const testa = `${PREFISSO}${versione}:`;
   const coda = `:${esecuzione}`;
-  return testa + (regole.join("+") || "parole_chiave").slice(0, Math.max(1, 200 - testa.length - coda.length)) + coda;
+  return testa + (regole.join("+") || REGOLA_NON_RICONOSCIUTO).slice(0, Math.max(1, 200 - testa.length - coda.length)) + coda;
 }
 
 // Valore per il registro dei cambiamenti: settori e metodo, per poterli ripristinare entrambi.
@@ -131,9 +130,7 @@ export function statoDaRegistro(v: string | null): StatoSettori | null {
 const nome = (s: string) => nomeSettore(s as SettoreRadar).toLowerCase();
 
 // La nota del registro: che cosa cambia e perché, in parole semplici (massimo 1000 caratteri, il limite della colonna).
-export function notaCorrezione(x: readonly Esclusione[] | (Pick<Riclassificazione, "esclusioni" | "aggiunti" | "soloMetodo" | "dopo"> & { classificazione?: ClassificazioneArchivio })): string {
-  // anche il solo elenco delle esclusioni (forma di prima)
-  const r = Array.isArray(x) ? { esclusioni: x as readonly Esclusione[], aggiunti: [] as string[], soloMetodo: false, dopo: { settori: [], metodo: null } as StatoSettori, classificazione: undefined } : (x as Pick<Riclassificazione, "esclusioni" | "aggiunti" | "soloMetodo" | "dopo"> & { classificazione?: ClassificazioneArchivio });
+export function notaCorrezione(r: Pick<Riclassificazione, "esclusioni" | "aggiunti" | "soloMetodo" | "dopo"> & { classificazione?: ClassificazioneArchivio }): string {
   const parti: string[] = [];
   if (r.esclusioni.length) parti.push(`Tolta da: ${r.esclusioni.map((e) => `${nome(e.settore)} (${e.motivo})`).join(" · ")}`);
   if (r.aggiunti.length) parti.push(`Aggiunta a: ${r.aggiunti.map((s) => `${nome(s)}${r.classificazione?.perSettore[s as SettoreRadar]?.motivi[0] ? ` (${r.classificazione.perSettore[s as SettoreRadar]?.motivi[0]})` : ""}`).join(" · ")}`);
