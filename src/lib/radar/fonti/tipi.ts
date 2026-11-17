@@ -9,7 +9,7 @@
 //     fonte a sé quando l'istanza sarà accolta;
 //   - ogni campo di una gara conserva la fonte da cui viene (radar_procedure.provenienza_campi, migrazione 0115).
 
-export type IdFonte = "ted" | "pvl" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
+export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
 
 export type StatoFonte = "attiva" | "in_costruzione" | "transitoria" | "prevista";
 
@@ -55,6 +55,39 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     ],
     licenza: "Da verificare con ANAC e con il legale prima di ogni uso in produzione",
     porta: { bandi: true, esiti: true, cig: "sempre", documenti: "collegamento" },
+  },
+  // Fase B2a: piattaforme regionali. Testi senza dichiarazioni di copertura nazionale (decisione 9 del 16/11): ogni fonte dice quale parte
+  // copre, e le altre regioni non sono comprese.
+  {
+    id: "sintel",
+    nome: "Sintel, piattaforma di e-procurement della Regione Lombardia",
+    stato: "in_costruzione",
+    copertura: "Gare degli enti lombardi gestite su Sintel, anche sotto la soglia europea (bandi, manifestazioni di interesse, indagini di mercato)",
+    aggiornamento: "Ogni giorno, dopo il caricamento dei dati aperti della Regione",
+    limiti: [
+      "Comprende solo le gare gestite su Sintel dagli enti lombardi",
+      "La scadenza è indicata solo come giorno: l'ora va controllata sulla pagina della procedura",
+      "Il CPV è quello della categoria merceologica della piattaforma, non sempre quello del bando",
+      "L'importo è la base d'asta indicata nei dati aperti",
+      "Non comprende procedure su invito né affidamenti diretti",
+    ],
+    licenza: "Regione Lombardia – Open Data Lombardia (Sintel), licenza CC0 1.0, citando la fonte",
+    porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
+  },
+  {
+    id: "sardegnacat",
+    nome: "SardegnaCAT, piattaforma di e-procurement della Regione Sardegna",
+    stato: "in_costruzione",
+    copertura: "Gare degli enti sardi pubblicate su SardegnaCAT, anche sotto la soglia europea",
+    aggiornamento: "Più volte al giorno, dal feed pubblico dei bandi",
+    limiti: [
+      "Comprende solo le gare pubblicate su SardegnaCAT",
+      "Il CIG manca nelle procedure con più lotti",
+      "Non comprende procedure su invito né affidamenti diretti",
+      "Non ancora mostrata ai clienti: serve il parere legale sulla licenza del feed",
+    ],
+    licenza: "Regione Autonoma della Sardegna – SardegnaCAT: licenza non dichiarata, in attesa di parere legale",
+    porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
   {
     id: "anac_open_data",

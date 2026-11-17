@@ -14,7 +14,8 @@ import { REGIONI, nomeRegione } from "@/lib/radar/territorio";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import PannelloFiltri from "@/components/omnia-ai/opportunita/pannello-filtri";
-import FontiRicerca from "@/components/omnia-ai/opportunita/fonti-ricerca";
+import FontiRicerca, { type StatoFontePubblica } from "@/components/omnia-ai/opportunita/fonti-ricerca";
+import { fontiNascosteAiClienti, fontiVisibiliDa } from "@/lib/radar/fonti-nascoste";
 import { etichettaFonti } from "@/lib/radar/fonti-gara-calcoli";
 import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 
@@ -68,7 +69,8 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
 
   const [salvataggi, { data: righeFonti }, fontiGare] = await Promise.all([
     leggiSalvataggi(await createClient(), (risultato?.righe ?? []).map((r) => r.id)),
-    admin.from("radar_fonti_stato").select("fonte, attiva, dati_aggiornati_al, ultimo_successo_il").in("fonte", ["ted", "pvl"]).returns<{ fonte: "ted" | "pvl"; attiva: boolean; dati_aggiornati_al: string | null; ultimo_successo_il: string | null }[]>(),
+    // solo le fonti mostrabili ai clienti (0120: SardegnaCAT nascosta finché manca il parere legale)
+    admin.from("radar_fonti_stato").select("fonte, attiva, dati_aggiornati_al, ultimo_successo_il").in("fonte", fontiVisibiliDa(await fontiNascosteAiClienti())).returns<{ fonte: StatoFontePubblica["fonte"]; attiva: boolean; dati_aggiornati_al: string | null; ultimo_successo_il: string | null }[]>(),
     leggiFontiGare(admin, (risultato?.righe ?? []).map((r) => r.id)),
   ]);
   const statiFonti = (righeFonti ?? []).map((f) => ({ fonte: f.fonte, attiva: f.attiva, datiAl: f.dati_aggiornati_al, ultimoSuccesso: f.ultimo_successo_il }));

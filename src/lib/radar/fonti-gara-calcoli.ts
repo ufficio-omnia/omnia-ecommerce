@@ -23,6 +23,13 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
 
 const eFonte = eFonteUnita;
 
+// Una gara si mostra ai clienti solo se almeno una delle sue fonti è visibile (controllo di accettazione 6 dell'utente). Le gare di prima
+// della 0120 hanno le fonti riempite dalla migrazione; in mancanza vale la fonte della chiave.
+export function garaVisibileAiClienti(g: { fonti?: readonly string[] | null; chiave: string }, nascoste: ReadonlySet<string>): boolean {
+  const fonti = g.fonti && g.fonti.length > 0 ? g.fonti : [g.chiave.split(":")[0]];
+  return fonti.some((f) => !nascoste.has(f));
+}
+
 // Le fonti che il cliente può vedere: tutte meno quelle nascoste (radar_fonti_stato.nascosta_ai_clienti, migrazione 0120).
 export function fontiVisibili<T>(elementi: readonly T[], fonteDi: (x: T) => string, nascoste: ReadonlySet<string>): T[] {
   return elementi.filter((x) => !nascoste.has(fonteDi(x)));

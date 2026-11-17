@@ -18,6 +18,7 @@ import {
 } from "./ricerca-calcoli";
 import { aggiungiGiorni, giornoIso } from "./importa-ted-calcoli";
 import type { StatoProcedura } from "./importa-calcoli";
+import { fontiNascosteAiClienti, fontiVisibiliDa } from "./fonti-nascoste";
 
 export const COLONNE_RISULTATO =
   "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale, unita_a";
@@ -64,8 +65,10 @@ export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, ad
     if ((collegate ?? []).length) idDaCig = [...new Set(idDaCig.map((id) => collegate?.find((c) => c.id === id)?.unita_a ?? id))];
   }
 
-  // le gare collegate a un'altra (copie nascoste, 0117) non compaiono mai negli elenchi
-  let q = admin.from("radar_procedure").select(COLONNE_RISULTATO).is("unita_a", null).order("data_pubblicazione", { ascending: false }).order("id").limit(CANDIDATI_MASSIMI + 1);
+  // le gare collegate a un'altra (copie nascoste, 0117) non compaiono mai negli elenchi; né quelle che hanno SOLO fonti non ancora mostrabili
+  // ai clienti (0120: SardegnaCAT finché manca il parere legale)
+  const visibili = fontiVisibiliDa(await fontiNascosteAiClienti());
+  let q = admin.from("radar_procedure").select(COLONNE_RISULTATO).is("unita_a", null).overlaps("fonti", visibili).order("data_pubblicazione", { ascending: false }).order("id").limit(CANDIDATI_MASSIMI + 1);
   if (idDaCig) q = q.in("id", idDaCig);
   if (domanda.codiceFiscale) q = q.eq("sa_codice_fiscale", domanda.codiceFiscale);
   if (domanda.tsquery) q = q.textSearch("ricerca", domanda.tsquery, { config: "italian" });

@@ -15,6 +15,7 @@ import { ATTRIBUZIONE_FONTE, NOME_FONTE, descriviAvvisoLetto, etichettaFonti, fo
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
+import { ETICHETTA_OPPORTUNITA } from "@/lib/radar/opportunita-calcoli";
 
 // Scheda di una gara del Radar (fase B1): «In sintesi» con le quattro informazioni chiave, panoramica senza modello (solo i dati
 // dell'avviso), lotti, soglia UE spiegata, fonti verificabili (avviso ufficiale, versioni lette, date di verifica), cambiamenti rilevati.
@@ -162,11 +163,14 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           <Dato etichetta="Chi" valore={g.sa_denominazione ?? NON_INDICATO} nota={[g.sa_comune ? `${g.sa_comune}${g.sa_provincia ? ` (${g.sa_provincia})` : ""}` : null, g.sa_codice_fiscale ? `C.F. ${g.sa_codice_fiscale}` : null].filter(Boolean).join(" · ") || undefined} />
           <Dato
             etichetta="Quanto"
-            valore={g.valore_stimato !== null ? `${euro(g.valore_stimato)} valore stimato` : `Valore stimato ${NON_INDICATO}`}
+            valore={g.valore_stimato !== null ? `${euro(g.valore_stimato)} valore stimato` : g.valore_base !== null ? `${euro(g.valore_base)} base d'asta` : `Valore stimato ${NON_INDICATO}`}
             nota={[
               g.durata_mesi ? `${g.durata_mesi} mesi` : null,
               g.n_lotti && g.n_lotti > 1 ? `${g.n_lotti} lotti` : null,
               g.valore_stimato !== null ? `dato ${fonteDi("valore_stimato")}: il valore stimato comprende di solito opzioni e rinnovi, non è la base di gara` : null,
+              // fase B2a: le piattaforme regionali indicano la base d'asta, non il valore stimato complessivo
+              g.valore_stimato !== null && g.valore_base !== null ? `base d'asta ${euro(g.valore_base)} (dato ${fonteDi("valore_base")})` : g.valore_stimato === null && g.valore_base !== null ? `dato ${fonteDi("valore_base")}, come indicato dalla piattaforma` : null,
+              g.tipo_opportunita && g.tipo_opportunita !== "bando" ? ETICHETTA_OPPORTUNITA[g.tipo_opportunita as keyof typeof ETICHETTA_OPPORTUNITA] : null,
             ]
               .filter(Boolean)
               .join(" · ")}

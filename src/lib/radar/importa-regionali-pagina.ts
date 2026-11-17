@@ -23,7 +23,7 @@ type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | nu
 const COLONNE_LOTTO = "procedura_id, numero_lotto, cig, oggetto, cpv_principale, cpv_tutti, valore_stimato, durata_mesi, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, url_documenti";
 type LottoDb = LottoUnito & { procedura_id: string; valore_stimato: number | string | null };
 
-const numero = (v: number | string | null) => (v === null ? null : Number(v));
+const numero = (v: number | string | null | undefined) => (v === null || v === undefined ? null : Number(v));
 
 type Destinazione = { proceduraId: string | null; via: "procedura" | "piattaforma" | "cig" | "nuova"; suCollegata: boolean; altre: { id: string; motivo: string }[] };
 
