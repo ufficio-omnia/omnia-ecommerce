@@ -61,6 +61,8 @@ export const INTERRUTTORI_SPENTI: Record<string, string[]> = {
   OMNIA_AI_PIANO_LAVORO_ACQUISTO_PROVA: ["", "0"],
   OMNIA_AI_RADAR_APERTO: ["", "0"],
   OMNIA_AI_PIANO_LAVORO_APERTO: ["", "0"],
+  // PVL (fase B1-bis): i giri programmati partono solo con «attivo»; sull'anteprima mai.
+  RADAR_PVL_CRON: ["", "0", "spento"],
 };
 
 // Segreti propri dell'anteprima (casuali, diversi da quelli di produzione). CRON_SECRET è obbligatorio: una rotta dei cron

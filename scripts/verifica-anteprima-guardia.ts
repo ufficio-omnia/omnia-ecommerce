@@ -112,7 +112,7 @@ async function principale() {
 
   // 5. Servizi esterni, interruttori, segreti.
   for (const k of Object.keys(SERVIZI_FINTI)) blocca(`${k} con un valore vero (non finto) → bloccato`, { [k]: `valore-non-finto-${k.toLowerCase()}` }, k);
-  const accesi: Record<string, string> = { DEMO_ADS_VALIDATE_ONLY: "0", OMNIA_AI_MODELLO_PROVA: "leggero", DEMO_GA4_MP_DEBUG: "acceso" };
+  const accesi: Record<string, string> = { DEMO_ADS_VALIDATE_ONLY: "0", OMNIA_AI_MODELLO_PROVA: "leggero", DEMO_GA4_MP_DEBUG: "acceso", RADAR_PVL_CRON: "attivo" };
   for (const k of Object.keys(INTERRUTTORI_SPENTI)) blocca(`${k} acceso → bloccato`, { [k]: accesi[k] ?? "1" }, k);
   blocca("CRON_SECRET mancante → bloccato", { CRON_SECRET: undefined }, "CRON_SECRET");
   blocca("CRON_SECRET corto → bloccato", { CRON_SECRET: "corto" }, "CRON_SECRET");
@@ -199,6 +199,22 @@ async function principale() {
   atteso("lanciatore locale: simula NEXT_PUBLIC_VERCEL_ENV=preview come Vercel", fs.readFileSync(path.join(RADICE, "scripts/avvia-anteprima-locale.mjs"), "utf8").includes('NEXT_PUBLIC_VERCEL_ENV: "preview"'));
   const vercel = JSON.parse(fs.readFileSync(path.join(RADICE, "vercel.json"), "utf8")) as { crons: { path: string }[] };
   atteso("vercel.json invariato: 5 cron (Vercel li esegue solo in produzione, mai sulle anteprime)", vercel.crons.length === 5);
+
+  // 12. Cron (compreso quello della PVL, non programmato): tutti passano dal proxy (503 se l'ambiente non è valido) e chiedono CRON_SECRET.
+  const matcher = (proxy.match(/matcher:\s*\[\s*"([^"]+)"/) ?? [])[1] ?? "";
+  atteso("il proxy copre anche le rotte /api (il matcher esclude solo i file statici)", matcher.startsWith("/((?!_next/static|_next/image|favicon.ico") && !matcher.includes("api"));
+  atteso("vercel.json non programma il cron della PVL", !vercel.crons.some((c) => c.path.includes("radar-pvl")));
+  const cartellaCron = path.join(RADICE, "src/app/api/cron");
+  const rotteCron = fs.readdirSync(cartellaCron).filter((d) => fs.existsSync(path.join(cartellaCron, d, "route.ts")));
+  const senzaSegreto = rotteCron.filter((d) => {
+    const codice = fs.readFileSync(path.join(cartellaCron, d, "route.ts"), "utf8");
+    const inizio = codice.indexOf("export async function GET(");
+    const corpo = codice.slice(inizio, inizio + 400);
+    return inizio < 0 || !/CRON_SECRET/.test(corpo);
+  });
+  atteso(`ogni rotta dei cron (${rotteCron.length}, compresa radar-pvl) controlla CRON_SECRET come prima cosa`, rotteCron.includes("radar-pvl") && senzaSegreto.length === 0, senzaSegreto.join(", "));
+  const pvl = fs.readFileSync(path.join(cartellaCron, "radar-pvl/route.ts"), "utf8");
+  atteso("cron della PVL: senza RADAR_PVL_CRON=attivo non fa nulla (e sull'anteprima la guardia lo vuole spento)", pvl.indexOf("cronAutorizzato(") < pvl.indexOf('process.env.RADAR_PVL_CRON !== "attivo"') && pvl.indexOf('process.env.RADAR_PVL_CRON !== "attivo"') < pvl.indexOf("eseguiImportazionePvl("));
 
   if (fallimenti.length) {
     console.error(`\n${fallimenti.length} controlli della guardia dell'anteprima NON superati.`);
