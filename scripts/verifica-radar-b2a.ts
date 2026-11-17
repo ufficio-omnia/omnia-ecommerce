@@ -25,6 +25,8 @@ import { ISTANZE_AFLINK } from "../src/lib/radar/fonti/aflink-calcoli";
 import { PRECEDENZA_FONTI, unisciVersione } from "../src/lib/radar/unione-calcoli";
 import { scrittureRadarConsentite } from "../src/lib/radar/ambiente";
 import { opportunitaDaTipoAvviso } from "../src/lib/radar/opportunita-calcoli";
+import { applicaPaginaBandi, applicaPaginaEsiti, gareCheRestano } from "../src/lib/radar/importa";
+import { eEsclusione, leggiBandoTed, leggiEsitoTed, type EsitoTed } from "../src/lib/radar/fonti/ted-calcoli";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -267,6 +269,87 @@ async function principale() {
     const nuova = { ...precedente, scadenza_offerte: null, scadenza_ora_indicata: false, scadenza_fonte: "solo giorno" };
     const u = unisciVersione(precedente, { _versione: { f: "ted", id: "700001-2026", g: "2026-11-01", t: null, ted: "700001-2026" }, scadenza: { f: "ted", id: "700001-2026", g: "2026-11-01", t: null, ted: "700001-2026" } }, nuova, { fonte: "sintel", id: "1@2026-11-17", giorno: "2026-11-17", istante: null, ted: null }, ISO);
     uguale("4. stesso giorno senza ora da un'altra fonte: l'ora indicata resta", [u.riga.scadenza_offerte, u.cambiamenti.length], ["2026-12-10T09:00:00.000Z", 0]);
+  }
+  {
+    // TED (scrittura di B1, importa.ts): una gara TED assorbita da un'altra gara TED (stessa gara pubblicata due volte, unita per CIG).
+    // La nuova versione e l'esito della sua procedura vanno alla gara che resta, come nella scrittura unica (rilievo C1); la copia non cambia.
+    const avviso = (numero: string, p: Record<string, unknown> = {}): Record<string, unknown> => ({
+      "publication-number": numero,
+      "notice-identifier": `sintetico-${numero}`,
+      "notice-version": 1,
+      "notice-type": "cn-standard",
+      "publication-date": "2026-11-10+01:00",
+      "procedure-identifier": "proc-X",
+      "buyer-name": { ita: ["COMUNE DI PROVASINTETICA"] },
+      "organisation-identifier-buyer": ["00000000001"],
+      "buyer-country-sub": ["ITG2B"],
+      "title-proc": { ita: "Servizio di ristorazione scolastica (prova sintetica)" },
+      "title-lot": { ita: ["Ristorazione (prova sintetica)"] },
+      "identifier-lot": ["LOT-0001"],
+      "main-classification-proc": ["55524000"],
+      "main-classification-lot": ["55524000"],
+      "classification-cpv": ["55524000"],
+      "estimated-value-proc": "2000000.00",
+      "estimated-value-cur-proc": "EUR",
+      "estimated-value-lot": ["2000000.00"],
+      "estimated-value-cur-lot": ["EUR"],
+      "deadline-receipt-tender-date-lot": ["2026-12-20+01:00"],
+      "deadline-receipt-tender-time-lot": ["10:00:00+01:00"],
+      "procedure-type": "open",
+      "contract-nature-main-proc": "services",
+      ...p,
+    });
+    const iniziali = () =>
+      databaseInMemoria({
+        radar_procedure: [garaTed("A", { chiave: "ted:proc-A" }), garaTed("X", { chiave: "ted:proc-X", unita_a: "A", unita_il: ISO, unita_motivo: "stesso CIG (prova sintetica)" })],
+        radar_lotti: [lottoTed("A", { cig: "PRV00000A1" }), lottoTed("X")],
+        radar_procedure_fonti: [{ ...provTed("A", "700001-2026"), id_procedura_fonte: "proc-A" }, { ...provTed("X", "700400-2026"), id_procedura_fonte: "proc-X" }],
+        radar_aggiornamenti: [],
+        omnia_ai_radar_gare_aggiunte: [],
+      });
+    const mem = iniziali();
+    const copia = JSON.stringify(gara(mem, "X"));
+    const bando = leggiBandoTed(avviso("700402-2026"));
+    atteso("4. (preparazione) l'avviso TED sintetico è un bando della procedura della gara assorbita", !eEsclusione(bando) && bando.record.chiaveProcedura === "ted:proc-X");
+    const e = await applicaPaginaBandi(mem.client, [bando], "incrementale", ADESSO, misure());
+    const proroghe = mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "proroga");
+    uguale(
+      "4. TED: la nuova versione di una gara assorbita va alla gara che resta (proroga registrata lì, una volta, notificabile), nessuna gara nuova",
+      [e.nuove, e.aggiornate, gara(mem, "A").scadenza_giorno, proroghe.map((p) => [p.procedura_id, p.notificabile]), mem.tabelle.radar_procedure.length],
+      [0, 1, "2026-12-20", [["A", true]], 2],
+    );
+    uguale("4. TED: la copia assorbita resta com'era", JSON.stringify(gara(mem, "X")) === copia, true);
+    uguale("4. TED: l'avviso nuovo è registrato sulla gara che resta", mem.tabelle.radar_procedure_fonti.find((p) => p.id_fonte === "700402-2026")?.procedura_id, "A");
+    uguale("4. TED: i lotti della gara che resta si uniscono, non si sovrascrivono (il suo CIG resta)", mem.tabelle.radar_lotti.filter((l) => l.procedura_id === "A").map((l) => l.cig), ["PRV00000A1"]);
+    const esito = leggiEsitoTed(avviso("700403-2026", { "notice-type": "can-standard", "winner-selection-status": ["selec-w"] })) as EsitoTed;
+    await applicaPaginaEsiti(mem.client, [esito], "incrementale", ADESSO, misure());
+    const esiti = mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "esito");
+    uguale("4. TED: l'esito di una gara assorbita va alla gara che resta (stato e registro lì, notificabile); la copia non cambia", [gara(mem, "A").stato, esiti.map((a) => [a.procedura_id, a.notificabile]), JSON.stringify(gara(mem, "X")) === copia], ["aggiudicata", [["A", true]], true]);
+    const prima = JSON.stringify(mem.tabelle);
+    const e2 = await applicaPaginaBandi(mem.client, [bando], "incrementale", ADESSO, misure());
+    await applicaPaginaEsiti(mem.client, [esito], "incrementale", ADESSO, misure());
+    uguale("4. TED: rileggere gli stessi avvisi non scrive nulla", [e2.invariati, JSON.stringify(mem.tabelle) === prima], [1, true]);
+    // gara TED non collegata: nessuna lettura in più, comportamento di sempre
+    const mem2 = databaseInMemoria({ radar_procedure: [garaTed("A", { chiave: "ted:proc-X" })], radar_lotti: [lottoTed("A")], radar_procedure_fonti: [{ ...provTed("A", "700400-2026"), id_procedura_fonte: "proc-X" }], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+    await applicaPaginaBandi(mem2.client, [bando], "incrementale", ADESSO, misure());
+    uguale("4. TED: gara non collegata, la nuova versione si applica come sempre", gara(mem2, "A").scadenza_giorno, "2026-12-20");
+    const norm = (r: Record<string, unknown>) => ({ id: String(r.id), unita_a: (r.unita_a as string | null) ?? null });
+    const m0 = misure();
+    const r0 = await gareCheRestano(iniziali().client, [{ id: "A", unita_a: null }], "id, unita_a", norm, m0);
+    const m1 = misure();
+    const r1 = await gareCheRestano(iniziali().client, [{ id: "A", unita_a: null }, { id: "X", unita_a: "A" }], "id, unita_a", norm, m1);
+    uguale("4. TED: senza gare collegate la risoluzione non fa nessuna lettura; con una gara collegata una sola, e trova la gara che resta", [r0.size, m0.richiesteDb, m1.richiesteDb, r1.get("X")?.id], [0, 0, 1, "A"]);
+    // difesa: se la gara che resta non si trova, la versione resta sulla gara collegata ma NON notifica nessuno (la notifica è della gara che resta)
+    const mem3 = databaseInMemoria({
+      radar_procedure: [garaTed("X", { chiave: "ted:proc-X", unita_a: "MANCANTE" })],
+      radar_lotti: [lottoTed("X")],
+      radar_procedure_fonti: [{ ...provTed("X", "700400-2026"), id_procedura_fonte: "proc-X" }],
+      radar_aggiornamenti: [],
+      omnia_ai_radar_gare_aggiunte: [],
+    });
+    await applicaPaginaBandi(mem3.client, [bando], "incrementale", ADESSO, misure());
+    await applicaPaginaEsiti(mem3.client, [esito], "incrementale", ADESSO, misure());
+    uguale("4. TED: gara collegata senza gara che resta raggiungibile: cambiamenti registrati ma mai notificabili", mem3.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "proroga" || a.tipo === "esito").map((a) => [a.tipo, a.notificabile]), [["proroga", false], ["esito", false]]);
   }
 
   // ═════ 5. collegamenti conservati con gare monitorate, salvate e aggiunte a mano (e progetti e documenti) ═════

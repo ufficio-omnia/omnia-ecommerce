@@ -72,8 +72,39 @@ export function blocchi<T>(v: readonly T[], n: number): T[][] {
   return out;
 }
 
-type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | null; provenienza_campi?: ProvenienzaCampi | null };
-type RigaArchivio = RigaProcedura & { id: string; provenienza_campi: ProvenienzaCampi | null };
+type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | null; provenienza_campi?: ProvenienzaCampi | null; unita_a?: string | null };
+type RigaArchivio = RigaProcedura & { id: string; provenienza_campi: ProvenienzaCampi | null; unita_a?: string | null };
+
+// Gare collegate a un'altra (0117): ogni gara trovata si risolve nella gara che resta, come nella scrittura unica (importa-fonti-pagina.ts,
+// rilievo C1), così una nuova versione o un esito TED arriva alla gara che il cliente vede. Le unioni non creano catene (collegamenti.ts);
+// per prudenza si scende al massimo di 3 passi. Una lettura per passo, e solo se qualche gara trovata è collegata (di solito nessuna).
+// Restituisce: id della gara trovata → gara che resta.
+export async function gareCheRestano<T extends { id: string; unita_a?: string | null }>(
+  admin: SupabaseClient,
+  trovate: readonly T[],
+  colonne: string,
+  normalizza: (r: Record<string, unknown>) => T,
+  misure: Misure,
+): Promise<Map<string, T>> {
+  const out = new Map<string, T>();
+  let daRisolvere = trovate.filter((r) => !!r.unita_a).map((r) => ({ origine: r.id, verso: r.unita_a as string }));
+  for (let passo = 0; passo < 3 && daRisolvere.length > 0; passo++) {
+    const perId = new Map<string, T>();
+    for (const b of blocchi([...new Set(daRisolvere.map((d) => d.verso))], 80)) {
+      const { data } = await misura(misure, "gare che restano dopo un collegamento", () => admin.from("radar_procedure").select(colonne).in("id", b).returns<Record<string, unknown>[]>());
+      for (const r of data ?? []) perId.set(String(r.id), normalizza(r));
+    }
+    const ancora: { origine: string; verso: string }[] = [];
+    for (const d of daRisolvere) {
+      const r = perId.get(d.verso);
+      if (!r) continue;
+      out.set(d.origine, r);
+      if (r.unita_a) ancora.push({ origine: d.origine, verso: r.unita_a });
+    }
+    daRisolvere = ancora;
+  }
+  return out;
+}
 
 function normalizzaRiga(r: RigaDb): RigaArchivio {
   return { ...r, valore_stimato: r.valore_stimato === null ? null : Number(r.valore_stimato), provenienza_campi: r.provenienza_campi ?? null };
@@ -120,7 +151,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
   const chiavi = [...new Set(daApplicare.map((v) => v.record.chiaveProcedura))];
   const esistenti = new Map<string, RigaArchivio>();
   for (const b of blocchi(chiavi, 80)) {
-    const { data } = await misura(misure, "lettura delle procedure", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi`).in("chiave", b).returns<RigaDb[]>());
+    const { data } = await misura(misure, "lettura delle procedure", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi, unita_a`).in("chiave", b).returns<RigaDb[]>());
     for (const r of data ?? []) esistenti.set(r.chiave, normalizzaRiga(r));
   }
   const senzaGara = daApplicare.filter((v) => !esistenti.has(v.record.chiaveProcedura));
@@ -142,7 +173,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     const ids = [...new Set(senzaGara.map(garaDi).filter((x): x is string => !!x))];
     const perId = new Map<string, RigaArchivio>();
     for (const b of blocchi(ids, 80)) {
-      const { data } = await misura(misure, "lettura delle gare PVL da unire", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi`).in("id", b).returns<RigaDb[]>());
+      const { data } = await misura(misure, "lettura delle gare PVL da unire", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi, unita_a`).in("id", b).returns<RigaDb[]>());
       for (const r of data ?? []) perId.set(r.id, normalizzaRiga(r));
     }
     for (const v of senzaGara) {
@@ -150,6 +181,16 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       const r = id ? perId.get(id) : undefined;
       // la chiave TED della procedura punta alla gara già esistente (che conserva la sua chiave)
       if (r) esistenti.set(v.record.chiaveProcedura, r);
+    }
+  }
+  // 2bis) gare collegate a un'altra (0117): la versione va alla gara che resta (che conserva la sua chiave)
+  const restaDi = await gareCheRestano(admin, [...esistenti.values()], `${COLONNE_RIGA}, provenienza_campi, unita_a`, (r) => normalizzaRiga(r as RigaDb), misure);
+  const risolte = new Set<string>();
+  for (const [k, r] of esistenti) {
+    const resta = restaDi.get(r.id);
+    if (resta) {
+      esistenti.set(k, resta);
+      risolte.add(k);
     }
   }
 
@@ -162,12 +203,16 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     ultimaApplicata: boolean;
     cambiamenti: (Cambiamento & { idFonte: string })[];
     avvisi: BandoTed[];
+    // la gara è stata raggiunta passando da una gara collegata: i lotti si uniscono a quelli della gara che resta, non si sovrascrivono
+    risolta: boolean;
   };
   const stati = new Map<string, Stato>();
   for (const v of [...daApplicare].sort((a, b) => confronta(a.meta, b.meta))) {
-    const chiave = v.record.chiaveProcedura;
-    const iniziale = esistenti.get(chiave) ?? null;
-    const s = stati.get(chiave) ?? { iniziale, riga: iniziale, provenienza: iniziale?.provenienza_campi ?? null, cambiata: false, bando: null, ultimaApplicata: false, cambiamenti: [], avvisi: [] };
+    const iniziale = esistenti.get(v.record.chiaveProcedura) ?? null;
+    // una sola unione per gara: due procedure TED che arrivano alla stessa gara (per esempio la gara che resta) si uniscono in sequenza
+    const chiave = iniziale?.chiave ?? v.record.chiaveProcedura;
+    const s = stati.get(chiave) ?? { iniziale, riga: iniziale, provenienza: iniziale?.provenienza_campi ?? null, cambiata: false, bando: null, ultimaApplicata: false, cambiamenti: [], avvisi: [], risolta: false };
+    if (risolte.has(v.record.chiaveProcedura)) s.risolta = true;
     s.avvisi.push(v);
     // stesse regole di prima per le gare di sola fonte TED (unisciVersione le rispetta); regole di unione se c'è anche la PVL
     const u = unisciVersione(s.riga, s.provenienza, rigaDaBando(v, null, adesso), versioneTed(v), iso);
@@ -210,7 +255,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
 
   // 4) lotti delle versioni applicate (chiave: procedura + numero del lotto). Un CIG già usato da un'ALTRA procedura non si assegna.
   //    Nelle gare che hanno anche la PVL i lotti si uniscono (CIG e documenti della PVL restano).
-  const conPvl = daScrivere.filter((s) => haAltreFonti(s.iniziale));
+  const conPvl = daScrivere.filter((s) => haAltreFonti(s.iniziale) || s.risolta);
   const lottiPvl = new Map<string, LottoUnito[]>();
   const idsPvl = conPvl.map((s) => s.iniziale?.id).filter((x): x is string => !!x);
   for (const b of blocchi(idsPvl, 80)) {
@@ -245,7 +290,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         scadenza_fonte: b.lottiScadenze[i]?.fonte ?? null,
         url_documenti: b.lottiDocumenti[i] ?? null,
       }));
-    if (haAltreFonti(s.iniziale)) {
+    if (haAltreFonti(s.iniziale) || s.risolta) {
       const u = unisciLotti(lottiPvl.get(id) ?? [], nuovi, "ted", s.ultimaApplicata);
       esito.cigScartati += u.cigScartati;
       const prima = s.iniziale as RigaArchivio;
@@ -320,7 +365,8 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         valore_nuovo: c.dopo?.slice(0, 2000) ?? null,
         fonte: "ted",
         id_fonte: c.idFonte,
-        notificabile: modo === "incrementale" && (eraAperta || aperta(r.stato, scadenzaOra, adesso)),
+        // mai su una gara collegata a un'altra: la notifica è della gara che resta
+        notificabile: modo === "incrementale" && !prima?.unita_a && (eraAperta || aperta(r.stato, scadenzaOra, adesso)),
       });
     }
     return righe;
@@ -377,10 +423,10 @@ export async function applicaPaginaEsiti(admin: SupabaseClient, esiti: EsitoTed[
   esito.invariati = conStato.length - nuovi.length;
   if (nuovi.length === 0) return esito;
 
-  const procedure = new Map<string, { id: string; stato: StatoProcedura }>();
+  const procedure = new Map<string, { id: string; stato: StatoProcedura; unita_a?: string | null }>();
   for (const b of blocchi([...new Set(nuovi.map((e) => chiaveProceduraTed(e.meta.procedureId)))], 80)) {
-    const { data } = await misura(misure, "lettura delle procedure per gli esiti", () => admin.from("radar_procedure").select("id, chiave, stato").in("chiave", b).returns<{ id: string; chiave: string; stato: StatoProcedura }[]>());
-    for (const r of data ?? []) procedure.set(r.chiave, { id: r.id, stato: r.stato });
+    const { data } = await misura(misure, "lettura delle procedure per gli esiti", () => admin.from("radar_procedure").select("id, chiave, stato, unita_a").in("chiave", b).returns<{ id: string; chiave: string; stato: StatoProcedura; unita_a: string | null }[]>());
+    for (const r of data ?? []) procedure.set(r.chiave, { id: r.id, stato: r.stato, unita_a: r.unita_a });
   }
   // gare arrivate prima dalla PVL e poi unite a TED: si trovano con l'identificativo della procedura TED salvato nella provenienza
   const mancanti = [...new Set(nuovi.map((e) => e.meta.procedureId).filter((p) => !procedure.has(chiaveProceduraTed(p))))];
@@ -392,11 +438,21 @@ export async function applicaPaginaEsiti(admin: SupabaseClient, esiti: EsitoTed[
     }
     const ids = [...new Set(perProc.values())];
     for (const b of blocchi(ids, 100)) {
-      const { data } = await misura(misure, "lettura dello stato delle gare unite", () => admin.from("radar_procedure").select("id, stato").in("id", b).returns<{ id: string; stato: StatoProcedura }[]>());
-      const stati = new Map((data ?? []).map((r) => [r.id, r.stato]));
-      for (const [proc, id] of perProc) if (stati.has(id)) procedure.set(chiaveProceduraTed(proc), { id, stato: stati.get(id) as StatoProcedura });
+      const { data } = await misura(misure, "lettura dello stato delle gare unite", () => admin.from("radar_procedure").select("id, stato, unita_a").in("id", b).returns<{ id: string; stato: StatoProcedura; unita_a: string | null }[]>());
+      const stati = new Map((data ?? []).map((r) => [r.id, r]));
+      for (const [proc, id] of perProc) {
+        const r = stati.get(id);
+        if (r) procedure.set(chiaveProceduraTed(proc), { id, stato: r.stato, unita_a: r.unita_a });
+      }
     }
   }
+  // gare collegate a un'altra (0117): l'esito va alla gara che resta (come la versione nuova del bando)
+  const restaEsiti = await gareCheRestano(admin, [...procedure.values()], "id, stato, unita_a", (r) => ({ id: String(r.id), stato: r.stato as StatoProcedura, unita_a: (r.unita_a as string | null) ?? null }), misure);
+  for (const [k, p] of procedure) {
+    const resta = restaEsiti.get(p.id);
+    if (resta) procedure.set(k, resta);
+  }
+  const ancoraCollegate = new Set([...procedure.values()].filter((p) => !!p.unita_a).map((p) => p.id));
 
   const cambi = new Map<string, { id: string; prima: StatoProcedura; dopo: StatoProcedura; idFonte: string }>();
   const provenienza: Record<string, unknown>[] = [];
@@ -422,7 +478,7 @@ export async function applicaPaginaEsiti(admin: SupabaseClient, esiti: EsitoTed[
   for (const b of blocchi(provenienza, 200)) {
     await misura(misure, "provenienza degli esiti", () => admin.from("radar_procedure_fonti").upsert(b, { onConflict: "fonte,id_fonte" }));
   }
-  const righe = [...cambi.values()].map((c) => ({ procedura_id: c.id, tipo: "esito", campo: "stato", valore_precedente: c.prima, valore_nuovo: c.dopo, fonte: "ted", id_fonte: c.idFonte, notificabile: modo === "incrementale" }));
+  const righe = [...cambi.values()].map((c) => ({ procedura_id: c.id, tipo: "esito", campo: "stato", valore_precedente: c.prima, valore_nuovo: c.dopo, fonte: "ted", id_fonte: c.idFonte, notificabile: modo === "incrementale" && !ancoraCollegate.has(c.id) }));
   for (const b of blocchi(righe, 200)) {
     await misura(misure, "registro degli esiti", () => admin.from("radar_aggiornamenti").upsert(b, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true }));
   }
