@@ -303,6 +303,10 @@ const OPERATIVO =
 export const CPV_CON_CONTESTO: readonly string[] = ["55410000", "55400000", "55330000", "55310000", "55311000", "55312000"];
 const NOMINA_RISTORAZIONE =
   /\b(bar|caffetteri\w*|ristorant\w*|ristorazion\w*|ristoro|punt\w* (di )?ristoro|somministrazion\w*|mens[ae]|refezion\w*|past[oi]|catering|tavola (calda|fredda)|enotec\w*|distributor\w* automatic\w*|vending|food beverage|locanda|trattori\w*|pizzeri\w*)\b/;
+// «chiosco» nomina il servizio anche lui (decisione dell'utente del 17/11 sul caso Sintel 225696739, Taino: «concessione del chiosco
+// ubicato nel parco comunale» con il CPV del bar), ma non se l'oggetto parla di edicola, giornali o fiori: il chiosco è un'altra attività
+const CHIOSCO = /\bchiosc\w*\b/;
+const CHIOSCO_NON_RISTORO = /\b(edicol\w*|giornali|quotidiani|riviste|fiori|fiorai\w*|fiorist\w*)\b/;
 
 const MOVIMENTAZIONE = /\b(facchinagg\w*|trasloc\w*|movimentazion\w*|carico|scarico|magazzin\w*|immagazzin\w*|stoccaggi\w*|logistic\w*|manovalanza|smontaggi\w*|montaggi\w*|allestiment\w*|sgomber\w*|smistament\w*|imballagg\w*)\b/;
 
@@ -312,11 +316,12 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     // gara è C; ma se l'oggetto descrive una gestione più ampia (struttura, evento, finanza di progetto…), la ristorazione è accessoria: B
     id: "cpv_nuovi_senza_oggetto",
     settori: ["ristorazione"],
-    cerca: new RegExp(`^(?!.*${NOMINA_RISTORAZIONE.source})`),
+    // il testo è già normalizzato in una riga: esclude se non nomina il servizio E non c'è un chiosco senza edicola, giornali o fiori
+    cerca: new RegExp(`^(?!.*${NOMINA_RISTORAZIONE.source})(?!(?!.*${CHIOSCO_NON_RISTORO.source}).*${CHIOSCO.source})`),
     salvo: null,
     condizione: (c) => c.delSettore.length > 0 && c.delSettore.every((x) => CPV_CON_CONTESTO.includes(x)),
     cedeAlleCorrelazioni: true,
-    motivo: "Solo un CPV di bar, caffetteria o ristorazione con cameriere, ma l'oggetto non nomina bar, caffetteria, ristorante, punto ristoro, somministrazione o mensa",
+    motivo: "Solo un CPV di bar, caffetteria o ristorazione con cameriere, ma l'oggetto non nomina bar, caffetteria, ristorante, punto ristoro, chiosco, somministrazione o mensa",
     casi: ["Concessione di spazi commerciali presso la stazione marittima"],
   },
   {
@@ -504,9 +509,11 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
     // non «servizi integrati» da solo: «servizi integrati di pulizia e sanificazione», «servizi integrati di vigilanza armata» sono appalti
     // del settore (casi reali di TED, 17/11/2026)
     cerca: /\b(global service|facility management|multiservizi(?! (spa|s p a|srl|s r l|scarl|s c a r l)\b)|gestione (globale|integrata|integrale|complessiva|omnicomprensiva|operativa integrata))\b/,
-    // l'integrazione è tra servizi dello stesso settore: «gestione integrata dei servizi di sicurezza e portierato»
+    // l'integrazione è tra servizi dello stesso settore: «gestione integrata dei servizi di sicurezza e portierato»; anche il bar o la
+    // mensa in più sedi («concessione del servizio di gestione integrata del servizio bar presso il Centro Sportivo e lo Stadio», Sintel
+    // 225629817, segnalato da B2 il 17/11)
     salvo:
-      /\b(global service|facility management|gestione (globale|integrata|integrale|complessiva|omnicomprensiva|operativa integrata)) (di |dei |del |della |delle )?(servizi\w* (di |del |della )?)?(pulizi\w*|sanificazion\w*|igiene ambientale|ristorazion\w*|refezion\w*|vigilanz\w*|sicurezza|portierat\w*|portineri\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*)\b/,
+      /\b(global service|facility management|gestione (globale|integrata|integrale|complessiva|omnicomprensiva|operativa integrata)) (di |dei |del |della |delle )?(servizi\w* (di |del |della )?)?(pulizi\w*|sanificazion\w*|igiene ambientale|ristorazion\w*|refezion\w*|mens[ae]|bar|caffetteri\w*|ristorant\w*|punt\w* (di )?ristoro|vigilanz\w*|sicurezza|portierat\w*|portineri\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*)\b/,
     motivo: "Il servizio è una parte di un appalto multiservizi o di una gestione integrata",
     casi: ["Servizio di gestione globale in concessione della casa di riposo Villa Loreto", "Servizi di facility management all'interno del complesso immobiliare"],
   },
@@ -739,7 +746,10 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // correzione dei settori di una gara già in archivio (registro dei cambiamenti, «correzione_dati» sul campo «settori»), così ogni
 // correzione dice con quali regole è stata fatta e si può annullare. «2026-11-17b»: regole definitive dell'utente del 17/11.
 // «2026-11-17c»: più sottocategorie per settore, quattro tipi di videosorveglianza, parole chiave della vigilanza senza «videosorveglianza».
-export const VERSIONE_REGOLE_SETTORI = "2026-11-17d";
+// «2026-11-17d»: pacchetto 15 (distributori automatici in A, 6 CPV di bar e ristoranti con la regola del contesto).
+// «2026-11-17e»: la gestione integrata del solo bar, mensa o punto ristoro (anche in più sedi) resta del settore (Sintel, Treviglio).
+// «2026-11-17f»: «chiosco» nomina il servizio nella regola del contesto, salvo edicola, giornali o fiori (Sintel, Taino).
+export const VERSIONE_REGOLE_SETTORI = "2026-11-17f";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Identificativo della correzione nel registro: versione e regole («regole-settori-2026-11-17b:rifiuti»). Rifare la stessa correzione
