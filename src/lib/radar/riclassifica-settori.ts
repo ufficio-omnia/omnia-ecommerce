@@ -42,6 +42,8 @@ export function riclassificaGara(g: GaraDaRiclassificare, lotti: readonly LottoD
     cpvPrincipale: g.cpv_principale,
     cpvTutti: [...(g.cpv_tutti ?? []), ...lotti.flatMap((l) => [l.cpv_principale, ...(l.cpv_tutti ?? [])])],
     testo: [g.oggetto, ...lotti.map((l) => l.oggetto ?? "")].join(" "),
+    // i lotti servono per riconoscere un servizio autonomo (lotto dedicato): cambia il livello, mai i settori
+    lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] })),
   });
   const fuoriPerNatura = c.metodo === "parole_chiave" && !!g.natura_contratto && !NATURE_AMMESSE_PER_PAROLE.has(g.natura_contratto);
   const dopo: StatoSettori = fuoriPerNatura || c.settori.length === 0 ? { settori: [], metodo: null } : { settori: [...c.settori], metodo: c.metodo };

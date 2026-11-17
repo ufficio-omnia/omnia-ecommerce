@@ -22,10 +22,17 @@
 //   - Valle Umbra: le sottocategorie sono due, «videosorveglianza_operativa» (gestione del sistema) e «vigilanza_privata» (valori);
 //   - stabile di Valprato: le sottocategorie sono quattro, in ordine di comparsa (bar, ristorante, mensa, gestione integrata);
 //   - versione delle regole «2026-11-17c».
+// Controlli CAMBIATI con la versione «2026-11-17d» (decisione dell'utente sul pacchetto 15, 17/11):
+//   - distributori automatici: da B («solo_distributori», regola tolta) ad A nella sottocategoria dedicata «distributori_automatici»;
+//   - la ristorazione ha 8 sottocategorie (le 7 decise più i distributori automatici);
+//   - congresso di matematica: resta B, ma con la regola «organizzazione_eventi» invece di «cpv_secondario»;
+//   - versione delle regole «2026-11-17d». I 6 CPV nuovi sono nel file approvato (56 codici).
 import fs from "fs";
 import path from "path";
 import {
   CORRELAZIONI,
+  CPV_CON_CONTESTO,
+  voceCpv,
   ESCLUSIONI_OGGETTO,
   NOMI_LIVELLI,
   REGOLE_PAROLE,
@@ -325,10 +332,10 @@ const FAMIGLIE: Caso[] = [
     attesi: [{ settore: "ristorazione", livello: "C", regola: "concessione_di_immobili" }],
   },
   {
-    nome: "solo distributori automatici: correlata",
+    nome: "concessione autonoma di distributori automatici: A nella sottocategoria dedicata (TED 236968d7, decisione del 17/11)",
     cpv: ["55300000"],
     testo: "Servizio di somministrazione di bevande e alimenti tramite distributori automatici",
-    attesi: [{ settore: "ristorazione", livello: "B", sottocategoria: "concessione_punto_ristoro", regola: "solo_distributori" }],
+    attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["distributori_automatici"] }],
   },
   {
     nome: "bar in finanza di progetto con lavori: correlata",
@@ -365,7 +372,7 @@ const FAMIGLIE: Caso[] = [
     nome: "servizio solo nei CPV secondari (appalto misto)",
     cpv: ["79952000", "55520000"],
     testo: "Concessione del servizio di organizzazione e gestione del congresso europeo di matematica",
-    attesi: [{ settore: "ristorazione", livello: "B", regola: "cpv_secondario" }],
+    attesi: [{ settore: "ristorazione", livello: "B", regola: "organizzazione_eventi" }],
   },
 ];
 for (const c of FAMIGLIE) provaCaso(c);
@@ -449,6 +456,160 @@ provaCaso({
   attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["mense"] }],
 });
 
+// ───── 3 quater. decisione del 17/11 sul pacchetto 15: distributori, 6 CPV con il contesto, 4 gare TED recuperate ─────
+const DISTRIBUTORI: Caso[] = [
+  { nome: "TED 236968d7 distributori", cpv: ["55300000"], testo: "Servizio di somministrazione di bevande e alimenti tramite distributori automatici", attesi: [] },
+  { nome: "TED 36fa91de distributori", cpv: ["55900000"], testo: "CONCESSIONE DEI SERVIZI DI RISTORAZIONE A MEZZO DISTRIBUTORI AUTOMATICI. Distributori automatici lotto 1", attesi: [] },
+  {
+    nome: "TED 7d86699f distributori",
+    cpv: ["55300000", "42933000"],
+    testo: "Procedura aperta suddivisa in 4 lotti per l'affidamento in concessione del servizio di ristorazione mediante distributori automatici ubicati presso alcuni istituti scolastici",
+    attesi: [],
+  },
+  { nome: "TED 9c93b2a8 distributori", cpv: ["55900000"], testo: "Affidamento in concessione del servizio di ristorazione mediante distributori automatici ubicati presso l'I.T.I. G. Marconi di Pontedera", attesi: [] },
+  { nome: "TED b917c3f4 distributori", cpv: ["55900000"], testo: "Affidamento in concessione del servizio di ristorazione mediante distributori automatici presso le sedi del Liceo Principe Umberto di Savoia", attesi: [] },
+  { nome: "TED c31d4cae distributori", cpv: ["55524000"], testo: "Affidamento in concessione del servizio di ristorazione mediante distributori automatici ubicati presso la sede dell'Istituto Superiore Ivan Piana", attesi: [] },
+  { nome: "TED ea0520c7 distributori", cpv: ["55510000", "55524000"], testo: "Affidamento in concessione del servizio di ristorazione mediante distributori automatici ubicati presso la sede dell'Istituto Superiore Ivan Piana", attesi: [] },
+];
+for (const c of DISTRIBUTORI) {
+  const r = classificaGara({ cpvPrincipale: c.cpv[0], cpvTutti: c.cpv, testo: c.testo });
+  // 55900000 (vendita al dettaglio) non è nel file: queste entrano per parola chiave («ristorazione»), come oggi
+  const v = r.valutazioni.find((x) => x.settore === "ristorazione");
+  uguale(`${c.nome}: ristorazione A, sottocategoria dedicata`, v ? [v.livello, v.sottocategorie] : null, ["A", ["distributori_automatici"]]);
+}
+provaCaso({
+  nome: "distributori accessori a una gestione più ampia: resta la regola B generale (testo sintetico)",
+  cpv: ["85311000", "55300000"],
+  testo: "Gestione del centro diurno per anziani, comprensiva di pulizie e distributori automatici di bevande",
+  attesi: [{ settore: "ristorazione", livello: "B", sottocategorie: ["distributori_automatici", "appalti_multiservizi"] }],
+});
+uguale("i 6 CPV nuovi sono nel file approvato, in ristorazione", CPV_CON_CONTESTO.map((c) => voceCpv(c)?.settore ?? null), Array(6).fill("ristorazione"));
+// controllo positivo chiesto dal coordinamento (17/11): codice con cifra di controllo, settore e descrizione ufficiale (reg. (CE) n.
+// 213/2008, verificata dall'utente su EUR-Lex), alla lettera
+const CPV_UFFICIALI_17_11: [string, string][] = [
+  ["55410000-7", "Servizi di gestione bar"],
+  ["55400000-4", "Servizi di mescita di bevande"],
+  ["55330000-2", "Servizi di caffetteria"],
+  ["55310000-6", "Servizi di ristorazione con cameriere"],
+  ["55311000-3", "Servizi di ristorazione con cameriere in ristoranti per clientela ristretta"],
+  ["55312000-0", "Servizi di ristorazione con cameriere per clientela non ristretta"],
+];
+for (const [codice, descrizione] of CPV_UFFICIALI_17_11) {
+  const v = voceCpv(codice);
+  uguale(`CPV ${codice} nel file approvato: codice, settore e descrizione ufficiale`, v ? [v.codice, v.settore, v.descrizione] : null, [codice, "ristorazione", descrizione]);
+}
+uguale(
+  "descrizione ufficiale del 55311000 (EUR-Lex, verificata dall'utente)",
+  voceCpv("55311000-3")?.descrizione,
+  "Servizi di ristorazione con cameriere in ristoranti per clientela ristretta",
+);
+// le 4 gare TED oggi perse (lettura dell'API pubblica del 17/11, nessuna nuova richiesta): con i 6 CPV entrano
+const TED_RECUPERATE: Caso[] = [
+  { nome: "TED 728008-2026, ASL Roma 2, bar Sant'Eugenio", cpv: ["55410000"], testo: "Concessione Bar Sant'Eugenio", attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }] },
+  { nome: "TED 743485-2026, AUSL di Bologna, bar AOU", cpv: ["55410000"], testo: "Concessione bar e servizi complementari AOU BO", attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }] },
+  {
+    nome: "TED 786982-2026, GOM di Reggio Calabria, bar e punto ristoro",
+    cpv: ["55410000"],
+    testo:
+      "PROCEDURA APERTA PER L’AFFIDAMENTO IN CONCESSIONE QUINQUENNALE DI SPAZI FINALIZZATI ALLA GESTIONE DEL SERVIZIO DI BAR - POSTO DI RISTORO E TAVOLA CALDA/FREDDA PER LE NECESSITÀ DEI DEGENTI, DEI DIPENDENTI E DEI VISITATORI DEI PP.OO. “RIUNITI” E “MORELLI”",
+    attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar", "concessione_punto_ristoro"] }],
+  },
+  {
+    nome: "TED 771777-2026, Difesa Servizi, MUSAM: caffetteria accessoria alla gestione del compendio museale",
+    cpv: ["92521000", "55330000"],
+    testo: "Concessione MUSAM Vigna di Valle - gestione e valorizzazione del compendio museale",
+    attesi: [{ settore: "ristorazione", livello: "B", regola: "gestione_di_struttura" }],
+  },
+  {
+    nome: "TED 726389-2026, Comune di Pozzuoli, bar dell'Istituto Virgilio (già dentro)",
+    cpv: ["55410000"],
+    testo: "Procedura aperta per l'affidamento in concessione del servizio di ristorazione mediante bar, ubicato presso la sede dell’Istituto scolastico Virgilio",
+    attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }],
+  },
+];
+for (const c of TED_RECUPERATE) provaCaso(c);
+for (const c of TED_RECUPERATE.slice(0, 4)) {
+  // prima della decisione questi CPV non erano nel file: senza di loro le 4 gare non entravano
+  const senza = c.cpv.filter((x) => !CPV_CON_CONTESTO.includes(x));
+  atteso(`${c.nome}: entra grazie ai 6 CPV (senza, nessun settore)`, classificaGara({ cpvPrincipale: senza[0] ?? null, cpvTutti: senza, testo: c.testo }).settori.length === 0);
+}
+// regola del contesto: un CPV nuovo da solo non basta
+provaCaso({
+  nome: "solo un CPV nuovo e l'oggetto non nomina il servizio: C",
+  cpv: ["55410000"],
+  testo: "Concessione di spazi commerciali presso la stazione marittima",
+  attesi: [{ settore: "ristorazione", livello: "C", regola: "cpv_nuovi_senza_oggetto" }],
+});
+provaCaso({
+  nome: "CPV nuovo con un CPV già approvato: la regola del contesto non serve",
+  cpv: ["55310000", "55300000"],
+  testo: "Concessione di spazi presso la sede regionale",
+  attesi: [{ settore: "ristorazione", livello: "A" }],
+});
+// eventi, alloggio e trasporti: niente limite automatico a B, conta se la ristorazione è principale o accessoria (decisione del 17/11)
+const PRINCIPALE_O_ACCESSORIA: Caso[] = [
+  { nome: "evento: ristorazione principale", cpv: ["79952000", "55520000"], testo: "Servizio di catering per gli eventi istituzionali della Regione", attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["catering"] }] },
+  {
+    nome: "evento: ristorazione accessoria",
+    cpv: ["79952000", "55520000"],
+    testo: "Organizzazione e gestione del congresso nazionale, comprensiva di servizio di catering per i partecipanti",
+    attesi: [{ settore: "ristorazione", livello: "B", regola: "organizzazione_eventi" }],
+  },
+  {
+    nome: "alloggio: ristorante come oggetto principale",
+    cpv: ["55100000", "55312000"],
+    testo: "Concessione del servizio di ristorante presso l'ostello comunale",
+    attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_ristorante"] }],
+  },
+  {
+    nome: "alloggio: ristorazione accessoria alla gestione della struttura",
+    cpv: ["55100000", "55312000"],
+    testo: "Concessione della gestione dell'albergo comunale con servizio di ristorante",
+    attesi: [{ settore: "ristorazione", livello: "B", regola: "gestione_di_struttura" }],
+  },
+  {
+    nome: "trasporto: ristorazione a bordo accessoria (caso reale di TED, dialogo competitivo MITUR)",
+    cpv: ["60200000", "55520000"],
+    testo: "Dialogo competitivo per servizio di trasporto ferroviario passeggeri a fini turistici, comprensivo di servizi di ristorazione a bordo",
+    attesi: [{ settore: "ristorazione", livello: "B", regola: "trasporto_con_ristorazione" }],
+  },
+];
+for (const c of PRINCIPALE_O_ACCESSORIA) provaCaso(c);
+uguale(
+  "i CPV nuovi non tolgono i settori delle parole chiave (TED 0b7448d7, Università di Sassari)",
+  classificaGara({
+    cpvPrincipale: "55410000",
+    cpvTutti: ["55410000", "98351000"],
+    testo: "Procedura aperta per affidamento in concessione dei servizi del bar e del parcheggio esterno con effettuazione del servizio di pulizia e guardiania dell'edificio di via Piandanna dell'Università di Sassari",
+  }).settori,
+  ["ristorazione", "pulizia", "vigilanza_portierato"],
+);
+provaCaso({
+  nome: "«navigazione» internet nelle mense non è un trasporto (testo sintetico dal caso reale ARDSU)",
+  cpv: ["55510000"],
+  testo: "Servizio di navigazione internet nelle mense universitarie",
+  attesi: [{ settore: "ristorazione", livello: "A" }],
+});
+// ristorazione AUTONOMA: un lotto dedicato al catering in un appalto di eventi (casi reali di TED, Regione Lombardia e «allestimento,
+// organizzazione eventi e catering»)
+const eventiConLotti = {
+  cpvPrincipale: "79952000",
+  cpvTutti: ["79952000", "55520000"],
+  testo: "Servizio di allestimento, organizzazione eventi e catering Servizi di organizzazione di eventi Servizi di catering",
+};
+const senzaLotti = classificaGara(eventiConLotti).valutazioni.find((v) => v.settore === "ristorazione");
+const conLotti = classificaGara({
+  ...eventiConLotti,
+  lotti: [
+    { testo: "Servizi di organizzazione di eventi", cpv: ["79952000"] },
+    { testo: "Servizi di catering", cpv: ["55520000"] },
+  ],
+}).valutazioni.find((v) => v.settore === "ristorazione");
+uguale("evento con lotto dedicato al catering: senza i lotti è B (accessoria)", senzaLotti?.livello, "B");
+uguale("evento con lotto dedicato al catering: con i lotti è A (autonoma)", [conLotti?.livello, conLotti?.regole[0], conLotti?.sottocategorie], ["A", "lotto_autonomo", ["catering"]]);
+const unLotto = classificaGara({ ...eventiConLotti, lotti: [{ testo: "Servizi di catering", cpv: ["55520000"] }] }).valutazioni.find((v) => v.settore === "ristorazione");
+uguale("un solo lotto non è un servizio autonomo (è la gara stessa)", unLotto?.livello, "B");
+
 // ───── 3 ter. più sottocategorie nello stesso settore, regole e versione (interfaccia per la 0121) ─────
 provaCaso({
   nome: "più sottocategorie in ordine di comparsa (testo sintetico)",
@@ -514,6 +675,7 @@ const CONTESTI: Record<string, ContestoCpv> = {
   accoglienza_sociale: { principale: "79992000", tutti: ["79992000"], delSettore: ["79992000"] },
   lavori_e_progettazione: { principale: "71000000", tutti: ["71000000", "90900000"], delSettore: ["90900000"] },
   servizi_informatici: { principale: "72000000", tutti: ["72000000", "55524000"], delSettore: ["55524000"] },
+  cpv_nuovi_senza_oggetto: { principale: "55410000", tutti: ["55410000"], delSettore: ["55410000"] },
 };
 for (const r of ESCLUSIONI_OGGETTO) {
   atteso(`${r.id}: motivo in parole semplici e almeno un caso reale`, r.motivo.length > 20 && r.casi.length > 0);
@@ -538,9 +700,9 @@ for (const s of SETTORI_RADAR) {
   atteso(`sottocategorie ${s.id}: almeno una, id unici, nomi leggibili`, sc.length > 0 && new Set(sc.map((x) => x.id)).size === sc.length && sc.every((x) => x.nome.length > 5));
 }
 uguale(
-  "ristorazione: le 7 sottocategorie decise dall'utente",
+  "ristorazione: le 7 sottocategorie decise dall'utente più quella dei distributori automatici (decisione del 17/11)",
   SOTTOCATEGORIE.ristorazione.map((s) => s.id),
-  ["mense", "catering", "distribuzione_pasti", "concessione_bar", "concessione_ristorante", "concessione_punto_ristoro", "appalti_multiservizi"],
+  ["mense", "catering", "distribuzione_pasti", "concessione_bar", "concessione_ristorante", "concessione_punto_ristoro", "distributori_automatici", "appalti_multiservizi"],
 );
 uguale("tre livelli", Object.keys(NOMI_LIVELLI), ["A", "B", "C"]);
 
@@ -640,7 +802,7 @@ atteso(
   corr.tipo === "correzione" && corr.dopo.settori.length === 0 && corr.dopo.metodo === null && corr.idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
   JSON.stringify(corr),
 );
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17c");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17d");
 const lotti = riclassificaGara({ ...base, oggetto: "lotto1", cpv_principale: "90910000", cpv_tutti: ["90910000", "98341130"], settori: ["pulizia", "vigilanza_portierato"], metodo_settore: "cpv" }, [
   { oggetto: "SERVIZIO DI CUSTODIA, SICUREZZA E PULIZIA AMBIENTALE DEGLI IMPIANTI SPORTIVI", cpv_principale: "90910000", cpv_tutti: null },
 ]);
