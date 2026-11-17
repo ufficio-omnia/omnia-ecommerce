@@ -649,6 +649,11 @@ uguale(
   }).settori,
   ["ristorazione", "pulizia", "vigilanza_portierato"],
 );
+// la regola del trasporto non deve prendere la «navigazione» delle residenze (controllo diretto: dalla fase B2b il caso finisce prima in C)
+atteso(
+  "trasporto con ristorazione: la «navigazione nelle residenze e mense» non è un trasporto",
+  !CORRELAZIONI.find((r) => r.id === "trasporto_con_ristorazione")!.cerca.test(testoPerConfronto("Servizio di navigazione nelle residenze e mense universitarie")),
+);
 // fase B2b (2026-11-17g): non è un trasporto (B) e non è più ristorazione (A): è connessione a internet (C)
 provaCaso({
   nome: "«navigazione» internet nelle mense non è un trasporto né ristorazione (testo sintetico dal caso reale ARDSU)",
