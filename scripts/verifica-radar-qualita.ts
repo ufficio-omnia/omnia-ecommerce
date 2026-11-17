@@ -16,6 +16,12 @@
 //   - salvaguardia del nucleo: non vale per le regole «ancheConNucleo» (servizi informatici con CPV principale informatico,
 //     somministrazione di lavoro), che sono esclusioni volute anche quando l'oggetto nomina il servizio;
 //   - frase nella scheda e identificativo della correzione: versione «2026-11-17b» e regola «forniture_di_beni».
+// Controlli CAMBIATI con la versione «2026-11-17c» (decisioni dell'utente del 17/11 su più sottocategorie e videosorveglianza):
+//   - videosorveglianza senza vigilanza: la regola si chiama ora «videosorveglianza_fornitura» (tipo 1 di 4); «telecamere» e
+//     «videosorveglianza_senza_vigilanza» non ci sono più: la sola parola «videosorveglianza» non esclude;
+//   - Valle Umbra: le sottocategorie sono due, «videosorveglianza_operativa» (gestione del sistema) e «vigilanza_privata» (valori);
+//   - stabile di Valprato: le sottocategorie sono quattro, in ordine di comparsa (bar, ristorante, mensa, gestione integrata);
+//   - versione delle regole «2026-11-17c».
 import fs from "fs";
 import path from "path";
 import {
@@ -49,15 +55,20 @@ function uguale<T>(nome: string, ottenuto: T, previsto: T) {
 const leggi = (relativo: string) => fs.readFileSync(path.join(RADICE, relativo), "utf-8").replace(/\r\n/g, "\n");
 const SETTORI_CPV: SettoreRadar[] = ["pulizia", "ristorazione", "vigilanza_portierato", "facchinaggio", "multiservizi"];
 
-type Atteso = { settore: SettoreRadar; livello: "A" | "B" | "C"; sottocategoria?: string | null; regola?: string };
+type Atteso = { settore: SettoreRadar; livello: "A" | "B" | "C"; sottocategoria?: string | null; sottocategorie?: string[]; regola?: string };
 type Caso = { nome: string; cpv: string[]; testo: string; attesi: Atteso[] };
 
 function provaCaso(c: Caso) {
   const r = classificaGara({ cpvPrincipale: c.cpv[0] ?? null, cpvTutti: c.cpv, testo: c.testo });
   for (const a of c.attesi) {
     const v = r.valutazioni.find((x) => x.settore === a.settore);
-    const ok = !!v && v.livello === a.livello && (a.sottocategoria === undefined || v.sottocategoria === a.sottocategoria) && (a.regola === undefined || v.regola === a.regola);
-    atteso(`${c.nome}: ${a.settore} ${a.livello}${a.sottocategoria ? ` (${a.sottocategoria})` : ""}${a.regola ? ` [${a.regola}]` : ""}`, ok, JSON.stringify(v ?? r.valutazioni));
+    const ok =
+      !!v &&
+      v.livello === a.livello &&
+      (a.sottocategoria === undefined || v.sottocategoria === a.sottocategoria) &&
+      (a.sottocategorie === undefined || JSON.stringify(v.sottocategorie) === JSON.stringify(a.sottocategorie)) &&
+      (a.regola === undefined || v.regola === a.regola);
+    atteso(`${c.nome}: ${a.settore} ${a.livello}${a.sottocategoria ? ` (${a.sottocategoria})` : ""}${a.sottocategorie ? ` (${a.sottocategorie.join(", ")})` : ""}${a.regola ? ` [${a.regola}]` : ""}`, ok, JSON.stringify(v ?? r.valutazioni));
     // coerenza: un settore A o B è nei settori della gara, un settore C no (esclusione, non cancellazione)
     atteso(`${c.nome}: ${a.settore} ${a.livello === "C" ? "fuori dai" : "nei"} settori della gara`, (a.livello === "C") !== r.settori.includes(a.settore));
   }
@@ -70,7 +81,7 @@ const RICHIESTI: Caso[] = [
     nome: "bar ospedaliero (ULSS 4 Veneto Orientale)",
     cpv: ["55300000"],
     testo: "Concessione dei servizi bar – caffetteria presso i Presidi Ospedalieri di San Donà di Piave e Portogruaro dell'Azienda ULSS n. 4",
-    attesi: [{ settore: "ristorazione", livello: "A", sottocategoria: "concessione_bar" }],
+    attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }],
   },
   {
     nome: "bar del Consiglio regionale (testo sintetico)",
@@ -145,13 +156,13 @@ const RICHIESTI: Caso[] = [
     nome: "videosorveglianza senza vigilanza",
     cpv: ["79714000"],
     testo: "Servizio di installazione, puntamento, disinstallazione telecamere mobili e analisi flussi video",
-    attesi: [{ settore: "vigilanza_portierato", livello: "C", regola: "videosorveglianza_senza_vigilanza" }],
+    attesi: [{ settore: "vigilanza_portierato", livello: "C", regola: "videosorveglianza_fornitura" }],
   },
   {
     nome: "vigilanza con trasporto valori (Valle Umbra Servizi)",
     cpv: ["79711000"],
     testo: "SERVIZIO DI GESTIONE DEL SISTEMA DI VIDEO SORVEGLIANZA DEI SITI SENSIBILI E SERVIZIO DI RITIRO, TRASPORTO, CONTAZIONE E DEPOSITO DI VALORI",
-    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategoria: "vigilanza_privata" }],
+    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategorie: ["videosorveglianza_operativa", "vigilanza_privata"] }],
   },
 ];
 for (const c of RICHIESTI) provaCaso(c);
@@ -177,7 +188,7 @@ const DUBBIE: Caso[] = [
     cpv: ["55300000"],
     testo:
       "CONCESSIONE IN GESTIONE DELLO STABILE COMUNALE SITO IN LOCALITA’ CAPOLUOGO COSTITUITO DA BAR, RISTORANTE, PIZZERIA, NEGOZIO ALIMENTARI E SERVIZIO MENSA PER LA SCUOLA DELL’INFANZIA COMUNALE",
-    attesi: [{ settore: "ristorazione", livello: "B", sottocategoria: "mense", regola: "gestione_di_struttura" }],
+    attesi: [{ settore: "ristorazione", livello: "B", sottocategorie: ["concessione_bar", "concessione_ristorante", "mense", "appalti_multiservizi"], regola: "gestione_di_struttura" }],
   },
   {
     nome: "punti ristoro e distributori (Liceo Orazio)",
@@ -197,7 +208,7 @@ const DUBBIE: Caso[] = [
     nome: "videosorveglianza e trasporto valori (Valle Umbra Servizi)",
     cpv: ["79711000"],
     testo: "SERVIZIO DI GESTIONE DEL SISTEMA DI VIDEO SORVEGLIANZA DEI SITI SENSIBILI E SERVIZIO DI RITIRO, TRASPORTO, CONTAZIONE E DEPOSITO DI VALORI",
-    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategoria: "vigilanza_privata" }],
+    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategorie: ["videosorveglianza_operativa", "vigilanza_privata"] }],
   },
 ];
 for (const c of DUBBIE) provaCaso(c);
@@ -357,6 +368,90 @@ const FAMIGLIE: Caso[] = [
   },
 ];
 for (const c of FAMIGLIE) provaCaso(c);
+
+// ───── 3 bis. videosorveglianza: i quattro tipi (decisione dell'utente del 17/11; testi sintetici dichiarati, salvo dove indicato) ─────
+const VIDEOSORVEGLIANZA: Caso[] = [
+  {
+    nome: "tipo 1, sola fornitura e posa di un sistema di videosorveglianza",
+    cpv: ["79714000"],
+    testo: "Fornitura e posa in opera di un sistema di videosorveglianza per il centro storico",
+    attesi: [{ settore: "vigilanza_portierato", livello: "C", regola: "videosorveglianza_fornitura" }],
+  },
+  {
+    nome: "tipo 1, installazione di telecamere mobili (caso reale di TED)",
+    cpv: ["79714000"],
+    testo: "SERVIZIO DI INSTALLAZIONE, PUNTAMENTO, DISINSTALLAZIONE TELECAMERE MOBILI E ANALISI FLUSSI VIDEO (Annualità 2026 - 2030)",
+    attesi: [{ settore: "vigilanza_portierato", livello: "C", regola: "videosorveglianza_fornitura" }],
+  },
+  {
+    nome: "tipo 2, manutenzione degli impianti di videosorveglianza",
+    cpv: ["79711000"],
+    testo: "Servizio di manutenzione ordinaria e straordinaria degli impianti di videosorveglianza e antintrusione degli edifici comunali",
+    attesi: [{ settore: "vigilanza_portierato", livello: "C", regola: "videosorveglianza_manutenzione" }],
+  },
+  {
+    nome: "tipo 3, servizio operativo di monitoraggio dalla centrale operativa",
+    cpv: ["79711000"],
+    testo: "Servizio di videosorveglianza da remoto con monitoraggio delle immagini dalla centrale operativa e pronto intervento",
+    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategorie: ["videosorveglianza_operativa", "vigilanza_privata"] }],
+  },
+  {
+    nome: "tipo 4, affidamento misto con la parte tecnica come oggetto principale",
+    cpv: ["79711000"],
+    testo: "Fornitura, installazione e gestione di un sistema di videosorveglianza con monitoraggio delle immagini dalla centrale operativa",
+    attesi: [{ settore: "vigilanza_portierato", livello: "B", regola: "videosorveglianza_mista" }],
+  },
+  {
+    nome: "tipo 4, vigilanza armata che comprende la manutenzione della videosorveglianza: pertinente",
+    cpv: ["98341140"],
+    testo: "Servizio di vigilanza armata e manutenzione degli impianti di videosorveglianza delle sedi aziendali",
+    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategorie: ["vigilanza_privata"] }],
+  },
+  {
+    nome: "la sola parola «videosorveglianza» non esclude (decide il CPV del settore)",
+    cpv: ["79714000"],
+    testo: "Servizio di videosorveglianza",
+    attesi: [{ settore: "vigilanza_portierato", livello: "A" }],
+  },
+];
+for (const c of VIDEOSORVEGLIANZA) provaCaso(c);
+provaCaso({
+  nome: "fornitura di derrate per i «Presidi ERDIS» (sedi, non presidio di sorveglianza): resta esclusa",
+  cpv: ["15000000", "63110000"],
+  testo: "Fornitura di derrate alimentari sostenibili per la ristorazione delle mense universitarie a gestione diretta. Fornitura di derrate alimentari sostenibili per la mensa universitaria Presidio ERDIS di Ancona",
+  attesi: [{ settore: "facchinaggio", livello: "C", regola: "forniture_di_beni" }],
+});
+uguale("la sola parola «videosorveglianza» non include (nessun CPV del settore, nessuna parola chiave)", settoriDaParole("Servizio di videosorveglianza degli edifici comunali"), []);
+uguale("parole chiave: la vigilanza che cita la videosorveglianza resta (regola di B1 corretta)", settoriDaParole("Servizio di vigilanza e videosorveglianza degli edifici comunali"), ["vigilanza_portierato"]);
+uguale("parole chiave: vigilanza armata presso impianti, servizio esplicito: resta", settoriDaParole("Servizio di vigilanza armata presso gli impianti di depurazione"), ["vigilanza_portierato"]);
+uguale("parole chiave: manutenzione e vigilanza degli impianti di illuminazione: fuori come prima", settoriDaParole("Manutenzione e vigilanza degli impianti di illuminazione pubblica"), []);
+
+// ───── 3 ter. più sottocategorie nello stesso settore, regole e versione (interfaccia per la 0121) ─────
+provaCaso({
+  nome: "più sottocategorie in ordine di comparsa (testo sintetico)",
+  cpv: ["55300000"],
+  testo: "Affidamento dei servizi di gestione bar, catering per gli eventi e distribuzione pasti ai reparti",
+  attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar", "catering", "distribuzione_pasti"] }],
+});
+for (const c of [...RICHIESTI, ...DUBBIE, ...FAMIGLIE, ...VIDEOSORVEGLIANZA]) {
+  const r = classificaGara({ cpvPrincipale: c.cpv[0] ?? null, cpvTutti: c.cpv, testo: c.testo });
+  atteso(
+    `interfaccia coerente: ${c.nome}`,
+    r.versione === VERSIONE_REGOLE_SETTORI &&
+      r.valutazioni.every(
+        (v) =>
+          v.regole.length > 0 &&
+          v.regole.length === v.motivi.length &&
+          v.regola === v.regole[0] &&
+          v.motivo === v.motivi[0] &&
+          v.sottocategoria === (v.sottocategorie[0] ?? null) &&
+          (v.livello === "C") === (v.sottocategorie.length === 0) &&
+          v.sottocategorie.every((s) => SOTTOCATEGORIE[v.settore].some((x) => x.id === s)) &&
+          (v.da === "cpv" ? v.cpv.length > 0 : v.cpv.length === 0),
+      ),
+    JSON.stringify(r.valutazioni),
+  );
+}
 
 // combinazioni: una sola parola non basta
 const accoglienzaAltroCpv = classificaGara({ cpvPrincipale: "98341130", cpvTutti: ["98341130"], testo: "Servizi di integrazione e tutela per richiedenti protezione internazionale" });
@@ -522,7 +617,7 @@ atteso(
   corr.tipo === "correzione" && corr.dopo.settori.length === 0 && corr.dopo.metodo === null && corr.idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
   JSON.stringify(corr),
 );
-uguale("versione delle regole definitive", VERSIONE_REGOLE_SETTORI, "2026-11-17b");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17c");
 const lotti = riclassificaGara({ ...base, oggetto: "lotto1", cpv_principale: "90910000", cpv_tutti: ["90910000", "98341130"], settori: ["pulizia", "vigilanza_portierato"], metodo_settore: "cpv" }, [
   { oggetto: "SERVIZIO DI CUSTODIA, SICUREZZA E PULIZIA AMBIENTALE DEGLI IMPIANTI SPORTIVI", cpv_principale: "90910000", cpv_tutti: null },
 ]);
