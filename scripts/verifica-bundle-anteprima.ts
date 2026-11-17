@@ -40,7 +40,9 @@ export function erroriCodiceCompilato(cartellaNext: string, chiaveServizio: stri
       if (browser) {
         if (testo.includes(PRODUZIONE_REF)) nelBrowser.produzione++;
         if (/\b(sk|rk)_live_/.test(testo)) nelBrowser.live++;
-        if (testo.includes("sb_secret_")) nelBrowser.secret++;
+        // Una chiave vera è il prefisso seguito da una lunga sequenza; il solo prefisso compare di proposito nella libreria
+        // Supabase (riconosce il formato con `startsWith("sb_secret_")`) e non è una chiave.
+        if (/sb_secret_[A-Za-z0-9_-]{16,}/.test(testo)) nelBrowser.secret++;
         if (chiaveServizio && testo.includes(chiaveServizio)) nelBrowser.chiaveServizio++;
       }
     }

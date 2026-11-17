@@ -173,6 +173,8 @@ async function principale() {
   prova("identificativo di produzione nel codice per il browser → bloccato", { ...server, "static/chunks/a.js": `"${PRODUZIONE}"` }, "", false, "produzione");
   prova("indirizzo Supabase diverso nel server → bloccato", { "server/app/pagina.js": `"https://${STAGING_REF}.supabase.co";"https://abcdefghijklmnopqrst.supabase.co"` }, "", false, "diversi dallo staging");
   prova("valore della chiave di servizio nel codice per il browser → bloccato", { ...server, "static/chunks/a.js": `"sb_secret_SINTETICA"` }, "sb_secret_SINTETICA", false, "SUPABASE_SERVICE_ROLE_KEY");
+  prova("solo il prefisso «sb_secret_» della libreria Supabase nel codice per il browser: ammesso", { ...server, "static/chunks/a.js": `let ss=e=>e.startsWith("sb_publishable_")||e.startsWith("sb_secret_")` }, "sb_secret_CHIAVE_CONFIGURATA_SINTETICA", true);
+  prova("una chiave secret qualunque (non quella configurata) nel codice per il browser → bloccato", { ...server, "static/chunks/a.js": `"sb_secret_ABCDEFGHIJKLMNOPQRSTUV"` }, "sb_secret_ALTRA", false, "chiave secret");
   prova("chiave Stripe live nel codice per il browser → bloccato", { ...server, "static/chunks/a.js": `"sk_live_x"` }, "", false, "live");
   prova("indirizzo dello staging assente → bloccato", { "server/app/pagina.js": "nulla", "static/chunks/a.js": "nulla" }, "", false, "non contiene l'indirizzo dello staging");
   prova("build assente → bloccato", {}, "", false, "la build non c'è");
