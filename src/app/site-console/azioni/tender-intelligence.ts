@@ -9,6 +9,7 @@ import { TAG_CLIENTI_RADAR, TAG_PARAMETRI_RADAR } from "@/lib/radar/visibilita";
 import { eseguiImportazioneTed } from "@/lib/radar/importa-ted";
 import { eseguiImportazionePvl } from "@/lib/radar/importa-pvl";
 import { scrittureRadarConsentite } from "@/lib/radar/ambiente";
+import { scollegaGara } from "@/lib/radar/collegamenti";
 
 // Console «Tender Intelligence» (fasi B1 e B1-bis): interruttori, costi e limiti; fonti TED e PVL; imprese abilitate; giri manuali.
 // Ogni azione parte da richiediAdminAzione() (solo amministratori), valida nel server e registra in radar_console_registro chi ha cambiato
@@ -139,6 +140,22 @@ export async function eseguiGiroPvl(): Promise<StatoAzioneTi> {
   const testo = `${s.pvl.richieste} richieste alla PVL in ${Math.round(esito.durataMs / 1000)} s: ${s.avvisi.letti} avvisi letti, ${s.bandi.nuoveNazionali + s.bandi.nuoveSopraSogliaSenzaTed} gare nuove, ${s.bandi.giaPresentiTed} già presenti da TED, ${s.bandi.rettifiche} con rettifiche, ${s.bandi.invariati} già note; ${s.esiti.applicati} esiti applicati.${esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
   if (esito.sospesa) return { errore: `${testo} Fonte SOSPESA: ${esito.errore}` };
   return esito.errore ? { errore: `${testo} Interrotto: ${esito.errore}` } : { ok: true, avviso: testo };
+}
+
+// Annulla il collegamento di una gara doppia (0117): la gara torna visibile, nulla si cancella, e il collegamento con quella gara non si rifà
+// più da solo. Registrato nel registro della console e nei cambiamenti delle due gare.
+export async function scollegaGaraDoppia(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+  const id = String(formData.get("id") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return { errore: "Gara non valida." };
+  const admin = createAdminClient();
+  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };
+  const esito = await scollegaGara(admin, id, new Date().toISOString());
+  if (!esito.ok) return { errore: esito.motivo === "non_collegata" ? "Questa gara non è collegata a un'altra." : "Operazione non riuscita." };
+  await registra(admin, [{ oggetto: "gara:collegamento", valore_precedente: `${id} unita a ${esito.resta}`, valore_nuovo: "annullato" }], sessione);
+  ricarica();
+  return { ok: true, avviso: "Collegamento annullato: la gara torna visibile e non verrà ricollegata da sola a quella gara." };
 }
 
 // Abilita o disabilita il modulo per un'impresa (il titolare), cercata per email. Solo clienti titolari: non amministratori né Ufficio Gare.

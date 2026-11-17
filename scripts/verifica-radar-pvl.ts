@@ -37,6 +37,7 @@ import { validaParametro } from "../src/lib/console/tender-intelligence-calcoli"
 import { rigaDaScrivere } from "../src/lib/radar/importa";
 import { descriviAvvisoLetto, etichettaFonti, fonteDelDato, fontiDellaGara, riepilogoFonti } from "../src/lib/radar/fonti-gara-calcoli";
 import { sintesiDeterministica } from "../src/lib/radar/sintesi-calcoli";
+import { decidiCollegamento, garaDaMostrare } from "../src/lib/radar/collegamenti-calcoli";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -53,6 +54,7 @@ function uguale(nome: string, reale: unknown, previsto: unknown) {
 
 async function principale() {
   const campione = JSON.parse(leggi("scripts/dati/radar-pvl-campione.json")) as { avvisi: Record<string, unknown>[] };
+  const azioniConsole0 = leggi("src/app/site-console/azioni/tender-intelligence.ts");
   const letti = campione.avvisi.map(leggiAvvisoPvl);
   const bando = (i: number) => letti[i] as BandoPvl;
 
@@ -334,6 +336,23 @@ async function principale() {
   );
   const frasiPvl = sintesiDeterministica({ oggetto: "x", settori: ["ristorazione"], cpvPrincipale: "55524000", ente: "Comune di Prova", comune: null, provincia: null, valoreStimato: 100000, durataMesi: null, nLotti: 1, tipoProcedura: null, criterio: null, scadenzaGiorno: "2026-12-01", scadenza: null, fonte: "PVL di ANAC", numeroAvviso: null, dataPubblicazione: "2026-11-13" });
   uguale("sintesi di una gara solo PVL: fonte e data, senza identificativo interno", frasiPvl.at(-1), "Fonte: PVL di ANAC, avviso pubblicato il 13 novembre 2026.");
+
+  // ───── 8ter. gare doppie: collegamento reversibile (0117) ─────
+  const gT = { id: "t", chiave: "ted:p", unita_a: null, unita_esclusa_con: [] };
+  const gP = { id: "p", chiave: "pvl:a", unita_a: null, unita_esclusa_con: [] };
+  uguale("doppione: resta la gara con l'avviso TED, si collega quella della PVL", decidiCollegamento("800001-2026", gT, gP), { collega: true, assorbita: "p", resta: "t", motivo: "stesso avviso TED 800001-2026, citato dalla PVL e letto da TED" });
+  uguale(
+    "niente collegamento: stessa gara, già collegata, annullato a mano, gara mancante",
+    [decidiCollegamento("1-2026", gT, gT), decidiCollegamento("1-2026", gT, { ...gP, unita_a: "x" }), decidiCollegamento("1-2026", gT, { ...gP, unita_esclusa_con: ["t"] }), decidiCollegamento("1-2026", null, gP)].map((d) => (d.collega ? "collega" : d.motivo)),
+    ["stessa_gara", "gia_collegata", "annullato_a_mano", "gara_mancante"],
+  );
+  uguale("gara da mostrare: quella che resta", [garaDaMostrare({ id: "p", unita_a: "t" }), garaDaMostrare({ id: "t", unita_a: null })], ["t", "t"]);
+  const sql117 = leggi("supabase/migrations/0117_radar_collegamenti_reversibili.sql").replace(/--[^\n]*/g, "");
+  atteso("0117 additiva, senza chiavi esterne, senza permessi nuovi", !/\bdrop\b|truncate|delete\s+from|\bupdate\s+public|references|grant/i.test(sql117) && /unita_a uuid/.test(sql117));
+  atteso("ricerca: le gare collegate non compaiono negli elenchi", /\.is\("unita_a", null\)/.test(leggi("src/lib/radar/ricerca.ts")));
+  atteso("scheda: una gara collegata porta a quella che resta", /if \(g\.unita_a\) redirect\(/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")));
+  atteso("console: annullare un collegamento è solo per amministratori e registrato", /scollegaGaraDoppia[\s\S]*richiediAdminAzione[\s\S]*registroDisponibile\(admin\)[\s\S]*await registra\(admin, \[\{ oggetto: "gara:collegamento"/.test(azioniConsole0));
+  atteso("collegamento mai notificabile e scrittura condizionata", /notificabile: false/.test(leggi("src/lib/radar/collegamenti.ts")) && /\.is\("unita_a", null\)\.select\("id"\)/.test(leggi("src/lib/radar/collegamenti.ts")));
 
   // ───── 9. punto di ripresa e finestre ─────
   const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);

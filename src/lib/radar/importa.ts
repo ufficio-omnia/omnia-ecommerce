@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { eEsclusione, impronta, type BandoTed, type EsclusioneTed, type EsitoTed, chiaveProceduraTed } from "./fonti/ted-calcoli";
 import { notificabile, piuRecente, rigaDaBando, statoDopoEsito, aperta, type Cambiamento, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
+import { collegaDoppioniPerAvvisoTed } from "./collegamenti";
 
 export type Misure = { richiesteDb: number; msDb: number };
 
@@ -28,6 +29,8 @@ export type EsitoPaginaBandi = {
   aggiunteCollegate: number;
   // gare già arrivate dalla PVL a cui TED si è unito (nessuna gara doppia)
   unitePvl: number;
+  // gare doppie riconosciute dopo e collegate in modo reversibile (0117)
+  collegateDoppie: number;
 };
 
 export type EsitoPaginaEsiti = { letti: number; applicati: number; senzaBando: number; invariati: number; senzaStato: number };
@@ -92,7 +95,7 @@ function haAltreFonti(r: RigaArchivio | null): boolean {
 }
 
 export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTed | EsclusioneTed)[], modo: ModoImportazione, adesso: Date, misure: Misure): Promise<EsitoPaginaBandi> {
-  const esito: EsitoPaginaBandi = { letti: avvisi.length, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0, unitePvl: 0 };
+  const esito: EsitoPaginaBandi = { letti: avvisi.length, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0, unitePvl: 0, collegateDoppie: 0 };
   const validi: BandoTed[] = [];
   for (const a of avvisi) {
     if (eEsclusione(a)) esito.esclusi[a.motivo] = (esito.esclusi[a.motivo] ?? 0) + 1;
@@ -314,6 +317,9 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
 
   // 7) gare aggiunte a mano con lo stesso CIG: si collegano alla gara pubblica (tabella riservata, scritta solo dal server)
   esito.aggiunteCollegate += await collegaAggiunte(admin, righeLotti, iso, misure);
+
+  // 8) gare doppie (es. rettifica PVL letta prima del bando TED): collegamento reversibile, tracciato, senza cancellare nulla (0117)
+  esito.collegateDoppie += (await collegaDoppioniPerAvvisoTed(admin, daApplicare.map((v) => v.meta.numero), iso, misure)).collegate;
 
   return esito;
 }

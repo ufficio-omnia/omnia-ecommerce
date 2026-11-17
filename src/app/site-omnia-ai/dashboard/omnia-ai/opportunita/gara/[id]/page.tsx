@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -44,6 +44,8 @@ function descriviAggiornamento(a: AggiornamentoGara): string {
   if (a.tipo === "nuova") return `Gara entrata nell'archivio il ${quando} (${avv}).`;
   if (a.tipo === "annullamento") return `Annullata secondo l'${avv}.`;
   if (a.tipo === "esito") return `Esito pubblicato (${avv}): ${a.valore_nuovo === "aggiudicata" ? "aggiudicata" : "chiusa senza aggiudicazione"}.`;
+  if (a.tipo === "correzione_dati" && (a.campo === "collegata_da" || a.campo === "collegata_a")) return `Il ${quando} l'abbiamo riconosciuta come la stessa gara pubblicata due volte (avviso TED ${a.id_fonte ?? ""}) e le due schede sono state collegate.`;
+  if (a.tipo === "correzione_dati" && a.campo === "collegamento_annullato") return `Il ${quando} il collegamento con un'altra scheda è stato annullato.`;
   const verbo = a.tipo === "proroga" ? "Proroga" : "Rettifica";
   if (a.campo === "scadenza_offerte") return `${verbo} (${avv}): scadenza da ${leggibileDaValore(a.valore_precedente) ?? "non indicata"} a ${leggibileDaValore(a.valore_nuovo) ?? "non indicata"}.`;
   if (a.campo === "valore_stimato") return `${verbo} (${avv}): valore stimato da ${euro(a.valore_precedente ? Number(a.valore_precedente) : null) ?? "non indicato"} a ${euro(a.valore_nuovo ? Number(a.valore_nuovo) : null) ?? "non indicato"}.`;
@@ -78,11 +80,13 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
   const supabase = await createClient();
   const [dati, salvataggi] = await Promise.all([leggiGaraPubblica(admin, id), leggiSalvataggi(supabase, [id])]);
   if (!dati) notFound();
-  const { gara: g, lotti, provenienze, aggiornamenti, controlli } = dati;
+  const { gara: g, lotti, provenienze, aggiornamenti, controlli, collegate, cigCollegati } = dati;
+  // gara collegata a un'altra (stessa gara pubblicata due volte, 0117): si mostra quella che resta, che ne riporta fonti e CIG
+  if (g.unita_a) redirect(`${RADICE_OPPORTUNITA}/gara/${g.unita_a}?da=collegata`);
   const salvataggio = salvataggi.get(id) ?? null;
-  // fonti della gara (TED, PVL o entrambe), riepilogo per fonte con collegamento ufficiale, e fonte dei dati principali
-  const fonti = fontiDellaGara(g.chiave, g.provenienza_campi);
+  // fonti della gara (TED, PVL o entrambe, anche dalle gare collegate), riepilogo per fonte con collegamento ufficiale, fonte dei dati
   const perFonte = riepilogoFonti(provenienze, controlli);
+  const fonti = [...new Set([...fontiDellaGara(g.chiave, g.provenienza_campi), ...perFonte.map((f) => f.fonte)])].sort() as ReturnType<typeof fontiDellaGara>;
   const fonteDi = (gruppo: string) => NOME_FONTE[fonteDelDato(g.provenienza_campi, gruppo, g.chiave)];
   const adesso = new Date();
   // aperta la scheda, le novità di una gara salvata risultano viste (dopo la risposta, senza rallentare la pagina)
@@ -141,6 +145,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
       </nav>
 
       {da === "aggiungi" && <p className="omnia-messaggio-stato successo">Questa gara è già nell&apos;archivio pubblico: l&apos;abbiamo aggiunta alle tue gare monitorate.</p>}
+      {da === "collegata" && <p className="omnia-messaggio-stato avviso">La gara che hai aperto è risultata la stessa di questa, pubblicata su più fonti: qui trovi tutte le sue fonti.</p>}
 
       <h2 className="omnia-opp-scheda-titolo">{g.oggetto_breve ?? g.oggetto}</h2>
       <details className="omnia-opp-ufficiale">
@@ -299,7 +304,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
                     <td>{l.oggetto ?? NON_INDICATO}</td>
                     <td className="num">{euro(l.valore_stimato) ?? "—"}</td>
                     <td>{scadenzaLeggibile(l.scadenza_giorno, l.scadenza_offerte) ?? "—"}</td>
-                    <td>{l.cig ?? "non indicato"}</td>
+                    <td>{l.cig ?? (l.numero_lotto && cigCollegati.get(l.numero_lotto) ? `${cigCollegati.get(l.numero_lotto)} (PVL ANAC)` : "non indicato")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -307,6 +312,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           </div>
         )}
         {lotti.length > 0 && lotti.every((l) => !l.cig) && !fonti.includes("pvl") && <p className="omnia-opp-nota">Nei bandi TED il CIG quasi sempre manca: lo trovi nei documenti di gara.</p>}
+        {collegate.length > 0 && <p className="omnia-opp-nota">Questa gara era stata pubblicata anche come gara a sé: l&apos;abbiamo riconosciuta e collegata qui. I dati di entrambe restano consultabili.</p>}
       </section>
 
       <section className="omnia-riquadro" aria-labelledby="attivita">

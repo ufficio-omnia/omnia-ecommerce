@@ -50,7 +50,14 @@ export default async function MonitoratePage() {
     : { data: [] as Aggiunta[] };
   const aggiunte = new Map((aggiunteRaw ?? []).map((a) => [a.id, a]));
 
-  const idProcedure = [...new Set([...salvate.map((s) => s.procedura_id), ...(aggiunteRaw ?? []).map((a) => a.procedura_id)].filter((x): x is string => !!x))];
+  const idSalvati = [...new Set([...salvate.map((s) => s.procedura_id), ...(aggiunteRaw ?? []).map((a) => a.procedura_id)].filter((x): x is string => !!x))];
+  // una gara salvata che poi è stata collegata a un'altra (stessa gara pubblicata due volte, 0117) si mostra come la gara che resta
+  const { data: collegateRaw } = idSalvati.length
+    ? await admin.from("radar_procedure").select("id, unita_a").in("id", idSalvati).not("unita_a", "is", null).returns<{ id: string; unita_a: string }[]>()
+    : { data: [] as { id: string; unita_a: string }[] };
+  const resta = new Map((collegateRaw ?? []).map((c) => [c.id, c.unita_a]));
+  const mostrata = (id: string | null | undefined) => (id ? (resta.get(id) ?? id) : undefined);
+  const idProcedure = [...new Set(idSalvati.map((id) => resta.get(id) ?? id))];
   const [{ data: procedureRaw }, { data: novitaRaw }, fontiGare] = idProcedure.length
     ? await Promise.all([
         admin.from("radar_procedure").select(COLONNE_RISULTATO).in("id", idProcedure).returns<RigaRisultato[]>(),
@@ -70,7 +77,8 @@ export default async function MonitoratePage() {
   const righe: (DatiRigaGara & { chiave: string; scadenzaOrd: string; gruppo: "settimana" | "prossime" | "senza_data" | "chiuse" })[] = [];
   for (const s of salvate) {
     const aggiunta = s.aggiunta_id ? aggiunte.get(s.aggiunta_id) : undefined;
-    const p = s.procedura_id ? procedure.get(s.procedura_id) : aggiunta?.procedura_id ? procedure.get(aggiunta.procedura_id) : undefined;
+    const idMostrato = mostrata(s.procedura_id) ?? mostrata(aggiunta?.procedura_id);
+    const p = idMostrato ? procedure.get(idMostrato) : undefined;
     let d: DatiRigaGara;
     if (p) {
       const visto = s.ultimo_aggiornamento_visto_il ? Date.parse(s.ultimo_aggiornamento_visto_il) : 0;

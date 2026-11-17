@@ -64,6 +64,8 @@ export type DatiPvlConsole = {
   limiti: LimitiPvl;
   giriProgrammati: { attivi: boolean; orari: string; cronProposto: string; prossimo: string };
   archivio: { avvisi: number | null; gareNateDallaPvl: number | null; avvisiCheCitanoTed: number | null; cambiamentiPvl: number | null };
+  // gare doppie collegate in modo reversibile (0117): le più recenti, con la gara che resta
+  collegamenti: { totale: number; elenco: { id: string; titolo: string; resta: string; il: string | null; motivo: string | null }[] } | null;
 };
 
 export type UltimoGiroTed = {
@@ -180,12 +182,19 @@ async function leggiDatiPvl(admin: ReturnType<typeof createAdminClient>): Promis
     const { count, error: e } = await f(admin.from(tabella).select("id", { count: "exact", head: true }));
     return e ? null : (count ?? 0);
   };
-  const [righeLimiti, avvisi, gareNateDallaPvl, avvisiCheCitanoTed, cambiamentiPvl] = await Promise.all([
+  const [righeLimiti, avvisi, gareNateDallaPvl, avvisiCheCitanoTed, cambiamentiPvl, collegateRaw] = await Promise.all([
     admin.from("console_impostazioni").select("chiave, valore").like("chiave", "radar_pvl_%").returns<{ chiave: string; valore: string }[]>(),
     conta((q) => q.eq("fonte", "pvl"), "radar_procedure_fonti"),
     conta((q) => q.like("chiave", "pvl:%"), "radar_procedure"),
     conta((q) => q.eq("fonte", "pvl").not("rif_ted", "is", null), "radar_procedure_fonti"),
     conta((q) => q.eq("fonte", "pvl").in("tipo", ["rettifica", "proroga", "annullamento", "esito"]), "radar_aggiornamenti"),
+    admin
+      .from("radar_procedure")
+      .select("id, oggetto_breve, oggetto, unita_a, unita_il, unita_motivo", { count: "exact" })
+      .not("unita_a", "is", null)
+      .order("unita_il", { ascending: false })
+      .limit(20)
+      .returns<{ id: string; oggetto_breve: string | null; oggetto: string; unita_a: string; unita_il: string | null; unita_motivo: string | null }[]>(),
   ]);
   const cursore = riga.cursore ?? null;
   const sospensione = riga.conteggi?.sospensione as { il: string; motivo: string | null } | undefined;
@@ -201,5 +210,8 @@ async function leggiDatiPvl(admin: ReturnType<typeof createAdminClient>): Promis
     limiti: limitiPvlDaRighe(righeLimiti.data ?? []),
     giriProgrammati: { attivi, orari: ORE_GIRI_PVL.map((o) => `${o}:00`).join(", "), cronProposto: CRON_PVL_PROPOSTO, prossimo: prossimoGiroPvl(new Date()).toISOString() },
     archivio: { avvisi, gareNateDallaPvl, avvisiCheCitanoTed, cambiamentiPvl },
+    collegamenti: collegateRaw.error
+      ? null
+      : { totale: collegateRaw.count ?? 0, elenco: (collegateRaw.data ?? []).map((r) => ({ id: r.id, titolo: r.oggetto_breve ?? r.oggetto, resta: r.unita_a, il: r.unita_il, motivo: r.unita_motivo })) },
   };
 }

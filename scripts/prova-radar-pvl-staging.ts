@@ -14,6 +14,8 @@ import { leggiBandoTed, leggiEsitoTed } from "../src/lib/radar/fonti/ted-calcoli
 import { applicaPaginaBandi, applicaPaginaEsiti, type Misure } from "../src/lib/radar/importa";
 import { applicaEsitiPvl, applicaPaginaBandiPvl } from "../src/lib/radar/importa-pvl-pagina";
 import { statistichePvlVuote } from "../src/lib/radar/importa-pvl-calcoli";
+import { scollegaGara } from "../src/lib/radar/collegamenti";
+import { leggiGaraPubblica } from "../src/lib/radar/gara";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const chiave = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -181,14 +183,102 @@ async function principale() {
   atteso("6) cambiamenti finali: nuova, proroga, esito (uno ciascuno)", JSON.stringify(agg.map((a) => a.tipo)) === JSON.stringify(["nuova", "proroga", "esito"]), JSON.stringify(agg));
 
   await pulisci();
+  await casoRettificaPrimaDelBando(misure, adesso);
+  await pulisci2();
   const finale = await gara();
-  atteso("dati sintetici cancellati", finale.ids.length === 0 && finale.idsTed.length === 0, JSON.stringify(finale));
+  const finale2 = await gara2();
+  atteso("dati sintetici cancellati", finale.ids.length === 0 && finale.idsTed.length === 0 && finale2.ids.length === 0 && finale2.idsTed.length === 0, JSON.stringify({ finale, finale2 }));
   console.log(fallimenti.length === 0 ? "\nProva d'integrazione PVL sullo staging: tutto a posto." : `\nProva d'integrazione: ${fallimenti.length} controlli falliti.`);
   process.exit(fallimenti.length === 0 ? 0 : 1);
+}
+
+// ───── caso 2: rettifica PVL letta PRIMA del bando TED (richiesta del titolare del 17/11) ─────
+// La PVL pubblica la rettifica (cita il nuovo avviso TED 999912) prima che TED abbia letto il bando (999911): nascono due gare. Quando TED
+// legge la rettifica 999912, le due si collegano: reversibile, tracciato, senza perdita di dati. Poi si annulla e non si ricollega.
+const APPALTO_2 = "00000000-0000-4000-8000-00000000b2b2";
+const AVVISO_R = "00000000-0000-4000-8000-00000000a0f1";
+const TED_R1 = "999911-2026";
+const TED_R2 = "999912-2026";
+const PROC_TED_2 = "sintetica-b1bis-procedura-2";
+
+async function gara2() {
+  const { data: prov } = await db.from("radar_procedure_fonti").select("procedura_id").eq("fonte", "pvl").eq("id_procedura_fonte", APPALTO_2);
+  const { data: perTed } = await db.from("radar_procedure").select("id").eq("chiave", `ted:${PROC_TED_2}`);
+  return { ids: [...new Set((prov ?? []).map((p) => p.procedura_id))], idsTed: (perTed ?? []).map((r) => r.id) };
+}
+
+async function pulisci2() {
+  const { ids, idsTed } = await gara2();
+  const tutte = [...new Set([...ids, ...idsTed])];
+  if (tutte.length) await db.from("radar_procedure").delete().in("id", tutte);
+  await db.from("radar_procedure_fonti").delete().in("id_fonte", [AVVISO_R, TED_R1, TED_R2]);
+}
+
+async function fotografia(id: string) {
+  const [g, l, p] = await Promise.all([
+    db.from("radar_procedure").select("*").eq("id", id).single(),
+    db.from("radar_lotti").select("numero_lotto, cig, oggetto, valore_stimato, scadenza_giorno, url_documenti").eq("procedura_id", id).order("numero_lotto"),
+    db.from("radar_procedure_fonti").select("fonte, id_fonte, impronta, rif_ted, id_procedura_fonte").eq("procedura_id", id).order("id_fonte"),
+  ]);
+  const riga = { ...(g.data ?? {}) } as Record<string, unknown>;
+  for (const k of ["unita_a", "unita_il", "unita_motivo", "unita_esclusa_con", "aggiornata_il"]) delete riga[k];
+  return JSON.stringify({ riga, lotti: l.data, prov: p.data });
+}
+
+async function casoRettificaPrimaDelBando(misure: Misure, adesso: Date) {
+  await pulisci2();
+  const avviso = avvisoPvl(AVVISO_R, TED_R2, "2026-11-20", "2026-12-21");
+  avviso.idAppalto = APPALTO_2;
+  avviso.nuovoAvviso = null;
+  const statR = statistichePvlVuote();
+  await applicaPaginaBandiPvl(db, [leggiAvvisoPvl(avviso) as BandoPvl], "incrementale", adesso, misure, statR);
+  const conProc = (a: Record<string, unknown>) => ({ ...a, "procedure-identifier": PROC_TED_2 });
+  await applicaPaginaBandi(db, [leggiBandoTed(conProc(avvisoTed(TED_R1, "2026-11-17", "2026-12-14", null)))], "incrementale", adesso, misure);
+  let g2 = await gara2();
+  atteso("R1) rettifica PVL prima del bando TED: oggi nascono due gare (doppione atteso a questo punto)", g2.ids.length === 1 && g2.idsTed.length === 1 && g2.ids[0] !== g2.idsTed[0], JSON.stringify(g2));
+  const idPvl = g2.ids[0];
+  const idTed = g2.idsTed[0];
+  const prima = await fotografia(idPvl);
+  const primaTed = await fotografia(idTed);
+
+  const t = await applicaPaginaBandi(db, [leggiBandoTed(conProc(avvisoTed(TED_R2, "2026-11-25", "2026-12-21", "cor-buy")))], "incrementale", adesso, misure);
+  const { data: dopo } = await db.from("radar_procedure").select("unita_a, unita_il, unita_motivo").eq("id", idPvl).single();
+  atteso("R2) TED legge la rettifica citata dalla PVL: le due gare si collegano (resta quella TED)", t.collegateDoppie === 1 && dopo?.unita_a === idTed && !!dopo?.unita_il && /999912-2026/.test(dopo?.unita_motivo ?? ""), JSON.stringify({ t, dopo }));
+  atteso("R3) nessuna perdita di dati: la gara collegata è identica a prima (salvo il collegamento)", (await fotografia(idPvl)) === prima);
+  const dopoTed = JSON.parse(await fotografia(idTed));
+  atteso("R3) la gara che resta non perde nulla (si aggiungono solo la rettifica TED e il registro)", JSON.parse(primaTed).riga.chiave === dopoTed.riga.chiave && dopoTed.prov.length === 2);
+  const { data: tracce } = await db.from("radar_aggiornamenti").select("procedura_id, tipo, campo, valore_nuovo, notificabile").in("procedura_id", [idPvl, idTed]).eq("tipo", "correzione_dati");
+  atteso(
+    "R4) tracciato su entrambe le gare, mai notificabile",
+    (tracce ?? []).length === 2 && (tracce ?? []).some((r) => r.procedura_id === idPvl && r.campo === "collegata_a" && r.valore_nuovo === idTed) && (tracce ?? []).some((r) => r.procedura_id === idTed && r.campo === "collegata_da" && r.valore_nuovo === idPvl) && (tracce ?? []).every((r) => r.notificabile === false),
+    JSON.stringify(tracce),
+  );
+  const { data: visibili } = await db.from("radar_procedure").select("id").in("id", [idPvl, idTed]).is("unita_a", null);
+  atteso("R5) elenchi e ricerca: si vede solo la gara che resta", JSON.stringify((visibili ?? []).map((r) => r.id)) === JSON.stringify([idTed]));
+  const scheda = await leggiGaraPubblica(db, idTed);
+  atteso(
+    "R5) la scheda che resta mostra anche l'avviso PVL e i CIG della gara collegata",
+    !!scheda && scheda.collegate.includes(idPvl) && scheda.provenienze.some((p) => p.fonte === "pvl" && p.id_fonte === AVVISO_R) && scheda.cigCollegati.get("LOT-0001") === CIG[0],
+    JSON.stringify({ collegate: scheda?.collegate, cig: [...(scheda?.cigCollegati ?? new Map()).entries()] }),
+  );
+
+  // annullamento dalla console (stessa funzione): la gara torna visibile e non si ricollega da sola
+  const annullo = await scollegaGara(db, idPvl, new Date().toISOString());
+  const { data: dopoAnnullo } = await db.from("radar_procedure").select("unita_a, unita_esclusa_con").eq("id", idPvl).single();
+  atteso("R6) annullamento: torna visibile, il collegamento con quella gara è escluso", annullo.ok && dopoAnnullo?.unita_a === null && (dopoAnnullo?.unita_esclusa_con ?? []).includes(idTed), JSON.stringify({ annullo, dopoAnnullo }));
+  atteso("R6) nessuna perdita di dati dopo l'annullamento", (await fotografia(idPvl)) === prima);
+  const ripetuta = conProc(avvisoTed(TED_R2, "2026-11-25", "2026-12-21", "cor-buy"));
+  ripetuta["title-proc"] = { ita: "(DATI SINTETICI) Servizio di pulizia degli uffici comunali (testo TED, nuova lettura)" };
+  const t2 = await applicaPaginaBandi(db, [leggiBandoTed(ripetuta)], "incrementale", adesso, misure);
+  const { data: dopoRilettura } = await db.from("radar_procedure").select("unita_a").eq("id", idPvl).single();
+  atteso("R7) una nuova lettura di quell'avviso TED non ricollega la gara annullata a mano", t2.collegateDoppie === 0 && dopoRilettura?.unita_a === null, JSON.stringify({ t2: t2.collegateDoppie, dopoRilettura }));
+  const { data: tracceAnnullo } = await db.from("radar_aggiornamenti").select("procedura_id, campo").in("procedura_id", [idPvl, idTed]).eq("campo", "collegamento_annullato");
+  atteso("R7) annullamento tracciato su entrambe le gare", (tracceAnnullo ?? []).length === 2, JSON.stringify(tracceAnnullo));
 }
 
 principale().catch(async (e) => {
   console.error(e);
   await pulisci().catch(() => {});
+  await pulisci2().catch(() => {});
   process.exit(1);
 });

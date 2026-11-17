@@ -145,6 +145,9 @@ export type StatistichePvl = {
     aggiunteCollegate: number;
     conflitti: number;
     mancanti: Record<string, number>;
+    // gare doppie collegate in modo reversibile (0117) e avvisi applicati a una gara già collegata (copia nascosta, mai notifiche)
+    collegateDoppie: number;
+    suGaraCollegata: number;
   };
   esiti: { letti: number; applicati: number; senzaGara: number; invariati: number };
 };
@@ -170,6 +173,8 @@ export function statistichePvlVuote(): StatistichePvl {
       aggiunteCollegate: 0,
       conflitti: 0,
       mancanti: {},
+      collegateDoppie: 0,
+      suGaraCollegata: 0,
     },
     esiti: { letti: 0, applicati: 0, senzaGara: 0, invariati: 0 },
   };

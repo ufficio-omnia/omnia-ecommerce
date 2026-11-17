@@ -20,7 +20,7 @@ import { aggiungiGiorni, giornoIso } from "./importa-ted-calcoli";
 import type { StatoProcedura } from "./importa-calcoli";
 
 export const COLONNE_RISULTATO =
-  "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale";
+  "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale, unita_a";
 
 export type RigaRisultato = CandidatoRicerca & {
   sa_comune: string | null;
@@ -33,6 +33,8 @@ export type RigaRisultato = CandidatoRicerca & {
   tipo_procedura: string | null;
   ultima_rilevazione_il: string;
   cpv_principale: string | null;
+  // gara che resta, se questa è collegata a un'altra (0117)
+  unita_a: string | null;
 };
 
 export type RisultatoRicerca = {
@@ -57,9 +59,13 @@ export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, ad
     if (error) return vuoto(true);
     idDaCig = [...new Set((data ?? []).map((r) => r.procedura_id))];
     if (idDaCig.length === 0) return vuoto(false);
+    // un CIG di una gara collegata a un'altra (0117) porta alla gara che resta
+    const { data: collegate } = await admin.from("radar_procedure").select("id, unita_a").in("id", idDaCig).not("unita_a", "is", null).returns<{ id: string; unita_a: string }[]>();
+    if ((collegate ?? []).length) idDaCig = [...new Set(idDaCig.map((id) => collegate?.find((c) => c.id === id)?.unita_a ?? id))];
   }
 
-  let q = admin.from("radar_procedure").select(COLONNE_RISULTATO).order("data_pubblicazione", { ascending: false }).order("id").limit(CANDIDATI_MASSIMI + 1);
+  // le gare collegate a un'altra (copie nascoste, 0117) non compaiono mai negli elenchi
+  let q = admin.from("radar_procedure").select(COLONNE_RISULTATO).is("unita_a", null).order("data_pubblicazione", { ascending: false }).order("id").limit(CANDIDATI_MASSIMI + 1);
   if (idDaCig) q = q.in("id", idDaCig);
   if (domanda.codiceFiscale) q = q.eq("sa_codice_fiscale", domanda.codiceFiscale);
   if (domanda.tsquery) q = q.textSearch("ricerca", domanda.tsquery, { config: "italian" });

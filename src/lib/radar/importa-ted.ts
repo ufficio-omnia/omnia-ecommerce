@@ -33,7 +33,7 @@ export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: numbe
 function totaliVuoti(): TotaliGiro {
   return {
     pagine: 0,
-    bandi: { letti: 0, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0, unitePvl: 0 },
+    bandi: { letti: 0, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, soloProvenienza: 0, rettifiche: 0, annullate: 0, lotti: 0, cigScartati: 0, aggiunteCollegate: 0, unitePvl: 0, collegateDoppie: 0 },
     esiti: { letti: 0, applicati: 0, senzaBando: 0, invariati: 0, senzaStato: 0 },
     ted: { richieste: 0, byte: 0, ms: 0 },
     db: { richiesteDb: 0, msDb: 0 },
@@ -42,7 +42,7 @@ function totaliVuoti(): TotaliGiro {
 
 function somma(t: TotaliGiro, b: EsitoPaginaBandi | null, e: EsitoPaginaEsiti | null) {
   if (b) {
-    for (const k of ["letti", "invariati", "nuove", "aggiornate", "soloProvenienza", "rettifiche", "annullate", "lotti", "cigScartati", "aggiunteCollegate", "unitePvl"] as const) t.bandi[k] += b[k];
+    for (const k of ["letti", "invariati", "nuove", "aggiornate", "soloProvenienza", "rettifiche", "annullate", "lotti", "cigScartati", "aggiunteCollegate", "unitePvl", "collegateDoppie"] as const) t.bandi[k] += b[k];
     for (const [k, v] of Object.entries(b.esclusi)) t.bandi.esclusi[k] = (t.bandi.esclusi[k] ?? 0) + v;
   }
   if (e) for (const k of ["letti", "applicati", "senzaBando", "invariati", "senzaStato"] as const) t.esiti[k] += e[k];

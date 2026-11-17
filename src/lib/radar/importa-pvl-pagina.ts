@@ -11,11 +11,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cigPvl, confrontaVersioniPvl, type BandoPvl, type EsitoPvl } from "./fonti/pvl-calcoli";
 import { COLONNE_RIGA, blocchi, collegaAggiunte, misura, rigaDaScrivere, type Misure } from "./importa";
+import { collegaDoppioniPerAvvisoTed } from "./collegamenti";
 import { aperta, notificabile, statoDopoEsito, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import { aggiungi, rigaDaBandoPvl, type StatistichePvl } from "./importa-pvl-calcoli";
 import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
 
-type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | null; provenienza_campi: ProvenienzaCampi | null };
+type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | null; provenienza_campi: ProvenienzaCampi | null; unita_a: string | null };
 
 const COLONNE_LOTTO = "procedura_id, numero_lotto, cig, oggetto, cpv_principale, cpv_tutti, valore_stimato, durata_mesi, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, scadenza_fonte, url_documenti";
 type LottoDb = LottoUnito & { procedura_id: string; valore_stimato: number | string | null };
@@ -84,7 +85,7 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
   const idsEsistenti = [...new Set([...dest.values()].map((d) => d.proceduraId).filter((x): x is string => !!x))];
   const esistenti = new Map<string, RigaDb>();
   for (const b of blocchi(idsEsistenti, 80)) {
-    const { data } = await misura(misure, "lettura delle gare da unire", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi`).in("id", b).returns<RigaDb[]>());
+    const { data } = await misura(misure, "lettura delle gare da unire", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi, unita_a`).in("id", b).returns<RigaDb[]>());
     for (const r of data ?? []) esistenti.set(r.id, { ...r, valore_stimato: r.valore_stimato === null ? null : Number(r.valore_stimato) });
   }
   const lottiEsistenti = new Map<string, LottoUnito[]>();
@@ -198,6 +199,7 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
     } else if (d.via === "ted" || (d.via === "cig" && !s.iniziale.chiave.startsWith("pvl:"))) stat.bandi.giaPresentiTed++;
     else stat.bandi.nuoveVersioni++;
     if (s.iniziale && s.cambiata) stat.bandi.aggiornate++;
+    if (s.iniziale?.unita_a) stat.bandi.suGaraCollegata++;
     if (s.cambiamenti.some((c) => c.tipo === "rettifica" || c.tipo === "proroga")) stat.bandi.rettifiche++;
     if (s.cambiamenti.some((c) => c.tipo === "annullamento")) stat.bandi.annullate++;
     if (s.lottiNonAllineati) stat.bandi.lottiNonAllineati++;
@@ -270,7 +272,8 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
         valore_nuovo: c.dopo?.slice(0, 2000) ?? null,
         fonte: "pvl",
         id_fonte: c.idFonte,
-        notificabile: modo === "incrementale" && (eraAperta || aperta(r.stato, sc, adesso)),
+        // una gara collegata a un'altra è una copia nascosta: le novità arrivano a chi la segue dalla gara che resta, mai due volte
+        notificabile: modo === "incrementale" && !s.iniziale?.unita_a && (eraAperta || aperta(r.stato, sc, adesso)),
       });
     }
     return righe;
@@ -281,6 +284,10 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
 
   // 8) gare aggiunte a mano con lo stesso CIG: si collegano alla gara pubblica
   stat.bandi.aggiunteCollegate += await collegaAggiunte(admin, righeLotti, iso, misure);
+
+  // 9) gare doppie riconosciute ora (avviso TED citato qui e già letto da TED in un'altra gara): collegamento reversibile (0117)
+  const numeri = [...stati.values()].flatMap((s) => s.avvisi.map((a) => a.meta.numeroTed)).filter((n): n is string => !!n);
+  stat.bandi.collegateDoppie += (await collegaDoppioniPerAvvisoTed(admin, numeri, iso, misure)).collegate;
 }
 
 // Esiti PVL (aggiudicazioni, mancate aggiudicazioni): cambiano SOLO lo stato di una gara già in archivio, trovata per procedura PVL, numero

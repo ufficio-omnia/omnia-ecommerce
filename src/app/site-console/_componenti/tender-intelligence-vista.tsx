@@ -1,7 +1,7 @@
 import type { DatiTenderIntelligenceConsole } from "@/lib/console/tender-intelligence";
 import { AZIONI_RADAR, LIMITI_PREDEFINITI, PREFISSO_COSTO, PREFISSO_LIMITE, type AzioneRadar, type NomeLimite } from "@/lib/radar/diritto-calcoli";
 import type { StatoFonte } from "@/lib/radar/fonti/tipi";
-import { eseguiGiroPvl, eseguiGiroTed, impostaFontePvl, impostaFonteTed, impostaImpresaRadar, salvaParametriRadar } from "../azioni/tender-intelligence";
+import { eseguiGiroPvl, eseguiGiroTed, impostaFontePvl, impostaFonteTed, impostaImpresaRadar, salvaParametriRadar, scollegaGaraDoppia } from "../azioni/tender-intelligence";
 import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-calcoli";
 import { ETICHETTE_LIMITI_PVL } from "@/lib/console/tender-intelligence-calcoli";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
@@ -39,6 +39,7 @@ const ETICHETTA_OGGETTO: Record<string, string> = {
   "parametro:radar_attivo": "Interruttore generale del modulo",
   "fonte:ted:attiva": "Fonte TED",
   "fonte:pvl:attiva": "Fonte PVL (staging)",
+  "gara:collegamento": "Collegamento di una gara doppia",
   "cliente:attivo": "Modulo per l'impresa",
 };
 
@@ -163,6 +164,52 @@ function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceCo
           <p className="cn-nota">Su 401, 403 o 429, o su una risposta che non sono i dati attesi, il connettore si sospende da solo e non ripete la richiesta.</p>
         </Pannello>
       </div>
+
+      {pvl.collegamenti && (
+        <div className="cn-sezione">
+          <Pannello titolo={`Gare doppie collegate (${numero(pvl.collegamenti.totale)})`}>
+            <p className="cn-nota">
+              Stessa gara pubblicata due volte (per esempio una rettifica della PVL letta prima del bando TED): la scheda doppia resta intera nel database, sparisce da elenchi e ricerca e porta a quella che resta. Annullare il collegamento la rende di nuovo visibile; da quel momento non si ricollega più da sola.
+            </p>
+            {pvl.collegamenti.elenco.length === 0 ? (
+              <p className="cn-nota">Nessuna gara collegata.</p>
+            ) : (
+              <div className="cn-scorri">
+                <table className="cn-tab">
+                  <thead>
+                    <tr>
+                      <th>Gara collegata</th>
+                      <th>Quando e perché</th>
+                      <th>Azione</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pvl.collegamenti.elenco.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          {c.titolo}
+                          <div className="cn-nota">
+                            {c.id} → resta {c.resta}
+                          </div>
+                        </td>
+                        <td>
+                          {data(c.il)}
+                          {c.motivo ? ` · ${c.motivo}` : ""}
+                        </td>
+                        <td>
+                          <ModuloAzione azione={scollegaGaraDoppia} etichetta="Annulla il collegamento" etichettaInCorso="Annullo…" campi={{ id: c.id }} variante="neutro">
+                            <span className="cn-nota">Torna visibile, nulla si cancella.</span>
+                          </ModuloAzione>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Pannello>
+        </div>
+      )}
 
       {g && (
         <div className="cn-sezione">
