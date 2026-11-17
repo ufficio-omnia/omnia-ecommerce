@@ -217,7 +217,7 @@ async function main() {
     const vista = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
     atteso("il pannello «Pacchetti di servizi» c'è, con unità residue, acquisti con stato di fattura, movimenti con motivo e autore", /Pacchetti di servizi \(\$\{s\.pacchetti\.acquisti\.length\} acquistati\)/.test(vista) && /Unità residue/.test(vista) && /Acquisti pagati/.test(vista) && /ETICHETTA_MOVIMENTO\[m\.tipo as MovimentoTipo\]/.test(vista) && /m\.eseguitoDa/.test(vista) && /s\.pacchetti\.acquisti\.map\(\(p\) =>/.test(vista));
     atteso("un acquisto di prova porta il segno «prova»", /\{p\.prova && \(/.test(vista.slice(vista.indexOf("Pacchetti di servizi (")))) ;
-    atteso("il modulo di rettifica: servizio fisso, variazione e motivo obbligatori, con l'azione giusta", /azione=\{rettificaPacchettiCliente\} campi=\{\{ userId: s\.utente\.id, servizio: "piano_lavoro" \}\}/.test(vista) && /name="delta"[^>]*required/.test(vista) && /name="motivo"[^>]*required/.test(vista));
+    atteso("il modulo di rettifica: servizio da un elenco chiuso (i servizi disponibili), variazione e motivo obbligatori, con l'azione giusta", /azione=\{rettificaPacchettiCliente\} campi=\{\{ userId: s\.utente\.id \}\}/.test(vista) && /id="servizio-pacchetti" name="servizio"/.test(vista) && /SERVIZI_PACCHETTO\.filter\(\(servizio\) => SERVIZI\[servizio\]\.disponibile\)/.test(vista) && /name="delta"[^>]*required/.test(vista) && /name="motivo"[^>]*required/.test(vista));
     atteso("la scheda dice che le unità si perdono comunque alla cessazione, anche quelle regalate", /si perdono, come i crediti: anche quelle che regali da qui/.test(vista));
     atteso("per un Ufficio Gare il pannello è sostituito dal messaggio (le unità sono del titolare)", /\{eMembro \? \(\s*<p className="cn-nota-inline">\{MESSAGGIO_E_UN_UFFICIO_GARE\}<\/p>\s*\) : !s\.pacchetti\.disponibile/.test(vista.slice(vista.indexOf("Pacchetti prepagati di servizi aggiuntivi"))));
     atteso("senza la migrazione 0104 la scheda lo dice", /I pacchetti non sono disponibili: manca la migrazione 0104/.test(vista));
@@ -420,7 +420,7 @@ async function main() {
     const scheda = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
     const pannelloScheda = scheda.slice(scheda.indexOf("Pacchetti prepagati di servizi aggiuntivi"), scheda.indexOf("Prova gratuita e account creato dalla console"));
     atteso("la scheda mostra le offerte del cliente con stato e «Revoca» sulle revocabili", /Offerte dedicate a questo cliente/.test(pannelloScheda) && /s\.pacchetti\.offerte\.elenco\.map\(\(o\) =>/.test(pannelloScheda) && /\{revocabile\(o\.stato\) && \(\s*<ModuloAzione azione=\{revocaOffertaDedicataCliente\} campi=\{\{ id: o\.id \}\}/.test(pannelloScheda));
-    atteso("il modulo della scheda ha l'email del cliente già compilata e NON modificabile (campo nascosto), servizio fisso, e quantità e prezzo obbligatori", /azione=\{creaOffertaDedicataCliente\} campi=\{\{ email: s\.utente\.email, servizio: "piano_lavoro" \}\}/.test(pannelloScheda) && /name="quantita"[^>]*required/.test(pannelloScheda) && /name="prezzo"[^>]*required/.test(pannelloScheda) && !/name="email"/.test(pannelloScheda));
+    atteso("il modulo della scheda ha l'email del cliente già compilata e NON modificabile (campo nascosto), servizio da un elenco chiuso, e quantità e prezzo obbligatori", /azione=\{creaOffertaDedicataCliente\} campi=\{\{ email: s\.utente\.email \}\}/.test(pannelloScheda) && /id="servizio-offerta" name="servizio"/.test(pannelloScheda) && /name="quantita"[^>]*required/.test(pannelloScheda) && /name="prezzo"[^>]*required/.test(pannelloScheda) && !/name="email"/.test(pannelloScheda));
     atteso("per un Ufficio Gare nessun modulo (il pannello intero è sostituito dal messaggio) e senza la migrazione 0105 la scheda lo dice", /\{eMembro \? \(\s*<p className="cn-nota-inline">\{MESSAGGIO_E_UN_UFFICIO_GARE\}<\/p>\s*\) : !s\.pacchetti\.disponibile/.test(pannelloScheda) && /\{!s\.pacchetti\.offerte\.disponibile \? \(\s*<p className="cn-nota-inline">Le offerte dedicate sono disponibili dopo la migrazione 0105\.<\/p>/.test(pannelloScheda));
     atteso("la scheda mostra anche la nota interna dell'offerta (solo in console)", /\{o\.nota && <small>Nota: \{o\.nota\}<\/small>\}/.test(pannelloScheda));
     uguale("la nota interna NON arriva al cliente: l'offerta come la vede lui non ha nemmeno il campo", Object.keys(daRigaOfferta(riga({ nota: "segreta" }))).sort(), ["id", "prezzoCentesimi", "quantita", "scadeIl", "servizio"]);
@@ -439,7 +439,13 @@ async function main() {
       });
       uguale(`${path.basename(file)}: ogni azione esportata comincia da richiediAdminAzione`, senzaGuardia.map((c) => c.split("(")[0]), []);
     }
-    atteso("le chiavi del servizio non si leggono mai dal modulo: il servizio della rettifica è fisso nella pagina e riconvalidato dal server", /campi=\{\{ userId: s\.utente\.id, servizio: "piano_lavoro" \}\}/.test(leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx")) && /eServizioPacchetto\(servizio\)/.test(leggi("src/app/site-console/azioni/pacchetti.ts")));
+    atteso(
+      "il servizio della rettifica arriva da un elenco chiuso ed è riconvalidato dal server (servizio dei pacchetti, disponibile, e per la copertina la migrazione 0130)",
+      /name="servizio"/.test(leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx")) &&
+        /eServizioPacchetto\(servizio\)/.test(leggi("src/app/site-console/azioni/pacchetti.ts")) &&
+        /SERVIZI\[servizio\]\.disponibile/.test(leggi("src/app/site-console/azioni/pacchetti.ts")) &&
+        /controlloServizio\(servizio\)/.test(leggi("src/app/site-console/azioni/pacchetti.ts")),
+    );
     atteso("nessun riferimento alla console dai due siti pubblici (le pagine dei pacchetti dei clienti non importano nulla della console)", ["src/app/actions/pacchetti-servizi.ts", "src/lib/pacchetti-servizi.ts", "src/lib/pacchetti-servizi-calcoli.ts", "src/components/omnia-ai/servizi-per-le-gare.tsx"].filter((f) => fs.existsSync(path.join(__dirname, "..", f))).every((f) => !/lib\/console|site-console|console\.omniaitalia/.test(leggi(f))));
   }
 

@@ -21,12 +21,12 @@ import { calcolaPrezzoRevisione } from "@/lib/omnia-ai-revisione-calcoli";
 import ChatSection, { type GaraMessaggio } from "./chat-section";
 import PianoLavoroPanel from "./piano-lavoro-panel";
 import FoodMenuPanel from "./food-menu-panel";
-import CopertinaPanel, { type ChatVista, type CopertinaVista, type DocumentoScelta, type StatoStile } from "./copertina-panel";
+import CopertinaPanel, { type ChatVista, type CopertinaVista, type DocumentoScelta, type PacchettoCopertinaVista, type StatoStile } from "./copertina-panel";
 import { copertineDaNomi, dataDaMarca, fileCopertina, numeriCopertine, STILI } from "@/lib/copertina-relazione-calcoli";
 import { chatAperta, copertinaDiLavoro, modificheContate, statoChat } from "@/lib/copertina-chat-calcoli";
 import { leggiChat } from "@/lib/copertina-chat";
-import { COPERTINE_PER_STILE, copertinaVisibile, righeGratisPerCliente } from "@/lib/copertina-diritto-calcoli";
-import { decidi as decidiCopertina, leggiContestoCopertina, sviluppoLocale } from "@/lib/copertina-diritto";
+import { COPERTINE_PER_STILE, copertinaVisibile, righeFontePerCliente, righeGratisPerCliente } from "@/lib/copertina-diritto-calcoli";
+import { decidi as decidiCopertina, leggiContestoCopertina, pagamentoCopertinaDisponibile, sviluppoLocale } from "@/lib/copertina-diritto";
 import { interpretaRitornoCopertina, valutaOffertaCopertina, type OffertaCopertina, type RitornoPagamentoCopertina } from "@/lib/copertina-acquisto-calcoli";
 import { documentoPredefinito, soloPdf } from "@/lib/copertina-lettura-calcoli";
 import { leggiPercorsoLogoCliente, linkCopertineIntere, linkMiniature, nomiFileCopertine } from "@/lib/copertina-relazione";
@@ -244,7 +244,7 @@ export default async function GaraPage({
   const pacchettoPianoLavoro: PacchettoNellaGara = {
     saldo: dirittiPianoLavoro.pacchettoSaldo,
     garaGiaConsumata: dirittiPianoLavoro.pacchettoGaraConsumata,
-    proposta: offertaPianoLavoro.stato === "acquistabile" && (await pacchettiDisponibili(adminPianoLavoro)) ? proponiPacchettoPiuConveniente(await leggiCatalogoPacchetti("piano_lavoro", adminPianoLavoro), await leggiOfferteAttive(adminPianoLavoro, contesto.accountId)) : null,
+    proposta: offertaPianoLavoro.stato === "acquistabile" && (await pacchettiDisponibili(adminPianoLavoro)) ? proponiPacchettoPiuConveniente(await leggiCatalogoPacchetti("piano_lavoro", adminPianoLavoro), (await leggiOfferteAttive(adminPianoLavoro, contesto.accountId)).filter((o) => o.servizio === "piano_lavoro")) : null,
   };
 
   // «Copertina relazione tecnica»: compare dopo l'analisi dei documenti, solo se la console ha acceso il servizio per questo cliente (o se ci sono già copertine
@@ -259,6 +259,8 @@ export default async function GaraPage({
     documentoPredefinito: string | null;
     stili: StatoStile[];
     righeGratis: string[];
+    righeFonte: string[];
+    pacchetto: PacchettoCopertinaVista;
     offerta: OffertaCopertina;
     ritorno: RitornoPagamentoCopertina;
     privacyVersione: number | null;
@@ -278,9 +280,31 @@ export default async function GaraPage({
     const elencoCopertine = copertineDaNomi(nomiCopertine);
     // «COPERTINA N.x»: in ordine di creazione, comprese quelle modificate in chat
     const numeriCop = numeriCopertine(elencoCopertine);
-    const visibileCopertina = !ctxCopertina.errore && (copertinaVisibile({ impostazioni: ctxCopertina.impostazioni, schemaAssente: ctxCopertina.schemaAssente, sviluppoLocale: sviluppoLocale(process.env), acquistata: ctxCopertina.acquistata }) || elencoCopertine.length > 0);
+    const dirittoGaraCopertina = decidiCopertina(ctxCopertina, gara.id, "stilizzato");
+    // visibile se per questo cliente c'è qualcosa da fare o da dire (stesse regole dell'azione), o se ci sono già copertine da scaricare
+    const visibileCopertina =
+      !ctxCopertina.errore &&
+      (copertinaVisibile({
+        impostazioni: ctxCopertina.impostazioni,
+        schemaAssente: ctxCopertina.schemaAssente,
+        sviluppoLocale: sviluppoLocale(process.env),
+        acquistata: ctxCopertina.acquistata,
+        venditaAttiva: ctxCopertina.venditaAttiva,
+        prezzoGeneraleCentesimi: ctxCopertina.prezzoGeneraleCentesimi,
+        pagamentoDisponibile: ctxCopertina.acquistiDisponibili && pagamentoCopertinaDisponibile(process.env),
+        concessioneId: ctxCopertina.concessioneId,
+        pacchetto: ctxCopertina.pacchetto,
+        inProva: ctxCopertina.inProva,
+        politicaProva: ctxCopertina.politicaProva,
+      }) ||
+        elencoCopertine.length > 0);
     const pdfDellaGara = soloPdf(documentiOrdinati);
-    const offertaCopertina: OffertaCopertina = valutaOffertaCopertina({ diritto: decidiCopertina(ctxCopertina, gara.id, "stilizzato"), titolare: !ufficioGare });
+    const offertaCopertina: OffertaCopertina = valutaOffertaCopertina({ diritto: dirittoGaraCopertina, titolare: !ufficioGare });
+    // accanto all'acquisto della singola gara, il pacchetto più conveniente (elenco della console o offerta dedicata a questo cliente)
+    const propostaPacchettoCopertina =
+      offertaCopertina.stato === "acquistabile" && ctxCopertina.venditaAttiva && (await pacchettiDisponibili(adminCopertina, "copertina"))
+        ? proponiPacchettoPiuConveniente(await leggiCatalogoPacchetti("copertina", adminCopertina), (await leggiOfferteAttive(adminCopertina, contesto.accountId)).filter((o) => o.servizio === "copertina"))
+        : null;
     // la Privacy policy in vigore, da linkare accanto all'accettazione delle condizioni (solo se si può comprare)
     const privacyCopertina = offertaCopertina.stato === "acquistabile" ? ((await getCurrentOmniaAiLegalDocuments(adminCopertina))?.privacyPolicy.version ?? null) : null;
     if (visibileCopertina) {
@@ -351,6 +375,8 @@ export default async function GaraPage({
         return { stile, fatte: ctxCopertina.uso.perStile[stile], massime: COPERTINE_PER_STILE, consentito: esito.ok, motivo: esito.ok ? null : esito.motivo, messaggio: esito.ok ? null : esito.messaggio };
       }),
       righeGratis: righeGratisPerCliente(ctxCopertina.impostazioni, ctxCopertina.uso, gara.id),
+      righeFonte: righeFontePerCliente(dirittoGaraCopertina, ctxCopertina.pacchetto.saldo),
+      pacchetto: { saldo: ctxCopertina.pacchetto.saldo, consumaUnita: dirittoGaraCopertina.ok && dirittoGaraCopertina.consumaUnita === true, proposta: propostaPacchettoCopertina },
       // servizio «a pagamento»: si offre l'acquisto a chi non ha ancora pagato questa gara e può pagare adesso (compra il titolare; l'Ufficio Gare vede che serve)
       offerta: offertaCopertina,
       ritorno: interpretaRitornoCopertina(ritornoCopertina),

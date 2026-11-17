@@ -141,8 +141,8 @@ export function descrizioneCopertina(garaTitolo: string): string {
 }
 
 export function descrizionePacchetto(servizio: string, quantita: number): string {
-  const nome = servizio === "piano_lavoro" ? "piano di lavoro" : servizio === "food_menu" ? "OMNIA FOOD MENU" : "servizio";
-  const plurale = servizio === "piano_lavoro" ? "piani di lavoro" : nome;
+  const nome = servizio === "piano_lavoro" ? "piano di lavoro" : servizio === "copertina" ? "gara con copertina" : servizio === "food_menu" ? "OMNIA FOOD MENU" : "servizio";
+  const plurale = servizio === "piano_lavoro" ? "piani di lavoro" : servizio === "copertina" ? "gare con copertina" : nome;
   return `Pacchetto di servizi aggiuntivi: ${quantita} ${quantita === 1 ? nome : plurale}`;
 }
 

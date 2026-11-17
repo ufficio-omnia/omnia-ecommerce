@@ -206,8 +206,15 @@ async function main() {
     atteso("l'ultima gara gratis rimasta: al singolare", /ti resta 1 gara gratis su 2/.test(righeGratisPerCliente(gratis({ gareMassime: 2 }), uso({ gare: [ALTRA_1] }), GARA).join(" ")));
     atteso("la scadenza si dice in formato italiano", righeGratisPerCliente(gratis({ scadeIl: "2026-12-31" }), uso(), GARA).join(" ").includes("Gratis fino al 31/12/2026."));
     atteso("a pagamento, spento o senza impostazioni: nessuna riga «gratis»", righeGratisPerCliente(pagamento(), uso(), GARA).length === 0 && righeGratisPerCliente(gratis({ attivo: false }), uso(), GARA).length === 0 && righeGratisPerCliente(null, uso(), GARA).length === 0);
-    atteso("console: mai configurato, spento, acceso gratis, acceso a pagamento", descriviImpostazioniCopertina(null).startsWith("Spento") && descriviImpostazioniCopertina(gratis({ attivo: false })) === "Spento." && descriviImpostazioniCopertina(gratis({ gareMassime: 5, scadeIl: "2026-12-31" })) === "Acceso, gratis: fino a 5 gare, fino al 31/12/2026." && /Acceso, a pagamento: .*49.* a gara \(IVA inclusa\)/.test(descriviImpostazioniCopertina(pagamento())));
-    atteso("console: gratis senza limiti né scadenza", descriviImpostazioniCopertina(gratis()) === "Acceso, gratis: senza limite di gare, senza scadenza.");
+    // dal 17/11/2026 le impostazioni per cliente sono «condizioni particolari» sopra le regole generali della pagina Copertina
+    atteso(
+      "console: mai impostate, nessuna condizione, gratis, prezzo dedicato",
+      descriviImpostazioniCopertina(null).startsWith("Nessuna condizione particolare (mai impostate)") &&
+        descriviImpostazioniCopertina(gratis({ attivo: false })) === "Nessuna condizione particolare: valgono le regole generali della pagina Copertina." &&
+        descriviImpostazioniCopertina(gratis({ gareMassime: 5, scadeIl: "2026-12-31" })) === "Gratis: fino a 5 gare, fino al 31/12/2026." &&
+        /Prezzo dedicato: .*49.* a gara \(IVA inclusa\)/.test(descriviImpostazioniCopertina(pagamento())),
+    );
+    atteso("console: gratis senza limiti né scadenza", descriviImpostazioniCopertina(gratis()) === "Gratis: senza limite di gare, senza scadenza.");
   }
 
   console.log("--- Il modulo della console: tutto rivisto sul server ---");
@@ -298,7 +305,7 @@ async function main() {
     atteso("ordine: sessione, sola lettura, stile, analisi, documento, impostazioni del cliente, decisione, registro, generazione, chiusura o cancellazione", ordine.every((p, i) => p >= 0 && (i === 0 || p > ordine[i - 1])), JSON.stringify(ordine));
     atteso("l'azione non ha più l'interruttore «solo in locale» né ripieghi sullo stile", !/copertinaAttiva/.test(azione) && !/\?\? "stilizzato"/.test(generazione));
     atteso("le impostazioni si leggono per il TITOLARE (accountId) e mai dal browser", /leggiContestoCopertina\(\{ admin, accountId: contesto\.accountId, garaId: gara\.id \}\)/.test(generazione) && !/formData\.get\("(attivo|modalita|prezzo|gareMassime|scadeIl|fonte)"\)/.test(generazione));
-    atteso("la riga si registra con la fonte decisa dal server, non dal browser", /riservaCopertina\(admin, \{ garaId: gara\.id, userId: contesto\.accountId, stile, fonte: diritto\.fonte \}\)/.test(generazione));
+    atteso("la riga si registra con la fonte decisa dal server, non dal browser", /riservaCopertina\(admin, \{ garaId: gara\.id, userId: contesto\.accountId, stile, fonte: diritto\.fonte, concessioneId: diritto\.concessioneId \?\? null \}\)/.test(generazione));
     atteso("riuscita: riga chiusa; non riuscita: riga cancellata (non conta)", /if \(esito\.ok\) await completaCopertina\(admin, rigaId, esito\.marca\);\s*else await annullaCopertina\(admin, rigaId\);/.test(generazione));
     atteso("un'eccezione durante la generazione non lascia la riga registrata come fatta", /try \{[\s\S]*await generaCopertina\([\s\S]*\} catch \(err\)[\s\S]*esito = \{ ok: false/.test(generazione));
     atteso("senza la tabella si procede solo in sviluppo locale (fonte «sviluppo»)", /riserva\.stato === "schema_assente" && diritto\.fonte !== "sviluppo"/.test(generazione));
@@ -311,14 +318,14 @@ async function main() {
   console.log("--- La pagina della gara e il pannello ---");
   {
     const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/page.tsx");
-    atteso("il riquadro compare solo con il servizio acceso per il cliente (o con copertine già fatte da scaricare)", /copertinaVisibile\(\{ impostazioni: ctxCopertina\.impostazioni/.test(pagina) && /\|\| elencoCopertine\.length > 0/.test(pagina) && !/copertinaAttiva/.test(pagina));
+    atteso("il riquadro compare solo se per il cliente c'è qualcosa da fare o da dire (stesse regole dell'azione), o con copertine già fatte da scaricare", /copertinaVisibile\(\{\s+impostazioni: ctxCopertina\.impostazioni/.test(pagina) && /\|\|\s+elencoCopertine\.length > 0/.test(pagina) && !/copertinaAttiva/.test(pagina));
     atteso("la pagina decide per ogni stile con le stesse regole dell'azione (decidiCopertina) e legge il contesto del titolare", /decidiCopertina\(ctxCopertina, gara\.id, stile\)/.test(pagina) && /leggiContestoCopertina\(\{ admin: adminCopertina, accountId: contesto\.accountId/.test(pagina));
     const pannello = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/copertina-panel.tsx");
     atteso("la dicitura «Servizio in prova… nessun addebito» è tolta", !/Servizio in prova/.test(pannello) && !/nessun addebito/.test(pannello) && !/prezzo verrà definito/.test(pannello));
     atteso("il pannello scrive che si possono fare fino a 3 generazioni per stile", /fino a <strong>3 generazioni per stile<\/strong>/.test(pannello) && /3 stilizzate e 3 realistiche/.test(pannello));
     atteso("il pannello mostra «N di 3 generazioni fatte» per ogni stile e spegne il pulsante che non può più generare", /generazioni fatte/.test(pannello) && /disabled=\{pending \|\| documenti\.length === 0 \|\| !s\.consentito\}/.test(pannello) && /s\.fatte\} di \{s\.massime\}/.test(pannello));
     atteso("il motivo generale (spento, finito, scaduto, a pagamento) si dice una volta sola, sopra i pulsanti", /motivoGenerale/.test(pannello) && /s\.motivo !== "limite_stile"/.test(pannello));
-    atteso("le righe sul periodo gratuito sono mostrate al cliente", /righeGratis\.length > 0/.test(pannello));
+    atteso("le righe sul periodo gratuito sono mostrate al cliente", /\[\.\.\.righeGratis, \.\.\.righeFonte\]\.length > 0/.test(pannello));
   }
 
   console.log("--- La console ---");
@@ -339,10 +346,10 @@ async function main() {
       "lo stato di sistema della Panoramica controlla la chiave di OpenAI (errore in produzione, avviso altrove) senza mai leggerne il valore oltre alla presenza",
       /voce: "OpenAI \(copertine\)"/.test(statoSistema) && /process\.env\.OPENAI_API_KEY\s*\?/.test(statoSistema) && /esito: ambiente === "produzione" \? "errore" : "avviso"/.test(statoSistema) && /nuovo deploy/.test(statoSistema) && !/OPENAI_API_KEY\s*[}\)]*\s*(\+|\$\{)/.test(statoSistema),
     );
-    atteso("il prezzo non arriva da altro che dal modulo validato (niente ripieghi nascosti)", /v\.prezzoCentesimi/.test(salva) && !/PREZZO_COPERTINA/.test(azione));
+    atteso("il prezzo non arriva da altro che dal modulo validato (niente ripieghi nascosti)", /v\.prezzoCentesimi/.test(salva) && !/PREZZO_COPERTINA/.test(salva));
 
     const vista = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
-    atteso("la scheda cliente ha il riquadro, non per gli amministratori, e dice se è un Ufficio Gare", /titolo="Copertina della relazione tecnica"/.test(vista) && /s\.utente\.ruolo !== "admin"/.test(vista.slice(vista.indexOf("Copertina della relazione tecnica: acceso/spento"))));
+    atteso("la scheda cliente ha il riquadro, non per gli amministratori, e dice se è un Ufficio Gare", /titolo="Copertina della relazione tecnica"/.test(vista) && /s\.utente\.ruolo !== "admin"/.test(vista.slice(vista.indexOf("Copertina della relazione tecnica: condizioni particolari"))));
     atteso("i campi del modulo: servizio, modalità, prezzo, gare gratis, scadenza, nota", ['name="stato"', 'name="modalita"', 'name="prezzo"', 'name="gareMassime"', 'name="scadeIl"', 'name="nota"'].every((c) => vista.includes(c)));
     atteso("la scheda dice quante gare gratis ha usato e quante copertine ha generato", /Gare gratis usate:/.test(vista) && /Copertine generate:/.test(vista));
     atteso("senza la migrazione la scheda lo dice", /migrazione 0106 non ancora eseguita/.test(vista));
