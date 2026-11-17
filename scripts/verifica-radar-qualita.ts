@@ -471,6 +471,12 @@ uguale("tutti i settori dei CPV esclusi: decidono le parole chiave, come per le 
 const nessuno = classificaGara({ cpvPrincipale: "55524000", cpvTutti: ["55524000"], testo: "Fornitura pizza scuole Betti" });
 atteso("gara esclusa: nessun settore, livello C, esclusione tracciata", nessuno.settori.length === 0 && nessuno.metodo === null && nessuno.livello === "C" && nessuno.esclusioni.length === 1);
 uguale("senza testo: settore dal CPV principale, livello A", [classificaGara({ cpvPrincipale: "55524000", cpvTutti: ["55524000"], testo: null }).settori, classificaGara({ cpvPrincipale: "55524000", cpvTutti: ["55524000"], testo: null }).livello], [["ristorazione"], "A"]);
+const lavoro = classificaGara({ cpvPrincipale: "79620000", cpvTutti: ["79620000"], testo: "Servizio di somministrazione lavoro a tempo determinato per figure di addetti alle pulizie" });
+uguale(
+  "esclusione di una gara trovata per parola chiave: il motivo resta scritto",
+  [lavoro.settori, lavoro.livello, lavoro.esclusioni.map((e) => [e.settore, e.regola])],
+  [[], "C", [["pulizia", "somministrazione_di_lavoro"]]],
+);
 uguale("nessun CPV e nessuna parola: livello nullo", classificaGara({ cpvPrincipale: "33000000", cpvTutti: ["33000000"], testo: "Fornitura di farmaci" }).livello, null);
 const misto = classificaGara({ cpvPrincipale: "85311000", cpvTutti: ["85311000", "55300000"], testo: "Servizi di gestione e funzionamento del centro di accoglienza" });
 atteso("una gara B ha motivi e settore principale coerenti", misto.livello === "B" && misto.settorePrincipale === "ristorazione" && misto.motivi.some((m) => m.includes("55300000")));

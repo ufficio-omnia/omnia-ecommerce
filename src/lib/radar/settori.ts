@@ -667,23 +667,23 @@ export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?:
   }
 
   // nessun CPV del file, oppure tutti i loro settori esclusi dall'oggetto: decidono le parole chiave, come per ogni altra gara
-  if (settoriParole.length > 0 && !cpvSoloDiAltriMestieri(tutti)) {
-    const valutazioniParole = settoriParole.map((s) => valutaSettore(s, t, contesto(s), "parole_chiave"));
-    const valutazioni = [...valutazioniCpv, ...valutazioniParole];
-    const settori = valutazioniParole.filter((v) => v.livello !== "C").map((v) => v.settore);
-    if (settori.length > 0) {
-      return {
-        settori,
-        settorePrincipale: valutazioniParole.find((v) => v.livello === "A")?.settore ?? settori[0],
-        metodo: "parole_chiave",
-        motivi: settori.map((s) => `Trovata per parola chiave: ${nomeSettore(s).toLowerCase()}`),
-        cpvRiconosciuti: [],
-        valutazioni,
-        livello: livelloMigliore(valutazioni.filter((v) => v.livello !== "C")),
-        esclusioni: [...esclusioni, ...valutazioniParole.filter((v) => v.livello === "C").map((v) => ({ settore: v.settore, regola: v.regola, motivo: v.motivo }))],
-      };
-    }
+  const valutazioniParole = settoriParole.length > 0 && !cpvSoloDiAltriMestieri(tutti) ? settoriParole.map((s) => valutaSettore(s, t, contesto(s), "parole_chiave")) : [];
+  const valutazioni = [...valutazioniCpv, ...valutazioniParole];
+  // anche quando le parole chiave sono escluse (somministrazione di lavoro) il motivo resta scritto
+  const tutteLeEsclusioni = [...esclusioni, ...valutazioniParole.filter((v) => v.livello === "C").map((v) => ({ settore: v.settore, regola: v.regola, motivo: v.motivo }))];
+  const settori = valutazioniParole.filter((v) => v.livello !== "C").map((v) => v.settore);
+  if (settori.length > 0) {
+    return {
+      settori,
+      settorePrincipale: valutazioniParole.find((v) => v.livello === "A")?.settore ?? settori[0],
+      metodo: "parole_chiave",
+      motivi: settori.map((s) => `Trovata per parola chiave: ${nomeSettore(s).toLowerCase()}`),
+      cpvRiconosciuti: [],
+      valutazioni,
+      livello: livelloMigliore(valutazioni.filter((v) => v.livello !== "C")),
+      esclusioni: tutteLeEsclusioni,
+    };
   }
 
-  return { settori: [], settorePrincipale: null, metodo: null, motivi: [], cpvRiconosciuti: [], valutazioni: valutazioniCpv, livello: livelloMigliore(valutazioniCpv), esclusioni };
+  return { settori: [], settorePrincipale: null, metodo: null, motivi: [], cpvRiconosciuti: [], valutazioni, livello: livelloMigliore(valutazioni), esclusioni: tutteLeEsclusioni };
 }
