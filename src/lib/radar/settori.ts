@@ -84,7 +84,8 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
   {
     settore: "pulizia",
     cerca: /\b(pulizi[ae]|sanificazion[ei]|disinfezion[ei]|disinfestazion[ei]|igiene ambientale)\b/,
-    escludi: /\b(strad\w*|fognat\w*|fogn\w*|caditoi\w*|spurg\w*|rifiut\w*|spiagg\w*|arenil\w*|alve\w*|neve|prodott\w*|material\w*|cassonett\w*)\b/,
+    // fase B2b: anche i centri di raccolta dei rifiuti («facchinaggio RAEE e pulizia CCR», TED 3cc0553b: igiene urbana, non pulizia)
+    escludi: /\b(strad\w*|fognat\w*|fogn\w*|caditoi\w*|spurg\w*|rifiut\w*|spiagg\w*|arenil\w*|alve\w*|neve|prodott\w*|material\w*|cassonett\w*|raee|ccr|centr\w* (comunal\w* )?di raccolta|isol\w* ecologic\w*)\b/,
     esempio: "pulizia, sanificazione, disinfestazione",
   },
   {
@@ -104,7 +105,9 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
     settore: "ristorazione",
     cerca: /\b(ristorazione|mensa|mense|refezione|pasti)\b/,
     // «rifiuti … di cucine e mense» (codice EER 20.01.08): caso reale di TED del 16/11/2026
-    escludi: /\b(buon[oi] pasto|ticket\w*|attrezzatur\w*|arred\w*|derrat\w*|rifiut\w*)\b/,
+    // fase B2b: anche il «servizio sostitutivo di mensa … mediante badge elettronici» (buoni pasto elettronici, TED bf95cc0d)
+    // (non «servizio di ristorazione, sostitutivo della mensa»: è un servizio di ristorazione, TED 9150d0f5)
+    escludi: /\b(buon[oi] pasto|ticket\w*|attrezzatur\w*|arred\w*|derrat\w*|rifiut\w*|servizi?o? sostitutiv\w* (di |della |del )?mens[ae])\b/,
     esempio: "ristorazione, mensa, refezione",
   },
   {
@@ -121,7 +124,10 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
     settore: "multiservizi",
     // «Marche Multiservizi SpA», «Levante Multiservizi s.r.l.»: è il nome della società che fa la gara (assicurazioni, socio privato),
     // non il servizio. Casi reali di TED nell'archivio dello staging, 17/11/2026
-    cerca: /\b(multiservizi(?! (spa|s p a|srl|s r l|scarl|s c a r l)\b)|global service|facility management|servizi integrati)\b/,
+    // fase B2b: «servizi integrati di pulizia», «global service di igiene ambientale», «servizi integrati di sorveglianza armata» sono
+    // integrazioni DENTRO un altro settore, non multiservizi (casi reali di TED nell'archivio dello staging, 17/11/2026)
+    cerca:
+      /\b(multiservizi(?! (spa|s p a|srl|s r l|scarl|s c a r l)\b)|(global service|facility management|servizi integrati)(?!( (gestional\w*|operativ\w*|tecnic\w*|complementar\w*|e|ed)){0,4} (di |dei |del |della |delle |per (il |la |i |le )?)?(servizi\w* (di |del |della |dei )?)?(pulizi|sanific|disinfe|igiene|vigilanz|sorveglianz|portierat|portineri|guardiani|reception|ristorazion|refezion|mens[ae]\b|facchinagg|trasloc|ausiliar)))\b/,
     // «servizi integrati» di formazione, gestione documentale, biblioteca, sterilizzazione, apparecchiature elettromedicali, consulenza
     // sui rifiuti, percorsi espositivi, lavanolo: casi reali di TED nell'archivio dello staging, 17/11/2026
     escludi: /\b(formazion\w*|documental\w*|bibliotec\w*|sterilizzazion\w*|apparecchiatur\w*|elettromedical\w*|biomedical\w*|strumentari\w*|attrezzature scientific\w*|consulenz\w*|assicurativ\w*|espositiv\w*|lava noleggio|lavanolo|tributari\w*|pagopa|rete stradale|adolescent\w*|rifiut\w*)\b/,
@@ -164,6 +170,189 @@ export function settoriDaParole(testo: string | null | undefined): SettoreRadar[
   // un oggetto informatico entra per parola chiave solo se affida esplicitamente il servizio del settore
   if (!t || (PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t))) return [];
   return REGOLE_PAROLE.filter((r) => r.cerca.test(t) && !(r.escludi && r.escludi.test(t) && !(r.salvo && r.salvo.test(t)))).map((r) => r.settore);
+}
+
+// ───── affidamento esplicito del servizio (fase B2b, decisione dell'utente del 17/11) ─────
+//
+// «Non considerare automaticamente pertinente una gara soltanto perché contiene una parola chiave». Una parola del settore conta come
+// servizio AFFIDATO solo se:
+//   - la regge una parola di affidamento («servizio di», «affidamento del», «appalto relativo alle attività di», «gestione del»…), senza
+//     che stia da complemento di un'altra cosa («pulizia DELLA mensa», «lavori di adeguamento DELLA mensa», «navigazione NELLE residenze e
+//     mense»); oppure
+//   - è coordinata a un altro servizio affidato («servizio di pulizia, facchinaggio e sanificazione», «pulizie e guardiania»); oppure
+//   - l'oggetto è un titolo senza parole di affidamento («Comune di Donnas - Refezione»), senza lavori né beni.
+// Tre gradi (la definizione di B dell'utente: «appalto misto … che comprende servizi del settore»):
+//   - PRINCIPALE: il primo servizio retto dalla testa, o un servizio con una testa propria («… nonché del servizio di portierato»);
+//   - IN ELENCO: un servizio che segue, nello stesso elenco, un servizio di un altro mestiere («servizi cimiteriali, custodia, pulizia»,
+//     «servizio di pulizia, facchinaggio e disinfezione» per il facchinaggio, «e altri servizi integrati»);
+//   - ACCESSORIO: introdotto da «comprensivo di», «compreso», «incluso», «con» («concessione del bar … con effettuazione del servizio di
+//     pulizia e guardiania»).
+// Casi reali dell'archivio dello staging, 17/11/2026.
+export type Affidamento = "principale" | "elenco" | "accessorio";
+
+// «laffidamento»: l'apostrofo a volte manca negli avvisi (TED 91580b95)
+const TESTE_DI_AFFIDAMENTO = /^l?(servizi?o?|appalt\w*|affidament\w*|concession\w*|gestion\w*|attivita|esecuzion\w*|prestazion\w*|espletament\w*|svolgiment\w*|erogazion\w*|acquisizion\w*)$/;
+// «e altri servizi integrati»: un servizio in più, non il principale
+const ALTRI = /^(altr[ie]|ulterior[ie]|vari[e]?|divers[ie])$/;
+// Le radici dei servizi di ogni settore: due voci dello stesso settore in un elenco sono lo stesso servizio («receptionist/portierato»,
+// «pulizia, sanificazione»), non un elenco di mestieri diversi
+const RADICI_DEL_SETTORE: Record<SettoreRadar, RegExp> = {
+  pulizia: /^(pulizi|sanific|disinfe|igien|derattizz)/,
+  ristorazione: /^(ristor|mens[ae]|refezion|past[oi]|bar$|caffetter|catering|somministr|vitto)/,
+  vigilanza_portierato: /^(vigilanz|portierat|portineri|guardiani|reception|custodi|sorveglianz|presidi|front)/,
+  facchinaggio: /^(facchin|trasloc|moviment)/,
+  multiservizi: /^(multiserviz|global|facility|integrat)/,
+  ausiliariato: /^(ausiliar)/,
+};
+const TESTE_ACCESSORIE = /^(comprensiv\w*|compres\w*|inclus\w*|accessori\w*|con)$/;
+const COORDINAZIONE = /^(e|ed|nonche|oltre|o|,)$/;
+const PREPOSIZIONI = /^(di|del|dello|della|dei|degli|delle|dell|a|al|allo|alla|ai|agli|alle|all|da|dal|dallo|dalla|dai|dagli|dalle|dall|in|nel|nello|nella|nei|negli|nelle|nell|su|sul|sullo|sulla|sui|sugli|sulle|sull|per|presso|tra|fra)$/;
+const ARTICOLI = /^(il|lo|la|i|gli|le|l|un|uno|una)$/;
+// parole che tra la testa e il servizio non cambiano chi è affidato («con effettuazione del servizio»)
+const RACCORDI = /^(effettuazion\w*|esecuzion\w*|svolgiment\w*|relativ\w*|annesso|annessa|annessi|annesse|connesso|connessa|connessi|connesse)$/;
+// servizi (di qualunque mestiere) che possono stare in un elenco di servizi affidati
+const ATTIVITA =
+  /^(servizi?o?|pulizi\w*|sanificazion\w*|disinfe\w*|igiene|ristorazion\w*|mens[ae]|refezion\w*|past[oi]|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|reception\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|manutenzion\w*|assistenz\w*|custodi\w*|accoglienz\w*|riordin\w*|lavanderi\w*|lavanol\w*|support\w*|conduzion\w*|sorveglianz\w*|presidi\w*|trasport\w*|somministrazion\w*|preparazion\w*|distribuzion\w*|cottur\w*|giardinagg\w*|apertura|chiusura|segreteri\w*|centralin\w*|bar|caffetteri\w*|ristoro)$/;
+// lavori e beni: la parola del servizio che li segue è il loro oggetto, non un servizio affidato («lavori mensa scolastica»)
+const BENI_E_LAVORI =
+  /^(lavor\w*|fornitur\w*|acquist\w*|noleggi\w*|progettazion\w*|realizzazion\w*|ristrutturazion\w*|adeguament\w*|costruzion\w*|riqualificazion\w*|ammodernament\w*|rifaciment\w*|software|sistem\w*|impiant\w*|apparat\w*|attrezzatur\w*|arred\w*|piattaform\w*|applicativ\w*)$/;
+
+// Il testo in parole, come testoPerConfronto, ma con le virgole (elenchi) e i trattini o i due punti (titoli: «Comune di X - Refezione»).
+function paroleDelTesto(testo: string | null | undefined): string[] {
+  return (testo ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[,/]+/g, " , ")
+    .replace(/(\s[-–—]+\s|[:;()«»"“”])/g, " | ")
+    .replace(/[^a-z0-9,|]+/g, " ")
+    .split(" ")
+    .filter(Boolean);
+}
+
+// Parole che possono reggere la testa di affidamento: la procedura («procedura aperta per l'affidamento»), un'altra testa («affidamento del
+// servizio»), un raccordo («relativo alle attività»), un aggettivo della testa («gestione integrata del servizio»), l'ente o i numeri.
+const REGGONO_LA_TESTA =
+  /^(procedur\w*|gara|gare|bando|avviso|apert\w*|negoziat\w*|ristrett\w*|telematic\w*|europe\w*|comunitari\w*|soglia|quadro|accordo|convenzion\w*|contratt\w*|lott\w*|indizion\w*|richiest\w*|offert\w*|manifestazion\w*|interesse|invito|rdo|trattativa|sensi|art|lgs|n|cig|rif|anni|mesi|periodo|durata|biennal\w*|triennal\w*|quinquennal\w*|annual\w*|pluriennal\w*|integrat\w*|complet\w*|global\w*|unic\w*|comune|azienda|ente|\d+)$/;
+
+// La testa è retta da una procedura o da un'altra testa? Se è il complemento di altro non affida nulla: «sistema di gestione della mensa»,
+// «software per la gestione delle mense», «applicazione dei CAM per il servizio ristorazione» (TED 6ffe89d4, pulizia per le mense DSU).
+function testaRetta(p: readonly string[], h: number): boolean {
+  let j = h - 1;
+  while (j >= 0 && ARTICOLI.test(p[j])) j--;
+  if (j < 0 || !PREPOSIZIONI.test(p[j])) return true;
+  // anche «affidamento del del servizio» (TED f6124638)
+  while (j >= 0 && (ARTICOLI.test(p[j]) || PREPOSIZIONI.test(p[j]) || p[j] === ",")) j--;
+  // «… nonché del servizio di receptionist/portierato» (Comune di Ercolano, TED 2cc42f92): una seconda testa coordinata alla prima
+  if (j < 0 || p[j] === "|" || COORDINAZIONE.test(p[j])) return true;
+  return TESTE_DI_AFFIDAMENTO.test(p[j]) || TESTE_ACCESSORIE.test(p[j]) || RACCORDI.test(p[j]) || REGGONO_LA_TESTA.test(p[j]);
+}
+
+// «con» introduce un servizio accessorio solo se tra «con» e il servizio ci sono raccordi («con effettuazione del servizio di pulizia», «con
+// pulizia dei locali»), non altro («gestione con formula global service»).
+function conAccessorio(p: readonly string[], j: number, i: number): boolean {
+  return p.slice(j + 1, i).every((w) => ARTICOLI.test(w) || PREPOSIZIONI.test(w) || RACCORDI.test(w) || TESTE_DI_AFFIDAMENTO.test(w));
+}
+
+// «con effettuazione del servizio di», «comprensivo del servizio di»: la testa è introdotta da una parola accessoria.
+function testaAccessoria(p: readonly string[], h: number): boolean {
+  for (let j = h - 1, passi = 0; j >= 0 && passi < 4; j--, passi++) {
+    if (TESTE_ACCESSORIE.test(p[j])) return true;
+    if (!(ARTICOLI.test(p[j]) || PREPOSIZIONI.test(p[j]) || RACCORDI.test(p[j]))) return false;
+  }
+  return false;
+}
+
+function precedutaDaAltri(p: readonly string[], h: number): boolean {
+  let j = h - 1;
+  while (j >= 0 && ARTICOLI.test(p[j])) j--;
+  return j >= 0 && ALTRI.test(p[j]);
+}
+
+// La parola in posizione i è un servizio affidato? Guarda indietro fino alla testa (o all'inizio del titolo) e controlla cosa c'è in mezzo.
+// «radici»: le radici del settore valutato (RADICI_DEL_SETTORE).
+function affidamentoInPosizione(p: readonly string[], i: number, radici: RegExp, profondita = 0): Affidamento | null {
+  if (profondita > 6) return null;
+  // la parola è già una testa («servizi ausiliari», «servizio di ausiliariato», «e altri servizi integrati»)
+  if (TESTE_DI_AFFIDAMENTO.test(p[i])) {
+    if (!testaRetta(p, i)) return null;
+    return testaAccessoria(p, i) ? "accessorio" : precedutaDaAltri(p, i) ? "elenco" : "principale";
+  }
+  let h = -1;
+  let tipo: "principale" | "accessorio" | "titolo" = "titolo";
+  for (let j = i - 1, passi = 0; j >= 0 && passi < 15; j--, passi++) {
+    if (p[j] === "|") break;
+    if (TESTE_ACCESSORIE.test(p[j]) && (p[j] !== "con" || conAccessorio(p, j, i))) {
+      h = j;
+      tipo = "accessorio";
+      break;
+    }
+    if (TESTE_DI_AFFIDAMENTO.test(p[j])) {
+      if (!testaRetta(p, j)) return null;
+      h = j;
+      tipo = testaAccessoria(p, j) ? "accessorio" : "principale";
+      break;
+    }
+  }
+  // inizio dell'oggetto o del titolo dopo un trattino: niente testa
+  const inizio = h >= 0 ? h + 1 : (() => {
+    let j = i - 1;
+    while (j >= 0 && p[j] !== "|") j--;
+    return j + 1;
+  })();
+  const mezzo = p.slice(inizio, i);
+  if (tipo === "titolo" && mezzo.some((w) => BENI_E_LAVORI.test(w) || TESTE_DI_AFFIDAMENTO.test(w))) return null;
+  const base: Affidamento = tipo === "accessorio" ? "accessorio" : h >= 0 && precedutaDaAltri(p, h) ? "elenco" : "principale";
+  // l'ultimo elenco: la parola è coordinata al servizio che la precede? (anche «e di ristorazione», con la preposizione ripetuta)
+  let k = mezzo.length - 1;
+  while (k >= 0 && ARTICOLI.test(mezzo[k])) k--;
+  if (k >= 1 && PREPOSIZIONI.test(mezzo[k]) && COORDINAZIONE.test(mezzo[k - 1])) k--;
+  if (k >= 0 && COORDINAZIONE.test(mezzo[k])) {
+    let c = k;
+    while (c >= 0 && COORDINAZIONE.test(mezzo[c])) c--;
+    // la voce precedente dell'elenco: dopo la sua ultima preposizione, deve esserci un servizio
+    let fine = c;
+    while (fine >= 0 && !COORDINAZIONE.test(mezzo[fine]) && !PREPOSIZIONI.test(mezzo[fine])) fine--;
+    for (let x = c; x > fine; x--) {
+      if (ATTIVITA.test(mezzo[x]) && !BENI_E_LAVORI.test(mezzo[x])) {
+        const r = affidamentoInPosizione(p, inizio + x, radici, profondita + 1);
+        if (r === null) return null;
+        if (base === "accessorio" || r === "accessorio") return "accessorio";
+        // stesso servizio con un altro nome («receptionist/portierato», «pulizia, sanificazione»): come la voce precedente
+        return radici.test(mezzo[x]) ? r : "elenco";
+      }
+    }
+    // la voce precedente è la testa stessa («servizio gestione, pulizia…», «servizi cimiteriali, pulizia…»): un elenco
+    if (fine < 0 && h >= 0) return base === "accessorio" ? "accessorio" : "elenco";
+    return null;
+  }
+  // complemento di un'altra cosa: preposizione subito prima, con una parola piena prima di lei («pulizia della mensa»)
+  if (k >= 0 && PREPOSIZIONI.test(mezzo[k]) && mezzo.slice(0, k).some((w) => !PREPOSIZIONI.test(w) && !ARTICOLI.test(w) && !COORDINAZIONE.test(w))) return null;
+  return base;
+}
+
+const GRADO: Record<Affidamento, number> = { principale: 3, elenco: 2, accessorio: 1 };
+
+// Come l'oggetto affida il servizio del settore: «principale», «elenco», «accessorio», o null se lo cita soltanto. Vale la migliore delle
+// occorrenze.
+export function affidamentoEsplicito(settore: SettoreRadar, parole: RegExp, testo: string | null | undefined): Affidamento | null {
+  const p = paroleDelTesto(testo);
+  const unito = p.join(" ");
+  const inizi: number[] = [];
+  let pos = 0;
+  for (const w of p) {
+    inizi.push(pos);
+    pos += w.length + 1;
+  }
+  let migliore: Affidamento | null = null;
+  for (const m of unito.matchAll(new RegExp(parole.source, "g"))) {
+    const i = inizi.indexOf(m.index ?? -1);
+    if (i < 0) continue;
+    const a = affidamentoInPosizione(p, i, RADICI_DEL_SETTORE[settore]);
+    if (a === "principale") return a;
+    if (a && (!migliore || GRADO[a] > GRADO[migliore])) migliore = a;
+  }
+  return migliore;
 }
 
 // ───── rilevanza: livelli A, B, C e sottocategorie (decisione definitiva dell'utente, 17/11/2026) ─────
@@ -412,7 +601,8 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
   {
     id: "forniture_di_beni",
     settori: "tutti",
-    cerca: /\bfornitur\w*\b/,
+    // fase B2b: anche «acquisto» («acquisto delle cassette riutilizzabili e relative attrezzature», lotto con il CPV della pulizia, TED)
+    cerca: /\b(fornitur\w*|acquist\w*)\b/,
     // basta che l'oggetto parli di servizi: «fornitura di servizi di catering», «fornitura di beni ed erogazione servizi di accoglienza»;
     // o di un servizio operativo di sorveglianza («fornitura … con monitoraggio delle immagini dalla centrale operativa»: affidamento misto)
     // (non «presidio» né «valori»: «Presidi ERDIS» sono le sedi di una fornitura di derrate, caso reale di TED del 17/11/2026)
@@ -490,6 +680,18 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     ancheConNucleo: true,
     motivo: "Servizio informatico (CPV principale e oggetto): non è un servizio del settore, anche se lo nomina",
     casi: ["Piattaforma informatica per la prenotazione dei pasti della refezione scolastica"],
+  },
+  {
+    // fase B2b: la connessione a internet nelle mense è un servizio di telecomunicazioni, anche se l'oggetto nomina le mense (ARDSU, TED
+    // a9b7980e, CPV 64210000 e 50330000: era A per la parola «mense»). Resta solo se l'oggetto affida esplicitamente il servizio del settore
+    id: "servizi_di_connettivita",
+    settori: "tutti",
+    // non «hotspot»: sono anche i centri di prima accoglienza dei migranti (TED 7ec698cb, «gestione dei centri c.d. hotspot»)
+    cerca: /\b(connettivit\w*|wi ?fi|wireless|accesso (a |ad )?internet|navigazione (internet|web|in rete)|banda (larga|ultralarga)|fibra ottica|telecomunicazion\w*|rete dati)\b/,
+    salvo: SERVIZIO_ESPLICITO,
+    ancheConNucleo: true,
+    motivo: "Servizio di connessione a internet o di telecomunicazioni: non è un servizio del settore, anche se nomina i luoghi (mense, residenze)",
+    casi: ["Servizio di navigazione nelle residenze e mense universitarie ARDSU, comprensivo di fornitura e installazione apparati di connettività e assistenza e manutenzione"],
   },
 ];
 
@@ -694,8 +896,14 @@ function valutazione(settore: SettoreRadar, livello: Livello, sottocategorie: st
   };
 }
 
-// Livello, sottocategorie, regole e motivi di un settore.
-function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, da: "cpv" | "parole_chiave"): Valutazione {
+const MOTIVO_AFFIDATO = "Trovata per parola chiave: l'oggetto affida esplicitamente il servizio";
+const MOTIVO_ACCESSORIO = "Il servizio è compreso come accessorio in un affidamento più ampio («comprensivo di», «con», «incluso»)";
+const MOTIVO_IN_ELENCO = "Il servizio è in un elenco di servizi che comincia con un servizio di un altro tipo: appalto misto";
+const MOTIVO_CITATO = "L'oggetto cita il servizio ma non lo affida esplicitamente: una parola chiave da sola non basta";
+const MOTIVO_CPV_NON_CONFERMATO = "Il CPV è del settore, ma l'oggetto affida il servizio di un altro settore e non nomina questo";
+
+// Livello, sottocategorie, regole e motivi di un settore. Per le parole chiave conta come l'oggetto affida il servizio (fase B2b).
+function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, da: "cpv" | "parole_chiave", affidamento: Affidamento | null = null): Valutazione {
   const cpvDelSettore = da === "cpv" ? contesto.delSettore : [];
   const escluse = regoleDiEsclusione(settore, t, contesto);
   // una regola che «cede alle correlazioni» esclude solo se nessuna correlazione vale (vedi sotto: B invece di C)
@@ -728,7 +936,13 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
   const haNucleo = !!t && !!nucleoDel(settore)?.test(t);
   const principale = contesto.principale ? MAPPA_CPV.get(contesto.principale) : undefined;
   const sottocategorie = daTesto.length ? daTesto : daCpv.length ? daCpv : [predefinita];
-  if (da === "parole_chiave") return valutazione(settore, "A", sottocategorie, [{ id: "parole_chiave", motivo: "Trovata per parola chiave nell'oggetto" }], da, []);
+  // decisione dell'utente del 17/11 (fase B2b): una parola chiave da sola non rende pertinente una gara
+  if (da === "parole_chiave") {
+    if (affidamento === "principale") return valutazione(settore, "A", sottocategorie, [{ id: "parole_chiave", motivo: MOTIVO_AFFIDATO }], da, []);
+    if (affidamento === "elenco") return valutazione(settore, "B", sottocategorie, [{ id: "servizio_in_elenco", motivo: MOTIVO_IN_ELENCO }], da, []);
+    if (affidamento === "accessorio") return valutazione(settore, "B", sottocategorie, [{ id: "servizio_accessorio", motivo: MOTIVO_ACCESSORIO }], da, []);
+    return valutazione(settore, "B", sottocategorie, [{ id: "parola_chiave_citata", motivo: MOTIVO_CITATO }], da, []);
+  }
   if (contesto.principale && principale?.settore !== settore && !haNucleo && !daTesto.length) {
     return valutazione(settore, "B", sottocategorie, [{ id: "cpv_secondario", motivo: MOTIVO_CPV_SECONDARIO }], da, cpvDelSettore);
   }
@@ -749,7 +963,10 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // «2026-11-17d»: pacchetto 15 (distributori automatici in A, 6 CPV di bar e ristoranti con la regola del contesto).
 // «2026-11-17e»: la gestione integrata del solo bar, mensa o punto ristoro (anche in più sedi) resta del settore (Sintel, Treviglio).
 // «2026-11-17f»: «chiosco» nomina il servizio nella regola del contesto, salvo edicola, giornali o fiori (Sintel, Taino).
-export const VERSIONE_REGOLE_SETTORI = "2026-11-17f";
+// «2026-11-17g»: fase B2b. Parola chiave A solo con affidamento esplicito; servizi di altri settori affidati nell'oggetto; settori dai lotti;
+// concessioni di ristoro per parola solo se affidate; connettività (ARDSU); «acquisto» tra le forniture; «servizi integrati di pulizia» non
+// è multiservizi.
+export const VERSIONE_REGOLE_SETTORI = "2026-11-17g";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Identificativo della correzione nel registro: versione e regole («regole-settori-2026-11-17b:rifiuti»). Rifare la stessa correzione
@@ -780,6 +997,21 @@ export function descriviCorrezioneSettori(quando: string | null, valorePrecedent
   const cosa = tolti.length ? `abbiamo tolto la gara da: ${tolti.join(", ")}` : "abbiamo corretto i settori della gara";
   const resta = dopo.length ? `Resta in: ${dopo.map((s) => nomeSettore(s).toLowerCase()).join(", ")}.` : "Resta consultabile nell'archivio.";
   return `${quando ? `Il ${quando} ` : ""}${quando ? cosa : cosa.charAt(0).toUpperCase() + cosa.slice(1)}${motivi.length ? ` (${motivi.join("; ")})` : ""}. ${resta}`;
+}
+
+// Concessioni di bar, caffetterie, ristoranti, punti ristoro, distributori automatici e chioschi (fase B2b): senza un CPV del file entrano
+// per parola, ma SOLO se l'oggetto le affida («concessione del servizio bar», «gestione del punto ristoro»), mai se le cita soltanto. Il
+// chiosco NO: per decisione dell'utente del 17/11 vale solo con uno dei 6 CPV di bar e ristoranti (regola del contesto).
+const PAROLE_DELLE_CONCESSIONI = /\b(bar|caffetteri\w*|ristorant\w*|punt\w* (di )?ristoro|distributor\w* automatic\w*|distribuzione automatica|vending)\b/;
+function concessioneDiRistoro(t: string): boolean {
+  return PAROLE_DELLE_CONCESSIONI.test(t);
+}
+
+// Le parole che nominano il servizio del settore, per riconoscere l'affidamento esplicito: quelle approvate (REGOLE_PAROLE) e, per la
+// ristorazione, anche le concessioni.
+function paroleDelServizio(settore: SettoreRadar): RegExp {
+  const nucleo = nucleoDel(settore) ?? /$^/;
+  return settore === "ristorazione" ? new RegExp(`${nucleo.source}|${PAROLE_DELLE_CONCESSIONI.source}`) : nucleo;
 }
 
 // ───── classificazione di una gara ─────
@@ -819,22 +1051,59 @@ export type DatiGara = {
 };
 
 const MOTIVO_LOTTO_AUTONOMO = "Un lotto della gara è dedicato al servizio del settore: è autonomo, non accessorio";
+const MOTIVO_LOTTO_ACCESSORIO = "Un lotto della gara comprende il servizio del settore dentro un affidamento più ampio";
+const REGOLE_DI_TUTTA_LA_PROCEDURA = new Set(["concessione_demaniale", "concessione_di_immobili"]);
 
+// Con due o più lotti ogni lotto si valuta anche da solo (fase B2b, «soprattutto le opportunità contenute nei singoli lotti»):
+//   - un lotto pertinente (A) rende il settore A nella gara («lotto autonomo»), anche se la gara nel suo insieme lo vedeva correlato (B) o
+//     escluso (C: «lavori … lotto 2 servizio di pulizia») o non lo vedeva affatto;
+//   - un lotto correlato (B) aggiunge il settore come B, se la gara non lo aveva.
+// Un lotto da solo è un intero affidamento: le regole sono le stesse della gara (una fornitura resta una fornitura, una parola citata resta
+// una citazione). Con un solo lotto il lotto è la gara: nulla cambia.
 export function classificaGara(dati: DatiGara): Classificazione {
   const c = classificaSenzaLotti(dati);
   const lotti = dati.lotti ?? [];
-  if (lotti.length < 2 || !c.valutazioni.some((v) => v.livello === "B")) return c;
+  if (lotti.length < 2) return c;
   const perLotto = lotti.map((l) => classificaSenzaLotti({ cpvPrincipale: l.cpv?.[0] ?? null, cpvTutti: l.cpv ?? [], testo: l.testo ?? null }));
+  const nelLotto = (s: SettoreRadar, livello: Livello) => perLotto.map((p) => p.valutazioni.find((x) => x.settore === s && x.livello === livello)).find((x) => !!x);
+  let cambiate = false;
   const valutazioni = c.valutazioni.map((v) => {
-    if (v.livello !== "B") return v;
-    const lotto = perLotto.map((p) => p.valutazioni.find((x) => x.settore === v.settore && x.livello === "A")).find((x) => !!x);
+    if (v.livello === "A") return v;
+    // una regola che riguarda tutta la procedura vale per ogni lotto, anche se il testo del lotto è troppo corto per dirlo («concessione
+    // demaniale marittima … due compendi/lotti» con i lotti «Bar interno» e «Bar esterno», TED 352f212b)
+    if (v.regole.some((r) => REGOLE_DI_TUTTA_LA_PROCEDURA.has(r))) return v;
+    const lotto = nelLotto(v.settore, "A");
     if (!lotto) return v;
+    cambiate = true;
     const sottocategorie = [...lotto.sottocategorie, ...v.sottocategorie.filter((s) => s !== "appalti_multiservizi")];
-    const regole = [{ id: "lotto_autonomo", motivo: MOTIVO_LOTTO_AUTONOMO }, ...v.regole.map((id, i) => ({ id, motivo: v.motivi[i] ?? "" }))];
-    return valutazione(v.settore, "A", sottocategorie, regole, v.da, v.cpv);
+    // da B le regole della gara restano come spiegazione; da C l'esclusione della gara non vale per il lotto dedicato
+    const regole = [{ id: "lotto_autonomo", motivo: MOTIVO_LOTTO_AUTONOMO }, ...(v.livello === "B" ? v.regole.map((id, i) => ({ id, motivo: v.motivi[i] ?? "" })) : [])];
+    return valutazione(v.settore, "A", sottocategorie, regole, v.da, v.cpv.length ? v.cpv : lotto.cpv);
   });
-  const tenute = valutazioni.filter((v) => c.settori.includes(v.settore));
-  return { ...c, valutazioni, livello: tenute.length ? livelloMigliore(tenute) : c.livello };
+  const nuove: Valutazione[] = [];
+  for (const { id: s } of SETTORI_RADAR) {
+    if (valutazioni.some((v) => v.settore === s)) continue;
+    const a = nelLotto(s, "A");
+    const x = a ?? nelLotto(s, "B");
+    if (!x) continue;
+    const regole = a ? [{ id: "lotto_autonomo", motivo: MOTIVO_LOTTO_AUTONOMO }] : [{ id: "lotto_accessorio", motivo: MOTIVO_LOTTO_ACCESSORIO }, ...x.regole.map((id, i) => ({ id, motivo: x.motivi[i] ?? "" }))];
+    nuove.push(valutazione(s, x.livello, x.sottocategorie, regole, x.da, x.cpv));
+  }
+  if (!cambiate && !nuove.length) return c;
+  const tutte = [...valutazioni, ...nuove];
+  const settori = tutte.filter((v) => v.livello !== "C").map((v) => v.settore);
+  const cpvNuovi = [...new Set(tutte.filter((v) => v.livello !== "C" && !c.settori.includes(v.settore)).flatMap((v) => v.cpv))];
+  return {
+    ...c,
+    settori,
+    settorePrincipale: c.settorePrincipale && settori.includes(c.settorePrincipale) ? c.settorePrincipale : (tutte.find((v) => v.livello === "A")?.settore ?? settori[0] ?? null),
+    metodo: c.metodo ?? (settori.length ? (tutte.find((v) => v.livello !== "C")?.da ?? null) : null),
+    motivi: [...c.motivi, ...tutte.filter((v) => v.livello !== "C" && !c.settori.includes(v.settore)).map((v) => `Trovata in un lotto: ${nomeSettore(v.settore).toLowerCase()}`)],
+    cpvRiconosciuti: [...new Set([...c.cpvRiconosciuti, ...cpvNuovi])],
+    valutazioni: tutte,
+    livello: livelloMigliore(tutte),
+    esclusioni: c.esclusioni.filter((e) => !settori.includes(e.settore)),
+  };
 }
 
 function classificaSenzaLotti(dati: DatiGara): Classificazione {
@@ -843,6 +1112,11 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   const voci = tutti.map((c) => MAPPA_CPV.get(c)).filter((v): v is VoceCpv => !!v);
   const t = testoPerConfronto(dati.testo);
   const settoriParole = settoriDaParole(dati.testo);
+  // concessioni di bar, ristoranti, punti ristoro, distributori e chioschi senza CPV del file: entrano per parola SOLO se affidate (fase B2b)
+  if (!settoriParole.includes("ristorazione") && concessioneDiRistoro(t) && !(PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t)) && affidamentoEsplicito("ristorazione", paroleDelServizio("ristorazione"), dati.testo)) {
+    settoriParole.push("ristorazione");
+  }
+  const affidamento = (s: SettoreRadar) => affidamentoEsplicito(s, paroleDelServizio(s), dati.testo);
   const contesto = (s: SettoreRadar): ContestoCpv => ({ principale, tutti, delSettore: voci.filter((v) => v.settore === s).map((v) => v.cpv) });
 
   const valutazioniCpv = [...new Set(voci.map((v) => v.settore))].map((s) => valutaSettore(s, t, contesto(s), "cpv"));
@@ -850,19 +1124,34 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   const tenute = valutazioniCpv.filter((v) => v.livello !== "C");
 
   if (tenute.length > 0) {
-    // l'ausiliariato non ha CPV: se le parole lo indicano si aggiunge, con il suo motivo
     const valutazioni = [...valutazioniCpv];
-    if (settoriParole.includes("ausiliariato") && !tenute.some((v) => v.settore === "ausiliariato")) valutazioni.push(valutaSettore("ausiliariato", t, contesto("ausiliariato"), "parole_chiave"));
-    // i 6 CPV nuovi (17/11) non tolgono i settori che la gara aveva per parola chiave: se i settori tenuti vengono SOLO da quei codici,
-    // restano anche i settori delle parole chiave («concessione del bar e del parcheggio con servizio di pulizia e guardiania», Università
-    // di Sassari, casi reali di TED)
-    if (tenute.every((v) => v.cpv.every((c) => CPV_CON_CONTESTO.includes(c)))) {
-      for (const s of settoriParole) if (s !== "ausiliariato" && !valutazioni.some((v) => v.settore === s)) valutazioni.push(valutaSettore(s, t, contesto(s), "parole_chiave"));
+    // fase B2b: i servizi di altri settori che l'oggetto AFFIDA si aggiungono, anche all'ausiliariato che non ha CPV: A se affidati, B se
+    // accessori. Le sole citazioni no («pulizia … per il servizio ristorazione»). Casi reali dell'archivio dello staging, 17/11/2026:
+    // «pulizie e guardiania edifici comunali», «servizio di pulizia … nonché del servizio di receptionist/portierato», «concessione del bar
+    // e del parcheggio … con effettuazione del servizio di pulizia e guardiania» (Università di Sassari: B)
+    const aggiunte: Valutazione[] = [];
+    for (const s of settoriParole) {
+      if (valutazioni.some((v) => v.settore === s)) continue;
+      const a = affidamento(s);
+      if (!a) continue;
+      const v = valutaSettore(s, t, contesto(s), "parole_chiave", a);
+      if (v.livello !== "C") aggiunte.push(v);
+    }
+    valutazioni.push(...aggiunte);
+    // il CPV dice un settore, l'oggetto affida il servizio di un altro e non nomina questo («servizio di vigilanza e portierato … Ferrovienord»
+    // con il CPV della pulizia): il settore del CPV resta, ma correlato (B). Non per il multiservizi, che comprende gli altri servizi
+    // («servizi integrati presso le sezioni dell'INGV» con il CPV della pulizia)
+    if (aggiunte.some((v) => v.livello === "A" && v.settore !== "multiservizi")) {
+      for (let x = 0; x < valutazioni.length; x++) {
+        const v = valutazioni[x];
+        if (v.da !== "cpv" || v.livello !== "A" || v.regole.includes("oggetto")) continue;
+        valutazioni[x] = valutazione(v.settore, "B", v.sottocategorie, [{ id: "cpv_non_confermato", motivo: MOTIVO_CPV_NON_CONFERMATO }, ...v.regole.map((id, i) => ({ id, motivo: v.motivi[i] ?? "" }))], "cpv", v.cpv);
+      }
     }
     const settori = valutazioni.filter((v) => v.livello !== "C").map((v) => v.settore);
     const vociTenute = voci.filter((v) => settori.includes(v.settore));
     const motivi = vociTenute.map((v) => `CPV ${v.cpv} ${v.descrizione}`);
-    if (settori.includes("ausiliariato") && !valutazioniCpv.some((v) => v.settore === "ausiliariato")) motivi.push("Oggetto che parla di ausiliariato");
+    for (const v of aggiunte) motivi.push(v.settore === "ausiliariato" ? "Oggetto che parla di ausiliariato" : `Trovata per parola chiave: ${nomeSettore(v.settore).toLowerCase()}`);
     const sp = principale ? MAPPA_CPV.get(principale)?.settore : undefined;
     return {
       versione: VERSIONE_REGOLE_SETTORI,
@@ -878,7 +1167,9 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   }
 
   // nessun CPV del file, oppure tutti i loro settori esclusi dall'oggetto: decidono le parole chiave, come per ogni altra gara
-  const valutazioniParole = settoriParole.length > 0 && !cpvSoloDiAltriMestieri(tutti) ? settoriParole.map((s) => valutaSettore(s, t, contesto(s), "parole_chiave")) : [];
+  // i settori che il CPV ha già escluso (C) non si rivalutano per parola: la stessa esclusione vale anche lì
+  const daParole = settoriParole.filter((s) => !valutazioniCpv.some((v) => v.settore === s));
+  const valutazioniParole = daParole.length > 0 && !cpvSoloDiAltriMestieri(tutti) ? daParole.map((s) => valutaSettore(s, t, contesto(s), "parole_chiave", affidamento(s))) : [];
   const valutazioni = [...valutazioniCpv, ...valutazioniParole];
   // anche quando le parole chiave sono escluse (somministrazione di lavoro) il motivo resta scritto
   const tutteLeEsclusioni = [...esclusioni, ...valutazioniParole.filter((v) => v.livello === "C").map((v) => ({ settore: v.settore, regola: v.regola, motivo: v.motivo }))];

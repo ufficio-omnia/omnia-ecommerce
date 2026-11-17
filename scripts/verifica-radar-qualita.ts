@@ -32,6 +32,13 @@
 // Controlli CAMBIATI con la versione «2026-11-17f» (decisione dell'utente del 17/11 sul chiosco, caso Sintel di Taino):
 //   - versione delle regole «2026-11-17f»; nessun altro controllo cambiato. Nuovi: Taino A; chiosco su suolo pubblico e fornitura di
 //     chioschi ancora C (per le loro regole); chiosco di edicola, giornali o fiori ancora C (regola del contesto); chiosco senza CPV fuori.
+// Controlli CAMBIATI con la versione «2026-11-17g» (fase B2b autorizzata dall'utente il 17/11, «una parola chiave da sola non rende
+// pertinente una gara»; settori dai lotti; servizi di altri settori affidati nell'oggetto):
+//   - i tre bar di TED (ASL Roma 2, AUSL Bologna, GOM Reggio Calabria) senza i 6 CPV: prima «nessun settore», ora A per parola chiave,
+//     perché l'oggetto AFFIDA la concessione (concessioni di ristoro per parola solo se affidate); il MUSAM resta senza settore;
+//   - «navigazione internet nelle mense» (caso ARDSU): prima A, ora C con la regola «servizi_di_connettivita»;
+//   - versione delle regole «2026-11-17g».
+// Nessun controllo tolto. I controlli nuovi sono nella sezione «fase B2b».
 import fs from "fs";
 import path from "path";
 import {
@@ -44,6 +51,7 @@ import {
   SETTORI_RADAR,
   SOTTOCATEGORIE,
   VERSIONE_REGOLE_SETTORI,
+  affidamentoEsplicito,
   classificaGara,
   descriviCorrezioneSettori,
   esclusioniOggetto,
@@ -534,9 +542,12 @@ const TED_RECUPERATE: Caso[] = [
 ];
 for (const c of TED_RECUPERATE) provaCaso(c);
 for (const c of TED_RECUPERATE.slice(0, 4)) {
-  // prima della decisione questi CPV non erano nel file: senza di loro le 4 gare non entravano
+  // prima della decisione questi CPV non erano nel file. Fase B2b (2026-11-17g): senza i 6 CPV i tre bar entrano lo stesso, ma SOLO perché
+  // l'oggetto affida esplicitamente la concessione (parola chiave, A); il MUSAM, che non nomina il bar, resta fuori
   const senza = c.cpv.filter((x) => !CPV_CON_CONTESTO.includes(x));
-  atteso(`${c.nome}: entra grazie ai 6 CPV (senza, nessun settore)`, classificaGara({ cpvPrincipale: senza[0] ?? null, cpvTutti: senza, testo: c.testo }).settori.length === 0);
+  const s = classificaGara({ cpvPrincipale: senza[0] ?? null, cpvTutti: senza, testo: c.testo });
+  if (c.nome.includes("MUSAM")) atteso(`${c.nome}: senza i 6 CPV nessun settore`, s.settori.length === 0);
+  else uguale(`${c.nome}: senza i 6 CPV entra per parola solo perché la concessione è affidata (A, parole_chiave)`, s.valutazioni.map((v) => [v.settore, v.livello, v.regola]), [["ristorazione", "A", "parole_chiave"]]);
 }
 // gestione integrata DENTRO lo stesso servizio (il bar in due impianti): resta A, come i «servizi integrati di pulizia»
 provaCaso({
@@ -638,11 +649,12 @@ uguale(
   }).settori,
   ["ristorazione", "pulizia", "vigilanza_portierato"],
 );
+// fase B2b (2026-11-17g): non è un trasporto (B) e non è più ristorazione (A): è connessione a internet (C)
 provaCaso({
-  nome: "«navigazione» internet nelle mense non è un trasporto (testo sintetico dal caso reale ARDSU)",
+  nome: "«navigazione» internet nelle mense non è un trasporto né ristorazione (testo sintetico dal caso reale ARDSU)",
   cpv: ["55510000"],
   testo: "Servizio di navigazione internet nelle mense universitarie",
-  attesi: [{ settore: "ristorazione", livello: "A" }],
+  attesi: [{ settore: "ristorazione", livello: "C", regola: "servizi_di_connettivita" }],
 });
 // ristorazione AUTONOMA: un lotto dedicato al catering in un appalto di eventi (casi reali di TED, Regione Lombardia e «allestimento,
 // organizzazione eventi e catering»)
@@ -716,6 +728,146 @@ uguale(
   "«piattaforma telematica» di gara: l'ausiliariato resta",
   settoriDaParole("Procedura di gara aperta sulla piattaforma telematica aziendale per l'affidamento del Servizio di Ausiliariato"),
   ["ausiliariato"],
+);
+
+// ───── fase B2b (2026-11-17g): affidamento esplicito, servizi di altri settori, settori dai lotti ─────
+// testi sintetici o reali dell'archivio dello staging (TED), nessun dato di clienti
+const parole = (s: SettoreRadar) => REGOLE_PAROLE.find((r) => r.settore === s)!.cerca;
+const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
+  ["pulizia", "Affidamento del servizio di pulizia degli uffici comunali", "principale"],
+  ["pulizia", "Procedura aperta per l'affidamento triennale dei servizi di pulizia e sanificazione", "principale"],
+  ["pulizia", "Servizio di ristorazione scolastica comprensivo del riordino e della pulizia dei refettori", "accessorio"],
+  ["pulizia", "Concessione del bar e del parcheggio con effettuazione del servizio di pulizia e guardiania", "accessorio"],
+  ["pulizia", "Servizi cimiteriali, custodia, pulizia e manutenzione del verde", "elenco"],
+  ["pulizia", "Servizio gestione, pulizia, sanificazione e manutenzione dei bagni pubblici", "elenco"],
+  ["pulizia", "Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento", null],
+  ["ristorazione", "Servizi di pulizia, sanificazione e altri servizi accessori con applicazione dei CAM per il servizio ristorazione DSU", null],
+  ["ristorazione", "Servizio di pulizia della mensa aziendale", null],
+  ["ristorazione", "Affidamento dei lavori di adeguamento della mensa scolastica", null],
+  ["ristorazione", "Servizio di navigazione nelle residenze e mense universitarie", null],
+  ["ristorazione", "Software per la gestione delle mense scolastiche", null],
+  ["ristorazione", "Lavori mensa scolastica", null],
+  ["ristorazione", "Comune di Donnas - Refezione", "principale"],
+  ["ristorazione", "Servizi di pulizia e di ristorazione", "elenco"],
+  ["vigilanza_portierato", "Servizio di pulizia degli immobili comunali nonché del servizio di receptionist/portierato", "principale"],
+  ["vigilanza_portierato", "Pulizie e guardiania edifici comunali", "elenco"],
+  ["vigilanza_portierato", "Appalto relativo alle attività di vigilanza, custodia e accoglienza", "principale"],
+  ["vigilanza_portierato", "PROCEDURA APERTA PER LAFFIDAMENTO DEL SERVIZIO DI VIGILANZA ARMATA", "principale"],
+  ["vigilanza_portierato", "Affidamento del del servizio di vigilanza", "principale"],
+  ["ausiliariato", "Servizi nidi d'infanzia e servizi ausiliari presso le scuole", "principale"],
+  ["multiservizi", "Servizio di pulizia delle aree interne e altri servizi integrati presso gli aeroporti", "elenco"],
+  ["multiservizi", "Gestione con formula global service dei servizi di ospitalità", "principale"],
+];
+for (const [s, testo, a] of AFFIDAMENTI) uguale(`affidamento esplicito (${s}): «${testo.slice(0, 70)}»`, affidamentoEsplicito(s, parole(s), testo), a);
+
+// parole chiave senza CPV del file: A solo con l'affidamento esplicito
+const gara2b = (testo: string, cpv: string[] = []) => classificaGara({ cpvPrincipale: cpv[0] ?? null, cpvTutti: cpv, testo });
+const livelli = (c: ReturnType<typeof classificaGara>) => c.valutazioni.map((v) => [v.settore, v.livello, v.regola]);
+uguale("parola chiave affidata: A", livelli(gara2b("Affidamento del servizio di pulizia degli uffici")), [["pulizia", "A", "parole_chiave"]]);
+uguale("parola chiave solo citata (lavaggio di indumenti, TED 93a329b1): B", livelli(gara2b("Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento")), [["pulizia", "B", "parola_chiave_citata"]]);
+uguale("parola chiave in un elenco di servizi cimiteriali: B", livelli(gara2b("Servizi cimiteriali, custodia, pulizia e manutenzione del verde")), [["pulizia", "B", "servizio_in_elenco"]]);
+uguale(
+  "servizi accessori «in forma integrata con» (TED 722bf4ac): B",
+  livelli(gara2b("Gestione dei servizi di assistenza culturale e di ospitalità per il pubblico, in forma integrata con i servizi di pulizia, vigilanza e biglietteria")),
+  [["pulizia", "B", "servizio_accessorio"], ["vigilanza_portierato", "B", "servizio_accessorio"]],
+);
+uguale("concessione del bar senza CPV, affidata: A", gara2b("Concessione del servizio bar presso l'ospedale civile").valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie]), [["ristorazione", "A", ["concessione_bar"]]]);
+uguale("bar solo citato senza CPV (lavori): nessun settore", gara2b("Lavori di ristrutturazione del bar comunale").settori, []);
+uguale("pulizia del bar senza CPV: pulizia, non ristorazione", gara2b("Servizio di pulizia del bar comunale").settori, ["pulizia"]);
+uguale(
+  "servizio sostitutivo di mensa con badge (buoni pasto elettronici, TED bf95cc0d): nessun settore",
+  gara2b("Affidamento in appalto del servizio sostitutivo di mensa a favore del personale dipendente mediante l'utilizzo di badges elettronici", ["79500000"]).settori,
+  [],
+);
+uguale(
+  "servizio di ristorazione sostitutivo della mensa (TED 9150d0f5): resta ristorazione",
+  gara2b("Affidamento del servizio di ristorazione, sostitutivo della mensa obbligatoria di servizio scalo aereo e marittimo", ["55000000"]).settori,
+  ["ristorazione"],
+);
+const ardsu = gara2b("SERVIZIO DI NAVIGAZIONE NELLE RESIDENZE E MENSE UNIVERSITARIE ARDSU, COMPRENSIVO DI FORNITURA E INSTALLAZIONE APPARATI DI CONNETTIVITÀ E ASSISTENZA E MANUTENZIONE", ["64210000", "50330000"]);
+uguale("ARDSU (TED a9b7980e): connessione a internet, ristorazione C", [ardsu.settori, livelli(ardsu)], [[], [["ristorazione", "C", "servizi_di_connettivita"]]]);
+const hotspot = classificaGara({
+  cpvPrincipale: "85311000",
+  cpvTutti: ["85311000", "55300000", "90911000"],
+  testo: "Procedura di gara per l'affidamento dei servizi di gestione dei centri (c.d. hotspot) ubicati presso il porto delle Grazie di Roccella Jonica",
+});
+atteso("centri «hotspot» per migranti (TED 7ec698cb): non è connettività", !hotspot.valutazioni.some((v) => v.regole.includes("servizi_di_connettivita")), JSON.stringify(livelli(hotspot)));
+
+const finanza = classificaGara({
+  cpvPrincipale: "71221000",
+  cpvTutti: ["71221000", "55410000"],
+  testo: "Concessione mediante project financing dei servizi alla cittadinanza attraverso la riqualificazione del chiosco e dell'area adiacente, con l'erogazione di servizi alla cittadinanza garantendo il servizio di bar/punto di ristoro, la manutenzione e pulizia dell'area",
+});
+uguale("finanza di progetto con il bar (TED bebfee1e): nessun settore valutato due volte", finanza.valutazioni.map((v) => v.settore).length, new Set(finanza.valutazioni.map((v) => v.settore)).size);
+
+// gare per CPV: i servizi di altri settori affidati nell'oggetto si aggiungono, le citazioni no
+const ercolano = gara2b(
+  "COMUNE DI ERCOLANO (NA): PROCEDURA APERTA PER L'AFFIDAMENTO DEL SERVIZIO DI PULIZIA, SANIFICAZIONE, DISINFEZIONE E DISINFESTAZIONE DEGLI IMMOBILI COMUNALI NONCHÉ DEL SERVIZIO DI RECEPTIONIST/PORTIERATO",
+  ["90910000"],
+);
+uguale("Ercolano (TED 2cc42f92): pulizia per CPV, portierato affidato con la sua testa: A", livelli(ercolano), [["pulizia", "A", "cpv_principale"], ["vigilanza_portierato", "A", "parole_chiave"]]);
+uguale(
+  "pulizia, facchinaggio e disinfezione (TED 389bf9d2): facchinaggio in elenco, B",
+  livelli(gara2b("Affidamento del servizio di pulizia, facchinaggio e disinfezione degli immobili comunali", ["90910000"])),
+  [["pulizia", "A", "cpv_principale"], ["facchinaggio", "B", "servizio_in_elenco"]],
+);
+uguale(
+  "pulizia «per il servizio ristorazione» (TED 6ffe89d4): la ristorazione non si aggiunge",
+  gara2b("Servizi di pulizia, sanificazione e altri servizi accessori con applicazione dei CAM per il servizio ristorazione DSU Toscana", ["90910000"]).settori,
+  ["pulizia"],
+);
+uguale(
+  "vigilanza con il CPV della pulizia (Ferrovienord, TED bfc3639f): vigilanza A, pulizia B «CPV non confermato»",
+  livelli(gara2b("Servizio di vigilanza e portierato da svolgersi presso le località di servizio Ferrovienord", ["90910000"])),
+  [["pulizia", "B", "cpv_non_confermato"], ["vigilanza_portierato", "A", "parole_chiave"]],
+);
+uguale(
+  "servizi integrati presso l'INGV (TED dcf5c8e5): multiservizi A, la pulizia del CPV resta A",
+  livelli(gara2b("Procedura aperta, suddivisa in tre lotti, per l'affidamento triennale dei servizi integrati presso le sezioni dell'INGV", ["90911200", "98341120"])).filter((x) => x[0] !== "vigilanza_portierato"),
+  [["pulizia", "A", "cpv_principale"], ["multiservizi", "A", "parole_chiave"]],
+);
+for (const testo of ["Affidamento dei servizi integrati di pulizia e sanificazione ambientale della casa di riposo", "Servizi integrati, gestionali e operativi, di pulizia presso uffici ARTE"]) {
+  atteso(`«servizi integrati di pulizia» non è multiservizi: «${testo.slice(0, 60)}»`, !gara2b(testo, ["90910000"]).settori.includes("multiservizi"));
+}
+const sassari = gara2b(
+  "Procedura aperta per affidamento in concessione dei servizi del bar e del parcheggio esterno con effettuazione del servizio di pulizia e guardiania dell'edificio",
+  ["55410000", "98351000"],
+);
+uguale("Sassari (TED 0b7448d7): bar A, pulizia e guardiania accessorie B", livelli(sassari), [["ristorazione", "A", "cpv_principale"], ["pulizia", "B", "servizio_accessorio"], ["vigilanza_portierato", "B", "servizio_accessorio"]]);
+
+// settori dai lotti: lotto autonomo A, lotto con il servizio accessorio B, regole di tutta la procedura che valgono per ogni lotto
+const garaConLotti = (testo: string, cpv: string[], lotti: { testo: string; cpv: string[] }[]) => classificaGara({ cpvPrincipale: cpv[0] ?? null, cpvTutti: [...cpv, ...lotti.flatMap((l) => l.cpv)], testo, lotti });
+const soloInUnLotto = garaConLotti("Servizi per le sedi della Regione", ["90910000"], [
+  { testo: "Lotto 1: servizio di pulizia delle sedi", cpv: ["90910000"] },
+  { testo: "Lotto 2: servizio di vigilanza armata delle sedi", cpv: ["79999000"] },
+]);
+uguale("settore solo in un lotto (vigilanza nel lotto 2): A, lotto autonomo", livelli(soloInUnLotto), [["pulizia", "A", "cpv_principale"], ["vigilanza_portierato", "A", "lotto_autonomo"]]);
+const lottoAccessorio = garaConLotti("Servizi per gli impianti sportivi comunali", ["98341120"], [
+  { testo: "Lotto 1: servizio di portierato degli impianti", cpv: ["98341120"] },
+  { testo: "Lotto 2: gestione del centro sportivo comprensiva della pulizia degli spogliatoi", cpv: ["92610000"] },
+]);
+uguale("pulizia accessoria in un lotto: B, lotto con il servizio accessorio", livelli(lottoAccessorio), [["vigilanza_portierato", "A", "cpv_principale"], ["pulizia", "B", "lotto_accessorio"]]);
+const lavori = { testo: "Lavori di ristrutturazione della sede comunale e servizi connessi", cpv: ["45000000", "90910000"] };
+const lavoriLotti = [
+  { testo: "Lotto 1: lavori edili", cpv: ["45000000"] },
+  { testo: "Lotto 2: servizio di pulizia ordinaria degli uffici", cpv: ["90910000"] },
+];
+const senzaLottiLavori = classificaGara({ cpvPrincipale: "45000000", cpvTutti: lavori.cpv, testo: lavori.testo });
+const conLottiLavori = garaConLotti(lavori.testo, lavori.cpv, lavoriLotti);
+uguale("lavori con un lotto di pulizia: senza lotti C, con i lotti A (lotto autonomo)", [livelli(senzaLottiLavori)[0]?.[1], livelli(conLottiLavori)], ["C", [["pulizia", "A", "lotto_autonomo"]]]);
+const beverello = garaConLotti(
+  "procedura ad evidenza pubblica per il rilascio di una concessione demaniale marittima per la durata di anni 6, avente ad oggetto due compendi/lotti al Molo Beverello di Napoli, per lo svolgimento di attività di somministrazione di bevande ed alimenti (bar/ristorazione)",
+  ["55000000"],
+  [{ testo: "Lotto 1 - Bar interno", cpv: ["55000000"] }, { testo: "Lotto 1 - Bar esterno", cpv: ["55000000"] }],
+);
+uguale("concessione demaniale con i lotti «Bar interno» e «Bar esterno» (TED 352f212b): resta B", livelli(beverello), [["ristorazione", "B", "concessione_demaniale"]]);
+const cassette = classificaGara({ cpvPrincipale: "90910000", cpvTutti: ["90910000"], testo: "Acquisto delle cassette riutilizzabili e relative attrezzature per la gestione degli imballi." });
+uguale("lotto «acquisto delle cassette» con il CPV della pulizia (TED 783cfd95): fornitura, C", livelli(cassette), [["pulizia", "C", "forniture_di_beni"]]);
+const unSoloLotto = { testo: "Affidamento del servizio di refezione scolastica", cpv: ["55524000"] };
+uguale(
+  "un solo lotto: nulla cambia",
+  garaConLotti(unSoloLotto.testo, unSoloLotto.cpv, [{ testo: "Lotto unico: servizio di vigilanza", cpv: ["55524000"] }]),
+  classificaGara({ cpvPrincipale: "55524000", cpvTutti: ["55524000", "55524000"], testo: unSoloLotto.testo }),
 );
 
 // ───── 4. regole ben formate e provate sui loro casi ─────
@@ -856,7 +1008,7 @@ atteso(
   corr.tipo === "correzione" && corr.dopo.settori.length === 0 && corr.dopo.metodo === null && corr.idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
   JSON.stringify(corr),
 );
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17f");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17g");
 const lotti = riclassificaGara({ ...base, oggetto: "lotto1", cpv_principale: "90910000", cpv_tutti: ["90910000", "98341130"], settori: ["pulizia", "vigilanza_portierato"], metodo_settore: "cpv" }, [
   { oggetto: "SERVIZIO DI CUSTODIA, SICUREZZA E PULIZIA AMBIENTALE DEGLI IMPIANTI SPORTIVI", cpv_principale: "90910000", cpv_tutti: null },
 ]);
