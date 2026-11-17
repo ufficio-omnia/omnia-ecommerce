@@ -81,7 +81,7 @@ export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: 
         if (righeScartate > 0) conta(stat.esclusi, "riga_senza_identificativo", righeScartate);
         stat.letti += procedure.length;
         for (const p of procedure) {
-          if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo);
+          if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo === "esclusa_per_oggetto" && p.regole?.length ? `esclusa_per_oggetto:${p.regole.join("+")}` : p.motivo);
           else {
             const b = bandoDaSintel(p, oggi);
             if (b) bandi.push(b);
@@ -94,7 +94,7 @@ export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: 
       const letti = leggiElementiAflink(fonte, feed.elementi, inizio);
       stat.letti += letti.length;
       for (const p of letti) {
-        if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo);
+        if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo === "esclusa_per_oggetto" && p.regole?.length ? `esclusa_per_oggetto:${p.regole.join("+")}` : p.motivo);
         else {
           const b = bandoDaAflink(p, oggi);
           if (b) bandi.push(b);

@@ -248,7 +248,9 @@ export type DatiFonteRegionaleConsole = {
   procedure: number | null;
 };
 
-export type PropostaConsole = { a: string; b: string; titoloA: string; titoloB: string; motivo: string; il: string };
+// le prove delle due gare, affiancate: l'amministratore decide su dati visibili, non sul solo numero
+export type ProvaGaraConsole = { id: string; titolo: string; ente: string | null; codiceFiscale: string | null; scadenzaGiorno: string | null; scadenzaIstante: string | null; importo: number | null; tipoImporto: "valore stimato" | "base d'asta" | null; collegamento: string | null; fonti: string[] };
+export type PropostaConsole = { a: ProvaGaraConsole; b: ProvaGaraConsole; motivo: string; il: string };
 
 export type DatiRegionaliConsole = { fonti: DatiFonteRegionaleConsole[]; proposte: PropostaConsole[] | null; giriProgrammati: boolean };
 
@@ -270,9 +272,29 @@ async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): 
   try {
     const aperte = await leggiProposteAperte(admin, 30);
     const ids = [...new Set(aperte.flatMap((p) => [p.a, p.b]))];
-    const { data: gare } = ids.length ? await admin.from("radar_procedure").select("id, oggetto_breve, oggetto").in("id", ids).returns<{ id: string; oggetto_breve: string | null; oggetto: string }[]>() : { data: [] as { id: string; oggetto_breve: string | null; oggetto: string }[] };
-    const titolo = new Map((gare ?? []).map((g) => [g.id, g.oggetto_breve ?? g.oggetto]));
-    proposte = aperte.map((p) => ({ a: p.a, b: p.b, titoloA: titolo.get(p.a) ?? p.a, titoloB: titolo.get(p.b) ?? p.b, motivo: p.motivo, il: p.proposta_il }));
+    type RigaProva = { id: string; oggetto_breve: string | null; oggetto: string; sa_denominazione: string | null; sa_codice_fiscale: string | null; scadenza_giorno: string | null; scadenza_offerte: string | null; valore_stimato: number | string | null; valore_base: number | string | null; url_avviso: string | null; url_documenti: string | null; fonti: string[] | null; chiave: string };
+    const { data: gare } = ids.length
+      ? await admin.from("radar_procedure").select("id, oggetto_breve, oggetto, sa_denominazione, sa_codice_fiscale, scadenza_giorno, scadenza_offerte, valore_stimato, valore_base, url_avviso, url_documenti, fonti, chiave").in("id", ids).returns<RigaProva[]>()
+      : { data: [] as RigaProva[] };
+    const perId = new Map((gare ?? []).map((g) => [g.id, g]));
+    const prova = (id: string): ProvaGaraConsole => {
+      const g = perId.get(id);
+      const stimato = g?.valore_stimato === null || g?.valore_stimato === undefined ? null : Number(g.valore_stimato);
+      const base = g?.valore_base === null || g?.valore_base === undefined ? null : Number(g.valore_base);
+      return {
+        id,
+        titolo: g ? (g.oggetto_breve ?? g.oggetto) : id,
+        ente: g?.sa_denominazione ?? null,
+        codiceFiscale: g?.sa_codice_fiscale ?? null,
+        scadenzaGiorno: g?.scadenza_giorno ?? null,
+        scadenzaIstante: g?.scadenza_offerte ?? null,
+        importo: stimato ?? base,
+        tipoImporto: stimato !== null ? "valore stimato" : base !== null ? "base d'asta" : null,
+        collegamento: g?.url_documenti ?? g?.url_avviso ?? null,
+        fonti: g ? (g.fonti && g.fonti.length > 0 ? g.fonti : [g.chiave.split(":")[0]]) : [],
+      };
+    };
+    proposte = aperte.map((p) => ({ a: prova(p.a), b: prova(p.b), motivo: p.motivo, il: p.proposta_il }));
   } catch {
     proposte = null;
   }

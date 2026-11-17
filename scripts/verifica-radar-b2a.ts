@@ -18,6 +18,7 @@ import { bandoDaAflink, bandoDaSintel, statisticheRegionaliVuote, type BandoRegi
 import { collegaDoppioniPerAvvisoTed, collegaGare, confermaProposta, leggiProposteAperte, rifiutaProposta, scollegaGara } from "../src/lib/radar/collegamenti";
 import { decidiUnione, restaInFondo, unoPerGaraMostrata, type GaraUnibile } from "../src/lib/radar/collegamenti-calcoli";
 import { sintesiDeterministica } from "../src/lib/radar/sintesi-calcoli";
+import { erroreAncoraAttuale } from "../src/lib/console/tender-intelligence-calcoli";
 import { ATTRIBUZIONE_FONTE, fontiVisibili, garaVisibileAiClienti, riepilogoFonti } from "../src/lib/radar/fonti-gara-calcoli";
 import { ATTRIBUZIONE_SINTEL } from "../src/lib/radar/fonti/sintel-calcoli";
 import { ISTANZE_AFLINK } from "../src/lib/radar/fonti/aflink-calcoli";
@@ -388,6 +389,15 @@ async function principale() {
     const frasi = sintesiDeterministica({ oggetto: "x", settori: ["ristorazione"], cpvPrincipale: "55524000", ente: "Comune di Prova", comune: null, provincia: null, valoreStimato: null, durataMesi: null, nLotti: 1, tipoProcedura: null, criterio: null, scadenza: null, scadenzaGiorno: "2026-12-10", fonte: "TED e PVL ANAC", numeroAvviso: null, dataPubblicazione: "2026-11-03" });
     atteso("rilievo 3: con più fonti la sintesi le elenca tutte e rimanda a «Da dove vengono i dati»", /^Fonti: TED e PVL ANAC; primo avviso pubblicato il .*vedi «Da dove vengono i dati»\.$/.test(frasi.at(-1) ?? ""), frasi.at(-1));
     atteso("rilievo 3: la scheda passa alla sintesi le fonti degli avvisi visibili", /fonte: fontiMostrate\.length > 1 \? etichettaFonti\(fontiMostrate\)/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")));
+  }
+
+  // ═════ console: suggerimenti con le prove affiancate; errore «risolto» ═════
+  {
+    const vista = leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx");
+    const datiConsole = leggi("src/lib/console/tender-intelligence.ts");
+    atteso("console: ogni suggerimento mostra le due gare affiancate (ente e codice fiscale, scadenza, importo, fonti, pagina ufficiale)", /export type ProvaGaraConsole = \{[^}]*ente[^}]*codiceFiscale[^}]*scadenzaGiorno[^}]*importo[^}]*collegamento[^}]*fonti/.test(datiConsole) && /\[p\.a, p\.b\]\.map\(\(g\) =>/.test(vista) && /Pagina ufficiale/.test(vista));
+    uguale("console: l'ultimo errore è attuale solo se più recente dell'ultimo giro riuscito", [erroreAncoraAttuale("2026-11-17T10:00:00Z", "2026-11-17T09:00:00Z"), erroreAncoraAttuale("2026-11-17T08:00:00Z", "2026-11-17T09:00:00Z"), erroreAncoraAttuale("2026-11-17T08:00:00Z", null), erroreAncoraAttuale(null, null)], [true, false, true, false]);
+    atteso("console: un errore superato si legge come «risolto»", /erroreAncoraAttuale\(f\.db\.ultimo_errore_il, f\.db\.ultimo_successo_il\)[\s\S]{0,120}risolto: ultimo giro riuscito il/.test(vista));
   }
 
   // ═════ regole generali ═════

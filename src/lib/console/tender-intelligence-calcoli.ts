@@ -81,3 +81,11 @@ export function normalizzaEmailConsole(email: string): string | null {
   const e = email.trim().toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 320 ? e : null;
 }
+
+// L'ultimo errore di una fonte è ancora attuale solo se è più recente dell'ultimo giro riuscito (proposta della PVL, fase B2a); altrimenti
+// la console scrive «risolto».
+export function erroreAncoraAttuale(ultimoErroreIl: string | null | undefined, ultimoSuccessoIl: string | null | undefined): boolean {
+  if (!ultimoErroreIl) return false;
+  if (!ultimoSuccessoIl) return true;
+  return Date.parse(ultimoErroreIl) > Date.parse(ultimoSuccessoIl);
+}

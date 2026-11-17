@@ -83,11 +83,12 @@ update public.radar_procedure p
  where s.procedura_id = p.id
    and p.fonti = '{}';
 
+-- SardegnaCAT: solo la pagina di dettaglio della procedura («…/DettaglioProcedura.asp?ID=N», l'unica forma presente nei collegamenti)
 update public.radar_procedure
-   set piattaforma_id = 'sardegnacat:' || substring(url_documenti from '[?&](?:ID|bando)=([0-9]{1,12})(?:&|$)')
+   set piattaforma_id = 'sardegnacat:' || substring(url_documenti from '/DettaglioProcedura\.asp\?(?:[^#]*&)?ID=([0-9]{1,12})(?:&|$)')
  where piattaforma_id is null
    and url_documenti ~* '^https?://(www\.)?sardegnacat\.regione\.sardegna\.it/'
-   and url_documenti ~ '[?&](ID|bando)=[0-9]{1,12}(&|$)';
+   and url_documenti ~ '/DettaglioProcedura\.asp\?([^#]*&)?ID=[0-9]{1,12}(&|$)';
 
 update public.radar_procedure
    set piattaforma_id = 'sintel:' || substring(url_documenti from 'auctionDetail\.xhtml\?(?:[^#]*&)?id=([0-9]{1,12})(?:&|$)')

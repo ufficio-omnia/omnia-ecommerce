@@ -218,6 +218,14 @@ async function principale() {
   const tutte = leggiRigheSintel([rigaSintel({}), rigaSintel({ id_procedura: "" }), rigaSintel({ id_procedura: "900000004", modalita_scelta_contraente: "Affidamento diretto" })], OGGI);
   uguale("Sintel: righe raggruppate per procedura, righe senza identificativo scartate", [tutte.procedure.length, tutte.righeScartate, tutte.procedure.map((p) => p.tipo)], [2, 1, ["bando", "esclusione"]]);
 
+  // ───── 3bis. esclusioni per oggetto (regole della PVL in settori.ts, uguali per tutte le fonti): contate a parte, con la regola ─────
+  {
+    const bar = leggiProceduraSintel("900000009", [rigaSintel({ id_procedura: "900000009", codice_cpv: "55300000-3", nome_procedura: "Concessione della gestione del bar e punto ristoro del parco comunale (prova sintetica)" })], OGGI) as EsclusioneSintel;
+    uguale("Sintel: un bar con CPV della ristorazione è escluso per oggetto, con la regola", [bar.motivo, bar.regole], ["esclusa_per_oggetto", ["ristorazione_commerciale"]]);
+    const barS = leggiElementoAflink("sardegnacat", { ...elementoBase("700099"), CPV: "55300000-3 - Servizi di ristorazione", Oggetto: "Concessione della gestione del bar e punto ristoro del parco comunale (prova sintetica)", TitoloDocumento: "Bar del parco (prova)" }, ADESSO) as EsclusioneAflink;
+    uguale("SardegnaCAT: stesso caso, stessa esclusione (classificatore unico)", [barS.motivo, barS.regole], ["esclusa_per_oggetto", ["ristorazione_commerciale"]]);
+  }
+
   // ───── 4. Sintel: rete simulata ─────
   {
     const richieste: string[] = [];
@@ -353,7 +361,7 @@ async function principale() {
 
   // ───── 7. identificativo della piattaforma (chiave esatta SardegnaCAT ↔ TED) ─────
   uguale(
-    "Piattaforme: collegamenti TED e del feed riconosciuti, sosia e altri siti no",
+    "Piattaforme: solo la pagina di dettaglio della procedura (SardegnaCAT) e l'asta (Sintel); la forma «bando=», i sosia e gli altri siti no",
     [
       "https://sardegnacat.regione.sardegna.it/Application/CustomDoc/DettaglioProcedura.asp?ID=1031830",
       "https://sardegnacat.regione.sardegna.it/portale/index.php/bandi?getdettaglio=yes&bando=1028716&tipobando=Bando",
@@ -364,7 +372,7 @@ async function principale() {
       "javascript:alert(1)",
       null,
     ].map(idPiattaformaDaUrl),
-    ["sardegnacat:1031830", "sardegnacat:1028716", "sintel:226427680", null, null, null, null, null],
+    ["sardegnacat:1031830", null, "sintel:226427680", null, null, null, null, null],
   );
   atteso("Piattaforme: il feed e il collegamento TED della stessa gara danno la stessa chiave", idPiattaformaDaUrl("https://sardegnacat.regione.sardegna.it/Application/CustomDoc/DettaglioProcedura.asp?ID=700001") === b(0).meta.idPiattaforma);
 

@@ -192,7 +192,8 @@ export function chiaveProceduraAflink(istanza: IstanzaAflink, idMsg: string): st
 
 // ───── un elemento del feed → bando o esclusione ─────
 
-export type MotivoEsclusioneAflink = "elemento_malformato" | "senza_oggetto" | "fuori_settore" | "tipo_sconosciuto" | "riservata" | "affidamento" | "scaduta";
+export type MotivoEsclusioneAflink = "elemento_malformato"
+  | "esclusa_per_oggetto" | "senza_oggetto" | "fuori_settore" | "tipo_sconosciuto" | "riservata" | "affidamento" | "scaduta";
 
 export type MetaAflink = {
   istanza: IstanzaAflink;
@@ -221,7 +222,7 @@ export type BandoAflink = {
   mancanti: string[];
 };
 
-export type EsclusioneAflink = { tipo: "esclusione"; fonte: IstanzaAflink; meta: MetaAflink | null; motivo: MotivoEsclusioneAflink };
+export type EsclusioneAflink = { tipo: "esclusione"; fonte: IstanzaAflink; meta: MetaAflink | null; motivo: MotivoEsclusioneAflink; regole?: string[] };
 
 export type ElementoAflinkLetto = BandoAflink | EsclusioneAflink;
 
@@ -250,7 +251,8 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
   const cpv = cpvAflink(e.CPV);
   const classificazione = classificaGara({ cpvPrincipale: cpv, cpvTutti: cpv ? [cpv] : [], testo: [ogg.testo, titoloBreve].filter(Boolean).join(" ") });
   const natura = naturaAflink(e.Contratto);
-  if (classificazione.settori.length === 0) return esclusione("fuori_settore");
+  // esclusa dalle regole per oggetto (settori.ts, regole della PVL): si conta a parte, con le regole applicate
+  if (classificazione.settori.length === 0) return classificazione.esclusioni.length > 0 ? { ...esclusione("esclusa_per_oggetto"), regole: [...new Set(classificazione.esclusioni.map((e) => e.regola))] } : esclusione("fuori_settore");
   if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi") return esclusione("fuori_settore");
 
   const valoreBase = importoAflink(e.a_base_asta);

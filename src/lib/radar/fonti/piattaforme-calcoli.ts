@@ -13,8 +13,10 @@ export type PiattaformaNota = "sardegnacat" | "sintel";
 type Regola = { piattaforma: PiattaformaNota; host: RegExp; id: RegExp };
 
 const REGOLE: readonly Regola[] = [
-  // vecchia e nuova SardegnaCAT: dettaglio della procedura e pagina del bando del portale
-  { piattaforma: "sardegnacat", host: /^(www\.)?sardegnacat\.regione\.sardegna\.it$/i, id: /[?&](?:ID|bando)=(\d{1,12})(?:&|$)/ },
+  // SardegnaCAT: SOLO la pagina di dettaglio della procedura, l'unica forma che compare nei collegamenti degli avvisi (13 su 13 sullo
+  // staging il 17/11). La forma «bando=» del portale nuovo non compare mai nei collegamenti e non si riconosce (il feed dà l'identificativo
+  // direttamente, IdMsg). Numero tecnico della piattaforma: serve SOLO ai suggerimenti, mai a unire in automatico.
+  { piattaforma: "sardegnacat", host: /^(www\.)?sardegnacat\.regione\.sardegna\.it$/i, id: /\/DettaglioProcedura\.asp\?(?:[^#]*&)?ID=(\d{1,12})(?:&|$)/ },
   // Sintel (Regione Lombardia, ARIA): dettaglio dell'asta
   { piattaforma: "sintel", host: /^(www\.)?sintel\.regione\.lombardia\.it$/i, id: /auctionDetail\.xhtml\?(?:[^#]*&)?id=(\d{1,12})(?:&|$)/ },
 ];

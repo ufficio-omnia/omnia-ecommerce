@@ -15,7 +15,7 @@ import {
   scollegaGaraDoppia,
 } from "../azioni/tender-intelligence";
 import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-calcoli";
-import { ETICHETTE_LIMITI_PVL } from "@/lib/console/tender-intelligence-calcoli";
+import { ETICHETTE_LIMITI_PVL, erroreAncoraAttuale } from "@/lib/console/tender-intelligence-calcoli";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
 import ModuloAzione from "./modulo-azione";
 
@@ -367,28 +367,38 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
                 <table className="cn-tab">
                   <thead>
                     <tr>
-                      <th>Gare</th>
+                      <th>Prima gara</th>
+                      <th>Seconda gara</th>
                       <th>Perché</th>
                       <th>Decisione</th>
                     </tr>
                   </thead>
                   <tbody>
                     {regionali.proposte.map((p) => (
-                      <tr key={`${p.a}|${p.b}`}>
-                        <td>
-                          {p.titoloA}
-                          <div className="cn-nota">{p.a}</div>
-                          {p.titoloB}
-                          <div className="cn-nota">{p.b}</div>
-                        </td>
+                      <tr key={`${p.a.id}|${p.b.id}`}>
+                        {[p.a, p.b].map((g) => (
+                          <td key={g.id}>
+                            <strong>{g.titolo}</strong>
+                            <div className="cn-nota">Ente: {g.ente ?? "non indicato"}{g.codiceFiscale ? ` (C.F. ${g.codiceFiscale})` : ""}</div>
+                            <div className="cn-nota">Scadenza: {g.scadenzaIstante ? data(g.scadenzaIstante) : g.scadenzaGiorno ? `${g.scadenzaGiorno} (ora non indicata)` : "non indicata"}</div>
+                            <div className="cn-nota">Importo: {g.importo !== null ? `${numero(g.importo)} € (${g.tipoImporto})` : "non indicato"}</div>
+                            <div className="cn-nota">Fonti: {g.fonti.join(", ") || "—"}</div>
+                            {g.collegamento && (
+                              <div className="cn-nota">
+                                <a href={g.collegamento} target="_blank" rel="noopener noreferrer">Pagina ufficiale</a>
+                              </div>
+                            )}
+                            <div className="cn-nota">{g.id}</div>
+                          </td>
+                        ))}
                         <td>
                           {data(p.il)} · {p.motivo}
                         </td>
                         <td>
-                          <ModuloAzione azione={decidiPropostaCollegamento} etichetta="Unisci" etichettaInCorso="Unisco…" campi={{ a: p.a, b: p.b, decisione: "conferma" }} variante="primario">
+                          <ModuloAzione azione={decidiPropostaCollegamento} etichetta="Unisci" etichettaInCorso="Unisco…" campi={{ a: p.a.id, b: p.b.id, decisione: "conferma" }} variante="primario">
                             {null}
                           </ModuloAzione>
-                          <ModuloAzione azione={decidiPropostaCollegamento} etichetta="Non sono la stessa gara" etichettaInCorso="Salvo…" campi={{ a: p.a, b: p.b, decisione: "rifiuta" }} variante="neutro">
+                          <ModuloAzione azione={decidiPropostaCollegamento} etichetta="Non sono la stessa gara" etichettaInCorso="Salvo…" campi={{ a: p.a.id, b: p.b.id, decisione: "rifiuta" }} variante="neutro">
                             {null}
                           </ModuloAzione>
                         </td>
@@ -536,7 +546,7 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
                     <td>{f.aggiornamento}</td>
                     <td>{data(f.db?.ultimo_successo_il ?? null)}</td>
                     <td>{data(f.db?.dati_aggiornati_al ? new Date(f.db.dati_aggiornati_al).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }) : null)}</td>
-                    {conErrori && <td>{f.db?.ultimo_errore ? `${data(f.db.ultimo_errore_il)}: ${f.db.ultimo_errore}` : "—"}</td>}
+                    {conErrori && <td>{f.db?.ultimo_errore ? (erroreAncoraAttuale(f.db.ultimo_errore_il, f.db.ultimo_successo_il) ? `${data(f.db.ultimo_errore_il)}: ${f.db.ultimo_errore}` : `risolto: ultimo giro riuscito il ${data(f.db.ultimo_successo_il)}`) : "—"}</td>}
                   </tr>,
                   <tr key={`${f.id}-limiti`}>
                     <td colSpan={conErrori ? 7 : 6} className="cn-nota-inline">

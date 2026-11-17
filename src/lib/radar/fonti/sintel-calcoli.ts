@@ -182,6 +182,7 @@ export function scadenzaSintel(x: unknown): ScadenzaTed | null {
 
 export type MotivoEsclusioneSintel =
   | "riga_malformata"
+  | "esclusa_per_oggetto"
   | "senza_oggetto"
   | "fuori_settore"
   | "modalita_sconosciuta"
@@ -210,7 +211,7 @@ export type BandoSintel = {
   mancanti: string[];
 };
 
-export type EsclusioneSintel = { tipo: "esclusione"; fonte: "sintel"; meta: MetaSintel | null; motivo: MotivoEsclusioneSintel };
+export type EsclusioneSintel = { tipo: "esclusione"; fonte: "sintel"; meta: MetaSintel | null; motivo: MotivoEsclusioneSintel; regole?: string[] };
 
 export type ProceduraSintelLetta = BandoSintel | EsclusioneSintel;
 
@@ -270,7 +271,8 @@ export function leggiProceduraSintel(idProcedura: string, righe: readonly RigaSi
   const testoOggetto = [titolo, ...righeLotti.map((r) => testo(r.nome_lotto))].filter(Boolean).join(" ");
   const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto });
   const natura = naturaSintel(prima.ambito_merceologico);
-  if (classificazione.settori.length === 0) return esclusione("fuori_settore");
+  // esclusa dalle regole per oggetto (settori.ts, regole della PVL): si conta a parte, con le regole applicate
+  if (classificazione.settori.length === 0) return classificazione.esclusioni.length > 0 ? { ...esclusione("esclusa_per_oggetto"), regole: [...new Set(classificazione.esclusioni.map((e) => e.regola))] } : esclusione("fuori_settore");
   // stessa regola di TED e PVL: una gara trovata solo per parola chiave deve essere di servizi (o di natura non indicata)
   if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi") return esclusione("fuori_settore");
 
