@@ -394,7 +394,8 @@ async function principale() {
   uguale("limiti fuori intervallo tornano ai predefiniti", limitiValidi({ pausaMs: 10, tentativi: 9, timeoutMs: 20_000 }, LIMITI_PROVA, { pausaMs: { min: 1_000, max: 60_000 }, timeoutMs: { min: 5_000, max: 120_000 }, tentativi: { min: 1, max: 3 }, richiesteMassime: { min: 1, max: 20 } }), { ...LIMITI_PROVA, timeoutMs: 20_000 });
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
   atteso("nessun cron nuovo in vercel.json", !vercel.crons.some((c) => /sintel|sardegna|aflink|radar-fonti/.test(c.path)));
-  atteso("nessuna migrazione nuova in B2-0", !fs.readdirSync(path.join(RADICE, "supabase/migrations")).some((f) => /^01(1[7-9]|[2-9]\d)_/.test(f)));
+  // B2-0 non porta migrazioni: dopo la 0117 (della PVL, approvata il 17/11) può esserci solo la 0120 di B2a
+  atteso("nessuna migrazione di B2-0 (oltre la 0117 solo la 0120 di B2a)", fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01(1[89]|[2-9]\d)_/.test(f)).every((f) => /^0120_/.test(f)));
 
   console.log(fallimenti.length === 0 ? "\nVerifica B2-0 (Sintel e SardegnaCAT): tutto a posto." : `\nVerifica B2-0: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
   process.exit(fallimenti.length === 0 ? 0 : 1);
