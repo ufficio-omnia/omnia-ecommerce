@@ -25,8 +25,9 @@ function versionePvl(b: { meta: { idAvviso: string; giorno: string; data: string
   return { fonte: "pvl", id: b.meta.idAvviso, giorno: b.meta.giorno, istante: b.meta.data, ted: b.meta.numeroTed };
 }
 
-// Dove va ogni avviso: id della gara esistente, oppure null (gara nuova). «conflitto» = CIG su gare diverse.
-type Destinazione = { proceduraId: string | null; via: "appalto" | "ted" | "cig" | "nuova"; conflitto: boolean; tedPresente: boolean };
+// Dove va ogni avviso: id della gara esistente, oppure null (gara nuova). «conflitto» = CIG su gare diverse. «suCollegata» = la gara trovata
+// era collegata a un'altra (0117): l'avviso va alla gara che resta, la copia nascosta resta com'era (storico).
+type Destinazione = { proceduraId: string | null; via: "appalto" | "ted" | "cig" | "nuova"; conflitto: boolean; tedPresente: boolean; suCollegata: boolean };
 
 async function destinazioni(admin: SupabaseClient, avvisi: { meta: { idAppalto: string; numeroTed: string | null }; cig: string[] }[], misure: Misure): Promise<Map<string, Destinazione>> {
   const perAppalto = new Map<string, string>();
@@ -50,18 +51,30 @@ async function destinazioni(admin: SupabaseClient, avvisi: { meta: { idAppalto: 
     for (const r of data ?? []) perCig.set(r.cig, r.procedura_id);
   }
 
+  // gare collegate a un'altra (0117): ogni candidato si risolve nella gara che resta, PRIMA di cercare conflitti, così una nuova versione
+  // della procedura (es. una proroga pubblicata solo sulla PVL) aggiorna la gara che il cliente vede, con le sue notifiche
+  const trovate = [...new Set([...perAppalto.values(), ...perTed.values(), ...perCig.values()])];
+  const resta = new Map<string, string>();
+  for (const b of blocchi(trovate, 100)) {
+    const { data } = await misura(misure, "gare collegate tra le destinazioni", () => admin.from("radar_procedure").select("id, unita_a").in("id", b).not("unita_a", "is", null).returns<{ id: string; unita_a: string }[]>());
+    for (const r of data ?? []) resta.set(r.id, r.unita_a);
+  }
+  const risolvi = (id: string | null) => (id ? (resta.get(id) ?? id) : null);
+
   const out = new Map<string, Destinazione>();
   for (const a of avvisi) {
-    const daCig = [...new Set(a.cig.map((c) => perCig.get(c)).filter((x): x is string => !!x))];
+    const grezzi = [perAppalto.get(a.meta.idAppalto) ?? null, a.meta.numeroTed ? (perTed.get(a.meta.numeroTed) ?? null) : null, ...a.cig.map((c) => perCig.get(c) ?? null)];
+    const suCollegata = grezzi.some((id) => !!id && resta.has(id));
+    const daCig = [...new Set(a.cig.map((c) => risolvi(perCig.get(c) ?? null)).filter((x): x is string => !!x))];
     const tedPresente = !!a.meta.numeroTed && perTed.has(a.meta.numeroTed);
-    const viaAppalto = perAppalto.get(a.meta.idAppalto) ?? null;
-    const viaTed = a.meta.numeroTed ? (perTed.get(a.meta.numeroTed) ?? null) : null;
+    const viaAppalto = risolvi(perAppalto.get(a.meta.idAppalto) ?? null);
+    const viaTed = a.meta.numeroTed ? risolvi(perTed.get(a.meta.numeroTed) ?? null) : null;
     const candidati = [viaAppalto, viaTed, ...daCig].filter((x): x is string => !!x);
     const conflitto = new Set(candidati).size > 1;
-    if (viaAppalto) out.set(a.meta.idAppalto, { proceduraId: viaAppalto, via: "appalto", conflitto, tedPresente });
-    else if (viaTed) out.set(a.meta.idAppalto, { proceduraId: viaTed, via: "ted", conflitto, tedPresente });
-    else if (daCig.length === 1) out.set(a.meta.idAppalto, { proceduraId: daCig[0], via: "cig", conflitto, tedPresente });
-    else out.set(a.meta.idAppalto, { proceduraId: null, via: "nuova", conflitto: daCig.length > 1, tedPresente });
+    if (viaAppalto) out.set(a.meta.idAppalto, { proceduraId: viaAppalto, via: "appalto", conflitto, tedPresente, suCollegata });
+    else if (viaTed) out.set(a.meta.idAppalto, { proceduraId: viaTed, via: "ted", conflitto, tedPresente, suCollegata });
+    else if (daCig.length === 1) out.set(a.meta.idAppalto, { proceduraId: daCig[0], via: "cig", conflitto, tedPresente, suCollegata });
+    else out.set(a.meta.idAppalto, { proceduraId: null, via: "nuova", conflitto: daCig.length > 1, tedPresente, suCollegata });
   }
   return out;
 }
@@ -199,7 +212,7 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
     } else if (d.via === "ted" || (d.via === "cig" && !s.iniziale.chiave.startsWith("pvl:"))) stat.bandi.giaPresentiTed++;
     else stat.bandi.nuoveVersioni++;
     if (s.iniziale && s.cambiata) stat.bandi.aggiornate++;
-    if (s.iniziale?.unita_a) stat.bandi.suGaraCollegata++;
+    if (s.destinazione.suCollegata) stat.bandi.suGaraCollegata++;
     if (s.cambiamenti.some((c) => c.tipo === "rettifica" || c.tipo === "proroga")) stat.bandi.rettifiche++;
     if (s.cambiamenti.some((c) => c.tipo === "annullamento")) stat.bandi.annullate++;
     if (s.lottiNonAllineati) stat.bandi.lottiNonAllineati++;
@@ -219,10 +232,17 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
     const { data } = await misura(misure, "controllo dei CIG", () => admin.from("radar_lotti").select("cig, procedura_id").in("cig", b).returns<{ cig: string; procedura_id: string }[]>());
     for (const r of data ?? []) prima.set(r.cig, r.procedura_id);
   }
+  // un CIG che sta già sulla copia collegata a questa gara (0117) resta lì: la scheda della gara che resta lo mostra; non è un conflitto
+  const occupanti = [...new Set(righeLotti.filter((l) => l.cig && prima.has(l.cig) && prima.get(l.cig) !== l.procedura_id).map((l) => prima.get(l.cig as string) as string))];
+  const restaDi = new Map<string, string>();
+  for (const b of blocchi(occupanti, 100)) {
+    const { data } = await misura(misure, "CIG sulle gare collegate", () => admin.from("radar_procedure").select("id, unita_a").in("id", b).not("unita_a", "is", null).returns<{ id: string; unita_a: string }[]>());
+    for (const r of data ?? []) restaDi.set(r.id, r.unita_a);
+  }
   for (const l of righeLotti) {
     if (l.cig && prima.has(l.cig) && prima.get(l.cig) !== l.procedura_id) {
+      if (restaDi.get(prima.get(l.cig) as string) !== l.procedura_id) stat.bandi.cigScartati++;
       l.cig = null;
-      stat.bandi.cigScartati++;
     } else if (l.cig && !prima.has(l.cig)) stat.bandi.cigAssegnati++;
   }
   for (const b of blocchi(righeLotti, 200)) {

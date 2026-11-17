@@ -39,6 +39,8 @@ import { descriviAvvisoLetto, etichettaFonti, fonteDelDato, fontiDellaGara, riep
 import { sintesiDeterministica } from "../src/lib/radar/sintesi-calcoli";
 import { decidiCollegamento, garaDaMostrare } from "../src/lib/radar/collegamenti-calcoli";
 import { collegaDoppioniPerAvvisoTed, scollegaGara } from "../src/lib/radar/collegamenti";
+import { applicaPaginaBandiPvl } from "../src/lib/radar/importa-pvl-pagina";
+import { statistichePvlVuote } from "../src/lib/radar/importa-pvl-calcoli";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -391,6 +393,48 @@ async function principale() {
     uguale("in memoria: annullare una gara non collegata non cambia nulla", [(await scollegaGara(mem.client, "g-ted", "2026-11-17T16:00:00.000Z")).ok, fotografia()], [false, prima]);
   }
 
+  // ───── 8quinquies. dopo il collegamento, una proroga pubblicata SOLO sulla PVL aggiorna la gara che resta (rilievo C1 di B2) ─────
+  {
+    const adessoC1 = new Date("2026-11-21T12:00:00Z");
+    const resta = { ...rigaDaBandoPvl(venezia, adessoC1), chiave: "ted:proc-venezia", ultima_versione_id: "787530-2026", ultima_versione_il: "2026-11-17", id: "g-resta", provenienza_campi: {}, unita_a: null, unita_il: null, unita_motivo: null, unita_esclusa_con: [] };
+    const copia = { ...rigaDaBandoPvl(venezia, adessoC1), id: "g-copia", provenienza_campi: {}, unita_a: "g-resta", unita_il: "2026-11-18T10:00:00.000Z", unita_motivo: "stesso avviso TED", unita_esclusa_con: [] };
+    const mem = databaseInMemoria({
+      radar_procedure: [resta, copia],
+      radar_procedure_fonti: [
+        { procedura_id: "g-resta", fonte: "ted", id_fonte: "787530-2026", id_procedura_fonte: "proc-venezia", rif_ted: null, impronta: "t" },
+        { procedura_id: "g-copia", fonte: "pvl", id_fonte: venezia.meta.idAvviso, id_procedura_fonte: venezia.meta.idAppalto, rif_ted: "787530-2026", impronta: venezia.record.impronta },
+      ],
+      radar_lotti: [
+        { procedura_id: "g-resta", numero_lotto: "LOT-0001", cig: null, oggetto: "lotto TED", cpv_principale: null, cpv_tutti: [], valore_stimato: 334750, durata_mesi: 36, scadenza_giorno: "2026-12-14", scadenza_offerte: "2026-12-14T12:00:00.000Z", scadenza_ora_indicata: true, scadenza_fonte: null, url_documenti: null },
+        { procedura_id: "g-copia", numero_lotto: "LOT-0001", cig: "BDBDB123F0", oggetto: "lotto PVL", cpv_principale: "90919200", cpv_tutti: ["90919200"], valore_stimato: 334750, durata_mesi: null, scadenza_giorno: "2026-12-14", scadenza_offerte: "2026-12-14T12:00:00.000Z", scadenza_ora_indicata: true, scadenza_fonte: null, url_documenti: null },
+      ],
+      radar_aggiornamenti: [],
+      omnia_ai_radar_salvate: [{ id: "s2", user_id: "impresa-sintetica", procedura_id: "g-copia", monitorata: true }],
+      omnia_ai_radar_gare_aggiunte: [],
+    });
+    const copiaPrima = JSON.stringify({ g: mem.tabelle.radar_procedure.find((r) => r.id === "g-copia"), l: mem.tabelle.radar_lotti.filter((r) => r.procedura_id === "g-copia"), p: mem.tabelle.radar_procedure_fonti.filter((r) => r.procedura_id === "g-copia"), s: mem.tabelle.omnia_ai_radar_salvate });
+    // proroga pubblicata solo sulla PVL: nuova versione della stessa procedura, con un avviso TED non (ancora) letto da TED
+    const proroga = structuredClone(campione.avvisi[1]) as Record<string, unknown>;
+    proroga.idAvviso = "00000000-0000-4000-8000-0000000000c1";
+    proroga.dataPubblicazione = "2026-11-20T07:00:00.000+00:00";
+    proroga.dataScadenza = "2026-12-21T12:00:00.000+00:00";
+    const tpl = (proroga.templates as Record<string, unknown>[])[0].template as Record<string, unknown>;
+    (tpl.metadata as Record<string, unknown>).link_eform_ted = "https://ted.europa.eu/udl?uri=TED:NOTICE:999999-2026:TEXT:IT:HTML";
+    ((tpl.sections as Record<string, unknown>[])[2].items as Record<string, unknown>[])[0].termine_ricezione = "2026-12-21+01:00";
+    const statC1 = statistichePvlVuote();
+    await applicaPaginaBandiPvl(mem.client, [leggiAvvisoPvl(proroga) as BandoPvl], "incrementale", adessoC1, { richiesteDb: 0, msDb: 0 }, statC1);
+    const restaDopo = mem.tabelle.radar_procedure.find((r) => r.id === "g-resta") as Record<string, unknown>;
+    uguale("C1: la proroga solo PVL aggiorna la gara che resta (non la copia nascosta)", [restaDopo.scadenza_giorno, statC1.bandi.suGaraCollegata, statC1.bandi.conflitti, statC1.bandi.nuoveNazionali + statC1.bandi.nuoveSopraSogliaSenzaTed], ["2026-12-21", 1, 0, 0]);
+    const agg = mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo === "proroga");
+    uguale("C1: proroga registrata sulla gara che resta, notificabile, una volta", agg.map((a) => [a.procedura_id, a.fonte, a.notificabile]), [["g-resta", "pvl", true]]);
+    uguale("C1: il nuovo avviso PVL si registra sulla gara che resta", mem.tabelle.radar_procedure_fonti.filter((r) => r.id_fonte === "00000000-0000-4000-8000-0000000000c1").map((r) => r.procedura_id), ["g-resta"]);
+    atteso(
+      "C1: la copia nascosta resta identica (storico), gara salvata compresa",
+      JSON.stringify({ g: mem.tabelle.radar_procedure.find((r) => r.id === "g-copia"), l: mem.tabelle.radar_lotti.filter((r) => r.procedura_id === "g-copia"), p: mem.tabelle.radar_procedure_fonti.filter((r) => r.procedura_id === "g-copia"), s: mem.tabelle.omnia_ai_radar_salvate }) === copiaPrima,
+    );
+    uguale("C1: il CIG resta sulla copia (lo mostra la scheda che resta), senza contarlo come scartato", [mem.tabelle.radar_lotti.find((r) => r.procedura_id === "g-resta")?.cig, statC1.bandi.cigScartati], [null, 0]);
+  }
+
   // ───── 9. punto di ripresa e finestre ─────
   const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);
   uguale("finestra controllata di 7 giorni", [f7.modo, f7.da, f7.a, f7.inCorso, f7.token], ["finestra", "2026-11-09", "2026-11-16", true, null]);
@@ -475,6 +519,7 @@ async function principale() {
 type RigaMem = Record<string, unknown>;
 function databaseInMemoria(iniziali: Record<string, RigaMem[]>) {
   const tabelle: Record<string, RigaMem[]> = Object.fromEntries(Object.entries(iniziali).map(([k, v]) => [k, v.map((r) => structuredClone(r))]));
+  let contatore = 0;
   const client = {
     from(nome: string) {
       const righe = (tabelle[nome] ??= []);
@@ -488,12 +533,20 @@ function databaseInMemoria(iniziali: Record<string, RigaMem[]>) {
         }
         if (operazione.tipo === "upsert") {
           const { chiavi, ignora } = operazione;
+          const toccate: RigaMem[] = [];
           for (const n of operazione.nuove) {
             const uguale = righe.find((r) => chiavi.every((k) => (r[k] ?? null) === (n[k] ?? null)));
-            if (!uguale) righe.push(structuredClone(n));
-            else if (!ignora) Object.assign(uguale, structuredClone(n));
+            if (!uguale) {
+              const nuova = structuredClone(n);
+              if (nome === "radar_procedure" && !nuova.id) nuova.id = `mem-${++contatore}`;
+              righe.push(nuova);
+              toccate.push(nuova);
+            } else {
+              if (!ignora) Object.assign(uguale, structuredClone(n));
+              toccate.push(uguale);
+            }
           }
-          return { data: null, error: null };
+          return { data: toccate.map((r) => structuredClone(r)), error: null };
         }
         return { data: righe.filter((r) => filtri.every((f) => f(r))).map((r) => structuredClone(r)), error: null };
       };
