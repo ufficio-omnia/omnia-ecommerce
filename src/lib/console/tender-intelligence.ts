@@ -12,6 +12,8 @@ import { giornoIso } from "@/lib/radar/importa-ted-calcoli";
 import { ambienteDb, scrittureRadarConsentite } from "@/lib/radar/ambiente";
 import { limitiPvlDaRighe, type LimitiPvl } from "@/lib/radar/fonti/pvl-calcoli";
 import { CRON_PVL_PROPOSTO, ORE_GIRI_PVL, prossimoGiroPvl, type StatistichePvl } from "@/lib/radar/importa-pvl-calcoli";
+import { FONTI_REGIONALI, type FonteRegionale, type StatisticheRegionali } from "@/lib/radar/importa-regionali-calcoli";
+import { leggiProposteAperte } from "@/lib/radar/collegamenti";
 
 export type StatoFonteDb = {
   attiva: boolean;
@@ -40,6 +42,8 @@ export type DatiTenderIntelligenceConsole = {
   registro: { oggetto: string; clienteEmail: string | null; prima: string | null; dopo: string | null; autore: string; il: string }[] | null;
   // fase B1-bis (migrazioni 0115-0116): connettore PVL, solo staging
   pvl: DatiPvlConsole | null;
+  // fase B2a (migrazione 0120): fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione da verificare
+  regionali: DatiRegionaliConsole | null;
 };
 
 export type UltimoGiroPvl = StatistichePvl & {
@@ -112,7 +116,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
   });
 
   if (!schemaPresente) {
-    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null };
+    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null };
   }
 
   // conteggio con un filtro di uguaglianza facoltativo; null = conteggio non riuscito
@@ -124,7 +128,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
 
   const adesso = new Date().toISOString();
   const dal = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [procedure, procedureAperte, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl] = await Promise.all([
+  const [procedure, procedureAperte, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl, regionali] = await Promise.all([
     conta("radar_procedure", "id"),
     // aperte davvero: stato «aperta» e scadenza assente o futura
     (async () => {
@@ -139,6 +143,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     admin.from("omnia_ai_radar_impostazioni").select("user_id, attivo, aggiornata_il, aggiornata_da_email").order("aggiornata_il", { ascending: false }).limit(200).returns<{ user_id: string; attivo: boolean; aggiornata_il: string; aggiornata_da_email: string }[]>(),
     admin.from("radar_console_registro").select("oggetto, cliente_id, valore_precedente, valore_nuovo, autore_email, creato_il").order("creato_il", { ascending: false }).limit(30).returns<{ oggetto: string; cliente_id: string | null; valore_precedente: string | null; valore_nuovo: string | null; autore_email: string; creato_il: string }[]>(),
     leggiDatiPvl(admin),
+    leggiDatiRegionali(admin),
   ]);
 
   // email delle imprese (abilitate e citate nel registro), lette in una volta sola
@@ -161,6 +166,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     imprese: impostazioni.error ? null : (impostazioni.data ?? []).map((r) => ({ email: emailDi.get(r.user_id) ?? "(utente non trovato)", attivo: r.attivo, aggiornataIl: r.aggiornata_il, aggiornataDa: r.aggiornata_da_email })),
     registro: registroRaw.error ? null : (registroRaw.data ?? []).map((r) => ({ oggetto: r.oggetto, clienteEmail: r.cliente_id ? (emailDi.get(r.cliente_id) ?? "(utente non trovato)") : null, prima: r.valore_precedente, dopo: r.valore_nuovo, autore: r.autore_email, il: r.creato_il })),
     pvl,
+    regionali,
     schemaPresente,
     parametri,
     fonti,
@@ -213,5 +219,67 @@ async function leggiDatiPvl(admin: ReturnType<typeof createAdminClient>): Promis
     collegamenti: collegateRaw.error
       ? null
       : { totale: collegateRaw.count ?? 0, elenco: (collegateRaw.data ?? []).map((r) => ({ id: r.id, titolo: r.oggetto_breve ?? r.oggetto, resta: r.unita_a, il: r.unita_il, motivo: r.unita_motivo })) },
+  };
+}
+
+// ───── fase B2a: fonti regionali e suggerimenti di unione ─────
+
+export type DatiFonteRegionaleConsole = {
+  fonte: FonteRegionale;
+  attiva: boolean;
+  nascosta: boolean;
+  accensioneConsentita: boolean;
+  sospensione: { il: string; motivo: string | null } | null;
+  ultimoSuccesso: string | null;
+  datiAl: string | null;
+  ultimoGiro: (StatisticheRegionali & { iniziato_il: string; durata_ms: number; invariata_alla_fonte: boolean; fonte: { richieste: number; byte: number; ms: number }; errore: string | null }) | null;
+  procedure: number | null;
+};
+
+export type PropostaConsole = { a: string; b: string; titoloA: string; titoloB: string; motivo: string; il: string };
+
+export type DatiRegionaliConsole = { fonti: DatiFonteRegionaleConsole[]; proposte: PropostaConsole[] | null; giriProgrammati: boolean };
+
+async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): Promise<DatiRegionaliConsole | null> {
+  const { data: righe, error } = await admin
+    .from("radar_fonti_stato")
+    .select("fonte, attiva, nascosta_ai_clienti, conteggi, ultimo_successo_il, dati_aggiornati_al")
+    .in("fonte", [...FONTI_REGIONALI])
+    .returns<{ fonte: FonteRegionale; attiva: boolean; nascosta_ai_clienti: boolean; conteggi: Record<string, unknown> | null; ultimo_successo_il: string | null; dati_aggiornati_al: string | null }[]>();
+  // senza la 0120 la sezione non si mostra
+  if (error) return null;
+  const conteggi = await Promise.all(
+    FONTI_REGIONALI.map(async (f) => {
+      const { count, error: e } = await admin.from("radar_procedure_fonti").select("id_fonte", { count: "exact", head: true }).eq("fonte", f);
+      return e ? null : (count ?? 0);
+    }),
+  );
+  let proposte: PropostaConsole[] | null = null;
+  try {
+    const aperte = await leggiProposteAperte(admin, 30);
+    const ids = [...new Set(aperte.flatMap((p) => [p.a, p.b]))];
+    const { data: gare } = ids.length ? await admin.from("radar_procedure").select("id, oggetto_breve, oggetto").in("id", ids).returns<{ id: string; oggetto_breve: string | null; oggetto: string }[]>() : { data: [] as { id: string; oggetto_breve: string | null; oggetto: string }[] };
+    const titolo = new Map((gare ?? []).map((g) => [g.id, g.oggetto_breve ?? g.oggetto]));
+    proposte = aperte.map((p) => ({ a: p.a, b: p.b, titoloA: titolo.get(p.a) ?? p.a, titoloB: titolo.get(p.b) ?? p.b, motivo: p.motivo, il: p.proposta_il }));
+  } catch {
+    proposte = null;
+  }
+  return {
+    fonti: FONTI_REGIONALI.map((f, i) => {
+      const r = (righe ?? []).find((x) => x.fonte === f);
+      return {
+        fonte: f,
+        attiva: r?.attiva === true,
+        nascosta: r?.nascosta_ai_clienti !== false,
+        accensioneConsentita: scrittureRadarConsentite(f, process.env).ok,
+        sospensione: (r?.conteggi?.sospensione as { il: string; motivo: string | null } | undefined) ?? null,
+        ultimoSuccesso: r?.ultimo_successo_il ?? null,
+        datiAl: r?.dati_aggiornati_al ?? null,
+        ultimoGiro: (r?.conteggi?.ultimo_giro as DatiFonteRegionaleConsole["ultimoGiro"] | undefined) ?? null,
+        procedure: conteggi[i],
+      };
+    }),
+    proposte,
+    giriProgrammati: process.env.RADAR_REGIONALI_CRON === "attivo",
   };
 }

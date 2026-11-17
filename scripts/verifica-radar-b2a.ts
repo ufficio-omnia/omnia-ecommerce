@@ -370,6 +370,15 @@ async function principale() {
   atteso("il giro rispetta il blocco e il semaforo (occupata, nessuna scrittura)", /blocco_fino_a\.is\.null,blocco_fino_a\.lt\./.test(leggi("src/lib/radar/importa-regionali.ts")) && /"occupata"/.test(leggi("src/lib/radar/importa-regionali.ts")));
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
   atteso("nessun cron nuovo in vercel.json", !vercel.crons.some((c) => /regional|sintel|sardegna|fonti/.test(c.path)));
+  const rotta = leggi("src/app/api/cron/radar-regionali/route.ts");
+  atteso("cron delle fonti regionali: segreto e interruttore RADAR_REGIONALI_CRON=attivo", /cronAutorizzato\(request\.headers\.get\("authorization"\), process\.env\.CRON_SECRET\)/.test(rotta) && /RADAR_REGIONALI_CRON !== "attivo"/.test(rotta));
+  const script = leggi("scripts/radar-importa-regionale.ts");
+  atteso("script di importazione: solo staging e porta delle autorizzazioni prima di tutto", /controllaPorta\(\{ script: "radar-importa-regionale\.ts" \}\)/.test(script) && /RADAR_STAGING_REF/.test(script) && script.indexOf("controllaPorta") < script.indexOf("eseguiImportazioneRegionale(admin"));
+  const azioni = leggi("src/app/site-console/azioni/tender-intelligence.ts");
+  const nuoveAzioni = ["impostaFonteRegionale", "impostaVisibilitaFonte", "eseguiGiroRegionale", "decidiPropostaCollegamento"];
+  atteso("console: le azioni nuove sono solo per amministratori", nuoveAzioni.every((n) => new RegExp(`export async function ${n}\\([^)]*\\)[^{]*\\{\\s*const sessione = await richiediAdminAzione\\(\\);\\s*if \\(!sessione\\)`).test(azioni)));
+  atteso("console: accensione, visibilità e suggerimenti sempre nel registro", ["impostaFonteRegionale", "impostaVisibilitaFonte", "decidiPropostaCollegamento"].every((n) => new RegExp(`export async function ${n}[\\s\\S]*?registroDisponibile\\(admin\\)[\\s\\S]*?await registra\\(admin`).test(azioni)));
+  atteso("console: per mostrare SardegnaCAT serve la conferma del parere legale", /fonte === "sardegnacat" && String\(formData\.get\("parere"\) \?\? ""\) !== "si"/.test(azioni));
 
   console.log(fallimenti.length === 0 ? "\nVerifica B2a (motore multifonte, 7 controlli di accettazione): tutto a posto." : `\nVerifica B2a: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
   process.exit(fallimenti.length === 0 ? 0 : 1);

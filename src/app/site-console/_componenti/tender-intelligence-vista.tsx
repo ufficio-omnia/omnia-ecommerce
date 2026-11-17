@@ -1,7 +1,19 @@
 import type { DatiTenderIntelligenceConsole } from "@/lib/console/tender-intelligence";
 import { AZIONI_RADAR, LIMITI_PREDEFINITI, PREFISSO_COSTO, PREFISSO_LIMITE, type AzioneRadar, type NomeLimite } from "@/lib/radar/diritto-calcoli";
 import type { StatoFonte } from "@/lib/radar/fonti/tipi";
-import { eseguiGiroPvl, eseguiGiroTed, impostaFontePvl, impostaFonteTed, impostaImpresaRadar, salvaParametriRadar, scollegaGaraDoppia } from "../azioni/tender-intelligence";
+import {
+  decidiPropostaCollegamento,
+  eseguiGiroPvl,
+  eseguiGiroRegionale,
+  eseguiGiroTed,
+  impostaFontePvl,
+  impostaFonteRegionale,
+  impostaFonteTed,
+  impostaImpresaRadar,
+  impostaVisibilitaFonte,
+  salvaParametriRadar,
+  scollegaGaraDoppia,
+} from "../azioni/tender-intelligence";
 import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-calcoli";
 import { ETICHETTE_LIMITI_PVL } from "@/lib/console/tender-intelligence-calcoli";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
@@ -40,6 +52,11 @@ const ETICHETTA_OGGETTO: Record<string, string> = {
   "fonte:ted:attiva": "Fonte TED",
   "fonte:pvl:attiva": "Fonte PVL (staging)",
   "gara:collegamento": "Collegamento di una gara doppia",
+  "gara:suggerimento": "Suggerimento di unione",
+  "fonte:sintel:attiva": "Fonte Sintel (staging)",
+  "fonte:sardegnacat:attiva": "Fonte SardegnaCAT (staging)",
+  "fonte:sintel:nascosta_ai_clienti": "Sintel nascosta ai clienti",
+  "fonte:sardegnacat:nascosta_ai_clienti": "SardegnaCAT nascosta ai clienti",
   "cliente:attivo": "Modulo per l'impresa",
 };
 
@@ -280,6 +297,114 @@ function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceCo
   );
 }
 
+// ───── fase B2a: fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione da verificare ─────
+
+const NOME_REGIONALE: Record<string, string> = { sintel: "Sintel (dati aperti della Regione Lombardia)", sardegnacat: "SardegnaCAT (feed pubblico dei bandi)" };
+
+function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderIntelligenceConsole["regionali"]> }) {
+  return (
+    <>
+      {regionali.fonti.map((f) => {
+        const g = f.ultimoGiro;
+        return (
+          <div className="cn-sezione" key={f.fonte}>
+            <Pannello titolo={`Fonte ${NOME_REGIONALE[f.fonte] ?? f.fonte} (fase B2a, solo staging)`}>
+              <p className="cn-nota">
+                Stato: <strong>{f.attiva ? "accesa" : f.sospensione ? "sospesa" : "spenta"}</strong> · ai clienti: <strong>{f.nascosta ? "nascosta" : "visibile"}</strong>
+                {f.datiAl ? ` · dati della fonte al ${data(f.datiAl)}` : ""}
+                {f.ultimoSuccesso ? ` · ultimo giro riuscito il ${data(f.ultimoSuccesso)}` : ""} · procedure lette in archivio: {numero(f.procedure)}
+              </p>
+              {f.sospensione && !f.attiva && <p className="cn-nota">Sospesa dal connettore il {data(f.sospensione.il)}: {f.sospensione.motivo ?? "motivo non registrato"}. Si riaccende solo da qui, dopo averne verificato la causa.</p>}
+              {f.fonte === "sardegnacat" && f.nascosta && <p className="cn-nota">La licenza del feed non è dichiarata: la fonte resta nascosta ai clienti finché non c&apos;è il parere legale. I suoi dati non entrano nelle gare già visibili.</p>}
+              <>
+                {f.accensioneConsentita || f.attiva ? (
+                  <ModuloAzione azione={impostaFonteRegionale} etichetta={f.attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: f.attiva ? "spegni" : "accendi" }}>
+                    {null}
+                  </ModuloAzione>
+                ) : (
+                  <p className="cn-nota">Accensione possibile solo sullo staging.</p>
+                )}
+                {f.attiva && (
+                  <ModuloAzione azione={eseguiGiroRegionale} etichetta="Esegui un giro adesso" etichettaInCorso="Leggo… (fino a 50 s)" campi={{ fonte: f.fonte }}>
+                    {null}
+                  </ModuloAzione>
+                )}
+                {f.nascosta ? (
+                  <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">
+                    {f.fonte === "sardegnacat" ? (
+                      <label className="cn-nota">
+                        <input type="checkbox" name="parere" value="si" /> C&apos;è il parere legale sulla licenza del feed
+                      </label>
+                    ) : null}
+                  </ModuloAzione>
+                ) : (
+                  <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Nascondi ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "nascondi" }} variante="neutro">
+                    {null}
+                  </ModuloAzione>
+                )}
+              </>
+              <p className="cn-nota">Giri programmati: {regionali.giriProgrammati ? <strong>attivi</strong> : <strong>configurati ma non attivi</strong>} (servono l&apos;autorizzazione operativa, la riga in vercel.json e RADAR_REGIONALI_CRON=attivo).</p>
+              {g && (
+                <p className="cn-nota">
+                  Ultimo giro del {data(g.iniziato_il)}, {secondi(g.durata_ms)}: {g.invariata_alla_fonte ? "dati invariati alla fonte" : `${numero(g.fonte.richieste)} richieste (${(g.fonte.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB); ${numero(g.letti)} procedure lette, ${numero(g.nuove)} gare nuove, ${numero(g.aggiornate)} aggiornate, ${numero(g.invariati)} invariate, ${numero(g.rettifiche)} con rettifiche o proroghe, ${numero(g.collegateDoppie)} gare doppie unite, ${numero(g.proposte)} suggerimenti, ${numero(g.nonApplicateNascosta)} versioni non applicate perché la fonte è nascosta; esclusioni: ${Object.entries(g.esclusi).map(([k, n]) => `${k} ${n}`).join(", ") || "nessuna"}`}
+                  {g.errore ? ` · errore: ${g.errore}` : ""}
+                </p>
+              )}
+            </Pannello>
+          </div>
+        );
+      })}
+      {regionali.proposte && (
+        <div className="cn-sezione">
+          <Pannello titolo={`Suggerimenti di unione da verificare (${numero(regionali.proposte.length)})`}>
+            <p className="cn-nota">
+              Corrispondenze PROBABILI (stesso ente e stesso giorno di scadenza, un solo candidato per parte): non sono mai unite in automatico. «Unisci» esegue l&apos;unione reversibile (annullabile dall&apos;elenco delle gare collegate); «Non sono la stessa gara» le esclude per sempre l&apos;una dall&apos;altra.
+            </p>
+            {regionali.proposte.length === 0 ? (
+              <p className="cn-nota">Nessun suggerimento in attesa.</p>
+            ) : (
+              <div className="cn-scorri">
+                <table className="cn-tab">
+                  <thead>
+                    <tr>
+                      <th>Gare</th>
+                      <th>Perché</th>
+                      <th>Decisione</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {regionali.proposte.map((p) => (
+                      <tr key={`${p.a}|${p.b}`}>
+                        <td>
+                          {p.titoloA}
+                          <div className="cn-nota">{p.a}</div>
+                          {p.titoloB}
+                          <div className="cn-nota">{p.b}</div>
+                        </td>
+                        <td>
+                          {data(p.il)} · {p.motivo}
+                        </td>
+                        <td>
+                          <ModuloAzione azione={decidiPropostaCollegamento} etichetta="Unisci" etichettaInCorso="Unisco…" campi={{ a: p.a, b: p.b, decisione: "conferma" }} variante="primario">
+                            {null}
+                          </ModuloAzione>
+                          <ModuloAzione azione={decidiPropostaCollegamento} etichetta="Non sono la stessa gara" etichettaInCorso="Salvo…" campi={{ a: p.a, b: p.b, decisione: "rifiuta" }} variante="neutro">
+                            {null}
+                          </ModuloAzione>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Pannello>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
   const { parametri } = dati;
   const inCoda = dati.coda ? dati.coda.in_coda + dati.coda.in_corso : null;
@@ -380,6 +505,8 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
       )}
 
       {dati.pvl && <SezionePvl pvl={dati.pvl} attiva={dati.fonti.find((f) => f.id === "pvl")?.db?.attiva === true} />}
+
+      {dati.regionali && <SezioneRegionali regionali={dati.regionali} />}
 
       <div className="cn-sezione">
         <Pannello titolo="Fonti">
