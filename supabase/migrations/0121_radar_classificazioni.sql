@@ -93,7 +93,9 @@ grant update (attiva, sostituita_il, sostituita_da) on public.radar_classificazi
 --   - aggiornamento che cambia gara o fonte, e cancellazione: le fonti della gara di ORIGINE si ricalcolano dalle provenienze rimaste
 --     (insieme ordinato), e si scrivono solo se cambiano;
 --   - un upsert che riscrive la stessa provenienza non scrive nulla.
-create or replace function public.radar_allinea_fonti_della_gara() returns trigger
+-- STESSI NOMI della 0120 (funzione e trigger), riscritti con CREATE OR REPLACE: nessun DROP, nessun oggetto orfano, il nome registrato nella
+-- 0120 resta valido. CREATE OR REPLACE TRIGGER richiede Postgres 14 o superiore: lo staging è 17.11 (letto il 17/11/2026).
+create or replace function public.radar_aggiungi_fonte_alla_gara() returns trigger
   language plpgsql
   security invoker
   set search_path = public
@@ -117,23 +119,13 @@ begin
   return null;
 end;
 $$;
-revoke all on function public.radar_allinea_fonti_della_gara() from public, anon, authenticated;
-grant execute on function public.radar_allinea_fonti_della_gara() to service_role;
+revoke all on function public.radar_aggiungi_fonte_alla_gara() from public, anon, authenticated;
+grant execute on function public.radar_aggiungi_fonte_alla_gara() to service_role;
 
--- il trigger della 0120 lascia il posto a quello nuovo (stessa tabella, in più la cancellazione), nella stessa transazione: nessun istante
--- senza trigger. La funzione della 0120 non serve più a nessuno e si toglie (è codice, nessun dato).
-do $$
-begin
-  if exists (select 1 from pg_trigger where tgname = 'radar_procedure_fonti_aggiunge_fonte' and tgrelid = 'public.radar_procedure_fonti'::regclass) then
-    drop trigger radar_procedure_fonti_aggiunge_fonte on public.radar_procedure_fonti;
-  end if;
-  if not exists (select 1 from pg_trigger where tgname = 'radar_procedure_fonti_allinea_fonti' and tgrelid = 'public.radar_procedure_fonti'::regclass) then
-    create trigger radar_procedure_fonti_allinea_fonti
-      after insert or update of procedura_id, fonte or delete on public.radar_procedure_fonti
-      for each row execute function public.radar_allinea_fonti_della_gara();
-  end if;
-end $$;
-drop function if exists public.radar_aggiungi_fonte_alla_gara();
+-- lo stesso trigger della 0120, con un evento in più (la cancellazione): CREATE OR REPLACE lo aggiorna sul posto, nella stessa transazione
+create or replace trigger radar_procedure_fonti_aggiunge_fonte
+  after insert or update of procedura_id, fonte or delete on public.radar_procedure_fonti
+  for each row execute function public.radar_aggiungi_fonte_alla_gara();
 
 -- ───── 3. riallineamento una tantum delle fonti (solo dove la colonna è diversa dalle provenienze) ─────
 update public.radar_procedure p

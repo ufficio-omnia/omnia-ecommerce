@@ -6,12 +6,16 @@
 select prova.verifica('0121: riallineamento una tantum, nessuna fonte obsoleta', prova.obsolete() = 0 and prova.fonti('00000000-0000-0000-0000-0000000000b1') = '{}');
 select prova.verifica('0121: settori, metodo, oggetto e chiave delle gare invariati',
   (select count(*) from public.radar_procedure p join prova.prima v using (id) where (p.chiave, p.oggetto, p.settori, p.metodo_settore) is distinct from (v.chiave, v.oggetto, v.settori, v.metodo_settore)) = 0);
-select prova.verifica('0121: un solo trigger sulle provenienze, quello nuovo, anche sulla cancellazione',
+select prova.verifica('0121: un solo trigger sulle provenienze, con il NOME della 0120 e gli eventi nuovi (anche la cancellazione)',
   (select count(*) from pg_trigger where tgrelid = 'public.radar_procedure_fonti'::regclass and not tgisinternal) = 1
-  and exists (select 1 from pg_trigger where tgname = 'radar_procedure_fonti_allinea_fonti' and pg_get_triggerdef(oid) like '%INSERT OR DELETE OR UPDATE OF procedura_id, fonte%'));
-select prova.verifica('0121: la funzione della 0120 non esiste più; la nuova è security invoker con search_path fisso',
-  not exists (select 1 from pg_proc where proname = 'radar_aggiungi_fonte_alla_gara')
-  and exists (select 1 from pg_proc where proname = 'radar_allinea_fonti_della_gara' and not prosecdef and proconfig = '{search_path=public}'));
+  and exists (select 1 from pg_trigger where tgname = 'radar_procedure_fonti_aggiunge_fonte' and tgrelid = 'public.radar_procedure_fonti'::regclass
+              and pg_get_triggerdef(oid) like '%INSERT OR DELETE OR UPDATE OF procedura_id, fonte%' and pg_get_triggerdef(oid) like '%radar_aggiungi_fonte_alla_gara()%'));
+select prova.verifica('0121: la funzione ha il NOME della 0120 (una sola, riscritta con il nuovo corpo), security invoker con search_path fisso',
+  (select count(*) from pg_proc where proname = 'radar_aggiungi_fonte_alla_gara') = 1
+  and exists (select 1 from pg_proc where proname = 'radar_aggiungi_fonte_alla_gara' and not prosecdef and proconfig = '{search_path=public}' and prosrc like '%old.procedura_id%')
+  and not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'radar%fonti%' and p.proname <> 'radar_aggiungi_fonte_alla_gara'));
+select prova.verifica('0121: nessun oggetto tolto (tabelle, colonne, indici, funzioni e trigger della 0120 ancora presenti)',
+  (select count(*) from prova.oggetti_prima o where not exists (select 1 from prova.oggetti_ora() a where a = o.oggetto)) = 0);
 select prova.verifica('0121: la tabella delle classificazioni nasce vuota', (select count(*) from public.radar_classificazioni) = 0);
 
 -- ───── fonti: unione, provenienza spostata, annullamento ─────
@@ -117,8 +121,8 @@ begin
   begin set local role authenticated; insert into public.radar_procedure_fonti (procedura_id, fonte, id_fonte) values ('00000000-0000-0000-0000-0000000000d1', 'ted', 'prova-anon'); exception when insufficient_privilege then n := n + 1; end;
   reset role;
   perform prova.verifica('permessi: anon e authenticated senza accesso a gare e provenienze',
-    n = 3 and not has_function_privilege('anon', 'public.radar_allinea_fonti_della_gara()', 'execute') and not has_function_privilege('authenticated', 'public.radar_allinea_fonti_della_gara()', 'execute')
-    and has_function_privilege('service_role', 'public.radar_allinea_fonti_della_gara()', 'execute'));
+    n = 3 and not has_function_privilege('anon', 'public.radar_aggiungi_fonte_alla_gara()', 'execute') and not has_function_privilege('authenticated', 'public.radar_aggiungi_fonte_alla_gara()', 'execute')
+    and has_function_privilege('service_role', 'public.radar_aggiungi_fonte_alla_gara()', 'execute'));
 end $$;
 
 do $$

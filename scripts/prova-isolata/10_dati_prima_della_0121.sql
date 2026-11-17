@@ -21,3 +21,8 @@ reset role;
 select prova.verifica('prima della 0121: il trigger della 0120 lascia UNA fonte obsoleta (gara B)', prova.obsolete() = 1 and prova.fonti('00000000-0000-0000-0000-0000000000b1') = '{sardegnacat}');
 -- impronta delle colonne che la 0121 NON deve toccare (settori, metodo, oggetto, chiave) per il confronto dopo
 create table prova.prima as select id, chiave, oggetto, settori, metodo_settore from public.radar_procedure;
+-- tutti gli oggetti dello schema prima della 0121: dopo devono esserci ancora tutti (migrazione non distruttiva)
+create table prova.oggetti_prima as select x as oggetto from prova.oggetti_ora() x;
+select prova.verifica('prima della 0121: c''è il trigger della 0120 con la sua funzione',
+  exists (select 1 from prova.oggetti_prima where oggetto = 'trigger:radar_procedure_fonti.radar_procedure_fonti_aggiunge_fonte')
+  and exists (select 1 from prova.oggetti_prima where oggetto = 'funzione:radar_aggiungi_fonte_alla_gara'));
