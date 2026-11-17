@@ -1,29 +1,42 @@
 // Fonti di una gara come le vede il cliente (fase B1-bis): quali fonti l'hanno pubblicata, il collegamento ufficiale di ciascuna, quando
 // l'abbiamo letta e verificata, e da quale fonte viene ogni dato principale. Logica pura, provata da scripts/verifica-radar-pvl.ts.
-import type { ProvenienzaCampi } from "./unione-calcoli";
+import { FONTI_UNITE, eFonteUnita, type FonteUnita, type ProvenienzaCampi } from "./unione-calcoli";
 
-export type FonteGara = "ted" | "pvl";
+// Fase B2a: le fonti di una gara sono quelle del motore di unione (TED, PVL, Sintel, SardegnaCAT).
+export type FonteGara = FonteUnita;
 
-export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC" };
+export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT" };
 export const NOME_FONTE_ESTESO: Record<FonteGara, string> = {
   ted: "TED, Gazzetta ufficiale dell'Unione europea",
   pvl: "ANAC, Piattaforma di pubblicità a valore legale",
+  sintel: "Sintel, piattaforma di e-procurement della Regione Lombardia (dati aperti)",
+  sardegnacat: "SardegnaCAT, piattaforma di e-procurement della Regione Sardegna (feed pubblico dei bandi)",
 };
 export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
   ted: "TED, Ufficio delle pubblicazioni dell'Unione europea (riuso libero citando la fonte)",
   pvl: "ANAC, Piattaforma di pubblicità a valore legale (lettura sperimentale)",
+  // uguali a quelle dei connettori (sintel-calcoli.ts, aflink-calcoli.ts): lo controlla verifica-radar-b2a; qui scritte per intero per non
+  // portare i connettori nelle pagine del cliente
+  sintel: "Regione Lombardia – Open Data Lombardia (Sintel), licenza CC0 1.0",
+  sardegnacat: "Regione Autonoma della Sardegna – SardegnaCAT (feed RSS pubblico dei bandi)",
 };
 
-function eFonte(x: unknown): x is FonteGara {
-  return x === "ted" || x === "pvl";
+const eFonte = eFonteUnita;
+
+// Le fonti che il cliente può vedere: tutte meno quelle nascoste (radar_fonti_stato.nascosta_ai_clienti, migrazione 0120).
+export function fontiVisibili<T>(elementi: readonly T[], fonteDi: (x: T) => string, nascoste: ReadonlySet<string>): T[] {
+  return elementi.filter((x) => !nascoste.has(fonteDi(x)));
 }
 
 // Le fonti di una gara dagli elementi già letti con la riga (nessuna richiesta in più): la provenienza dei campi e la chiave.
 export function fontiDellaGara(chiave: string, provenienza: ProvenienzaCampi | null | undefined): FonteGara[] {
   const s = new Set<FonteGara>();
   for (const p of Object.values(provenienza ?? {})) if (p && eFonte(p.f)) s.add(p.f);
-  if (s.size === 0) s.add(chiave.startsWith("pvl:") ? "pvl" : "ted");
-  return (["ted", "pvl"] as const).filter((f) => s.has(f));
+  if (s.size === 0) {
+    const prefisso = chiave.split(":")[0];
+    s.add(eFonte(prefisso) ? prefisso : "ted");
+  }
+  return FONTI_UNITE.filter((f) => s.has(f));
 }
 
 export function etichettaFonti(fonti: readonly FonteGara[]): string {
@@ -46,6 +59,8 @@ export function descriviAvvisoLetto(a: Pick<AvvisoLetto, "fonte" | "id_fonte" | 
     const tipo = /^(A\d|NAG)/.test(t) ? "esito" : /^P[12]_/.test(t) ? "bando" : "avviso";
     return `${NOME_FONTE.pvl}, ${tipo}${t ? ` (scheda ${t})` : ""}`;
   }
+  // piattaforme: «Sintel, procedura 226427680»
+  if (a.fonte === "sintel" || a.fonte === "sardegnacat") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
   return `${NOME_FONTE.ted} ${a.id_fonte}`;
 }
 
@@ -64,12 +79,13 @@ export type RiepilogoFonte = {
 
 function eEsito(a: Pick<AvvisoLetto, "fonte" | "tipo_avviso">): boolean {
   const t = a.tipo_avviso ?? "";
-  return a.fonte === "pvl" ? /^(A\d|NAG)/.test(t) : t.startsWith("can");
+  if (a.fonte === "pvl") return /^(A\d|NAG)/.test(t);
+  return a.fonte === "ted" ? t.startsWith("can") : false;
 }
 
 export function riepilogoFonti(avvisi: readonly AvvisoLetto[], controlli: Readonly<Record<string, string | null>>): RiepilogoFonte[] {
   const out: RiepilogoFonte[] = [];
-  for (const fonte of ["ted", "pvl"] as const) {
+  for (const fonte of FONTI_UNITE) {
     const suoi = avvisi.filter((a) => a.fonte === fonte);
     if (suoi.length === 0) continue;
     const bandi = suoi.filter((a) => !eEsito(a));

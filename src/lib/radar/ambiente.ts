@@ -22,10 +22,12 @@ export function ambienteDb(url: string | undefined): AmbienteDb {
 
 export type PermessoScrittura = { ok: true; ambiente: AmbienteDb } | { ok: false; ambiente: AmbienteDb; motivo: string };
 
-export function scrittureRadarConsentite(fonte: "ted" | "pvl", env: Record<string, string | undefined>): PermessoScrittura {
+// Fase B2a: Sintel e SardegnaCAT (e ogni fonte nuova) come la PVL: solo staging, finché l'utente non autorizza la produzione.
+export function scrittureRadarConsentite(fonte: "ted" | "pvl" | "sintel" | "sardegnacat", env: Record<string, string | undefined>): PermessoScrittura {
   const ambiente = ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL);
   if (ambiente === "staging") return { ok: true, ambiente };
   if (fonte === "pvl") return { ok: false, ambiente, motivo: "La PVL è autorizzata solo sullo staging: nessuna scrittura in questo database." };
+  if (fonte !== "ted") return { ok: false, ambiente, motivo: "Le fonti regionali sono autorizzate solo sullo staging: nessuna scrittura in questo database." };
   if (ambiente === "produzione" && env.VERCEL_ENV === "production") return { ok: true, ambiente };
   return { ok: false, ambiente, motivo: "Scritture nell'archivio di produzione consentite solo dal deploy di produzione." };
 }

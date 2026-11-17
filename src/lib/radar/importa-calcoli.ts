@@ -8,6 +8,8 @@
 //   - un cambiamento è «notificabile» solo se arriva dalla sincronizzazione quotidiana E la gara è ancora aperta: niente notifiche per gli
 //     avvisi dello storico recuperato, né per gare già scadute.
 import { giornoDiRoma, ordinePubblicazione, type BandoTed } from "./fonti/ted-calcoli";
+import { idPiattaformaDaUrl } from "./fonti/piattaforme-calcoli";
+import { opportunitaDaTipoAvviso, type PartecipazioneArchivio, type TipoOpportunitaArchivio } from "./opportunita-calcoli";
 import { titoloBreve } from "./sintesi-calcoli";
 
 export type ModoImportazione = "recupero" | "incrementale";
@@ -50,6 +52,12 @@ export type RigaProcedura = {
   cpv_tutti: string[];
   settori: string[];
   metodo_settore: "cpv" | "parole_chiave";
+  // fase B2a (0120): base d'asta (Sintel, SardegnaCAT; null per TED e PVL), identificativo della procedura sulla piattaforma di gara
+  // (chiave esatta per unire la stessa gara letta da due fonti), tipo di opportunità e partecipazione
+  valore_base: number | null;
+  piattaforma_id: string | null;
+  tipo_opportunita: TipoOpportunitaArchivio | null;
+  partecipazione: PartecipazioneArchivio | null;
   ultima_versione_il: string;
   ultima_versione_id: string;
   ultima_rilevazione_il: string;
@@ -127,6 +135,10 @@ export function rigaDaBando(b: BandoNormalizzato, precedente: RigaProcedura | nu
     cpv_tutti: r.cpvTutti,
     settori: b.settori,
     metodo_settore: b.metodoSettore,
+    valore_base: r.valoreBase,
+    piattaforma_id: idPiattaformaDaUrl(r.urlDocumenti),
+    tipo_opportunita: opportunitaDaTipoAvviso(r.tipoAvviso)?.tipo ?? null,
+    partecipazione: opportunitaDaTipoAvviso(r.tipoAvviso)?.partecipazione ?? null,
     ultima_versione_il: b.meta.data,
     ultima_versione_id: b.meta.numero,
     ultima_rilevazione_il: iso,

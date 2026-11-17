@@ -35,6 +35,25 @@ export const ETICHETTA_OPPORTUNITA: Record<TipoOpportunita, string> = {
 
 export type Opportunita = { tipo: TipoOpportunita; partecipazione: Partecipazione };
 
+// Nell'archivio entrano solo le opportunità a partecipazione libera o per iscrizione (vincolo della colonna, migrazione 0120).
+export type TipoOpportunitaArchivio = Exclude<TipoOpportunita, "riservata" | "affidamento_diretto">;
+export type PartecipazioneArchivio = Extract<Partecipazione, "libera" | "iscrizione">;
+export type OpportunitaArchivio = { tipo: TipoOpportunitaArchivio; partecipazione: PartecipazioneArchivio };
+
+export function perArchivio(o: Opportunita | null): OpportunitaArchivio | null {
+  if (!o || !entraInOpportunita(o)) return null;
+  return o as OpportunitaArchivio;
+}
+
+// TED e PVL: il tipo dell'avviso già letto in B1 e B1-bis. TED: bandi («cn-*») e preinformazioni che indicono la gara («pin-cfc-*») =
+// bando; sistemi di qualificazione («qu-sy») = iscrizione. PVL: schede di bando P1 e P2 = bando. Altri tipi → non indicato.
+export function opportunitaDaTipoAvviso(tipoAvviso: string | null | undefined): OpportunitaArchivio | null {
+  const t = (tipoAvviso ?? "").trim();
+  if (/^cn-|^pin-cfc-|^P[12]_/.test(t)) return { tipo: "bando", partecipazione: "libera" };
+  if (/^qu-sy$/.test(t)) return { tipo: "sistema_qualificazione", partecipazione: "iscrizione" };
+  return null;
+}
+
 export function opportunita(tipo: TipoOpportunita): Opportunita {
   return { tipo, partecipazione: PARTECIPAZIONE[tipo] };
 }

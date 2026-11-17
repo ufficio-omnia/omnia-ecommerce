@@ -16,9 +16,18 @@
 import { ordinePubblicazione } from "./fonti/ted-calcoli";
 import { cambiamentiTraVersioni, type Cambiamento, type RigaProcedura } from "./importa-calcoli";
 
-export type FonteUnita = "ted" | "pvl";
+// Fase B2a: anche Sintel e SardegnaCAT (e le fonti future) passano da QUESTO motore, nessun altro.
+export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat";
 
-export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 2, ted: 1 };
+export const FONTI_UNITE: readonly FonteUnita[] = ["ted", "pvl", "sintel", "sardegnacat"];
+
+export function eFonteUnita(x: unknown): x is FonteUnita {
+  return typeof x === "string" && (FONTI_UNITE as readonly string[]).includes(x);
+}
+
+// Precedenza per i dati descrittivi e, a pari versione, per quelli sostanziali. Tra TED e PVL resta quella della B1-bis (PVL prima di TED).
+// Le piattaforme stanno tra le due: ordine PROVVISORIO, finché l'utente non decide la S8 (documento 10, §8).
+export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 4, sardegnacat: 3, sintel: 2, ted: 1 };
 
 export type VersioneFonte = {
   fonte: FonteUnita;
@@ -61,7 +70,8 @@ export function confrontaVersioni(a: VersioneFonte, b: VersioneFonte): number {
     const ob = ordinePubblicazione(b.ted);
     if (oa && ob) return oa[0] !== ob[0] ? confrontaNumeri(oa[0], ob[0]) : confrontaNumeri(oa[1], ob[1]);
   }
-  if (a.fonte === b.fonte && a.fonte === "pvl" && a.istante && b.istante && a.istante !== b.istante) return a.istante.localeCompare(b.istante);
+  // dentro la stessa fonte vale l'istante, se la fonte lo dà (PVL: pubblicazione; SardegnaCAT: ultima modifica)
+  if (a.fonte === b.fonte && a.fonte !== "ted" && a.istante && b.istante && a.istante !== b.istante) return a.istante.localeCompare(b.istante);
   if (a.fonte === b.fonte && a.id === b.id) return 0;
   return a.giorno.localeCompare(b.giorno);
 }
@@ -73,6 +83,8 @@ type Gruppo = { nome: string; colonne: readonly (keyof RigaProcedura)[]; tipo: "
 export const GRUPPI_CAMPI: readonly Gruppo[] = [
   { nome: "scadenza", colonne: ["scadenza_giorno", "scadenza_offerte", "scadenza_ora_indicata", "scadenza_fonte"], tipo: "sostanziale" },
   { nome: "valore_stimato", colonne: ["valore_stimato"], tipo: "sostanziale" },
+  // base d'asta (solo Sintel e SardegnaCAT): per TED e PVL è sempre vuota, quindi le loro gare non cambiano
+  { nome: "valore_base", colonne: ["valore_base"], tipo: "sostanziale" },
   { nome: "n_lotti", colonne: ["n_lotti"], tipo: "sostanziale" },
   { nome: "oggetto", colonne: ["oggetto", "oggetto_breve"], tipo: "descrittivo" },
   { nome: "descrizione", colonne: ["descrizione"], tipo: "descrittivo" },
@@ -204,6 +216,12 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
       const c = confrontaVersioni(versione, versioneDa(cur));
       prendi = c > 0 || (c === 0 && PRECEDENZA_FONTI[versione.fonte] > PRECEDENZA_FONTI[cur.f]);
       cambio = c > 0;
+      // fonti diverse, stesso giorno di scadenza: una fonte che non indica l'ora (Sintel) non toglie l'ora indicata dall'altra. Non è un'ora
+      // presunta: è l'ora scritta da una fonte ufficiale per quello stesso giorno. Un giorno DIVERSO (proroga) vale sempre, anche senza ora.
+      if (g.nome === "scadenza" && precedente.scadenza_giorno === nuova.scadenza_giorno && precedente.scadenza_ora_indicata && !nuova.scadenza_ora_indicata) {
+        prendi = false;
+        cambio = false;
+      }
     } else {
       prendi = PRECEDENZA_FONTI[versione.fonte] > PRECEDENZA_FONTI[cur.f];
     }
@@ -223,6 +241,12 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
   }
   // la data di pubblicazione della gara resta quella del primo avviso, da qualunque fonte
   if (nuova.data_pubblicazione && (!precedente.data_pubblicazione || nuova.data_pubblicazione < precedente.data_pubblicazione)) riga.data_pubblicazione = nuova.data_pubblicazione;
+  // identificativo della piattaforma e tipo di opportunità (0120): si riempiono se mancano, non si sovrascrivono (nessun cambio per TED e PVL)
+  if (!precedente.piattaforma_id && nuova.piattaforma_id) riga.piattaforma_id = nuova.piattaforma_id;
+  if (!precedente.tipo_opportunita && nuova.tipo_opportunita) {
+    riga.tipo_opportunita = nuova.tipo_opportunita;
+    riga.partecipazione = nuova.partecipazione;
+  }
 
   const ultima = confrontoUltima > 0 || (confrontoUltima === 0 && PRECEDENZA_FONTI[versione.fonte] >= PRECEDENZA_FONTI[ultimaPrecedente.f]);
   if (ultima) {
@@ -243,10 +267,10 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
   return { riga, provenienza: prov, ultima, campiPresi: presi, cambiamenti };
 }
 
-// L'identificativo dell'ultima versione come si conserva nella gara: il numero TED così com'è (compatibile con le gare di B1), la PVL con
-// il prefisso «pvl:».
+// L'identificativo dell'ultima versione come si conserva nella gara: il numero TED così com'è (compatibile con le gare di B1), le altre fonti
+// con il loro prefisso («pvl:», «sintel:», «sardegnacat:»).
 export function idVersione(v: VersioneFonte): string {
-  return v.fonte === "ted" ? v.id : `pvl:${v.id}`;
+  return v.fonte === "ted" ? v.id : `${v.fonte}:${v.id}`;
 }
 
 // ───── lotti ─────
