@@ -193,7 +193,14 @@ export const SOTTOCATEGORIE: Record<SettoreRadar, readonly Sottocategoria[]> = {
     { id: "disinfestazione", nome: "Disinfestazione e derattizzazione", testo: /\b(disinfestazion\w*|derattizzazion\w*|deblattizzazion\w*|fumigazion\w*)\b/, cpv: ["90920000", "90921000", "90922000", "90923000", "90924000"] },
   ],
   ristorazione: [
-    { id: "mense", nome: "Mense e ristorazione collettiva", testo: /\b(mens[ae]|refezion\w*|ristorazione (scolastica|collettiva|aziendale|ospedaliera|universitaria|sanitaria)|centr\w* (di )?cottura|degent\w*|vitto)\b/, cpv: ["55300000", "55500000", "55510000", "55511000", "55512000", "55523100", "55524000"] },
+    // «degenti» vale solo vicino a ristorazione, pasti o vitto: il «bar … per le necessità dei degenti» resta una concessione, non una mensa
+    // (caso reale di TED 786982-2026, 17/11/2026)
+    {
+      id: "mense",
+      nome: "Mense e ristorazione collettiva",
+      testo: /\b(mens[ae]|refezion\w*|ristorazione (scolastica|collettiva|aziendale|ospedaliera|universitaria|sanitaria)|centr\w* (di )?cottura|(ristorazion\w*|past[oi]|vitto)( \w+){0,4} degent\w*|vitto)\b/,
+      cpv: ["55300000", "55500000", "55510000", "55511000", "55512000", "55523100", "55524000"],
+    },
     { id: "catering", nome: "Catering e preparazione pasti", testo: /\b(catering|preparazion\w* (dei |di )?pasti|cottura (dei |di )?pasti|business lunch|coffee break|banqueting)\b/, cpv: ["55520000", "55523000", "55321000", "55322000"] },
     { id: "distribuzione_pasti", nome: "Distribuzione pasti", testo: /\b(distribuzion\w* (dei |di )?pasti|consegna (dei |di )?pasti|pasti a domicilio|fornitura (dei |di )?pasti|trasporto (dei |di )?pasti)\b/, cpv: ["55320000", "55521000", "55521100", "55521200"] },
     { id: "concessione_bar", nome: "Concessione bar e caffetteria", testo: /\b(bar|caffetteri\w*|enotec\w*|chiosc\w*)\b/ },

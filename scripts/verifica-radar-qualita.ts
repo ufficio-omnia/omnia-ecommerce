@@ -434,6 +434,21 @@ uguale("parole chiave: la vigilanza che cita la videosorveglianza resta (regola 
 uguale("parole chiave: vigilanza armata presso impianti, servizio esplicito: resta", settoriDaParole("Servizio di vigilanza armata presso gli impianti di depurazione"), ["vigilanza_portierato"]);
 uguale("parole chiave: manutenzione e vigilanza degli impianti di illuminazione: fuori come prima", settoriDaParole("Manutenzione e vigilanza degli impianti di illuminazione pubblica"), []);
 
+// le 4 gare TED oggi perse per i CPV non nel file (lettura TED del 17/11): con i loro oggetti le regole già le riconoscono
+provaCaso({
+  nome: "TED 786982-2026, bar del GOM di Reggio Calabria «per le necessità dei degenti»: concessione, non mensa",
+  cpv: ["55300000"],
+  testo:
+    "PROCEDURA APERTA PER L’AFFIDAMENTO IN CONCESSIONE QUINQUENNALE DI SPAZI FINALIZZATI ALLA GESTIONE DEL SERVIZIO DI BAR - POSTO DI RISTORO E TAVOLA CALDA/FREDDA PER LE NECESSITÀ DEI DEGENTI, DEI DIPENDENTI E DEI VISITATORI",
+  attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar", "concessione_punto_ristoro"] }],
+});
+provaCaso({
+  nome: "ristorazione per i degenti: mensa (caso reale di TED, ULSS 4)",
+  cpv: ["55300000"],
+  testo: "servizio di ristorazione per i degenti, gli utenti e il personale dipendente dell’azienda u.l.s.s. n. 4",
+  attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["mense"] }],
+});
+
 // ───── 3 ter. più sottocategorie nello stesso settore, regole e versione (interfaccia per la 0121) ─────
 provaCaso({
   nome: "più sottocategorie in ordine di comparsa (testo sintetico)",
