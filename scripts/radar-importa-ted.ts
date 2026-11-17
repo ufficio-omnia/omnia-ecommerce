@@ -21,6 +21,12 @@ if (url.includes(PRODUZIONE) || !staging || !url.includes(`${staging}.supabase.c
 }
 
 async function main() {
+  // Regola del 17/11/2026: scritture sullo staging solo con un'autorizzazione registrata del coordinatore.
+  const registro = process.env.TI_REGISTRO;
+  if (!registro) { console.error("STOP: lanciare con esegui-autorizzato.mjs (autorizzazione registrata del coordinatore)."); process.exit(2); }
+  const { controllaPorta } = await import(new URL(`file:///${registro.replace(/\\/g, "/").replace(/^\/+/, "")}/registro.mjs`).href);
+  try { controllaPorta({ script: "radar-importa-ted.ts" }); } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(2); }
+
   const pagine = Number(process.argv[2] ?? 40);
   const minuti = Number(process.argv[3] ?? 10);
   const admin = createClient(url, chiave, { auth: { persistSession: false, autoRefreshToken: false } });

@@ -125,6 +125,12 @@ async function pulisci() {
 }
 
 async function principale() {
+  // Regola del 17/11/2026: scritture sullo staging solo con un'autorizzazione registrata del coordinatore.
+  const registro = process.env.TI_REGISTRO;
+  if (!registro) { console.error("STOP: lanciare con esegui-autorizzato.mjs (autorizzazione registrata del coordinatore)."); process.exit(2); }
+  const { controllaPorta } = await import(new URL(`file:///${registro.replace(/\\/g, "/").replace(/^\/+/, "")}/registro.mjs`).href);
+  try { controllaPorta({ script: "prova-radar-pvl-staging.ts" }); } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(2); }
+
   await pulisci();
   const misure: Misure = { richiesteDb: 0, msDb: 0 };
   const adesso = new Date("2026-11-16T12:00:00Z");

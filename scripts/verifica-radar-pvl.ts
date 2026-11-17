@@ -489,6 +489,16 @@ async function principale() {
   atteso("giro TED: guardia prima di qualunque accesso al database", importaTed.indexOf('scrittureRadarConsentite("ted"') > 0 && importaTed.indexOf('scrittureRadarConsentite("ted"') < importaTed.indexOf('from("radar_fonti_stato")'));
   const azioni = leggi("src/app/site-console/azioni/tender-intelligence.ts");
   atteso("console: accendere la PVL è possibile solo sullo staging; ogni azione solo per amministratori e registrata", /impostaFontePvl[\s\S]*richiediAdminAzione[\s\S]*scrittureRadarConsentite\("pvl"[\s\S]*registra\(admin, \[\{ oggetto: "fonte:pvl:attiva"/.test(azioni));
+  // regola del 17/11/2026: gli script che scrivono sullo staging partono solo dal lanciatore con un'autorizzazione registrata (porta)
+  for (const [file, funzione] of [["scripts/radar-importa-pvl.ts", "async function main() {"], ["scripts/radar-importa-ted.ts", "async function main() {"], ["scripts/prova-radar-pvl-staging.ts", "async function principale() {"]] as const) {
+    const t = leggi(file);
+    const corpo = t.slice(t.indexOf(funzione));
+    const nome = file.split("/").pop() as string;
+    atteso(
+      `${nome}: porta delle autorizzazioni come prima cosa (STOP senza lanciatore, controllaPorta prima del database)`,
+      t.includes(funzione) && corpo.indexOf("process.env.TI_REGISTRO") > 0 && corpo.indexOf("process.env.TI_REGISTRO") < 200 && corpo.includes(`controllaPorta({ script: "${nome}" })`) && corpo.indexOf("controllaPorta(") < Math.min(...["createClient(", "eseguiImportazione", "pulisci()"].map((x) => (corpo.indexOf(x) < 0 ? Infinity : corpo.indexOf(x)))),
+    );
+  }
   const script = leggi("scripts/radar-importa-pvl.ts");
   atteso("script della prima importazione: rifiuta tutto ciò che non è lo staging", /PRODUZIONE|PROGETTO_PRODUZIONE/.test(script) && /RADAR_STAGING_REF/.test(script));
 

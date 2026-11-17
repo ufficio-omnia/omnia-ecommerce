@@ -24,6 +24,12 @@ if (url.includes(PROGETTO_PRODUZIONE) || chiave.includes(PROGETTO_PRODUZIONE) ||
 }
 
 async function main() {
+  // Regola del 17/11/2026: scritture sullo staging solo con un'autorizzazione registrata del coordinatore.
+  const registro = process.env.TI_REGISTRO;
+  if (!registro) { console.error("STOP: lanciare con esegui-autorizzato.mjs (autorizzazione registrata del coordinatore)."); process.exit(2); }
+  const { controllaPorta } = await import(new URL(`file:///${registro.replace(/\\/g, "/").replace(/^\/+/, "")}/registro.mjs`).href);
+  try { controllaPorta({ script: "radar-importa-pvl.ts" }); } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(2); }
+
   const [modo, a1, a2, a3] = process.argv.slice(2);
   if (modo !== "finestra" && modo !== "incrementale") {
     console.error("Uso: finestra <da> <a> [richieste] | incrementale [richieste]");
