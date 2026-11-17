@@ -33,6 +33,10 @@ export const viewport: Viewport = {
 // browser la esegue solo dopo aver finito di leggere la pagina, quindi dopo lo snippet, sempre. Il banner aggiorna i consensi.
 // Niente `async` sulla libreria: React lo tratterebbe come «risorsa» e lo sposterebbe in testa all'<head>, prima dello snippet.
 // Tutto sta in src/lib/google-tag.ts (testato in scripts/verifica-google-tag-omnia-ai.ts) e nella guida GUIDA-GOOGLE-TAG-CONSENT-MODE.md.
+// SOLO SUL RAMO anteprima/tender-intelligence-staging (mai in master): su un'anteprima la libreria di Google non si carica,
+// così nessuna misurazione raggiunge Analytics e Google Ads veri. Lo snippet inline resta (consensi negati, nessuna rete).
+const TAG_GOOGLE_SPENTO = process.env.VERCEL_ENV === "preview" || process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+
 export default function OmniaAiRootLayout({ children }: { children: React.ReactNode }) {
   return (
     // data-tema / data-tema-scelta: il tema di base (chiaro) è scritto già dal server, così la pagina parte chiara per chiunque, anche senza
@@ -41,7 +45,7 @@ export default function OmniaAiRootLayout({ children }: { children: React.ReactN
     <html lang="it" data-tema={TEMA_PREDEFINITO} data-tema-scelta={SCELTA_PREDEFINITA} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: costruisciSnippetIniziale() }} />
-        <script defer src={URL_GTAG_JS} />
+        {!TAG_GOOGLE_SPENTO && <script defer src={URL_GTAG_JS} />}
       </head>
       <body>
         {/* Primo elemento del body: applica il tema scelto (di base il chiaro, già scritto dal server) prima che la pagina compaia. */}

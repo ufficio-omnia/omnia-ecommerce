@@ -34,6 +34,7 @@ const VALIDO: Record<string, string> = {
   VERCEL: "1",
   VERCEL_ENV: "preview",
   VERCEL_GIT_COMMIT_REF: RAMO_ANTEPRIMA,
+  NEXT_PUBLIC_VERCEL_ENV: "preview",
   VERCEL_PROJECT_PRODUCTION_URL: "app.omniaitalia.com",
   NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL: "app.omniaitalia.com",
   NEXT_PUBLIC_VERCEL_URL: "omnia-ecommerce-abc123-ufficio-omnia.vercel.app",
@@ -121,6 +122,7 @@ async function principale() {
   // 6. Piattaforma.
   blocca("su Vercel in produzione → bloccato", { VERCEL_ENV: "production" }, "VERCEL_ENV");
   blocca("su Vercel in sviluppo → bloccato", { VERCEL_ENV: "development" }, "VERCEL_ENV");
+  blocca("su Vercel senza NEXT_PUBLIC_VERCEL_ENV=preview (i tag Google non si spegnerebbero nel browser) → bloccato", { NEXT_PUBLIC_VERCEL_ENV: undefined }, "NEXT_PUBLIC_VERCEL_ENV");
   blocca("ramo master → bloccato", { VERCEL_GIT_COMMIT_REF: "master" }, "VERCEL_GIT_COMMIT_REF");
   blocca("ramo feature/tender-intelligence → bloccato", { VERCEL_GIT_COMMIT_REF: "feature/tender-intelligence" }, "VERCEL_GIT_COMMIT_REF");
 
@@ -190,6 +192,11 @@ async function principale() {
   atteso("prebuild: la guardia è il primo comando", pacchetto.scripts.prebuild.startsWith("tsx scripts/guardia-anteprima.ts && "));
   atteso("build: la guardia è il primo comando, poi next build", pacchetto.scripts.build === "tsx scripts/guardia-anteprima.ts && next build");
   atteso("postbuild: controllo del codice compilato", pacchetto.scripts.postbuild === "tsx scripts/verifica-bundle-anteprima.ts");
+  const layoutOmniaAi = fs.readFileSync(path.join(RADICE, "src/app/site-omnia-ai/layout.tsx"), "utf8");
+  atteso("tag Google di OMNIA AI: sulle anteprime la libreria non si carica", /const TAG_GOOGLE_SPENTO = process\.env\.VERCEL_ENV === "preview" \|\| process\.env\.NEXT_PUBLIC_VERCEL_ENV === "preview";/.test(layoutOmniaAi) && layoutOmniaAi.includes("{!TAG_GOOGLE_SPENTO && <script defer src={URL_GTAG_JS} />}"));
+  const bannerEcommerce = fs.readFileSync(path.join(RADICE, "src/components/cookie-consent.tsx"), "utf8");
+  atteso("banner dell'e-commerce: sulle anteprime non compare (nessun tag Google nemmeno dopo «Accetta»)", bannerEcommerce.includes('if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") return null;') && bannerEcommerce.indexOf('if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") return null;') < bannerEcommerce.indexOf('status === "accepted"'));
+  atteso("lanciatore locale: simula NEXT_PUBLIC_VERCEL_ENV=preview come Vercel", fs.readFileSync(path.join(RADICE, "scripts/avvia-anteprima-locale.mjs"), "utf8").includes('NEXT_PUBLIC_VERCEL_ENV: "preview"'));
   const vercel = JSON.parse(fs.readFileSync(path.join(RADICE, "vercel.json"), "utf8")) as { crons: { path: string }[] };
   atteso("vercel.json invariato: 5 cron (Vercel li esegue solo in produzione, mai sulle anteprime)", vercel.crons.length === 5);
 

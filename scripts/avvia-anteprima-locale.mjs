@@ -46,7 +46,8 @@ const SISTEMA = new Set([
   "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS", "LANG", "NODE_OPTIONS", "OSSERVA_RETE_FILE",
 ]);
 const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => SISTEMA.has(k.toUpperCase())));
-const env = { ...base, ...variabili, NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: RAMO };
+// NEXT_PUBLIC_VERCEL_ENV: Vercel la imposta da sola nelle anteprime; qui si simula, perché spegne i tag Google nel browser.
+const env = { ...base, ...variabili, NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", NEXT_PUBLIC_VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: RAMO };
 const node = process.execPath;
 const tsx = path.join(cartella, "node_modules", "tsx", "dist", "cli.mjs");
 

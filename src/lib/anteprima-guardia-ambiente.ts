@@ -159,6 +159,9 @@ export function erroriAmbienteAnteprima(env: Record<string, string | undefined>)
   if (v("VERCEL")) {
     if (v("VERCEL_ENV") !== "preview") e.push("VERCEL_ENV non è «preview»: questo ramo non va mai in produzione");
     if (v("VERCEL_GIT_COMMIT_REF") && v("VERCEL_GIT_COMMIT_REF") !== RAMO_ANTEPRIMA) e.push("VERCEL_GIT_COMMIT_REF non è il ramo d'anteprima autorizzato");
+    // Il codice per il browser spegne i tag Google (Analytics e Ads veri) solo se sa di essere su un'anteprima: senza questa
+    // variabile di Vercel lo spegnimento non avverrebbe, quindi si blocca.
+    if (v("NEXT_PUBLIC_VERCEL_ENV") !== "preview") e.push("NEXT_PUBLIC_VERCEL_ENV non è «preview»: i tag Google non verrebbero spenti nel browser");
   }
 
   // 2. Supabase: SOLO lo staging, URL esatto, chiavi nel formato del progetto di staging.
