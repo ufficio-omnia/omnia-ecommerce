@@ -303,6 +303,10 @@ const OPERATIVO =
 export const CPV_CON_CONTESTO: readonly string[] = ["55410000", "55400000", "55330000", "55310000", "55311000", "55312000"];
 const NOMINA_RISTORAZIONE =
   /\b(bar|caffetteri\w*|ristorant\w*|ristorazion\w*|ristoro|punt\w* (di )?ristoro|somministrazion\w*|mens[ae]|refezion\w*|past[oi]|catering|tavola (calda|fredda)|enotec\w*|distributor\w* automatic\w*|vending|food beverage|locanda|trattori\w*|pizzeri\w*)\b/;
+// «chiosco» nomina il servizio anche lui (decisione dell'utente del 17/11 sul caso Sintel 225696739, Taino: «concessione del chiosco
+// ubicato nel parco comunale» con il CPV del bar), ma non se l'oggetto parla di edicola, giornali o fiori: il chiosco è un'altra attività
+const CHIOSCO = /\bchiosc\w*\b/;
+const CHIOSCO_NON_RISTORO = /\b(edicol\w*|giornali|quotidiani|riviste|fiori|fiorai\w*|fiorist\w*)\b/;
 
 const MOVIMENTAZIONE = /\b(facchinagg\w*|trasloc\w*|movimentazion\w*|carico|scarico|magazzin\w*|immagazzin\w*|stoccaggi\w*|logistic\w*|manovalanza|smontaggi\w*|montaggi\w*|allestiment\w*|sgomber\w*|smistament\w*|imballagg\w*)\b/;
 
@@ -312,11 +316,12 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     // gara è C; ma se l'oggetto descrive una gestione più ampia (struttura, evento, finanza di progetto…), la ristorazione è accessoria: B
     id: "cpv_nuovi_senza_oggetto",
     settori: ["ristorazione"],
-    cerca: new RegExp(`^(?!.*${NOMINA_RISTORAZIONE.source})`),
+    // il testo è già normalizzato in una riga: esclude se non nomina il servizio E non c'è un chiosco senza edicola, giornali o fiori
+    cerca: new RegExp(`^(?!.*${NOMINA_RISTORAZIONE.source})(?!(?!.*${CHIOSCO_NON_RISTORO.source}).*${CHIOSCO.source})`),
     salvo: null,
     condizione: (c) => c.delSettore.length > 0 && c.delSettore.every((x) => CPV_CON_CONTESTO.includes(x)),
     cedeAlleCorrelazioni: true,
-    motivo: "Solo un CPV di bar, caffetteria o ristorazione con cameriere, ma l'oggetto non nomina bar, caffetteria, ristorante, punto ristoro, somministrazione o mensa",
+    motivo: "Solo un CPV di bar, caffetteria o ristorazione con cameriere, ma l'oggetto non nomina bar, caffetteria, ristorante, punto ristoro, chiosco, somministrazione o mensa",
     casi: ["Concessione di spazi commerciali presso la stazione marittima"],
   },
   {
@@ -743,7 +748,8 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // «2026-11-17c»: più sottocategorie per settore, quattro tipi di videosorveglianza, parole chiave della vigilanza senza «videosorveglianza».
 // «2026-11-17d»: pacchetto 15 (distributori automatici in A, 6 CPV di bar e ristoranti con la regola del contesto).
 // «2026-11-17e»: la gestione integrata del solo bar, mensa o punto ristoro (anche in più sedi) resta del settore (Sintel, Treviglio).
-export const VERSIONE_REGOLE_SETTORI = "2026-11-17e";
+// «2026-11-17f»: «chiosco» nomina il servizio nella regola del contesto, salvo edicola, giornali o fiori (Sintel, Taino).
+export const VERSIONE_REGOLE_SETTORI = "2026-11-17f";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Identificativo della correzione nel registro: versione e regole («regole-settori-2026-11-17b:rifiuti»). Rifare la stessa correzione

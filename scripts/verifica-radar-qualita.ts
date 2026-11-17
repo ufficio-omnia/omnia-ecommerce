@@ -29,6 +29,9 @@
 //   - versione delle regole «2026-11-17d». I 6 CPV nuovi sono nel file approvato (56 codici).
 // Controlli CAMBIATI con la versione «2026-11-17e» (rilievo di B2 sulle gare di Sintel, 17/11):
 //   - versione delle regole «2026-11-17e»; nessun altro controllo cambiato, uno nuovo (Treviglio, gestione integrata del bar: A).
+// Controlli CAMBIATI con la versione «2026-11-17f» (decisione dell'utente del 17/11 sul chiosco, caso Sintel di Taino):
+//   - versione delle regole «2026-11-17f»; nessun altro controllo cambiato. Nuovi: Taino A; chiosco su suolo pubblico e fornitura di
+//     chioschi ancora C (per le loro regole); chiosco di edicola, giornali o fiori ancora C (regola del contesto); chiosco senza CPV fuori.
 import fs from "fs";
 import path from "path";
 import {
@@ -542,6 +545,48 @@ provaCaso({
   testo: "Concessione del servizio di gestione integrata del servizio bar presso il Centro Sportivo e lo Stadio Comunale",
   attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }],
 });
+// «chiosco» nella regola del contesto (decisione dell'utente del 17/11): vale solo con uno dei 6 CPV nuovi, mai per edicola, giornali o fiori
+provaCaso({
+  nome: "Sintel 225696739 Taino, concessione del chiosco nel parco con il CPV del bar: A (decisione dell'utente)",
+  cpv: ["55410000"],
+  testo: "Affidamento in concessione del chiosco ubicato nel parco comunale per anni sei",
+  attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }],
+});
+provaCaso({
+  nome: "chiosco su suolo pubblico per attività di commercio, con il CPV del bar: resta C (concessione di immobili)",
+  cpv: ["55410000"],
+  testo: "Affidamento in concessione di suolo pubblico per la installazione di un chiosco per l'esercizio di attività di commercio",
+  attesi: [{ settore: "ristorazione", livello: "C", regola: "concessione_di_immobili" }],
+});
+provaCaso({
+  nome: "fornitura di chioschi, con il CPV del bar: resta C (forniture di beni)",
+  cpv: ["55410000"],
+  testo: "Fornitura e installazione di chioschi informativi multimediali",
+  attesi: [{ settore: "ristorazione", livello: "C", regola: "forniture_di_beni" }],
+});
+for (const testo of [
+  "Concessione del chiosco edicola di piazza Garibaldi",
+  "Affidamento in concessione del chiosco per la vendita di giornali e riviste",
+  "Concessione del chiosco per la vendita di fiori presso il cimitero comunale",
+]) {
+  provaCaso({
+    nome: `chiosco non di ristoro con il CPV del bar messo per errore: resta C («${testo.slice(0, 45)}…»)`,
+    cpv: ["55410000"],
+    testo,
+    attesi: [{ settore: "ristorazione", livello: "C", regola: "cpv_nuovi_senza_oggetto" }],
+  });
+}
+provaCaso({
+  nome: "chiosco bar ed edicola con il CPV del bar: A (il bar è nominato)",
+  cpv: ["55410000"],
+  testo: "Concessione del chiosco bar ed edicola dei giardini pubblici",
+  attesi: [{ settore: "ristorazione", livello: "A", sottocategorie: ["concessione_bar"] }],
+});
+uguale(
+  "chiosco senza CPV di ristorazione: nessun settore (la parola da sola non basta)",
+  classificaGara({ cpvPrincipale: null, cpvTutti: [], testo: "Affidamento in concessione del chiosco ubicato nel parco comunale per anni sei" }).settori,
+  [],
+);
 // regola del contesto: un CPV nuovo da solo non basta
 provaCaso({
   nome: "solo un CPV nuovo e l'oggetto non nomina il servizio: C",
@@ -811,7 +856,7 @@ atteso(
   corr.tipo === "correzione" && corr.dopo.settori.length === 0 && corr.dopo.metodo === null && corr.idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
   JSON.stringify(corr),
 );
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17e");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17f");
 const lotti = riclassificaGara({ ...base, oggetto: "lotto1", cpv_principale: "90910000", cpv_tutti: ["90910000", "98341130"], settori: ["pulizia", "vigilanza_portierato"], metodo_settore: "cpv" }, [
   { oggetto: "SERVIZIO DI CUSTODIA, SICUREZZA E PULIZIA AMBIENTALE DEGLI IMPIANTI SPORTIVI", cpv_principale: "90910000", cpv_tutti: null },
 ]);
