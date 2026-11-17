@@ -737,7 +737,8 @@ uguale(
 
 // ───── fase B2b (2026-11-17g): affidamento esplicito, servizi di altri settori, settori dai lotti ─────
 // testi sintetici o reali dell'archivio dello staging (TED), nessun dato di clienti
-const parole = (s: SettoreRadar) => REGOLE_PAROLE.find((r) => r.settore === s)!.cerca;
+// per la ristorazione anche «bar», come per le concessioni nel classificatore
+const parole = (s: SettoreRadar) => (s === "ristorazione" ? new RegExp(`${REGOLE_PAROLE.find((r) => r.settore === s)!.cerca.source}|\\bbar\\b`) : REGOLE_PAROLE.find((r) => r.settore === s)!.cerca);
 const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["pulizia", "Affidamento del servizio di pulizia degli uffici comunali", "principale"],
   ["pulizia", "Procedura aperta per l'affidamento triennale dei servizi di pulizia e sanificazione", "principale"],
@@ -760,6 +761,12 @@ const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["vigilanza_portierato", "PROCEDURA APERTA PER LAFFIDAMENTO DEL SERVIZIO DI VIGILANZA ARMATA", "principale"],
   ["vigilanza_portierato", "Affidamento del del servizio di vigilanza", "principale"],
   ["ausiliariato", "Servizi nidi d'infanzia e servizi ausiliari presso le scuole", "principale"],
+  // teatro di Monfalcone (TED 219ed447): il bar dentro un elenco di servizi di accoglienza
+  ["ristorazione", "Servizio integrato di accoglienza pubblico/biglietteria/conduzione bar/pulizie locali", "elenco"],
+  ["ristorazione", "Servizio integrato di accoglienza pubblico / biglietteria / conduzione del bar / pulizie locali", "elenco"],
+  ["ristorazione", "Servizio di pulizia e gestione del bar", "elenco"],
+  ["ristorazione", "Affidamento del servizio di gestione del bar", "principale"],
+  ["pulizia", "Servizio integrato di accoglienza e pulizia", "elenco"],
   ["multiservizi", "Servizio di pulizia delle aree interne e altri servizi integrati presso gli aeroporti", "elenco"],
   ["multiservizi", "Gestione con formula global service dei servizi di ospitalità", "principale"],
 ];

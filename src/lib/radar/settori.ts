@@ -191,7 +191,10 @@ export function settoriDaParole(testo: string | null | undefined): SettoreRadar[
 export type Affidamento = "principale" | "elenco" | "accessorio";
 
 // «laffidamento»: l'apostrofo a volte manca negli avvisi (TED 91580b95)
-const TESTE_DI_AFFIDAMENTO = /^l?(servizi?o?|appalt\w*|affidament\w*|concession\w*|gestion\w*|attivita|esecuzion\w*|prestazion\w*|espletament\w*|svolgiment\w*|erogazion\w*|acquisizion\w*)$/;
+const TESTE_DI_AFFIDAMENTO = /^l?(servizi?o?|appalt\w*|affidament\w*|concession\w*|gestion\w*|conduzion\w*|attivita|esecuzion\w*|prestazion\w*|espletament\w*|svolgiment\w*|erogazion\w*|acquisizion\w*)$/;
+// teste «deboli»: in un elenco seguono la voce precedente («accoglienza / biglietteria / conduzione del bar»), mentre «… e servizio di
+// facchinaggio» ripete la testa forte ed è un servizio a sé
+const TESTE_DEBOLI = /^l?(gestion\w*|conduzion\w*|attivita|esecuzion\w*|prestazion\w*|espletament\w*|svolgiment\w*|erogazion\w*)$/;
 // «e altri servizi integrati»: un servizio in più, non il principale
 const ALTRI = /^(altr[ie]|ulterior[ie]|vari[e]?|divers[ie])$/;
 // Le radici dei servizi di ogni settore: due voci dello stesso settore in un elenco sono lo stesso servizio («receptionist/portierato»,
@@ -212,7 +215,7 @@ const ARTICOLI = /^(il|lo|la|i|gli|le|l|un|uno|una)$/;
 const RACCORDI = /^(effettuazion\w*|esecuzion\w*|svolgiment\w*|relativ\w*|annesso|annessa|annessi|annesse|connesso|connessa|connessi|connesse)$/;
 // servizi (di qualunque mestiere) che possono stare in un elenco di servizi affidati
 const ATTIVITA =
-  /^(servizi?o?|pulizi\w*|sanificazion\w*|disinfe\w*|igiene|ristorazion\w*|mens[ae]|refezion\w*|past[oi]|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|reception\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|manutenzion\w*|assistenz\w*|custodi\w*|accoglienz\w*|riordin\w*|lavanderi\w*|lavanol\w*|support\w*|conduzion\w*|sorveglianz\w*|presidi\w*|trasport\w*|somministrazion\w*|preparazion\w*|distribuzion\w*|cottur\w*|giardinagg\w*|apertura|chiusura|segreteri\w*|centralin\w*|bar|caffetteri\w*|ristoro)$/;
+  /^(servizi?o?|pulizi\w*|sanificazion\w*|disinfe\w*|igiene|ristorazion\w*|mens[ae]|refezion\w*|past[oi]|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|reception\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|manutenzion\w*|assistenz\w*|custodi\w*|accoglienz\w*|riordin\w*|lavanderi\w*|lavanol\w*|support\w*|conduzion\w*|sorveglianz\w*|presidi\w*|trasport\w*|somministrazion\w*|preparazion\w*|distribuzion\w*|cottur\w*|giardinagg\w*|apertura|chiusura|segreteri\w*|centralin\w*|bar|caffetteri\w*|ristoro|biglietteri\w*|cassa|accompagnament\w*)$/;
 // lavori e beni: la parola del servizio che li segue è il loro oggetto, non un servizio affidato («lavori mensa scolastica»)
 const BENI_E_LAVORI =
   /^(lavor\w*|fornitur\w*|acquist\w*|noleggi\w*|progettazion\w*|realizzazion\w*|ristrutturazion\w*|adeguament\w*|costruzion\w*|riqualificazion\w*|ammodernament\w*|rifaciment\w*|software|sistem\w*|impiant\w*|apparat\w*|attrezzatur\w*|arred\w*|piattaform\w*|applicativ\w*)$/;
@@ -263,6 +266,24 @@ function testaAccessoria(p: readonly string[], h: number): boolean {
   return false;
 }
 
+// Una testa debole dentro un elenco segue la voce precedente; undefined se la testa non è debole o non è in un elenco.
+function testaDeboleInElenco(p: readonly string[], h: number, radici: RegExp, profondita: number): Affidamento | null | undefined {
+  if (!TESTE_DEBOLI.test(p[h])) return undefined;
+  let j = h - 1;
+  while (j >= 0 && ARTICOLI.test(p[j])) j--;
+  if (j < 0 || !COORDINAZIONE.test(p[j])) return undefined;
+  while (j >= 0 && COORDINAZIONE.test(p[j])) j--;
+  for (let x = j; x >= 0 && !PREPOSIZIONI.test(p[x]) && !COORDINAZIONE.test(p[x]) && p[x] !== "|"; x--) {
+    if (TESTE_DI_AFFIDAMENTO.test(p[x])) break;
+    if (ATTIVITA.test(p[x]) && !BENI_E_LAVORI.test(p[x])) {
+      const r = affidamentoInPosizione(p, x, radici, profondita + 1);
+      if (r === null) return null;
+      return r === "accessorio" ? "accessorio" : radici.test(p[x]) ? r : "elenco";
+    }
+  }
+  return undefined;
+}
+
 function precedutaDaAltri(p: readonly string[], h: number): boolean {
   let j = h - 1;
   while (j >= 0 && ARTICOLI.test(p[j])) j--;
@@ -302,11 +323,20 @@ function affidamentoInPosizione(p: readonly string[], i: number, radici: RegExp,
   })();
   const mezzo = p.slice(inizio, i);
   if (tipo === "titolo" && mezzo.some((w) => BENI_E_LAVORI.test(w) || TESTE_DI_AFFIDAMENTO.test(w))) return null;
-  const base: Affidamento = tipo === "accessorio" ? "accessorio" : h >= 0 && precedutaDaAltri(p, h) ? "elenco" : "principale";
+  const debole = h >= 0 && tipo === "principale" ? testaDeboleInElenco(p, h, radici, profondita) : undefined;
+  if (debole === null) return null;
+  const base: Affidamento = debole ?? (tipo === "accessorio" ? "accessorio" : h >= 0 && precedutaDaAltri(p, h) ? "elenco" : "principale");
   // l'ultimo elenco: la parola è coordinata al servizio che la precede? (anche «e di ristorazione», con la preposizione ripetuta)
   let k = mezzo.length - 1;
   while (k >= 0 && ARTICOLI.test(mezzo[k])) k--;
   if (k >= 1 && PREPOSIZIONI.test(mezzo[k]) && COORDINAZIONE.test(mezzo[k - 1])) k--;
+  // il servizio è dentro una voce dell'elenco, senza preposizioni dopo la congiunzione («accoglienza / biglietteria / conduzione bar»,
+  // teatro di Monfalcone, TED 219ed447): la voce è coordinata a quella precedente
+  if (k >= 0 && !COORDINAZIONE.test(mezzo[k]) && !PREPOSIZIONI.test(mezzo[k])) {
+    let q = k;
+    while (q >= 0 && !COORDINAZIONE.test(mezzo[q]) && !PREPOSIZIONI.test(mezzo[q]) && !TESTE_DI_AFFIDAMENTO.test(mezzo[q])) q--;
+    if (q >= 0 && COORDINAZIONE.test(mezzo[q])) k = q;
+  }
   if (k >= 0 && COORDINAZIONE.test(mezzo[k])) {
     let c = k;
     while (c >= 0 && COORDINAZIONE.test(mezzo[c])) c--;
@@ -327,7 +357,8 @@ function affidamentoInPosizione(p: readonly string[], i: number, radici: RegExp,
     return null;
   }
   // complemento di un'altra cosa: preposizione subito prima, con una parola piena prima di lei («pulizia della mensa»)
-  if (k >= 0 && PREPOSIZIONI.test(mezzo[k]) && mezzo.slice(0, k).some((w) => !PREPOSIZIONI.test(w) && !ARTICOLI.test(w) && !COORDINAZIONE.test(w))) return null;
+  // (non contano gli aggettivi della testa: «servizio integrato di accoglienza»)
+  if (k >= 0 && PREPOSIZIONI.test(mezzo[k]) && mezzo.slice(0, k).some((w) => !PREPOSIZIONI.test(w) && !ARTICOLI.test(w) && !COORDINAZIONE.test(w) && !REGGONO_LA_TESTA.test(w))) return null;
   return base;
 }
 
