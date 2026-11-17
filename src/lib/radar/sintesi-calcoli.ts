@@ -140,7 +140,9 @@ export function sintesiDeterministica(d: DatiSintesi): string[] {
   if (d.dataPubblicazione) {
     const pub = new Date(`${d.dataPubblicazione}T12:00:00Z`);
     // con il numero dell'avviso (TED) o con la sola data (PVL: l'identificativo interno non si mostra)
-    frasi.push(d.numeroAvviso ? `Fonte: ${d.fonte}, avviso ${d.numeroAvviso} pubblicato il ${FMT_GIORNO.format(pub)}.` : `Fonte: ${d.fonte}, avviso pubblicato il ${FMT_GIORNO.format(pub)}.`);
+    // più fonti (fase B2a): tutte le fonti visibili al cliente, e il rimando a dove si vede da quale fonte viene ogni dato
+    if (/ e /.test(d.fonte)) frasi.push(`Fonti: ${d.fonte}; primo avviso pubblicato il ${FMT_GIORNO.format(pub)}. Da quale fonte viene ogni dato: vedi «Da dove vengono i dati».`);
+    else frasi.push(d.numeroAvviso ? `Fonte: ${d.fonte}, avviso ${d.numeroAvviso} pubblicato il ${FMT_GIORNO.format(pub)}.` : `Fonte: ${d.fonte}, avviso pubblicato il ${FMT_GIORNO.format(pub)}.`);
   }
   return frasi;
 }

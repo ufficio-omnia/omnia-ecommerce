@@ -16,7 +16,8 @@ import { leggiElementoAflink, type BandoAflink } from "../src/lib/radar/fonti/af
 import { applicaPaginaBandiRegionali } from "../src/lib/radar/importa-regionali-pagina";
 import { bandoDaAflink, bandoDaSintel, statisticheRegionaliVuote, type BandoRegionale, type StatisticheRegionali } from "../src/lib/radar/importa-regionali-calcoli";
 import { collegaDoppioniPerAvvisoTed, collegaGare, confermaProposta, leggiProposteAperte, rifiutaProposta, scollegaGara } from "../src/lib/radar/collegamenti";
-import { decidiUnione, restaInFondo, type GaraUnibile } from "../src/lib/radar/collegamenti-calcoli";
+import { decidiUnione, restaInFondo, unoPerGaraMostrata, type GaraUnibile } from "../src/lib/radar/collegamenti-calcoli";
+import { sintesiDeterministica } from "../src/lib/radar/sintesi-calcoli";
 import { ATTRIBUZIONE_FONTE, fontiVisibili, garaVisibileAiClienti, riepilogoFonti } from "../src/lib/radar/fonti-gara-calcoli";
 import { ATTRIBUZIONE_SINTEL } from "../src/lib/radar/fonti/sintel-calcoli";
 import { ISTANZE_AFLINK } from "../src/lib/radar/fonti/aflink-calcoli";
@@ -366,6 +367,27 @@ async function principale() {
     uguale("S9: rifiutato → le due gare non si propongono né si uniscono più", [(await leggiProposteAperte(mem2.client)).length, (gara(mem2, sid2).unita_esclusa_con as string[]).includes("T3")], [0, true]);
     const mem3 = databaseInMemoria({ radar_procedure: [garaTed("T4", { sa_codice_fiscale: "00000000002", scadenza_giorno: "2026-12-15", piattaforma_id: null, url_documenti: null }), garaTed("T5", { sa_codice_fiscale: "00000000002", scadenza_giorno: "2026-12-15", piattaforma_id: null, url_documenti: null })], radar_aggiornamenti: [] });
     uguale("S9: due candidati dello stesso ente nello stesso giorno → nessun suggerimento", (await importa(mem3, [bandoSintel()])).proposte, 0);
+  }
+
+  // ═════ rilievi della prova di B1 (17/11), nei controlli 5, 6 e 7 ═════
+  {
+    // 5/7: l'impresa aveva salvato ENTRAMBE le copie di una gara poi collegata: in Monitorate una riga sola, nessun salvataggio cancellato
+    const salvate = [
+      { id: "s-copia", procedura_id: "C" },
+      { id: "s-resta", procedura_id: "T" },
+      { id: "s-altra", procedura_id: "Z" },
+    ];
+    const resta = new Map([["C", "T"]]);
+    const uniche = unoPerGaraMostrata(salvate, (s) => resta.get(s.procedura_id) ?? s.procedura_id);
+    uguale("rilievo 1: due salvataggi delle copie di una gara collegata → una sola riga (il primo dell'elenco), gli altri intatti", [uniche.map((s) => s.id), salvate.length], [["s-copia", "s-altra"], 3]);
+    atteso("rilievo 1: Monitorate usa una riga per gara mostrata", /unoPerGaraMostrata\(salvate,/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx")));
+    // 6/7: conteggi della console come li vede il cliente (senza le copie collegate), le copie mostrate a parte
+    const consoleDati = leggi("src/lib/console/tender-intelligence.ts");
+    atteso("rilievo 2: «in archivio» e «aperte adesso» escludono le copie collegate; le copie si contano a parte", /select\("id", \{ count: "exact", head: true \}\)\.is\("unita_a", null\);/.test(consoleDati) && /\.is\("unita_a", null\)\.eq\("stato", "aperta"\)/.test(consoleDati) && /\.not\("unita_a", "is", null\);/.test(consoleDati) && /gareCollegate/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")));
+    // 6: la riga «Fonte» della sintesi elenca tutte le fonti visibili e rimanda a «Da dove vengono i dati»
+    const frasi = sintesiDeterministica({ oggetto: "x", settori: ["ristorazione"], cpvPrincipale: "55524000", ente: "Comune di Prova", comune: null, provincia: null, valoreStimato: null, durataMesi: null, nLotti: 1, tipoProcedura: null, criterio: null, scadenza: null, scadenzaGiorno: "2026-12-10", fonte: "TED e PVL ANAC", numeroAvviso: null, dataPubblicazione: "2026-11-03" });
+    atteso("rilievo 3: con più fonti la sintesi le elenca tutte e rimanda a «Da dove vengono i dati»", /^Fonti: TED e PVL ANAC; primo avviso pubblicato il .*vedi «Da dove vengono i dati»\.$/.test(frasi.at(-1) ?? ""), frasi.at(-1));
+    atteso("rilievo 3: la scheda passa alla sintesi le fonti degli avvisi visibili", /fonte: fontiMostrate\.length > 1 \? etichettaFonti\(fontiMostrate\)/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")));
   }
 
   // ═════ regole generali ═════

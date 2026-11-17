@@ -89,6 +89,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
   // fonti della gara (TED, PVL o entrambe, anche dalle gare collegate), riepilogo per fonte con collegamento ufficiale, fonte dei dati
   const perFonte = riepilogoFonti(provenienze, controlli);
   const fonti = [...new Set([...fontiDellaGara(g.chiave, g.provenienza_campi), ...perFonte.map((f) => f.fonte)])].sort() as ReturnType<typeof fontiDellaGara>;
+  // fonti mostrate nella sintesi: quelle degli avvisi visibili al cliente (le fonti nascoste sono già escluse)
+  const fontiMostrate = perFonte.length ? perFonte.map((f) => f.fonte) : fontiDellaGara(g.chiave, g.provenienza_campi);
   const fonteDi = (gruppo: string) => NOME_FONTE[fonteDelDato(g.provenienza_campi, gruppo, g.chiave)];
   const adesso = new Date();
   // aperta la scheda, le novità di una gara salvata risultano viste (dopo la risposta, senza rallentare la pagina)
@@ -119,8 +121,10 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     criterio: g.criterio_aggiudicazione,
     scadenza: g.scadenza_offerte,
     scadenzaGiorno: g.scadenza_giorno,
-    fonte: primoAvviso?.fonte === "pvl" ? "PVL di ANAC" : "TED",
-    numeroAvviso: primoAvviso?.fonte === "pvl" ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.startsWith("pvl:") ? null : g.ultima_versione_id)),
+    // fase B2a: con più fonti si elencano tutte quelle visibili al cliente (le nascoste sono già fuori da «perFonte»)
+    fonte: fontiMostrate.length > 1 ? etichettaFonti(fontiMostrate) : fontiMostrate[0] === "pvl" || (!fontiMostrate.length && primoAvviso?.fonte === "pvl") ? "PVL di ANAC" : fontiMostrate[0] && fontiMostrate[0] !== "ted" ? NOME_FONTE[fontiMostrate[0]] : "TED",
+    // il numero dell'avviso si cita solo per una gara di sola fonte TED (gli identificativi delle altre fonti sono interni)
+    numeroAvviso: fontiMostrate.length > 1 || (primoAvviso && primoAvviso.fonte !== "ted") ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.includes(":") ? null : g.ultima_versione_id)),
     dataPubblicazione: primoAvviso?.pubblicato_il ?? g.data_pubblicazione,
   });
   const soglia = sogliaApplicabile({

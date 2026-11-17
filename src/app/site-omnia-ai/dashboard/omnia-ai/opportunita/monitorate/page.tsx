@@ -11,6 +11,7 @@ import { giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calco
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import RigaGara, { hrefGara, type DatiRigaGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
+import { unoPerGaraMostrata } from "@/lib/radar/collegamenti-calcoli";
 
 // «Salvate e monitorate» (fase B1): le gare che l'impresa segue, pubbliche e aggiunte a mano, raggruppate per scadenza, con le novità
 // rilevate dall'ultima apertura della scheda (rettifiche, proroghe, annullamenti, esiti). Tutto letto al caricamento della pagina:
@@ -75,7 +76,9 @@ export default async function MonitoratePage() {
   const procedure = new Map((procedureRaw ?? []).map((p) => [p.id, { ...p, valore_stimato: p.valore_stimato === null ? null : Number(p.valore_stimato) }]));
 
   const righe: (DatiRigaGara & { chiave: string; scadenzaOrd: string; gruppo: "settimana" | "prossime" | "senza_data" | "chiuse" })[] = [];
-  for (const s of salvate) {
+  // una sola riga per gara mostrata: due salvataggi di copie poi collegate (0117) non danno due righe (nessun salvataggio cancellato)
+  const salvateUniche = unoPerGaraMostrata(salvate, (s) => mostrata(s.procedura_id) ?? mostrata(s.aggiunta_id ? aggiunte.get(s.aggiunta_id)?.procedura_id : undefined));
+  for (const s of salvateUniche) {
     const aggiunta = s.aggiunta_id ? aggiunte.get(s.aggiunta_id) : undefined;
     const idMostrato = mostrata(s.procedura_id) ?? mostrata(aggiunta?.procedura_id);
     const p = idMostrato ? procedure.get(idMostrato) : undefined;

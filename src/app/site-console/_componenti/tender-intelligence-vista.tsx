@@ -430,7 +430,7 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
       <div className="cn-tessere">
         <Tessera etichetta="Modulo per i clienti" valore={parametri.attivo ? "Acceso" : "Spento"} tono={parametri.attivo ? "avviso" : "neutro"} dettaglio="Interruttore generale (radar_attivo)" />
         <Tessera etichetta="Imprese abilitate" valore={numero(dati.clientiAbilitati)} dettaglio="Interruttore per impresa acceso" />
-        <Tessera etichetta="Gare in archivio" valore={numero(dati.procedure)} dettaglio={dati.procedureAperte === null ? undefined : `${numero(dati.procedureAperte)} aperte adesso`} />
+        <Tessera etichetta="Gare in archivio" valore={numero(dati.procedure)} dettaglio={[dati.procedureAperte === null ? null : `${numero(dati.procedureAperte)} aperte adesso`, dati.gareCollegate ? `più ${numero(dati.gareCollegate)} copie collegate a un'altra gara (non contate)` : null].filter(Boolean).join(" · ") || undefined} />
         <Tessera etichetta="Elaborazioni da fare" valore={numero(inCoda)} dettaglio={dati.coda ? `${numero(dati.coda.fallito)} fallite` : undefined} tono={dati.coda && dati.coda.fallito > 0 ? "avviso" : "neutro"} />
       </div>
 

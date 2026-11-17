@@ -30,8 +30,11 @@ export type DatiTenderIntelligenceConsole = {
   schemaPresente: boolean;
   parametri: ParametriRadar;
   fonti: (DescrizioneFonte & { db: StatoFonteDb | null })[];
+  // gare come le vede il cliente: senza le copie collegate a un'altra gara (0117), come Cerca e scheda
   procedure: number | null;
   procedureAperte: number | null;
+  // copie collegate a un'altra gara (0117): restano nel database, mostrate a parte
+  gareCollegate: number | null;
   aggiudicazioni: number | null;
   coda: Record<StatoLavoro, number> | null;
   clientiAbilitati: number | null;
@@ -116,7 +119,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
   });
 
   if (!schemaPresente) {
-    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null };
+    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, gareCollegate: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null };
   }
 
   // conteggio con un filtro di uguaglianza facoltativo; null = conteggio non riuscito
@@ -128,11 +131,19 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
 
   const adesso = new Date().toISOString();
   const dal = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [procedure, procedureAperte, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl, regionali] = await Promise.all([
-    conta("radar_procedure", "id"),
+  const [procedure, procedureAperte, gareCollegate, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl, regionali] = await Promise.all([
+    // senza le copie collegate (0117)
+    (async () => {
+      const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).is("unita_a", null);
+      return error ? null : (count ?? 0);
+    })(),
     // aperte davvero: stato «aperta» e scadenza assente o futura
     (async () => {
-      const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).eq("stato", "aperta").or(condizioneAperte(giornoIso(new Date(adesso)), adesso));
+      const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).is("unita_a", null).eq("stato", "aperta").or(condizioneAperte(giornoIso(new Date(adesso)), adesso));
+      return error ? null : (count ?? 0);
+    })(),
+    (async () => {
+      const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).not("unita_a", "is", null);
       return error ? null : (count ?? 0);
     })(),
     conta("radar_aggiudicazioni", "id"),
@@ -172,6 +183,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     fonti,
     procedure,
     procedureAperte,
+    gareCollegate,
     aggiudicazioni,
     coda,
     clientiAbilitati,

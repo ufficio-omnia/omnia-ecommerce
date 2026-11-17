@@ -31,6 +31,22 @@ export function garaDaMostrare(g: { id: string; unita_a: string | null }): strin
   return g.unita_a ?? g.id;
 }
 
+// Elenchi dell'impresa (Monitorate): se l'impresa aveva salvato ENTRAMBE le copie di una gara poi collegata, la gara compare UNA volta,
+// con il primo salvataggio dell'elenco (il più recente); gli altri salvataggi restano nel database, intatti (nessuna cancellazione).
+export function unoPerGaraMostrata<T>(elementi: readonly T[], garaMostrata: (x: T) => string | undefined): T[] {
+  const viste = new Set<string>();
+  const out: T[] = [];
+  for (const x of elementi) {
+    const id = garaMostrata(x);
+    if (id) {
+      if (viste.has(id)) continue;
+      viste.add(id);
+    }
+    out.push(x);
+  }
+  return out;
+}
+
 // ───── fase B2a: tutte le fonti ─────
 
 export type GaraUnibile = GaraCollegabile & { fonti: string[] | null; prima_rilevazione_il: string | null };
