@@ -269,7 +269,8 @@ export function leggiProceduraSintel(idProcedura: string, righe: readonly RigaSi
   const cpvLotti = righeLotti.map((r) => cpvSintel(r.codice_cpv));
   const cpvTutti = [...new Set(cpvLotti.filter((c): c is string => !!c))];
   const testoOggetto = [titolo, ...righeLotti.map((r) => testo(r.nome_lotto))].filter(Boolean).join(" ");
-  const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto });
+  // i lotti (nome e CPV) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori
+  const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto, lotti: righeLotti.map((r, i) => ({ testo: testo(r.nome_lotto), cpv: [cpvLotti[i]] })) });
   const natura = naturaSintel(prima.ambito_merceologico);
   // esclusa dalle regole per oggetto (settori.ts, regole della PVL): si conta a parte, con le regole applicate
   if (classificazione.settori.length === 0) return classificazione.esclusioni.length > 0 ? { ...esclusione("esclusa_per_oggetto"), regole: [...new Set(classificazione.esclusioni.map((e) => e.regola))] } : esclusione("fuori_settore");

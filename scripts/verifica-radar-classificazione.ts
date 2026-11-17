@@ -22,6 +22,7 @@ import { leggiBandoTed } from "../src/lib/radar/fonti/ted-calcoli";
 import { unisciVersione, type VersioneFonte } from "../src/lib/radar/unione-calcoli";
 import type { RigaProcedura } from "../src/lib/radar/importa-calcoli";
 import { leggiSegnalazioneClassificazione } from "../src/lib/console/tender-intelligence-calcoli";
+import { erroriRiga, righeDaClassificazione } from "../src/lib/radar/classificazioni-calcoli";
 
 const RADICE = path.join(__dirname, "..");
 const leggi = (r: string) => fs.readFileSync(path.join(RADICE, r), "utf8");
@@ -289,6 +290,53 @@ async function principale() {
       atteso(`6. ${f}: usa il classificatore unico e la stessa segnalazione`, t.includes("ambiguitaTraFonti(") && t.includes("classificaPerArchivio(") && t.includes("rigaSegnalazioneClassificazione("));
     }
     atteso("6. la PVL passa dalla scrittura unica (adattatore), quindi ha la stessa regola", leggi("src/lib/radar/importa-pvl-pagina.ts").includes("applicaPaginaBandiFonte("));
+  }
+
+  // ═════ 8. lotti: un lotto dedicato rende AUTONOMO il servizio (A invece di B); i settori non cambiano mai (regole 2026-11-17d) ═════
+  {
+    const g = { oggetto: "Organizzazione e gestione degli eventi culturali dell'estate comunale (prova sintetica)", cpv_principale: "79952000", cpv_tutti: ["79952000", "55520000"], natura_contratto: "servizi" };
+    const lotti = [
+      { oggetto: "Lotto 1: allestimento e organizzazione degli eventi (prova sintetica)", cpv_principale: "79952000", cpv_tutti: ["79952000"] },
+      { oggetto: "Lotto 2: servizio di catering per gli eventi (prova sintetica)", cpv_principale: "55520000", cpv_tutti: ["55520000"] },
+    ];
+    const senza = classificaPerArchivio(g, []);
+    const con = classificaPerArchivio(g, lotti);
+    const uno = classificaPerArchivio(g, lotti.slice(1));
+    uguale(
+      "8. appalto di eventi con un lotto di catering: senza lotti B (organizzazione_eventi), con i due lotti A (lotto_autonomo), con un solo lotto B",
+      [senza.perSettore.ristorazione?.livello, con.perSettore.ristorazione?.livello, con.perSettore.ristorazione?.regole[0], uno.perSettore.ristorazione?.livello],
+      ["B", "A", "lotto_autonomo", "B"],
+    );
+    uguale("8. i lotti cambiano il livello, mai i settori", [senza.settori, con.settori, uno.settori], [["ristorazione"], ["ristorazione"], ["ristorazione"]]);
+    const righe = righeDaClassificazione(con, { proceduraId: "G", origine: "importazione", fonti: ["ted"], autore: "importazione:ted", adessoIso: ADESSO.toISOString(), nuovoId: () => "x" });
+    atteso("8. la riga con il lotto autonomo ha un motivo per ogni regola ed è valida per la 0121 (D1)", righe.length === 1 && righe[0].regole.length === 2 && righe[0].motivi.length === 2 && erroriRiga(righe[0]).length === 0);
+    // TED: un avviso con due lotti passa i lotti al classificatore, e i settori (che entrano nell'impronta) restano quelli di sempre
+    const avvisoEventi: Record<string, unknown> = {
+      "publication-number": "700501-2026",
+      "notice-identifier": "sintetico-700501",
+      "notice-version": 1,
+      "notice-type": "cn-standard",
+      "publication-date": "2026-11-10+01:00",
+      "procedure-identifier": "proc-eventi",
+      "buyer-name": { ita: ["COMUNE DI PROVASINTETICA"] },
+      "organisation-identifier-buyer": ["00000000001"],
+      "buyer-country-sub": ["ITG2B"],
+      "title-proc": { ita: g.oggetto },
+      "title-lot": { ita: [lotti[0].oggetto, lotti[1].oggetto] },
+      "identifier-lot": ["LOT-0001", "LOT-0002"],
+      "main-classification-proc": ["79952000"],
+      "main-classification-lot": ["79952000", "55520000"],
+      "classification-cpv": ["79952000", "55520000"],
+      "deadline-receipt-tender-date-lot": ["2026-12-20+01:00", "2026-12-20+01:00"],
+      "procedure-type": "open",
+      "contract-nature-main-proc": "services",
+    };
+    const b = leggiBandoTed(avvisoEventi);
+    atteso("8. TED: l'avviso con due lotti entra in ristorazione, come prima (settori invariati)", !("motivo" in b) && JSON.stringify((b as { settori: string[] }).settori) === JSON.stringify(["ristorazione"]), JSON.stringify(b));
+    for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-calcoli.ts", "src/lib/radar/fonti/sintel-calcoli.ts", "src/lib/radar/classificazione-unita.ts"]) {
+      atteso(`8. ${f}: passa i lotti (oggetto e CPV di ciascuno) al classificatore`, /classificaGara\(\{[^;]*lotti: /.test(leggi(f).replace(/\/\/[^\n]*/g, "").replace(/\n\s*/g, " ")));
+    }
+    atteso("8. il calcolo unico passa i lotti come la riclassificazione della PVL", leggi("src/lib/radar/riclassifica-settori.ts").includes("lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] }))") && leggi("src/lib/radar/classificazione-unita.ts").includes("lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] }))"));
   }
 
   // ═════ 7. righe interne e fonti nascoste mai ai clienti ═════

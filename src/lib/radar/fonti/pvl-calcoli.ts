@@ -380,7 +380,8 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
   const cpvTutti = [...new Set(cpvLotti.filter((c): c is string => !!c))];
   if (lottiGrezzi.some((e) => testoPvl(e.cpv)) && cpvTutti.length === 0) mancanti.push("cpv_non_riconosciuto");
   const testoOggetto = [titolo, ...lottiGrezzi.map((e) => testoPvl(e.descrizione))].filter(Boolean).join(" ");
-  const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto });
+  // i lotti (descrizione e CPV) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori
+  const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto, lotti: lottiGrezzi.map((e, i) => ({ testo: testoPvl(e.descrizione), cpv: [cpvLotti[i]] })) });
   const natura = naturaPvl(lottiGrezzi[0]?.natura_principale);
   if (classificazione.settori.length === 0) return { tipo: "esclusione", meta, motivo: "fuori_settore" };
   if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi") return { tipo: "esclusione", meta, motivo: "fuori_settore" };

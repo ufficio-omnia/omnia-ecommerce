@@ -378,9 +378,12 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
     return arr.length === nLotti ? testoTed(t, i) : null;
   });
 
-  // Settore: CPV del file approvato su qualunque CPV; parole chiave solo sull'oggetto (procedura e lotti), mai sulla descrizione.
+  const cpvLotti = perLotto(n["main-classification-lot"], (x) => normalizzaCpv(typeof x === "string" ? x : null));
+
+  // Settore: CPV del file approvato su qualunque CPV; parole chiave solo sull'oggetto (procedura e lotti), mai sulla descrizione. I lotti
+  // (titolo e CPV di ciascuno) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori.
   const testoOggetto = [titolo, ...titoliLotti].filter(Boolean).join(" ");
-  const classificazione = classificaGara({ cpvPrincipale, cpvTutti, testo: testoOggetto });
+  const classificazione = classificaGara({ cpvPrincipale, cpvTutti, testo: testoOggetto, lotti: idLotti.map((_, i) => ({ testo: titoliLotti[i], cpv: [cpvLotti[i]] })) });
   const natura = naturaTed(n["contract-nature-main-proc"]);
   if (classificazione.settori.length === 0) return { meta, motivo: "fuori_settore" };
   // trovata solo per parola chiave: deve essere un servizio (o natura non dichiarata), per non prendere lavori e forniture che «puliscono»
@@ -422,7 +425,6 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
 
   const documentiLotti = perLotto(n["document-url-lot"], (x) => urlSicuro(x));
   const urlDocumenti = documentiLotti.find((u) => !!u) ?? urlSicuro(comeArray(n["document-url-lot"])[0]);
-  const cpvLotti = perLotto(n["main-classification-lot"], (x) => normalizzaCpv(typeof x === "string" ? x : null));
 
   // CIG: solo se un'unica gara a un lotto riporta un unico CIG con l'etichetta (mai attribuito a caso tra più lotti)
   const cig = cigEtichettati(titolo, ...stringhe(n["internal-identifier-proc"]));
