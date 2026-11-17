@@ -9,10 +9,10 @@
 import fs from "fs";
 import path from "path";
 import { databaseInMemoria, type RigaMem } from "./lib/db-in-memoria";
-import { SETTORI_RADAR, VERSIONE_REGOLE_SETTORI } from "../src/lib/radar/settori";
-import { classificaPerArchivio, type ClassificazioneArchivio, type ValutazioneSettore } from "../src/lib/radar/classificazione-unita";
-import { aggiornamentoClassificazioni, decisioneAmministratore, gareSuggeribili, righeDaClassificazione, righeDaRipristinare, stessaClassificazione, type RigaClassificazione } from "../src/lib/radar/classificazioni-calcoli";
-import { scriviClassificazioni } from "../src/lib/radar/classificazioni";
+import { SETTORI_RADAR, VERSIONE_REGOLE_SETTORI, vociCpv } from "../src/lib/radar/settori";
+import { ambiguitaTraFonti, classificaPerArchivio, type ClassificazioneArchivio, type ValutazioneSettore } from "../src/lib/radar/classificazione-unita";
+import { aggiornamentoClassificazioni, conservaComeNonPertinente, decisioneAmministratore, erroriRiga, etichettaRilevanza, gareSuggeribili, motiviPerRegole, righeDaClassificazione, righeDaRipristinare, righeDopoUnione, situazioneGara, stessaClassificazione, type RigaClassificazione, type RigaStato } from "../src/lib/radar/classificazioni-calcoli";
+import { scriviClassificazioni, segnaInAttesa } from "../src/lib/radar/classificazioni";
 import { collegaGare, scollegaGara } from "../src/lib/radar/collegamenti";
 import { applicaPaginaBandi, applicaPaginaEsiti } from "../src/lib/radar/importa";
 import { applicaPaginaBandiRegionali } from "../src/lib/radar/importa-regionali-pagina";
@@ -146,14 +146,27 @@ async function principale() {
     const sql = leggi("supabase/migrations/0121_radar_classificazioni.sql");
     const codice = sql.replace(/--[^\n]*/g, "");
     atteso("A. 0121 dichiarata PROGETTO, mai applicata (decisione dell'utente del 17/11)", /PROGETTO, MAI APPLICATO/.test(sql));
-    atteso("A. una sola tabella nuova, radar_classificazioni, idempotente", (codice.match(/create table/gi) ?? []).length === 1 && /create table if not exists public\.radar_classificazioni/.test(codice));
-    atteso("A. RLS attiva", /alter table public\.radar_classificazioni enable row level security/.test(codice));
-    atteso("A. permessi: tolti a tutti, poi solo service_role (lettura e inserimento; aggiornamento solo dello stato); niente ad anon e authenticated, nessuna cancellazione", /revoke all on public\.radar_classificazioni from public, anon, authenticated, service_role;/.test(codice) && /grant select, insert on public\.radar_classificazioni to service_role;/.test(codice) && /grant update \(attiva, sostituita_il, sostituita_da\) on public\.radar_classificazioni to service_role;/.test(codice) && !/grant[^;]*to[^;]*\b(anon|authenticated)\b/i.test(codice) && !/grant[^;]*delete[^;]*radar_classificazioni/i.test(codice));
-    atteso("A. una sola chiave esterna (la gara, con cancellazione a catena); nessuna sulle colonne di traccia", (codice.match(/references/gi) ?? []).length === 1 && /procedura_id uuid not null references public\.radar_procedure \(id\) on delete cascade/.test(codice) && !/sostituita_da uuid[^,\n]*references/.test(codice) && !/autore text[^,\n]*references/.test(codice));
-    atteso("A. una sola classificazione attiva per gara e settore (indice unico parziale) e indice per settore e livello", /create unique index if not exists radar_classificazioni_attiva_uidx on public\.radar_classificazioni \(procedura_id, settore\) where attiva/.test(codice) && /radar_classificazioni_settore_livello_idx on public\.radar_classificazioni \(settore, livello\) where attiva/.test(codice));
+    atteso("A. due tabelle nuove (classificazioni e stato della classificazione), idempotenti, e nessun'altra", (codice.match(/create table/gi) ?? []).length === 2 && /create table if not exists public\.radar_classificazioni \(/.test(codice) && /create table if not exists public\.radar_classificazioni_stato \(/.test(codice));
+    atteso("A. RLS attiva su entrambe", /alter table public\.radar_classificazioni enable row level security/.test(codice) && /alter table public\.radar_classificazioni_stato enable row level security/.test(codice));
+    atteso(
+      "A. permessi: tolti a tutti, poi solo service_role (classificazioni: lettura, inserimento e aggiornamento solo dello stato della riga; stato: lettura, inserimento, aggiornamento); niente ad anon e authenticated, nessuna cancellazione",
+      /revoke all on public\.radar_classificazioni from public, anon, authenticated, service_role;/.test(codice) && /grant select, insert on public\.radar_classificazioni to service_role;/.test(codice) && /grant update \(attiva, sostituita_il, sostituita_da\) on public\.radar_classificazioni to service_role;/.test(codice) &&
+        /revoke all on public\.radar_classificazioni_stato from public, anon, authenticated, service_role;/.test(codice) && /grant select, insert, update on public\.radar_classificazioni_stato to service_role;/.test(codice) &&
+        !/grant[^;]*to[^;]*\b(anon|authenticated)\b/i.test(codice) && !/grant[^;]*delete[^;]*radar_classificazioni/i.test(codice),
+    );
+    atteso("A. una sola chiave esterna per tabella (la gara, con cancellazione a catena); nessuna sulle colonne di traccia", (codice.match(/references/gi) ?? []).length === 2 && /procedura_id uuid not null references public\.radar_procedure \(id\) on delete cascade/.test(codice) && /procedura_id uuid primary key references public\.radar_procedure \(id\) on delete cascade/.test(codice) && !/sostituita_da uuid[^,\n]*references/.test(codice) && !/autore text[^,\n]*references/.test(codice));
+    atteso("A. una sola classificazione attiva per gara e settore (indice unico parziale), indice per settore e rilevanza, indice delle gare da classificare", /create unique index if not exists radar_classificazioni_attiva_uidx on public\.radar_classificazioni \(procedura_id, settore\) where attiva/.test(codice) && /radar_classificazioni_settore_rilevanza_idx on public\.radar_classificazioni \(settore, rilevanza\) where attiva/.test(codice) && /radar_classificazioni_stato_da_fare_idx on public\.radar_classificazioni_stato \(stato, aggiornata_il\) where stato <> 'classificata'/.test(codice));
     const settori = (codice.match(/settore text not null check \(settore in \(([^)]*)\)\)/)?.[1] ?? "").split(",").map((s) => s.trim().replace(/'/g, ""));
     uguale("A. i settori ammessi sono esattamente quelli di settori.ts", settori, SETTORI_RADAR.map((s) => s.id));
-    atteso("A. livelli A, B, C; sottocategorie multiple con solo la forma controllata; C senza sottocategorie; amministratore sempre con nota; stato coerente", /livello in \('A', 'B', 'C'\)/.test(codice) && /sottocategorie text\[\] not null default '\{\}'/.test(codice) && /livello <> 'C' or cardinality\(sottocategorie\) = 0/.test(codice) && /origine <> 'amministratore' or nota is not null/.test(codice) && /\(attiva and sostituita_il is null and sostituita_da is null\) or \(not attiva and sostituita_il is not null\)/.test(codice));
+    atteso("A. D3: la colonna si chiama «rilevanza» (non ammissibilità, scritto nel file); nessuna colonna «livello» né «ammissibil…»", /rilevanza text not null check \(rilevanza in \('A', 'B', 'C'\)\)/.test(codice) && !/\blivello\b/i.test(codice) && !/ammissibil/i.test(codice) && /RILEVANZA, NON AMMISSIBILITÀ/.test(sql));
+    atteso("A. D1: un motivo per ogni regola, nessuno vuoto o fatto di soli spazi (vincolo nel database)", /cardinality\(motivi\) = cardinality\(regole\)/.test(codice) && /cardinality\(regole\) between 1 and 10/.test(codice) && /!~ E'\\x01\[\[:space:\]\]\*\\x01'/.test(codice) && /motivi text\[\] not null,/.test(codice));
+    atteso("A. D1: la nota non è mai vuota né fatta di soli spazi; obbligatoria per l'amministratore", /nota is null or \(char_length\(nota\) <= 1000 and btrim\(nota\) <> ''\)/.test(codice) && /origine <> 'amministratore' or nota is not null/.test(codice));
+    atteso("A. D3: provenienze per fonte (oggetto con soli valori A, B, C) e conflitti («ambigua»)", /per_fonte jsonb not null default '\{\}'::jsonb/.test(codice) && /jsonb_path_exists\(per_fonte, '\$\.\* \? \(@ != "A" && @ != "B" && @ != "C"\)'\)/.test(codice) && /ambigua boolean not null default false/.test(codice));
+    atteso("A. sottocategorie multiple con solo la forma controllata; C senza sottocategorie; stato della riga coerente", /sottocategorie text\[\] not null default '\{\}'/.test(codice) && /rilevanza <> 'C' or cardinality\(sottocategorie\) = 0/.test(codice) && /\(attiva and sostituita_il is null and sostituita_da is null\) or \(not attiva and sostituita_il is not null\)/.test(codice));
+    atteso(
+      "A. D2: stato per gara in_attesa / classificata / fallita; errore pieno solo se fallita; classificata con versione e data; tentativo registrato",
+      /stato text not null check \(stato in \('in_attesa', 'classificata', 'fallita'\)\)/.test(codice) && /\(stato = 'fallita'\) = \(errore is not null\)/.test(codice) && /errore is null or \(char_length\(errore\) <= 1000 and btrim\(errore\) <> ''\)/.test(codice) && /stato <> 'classificata' or \(versione_regole is not null and classificata_il is not null\)/.test(codice) && /stato = 'in_attesa' or tentativo_il is not null/.test(codice),
+    );
     atteso("A. «settori», «metodo_settore» e le colonne della gara non cambiano: nessun alter di radar_procedure, nessun aggiornamento dei settori", !/alter table public\.radar_procedure\b/i.test(codice) && !/set\s+settori/i.test(codice) && !/metodo_settore/i.test(codice));
     const aggiornamenti = codice.match(/^update public\.radar_procedure[^;]*;/gim) ?? [];
     const tutti = codice.match(/update public\.radar_procedure[^;]*;/gi) ?? [];
@@ -253,13 +266,17 @@ async function principale() {
     // regole 2026-11-17c della PVL (interfaccia reale): «bar e punto ristoro» ha DUE sottocategorie nello stesso settore, e i CPV del settore
     uguale(
       "C. concessione del bar e punto ristoro: una riga, ristorazione A, due sottocategorie in ordine (dal classificatore vero), regola, CPV, versione, non ambigua",
-      rBar.map((r) => [r.settore, r.livello, r.sottocategorie, r.regole[0], r.cpv, r.versione_regole, r.ambigua]),
+      rBar.map((r) => [r.settore, r.rilevanza, r.sottocategorie, r.regole[0], r.cpv, r.versione_regole, r.ambigua]),
       [["ristorazione", "A", ["concessione_bar", "concessione_punto_ristoro"], "cpv_principale", ["55300000"], BAR.versione, false]],
     );
     atteso("C. la versione delle regole viene da classificaGara (interfaccia della PVL)", BAR.versione === VERSIONE_REGOLE_SETTORI && /^\d{4}-\d{2}-\d{2}[a-z]?$/.test(BAR.versione));
     const rCas = righeDaClassificazione(CASONE, ctx({ settoriColonna: ["ristorazione"] }));
-    uguale("C. casone: ristorazione C senza sottocategorie, con la regola; la colonna lo ha ancora → ambigua (da decidere, non cambiata)", rCas.map((r) => [r.livello, r.sottocategorie, r.regole, r.ambigua]), [["C", [], ["concessione_di_immobili"], true]]);
-    atteso("C. i motivi si salvano (spiegano la riga anche se le regole cambieranno)", rBar[0].motivi.length > 0 && rCas[0].motivi.length > 0);
+    uguale("C. casone: ristorazione C senza sottocategorie, con la regola; la colonna lo ha ancora → ambigua (da decidere, non cambiata)", rCas.map((r) => [r.rilevanza, r.sottocategorie, r.regole, r.ambigua]), [["C", [], ["concessione_di_immobili"], true]]);
+    // D1: un motivo per ogni regola, mai vuoto
+    atteso("D1. classificatore vero: un motivo per ogni regola, nessuno vuoto, riga valida per i vincoli della 0121", [...rBar, ...rCas].every((r) => r.motivi.length === r.regole.length && r.motivi.every((m) => m.trim().length > 0) && erroriRiga(r).length === 0));
+    uguale("D1. motivi mancanti o fatti di soli spazi: ricavati dalla regola e dalla versione, mai vuoti; motivi in più tolti", motiviPerRegole(["cpv_principale", "oggetto", "parole_chiave"], ["  CPV principale  ", "   "], "2026-11-17c"), ["CPV principale", "Regola «oggetto» (regole 2026-11-17c)", "Regola «parole_chiave» (regole 2026-11-17c)"]);
+    const rotta = { ...rBar[0], motivi: ["   "] };
+    uguale("D1. il codice rifiuta come la 0121: motivo di soli spazi, motivi diversi dalle regole, nota vuota, amministratore senza nota", [erroriRiga(rotta).includes("motivi: nessuno vuoto"), erroriRiga({ ...rBar[0], motivi: [] }).includes("motivi: uno per regola"), erroriRiga({ ...rBar[0], nota: "  " }).length > 0, erroriRiga({ ...rBar[0], origine: "amministratore", nota: null }).length > 0], [true, true, true, true]);
     // multisettore e multisottocategoria: la forma dell'interfaccia della PVL (sottocategorie[], regole[], cpv[])
     const v = (p: Partial<ValutazioneSettore>): ValutazioneSettore => ({ livello: "A", sottocategoria: null, regola: "cpv_principale", sottocategorie: [], regole: ["cpv_principale"], motivi: ["motivo sintetico"], da: "cpv", cpv: [], ...p });
     const MULTI: ClassificazioneArchivio = {
@@ -269,23 +286,24 @@ async function principale() {
       versione: "2026-11-17c",
       perSettore: {
         ristorazione: v({ sottocategorie: ["concessione_bar", "concessione_ristorante"], sottocategoria: "concessione_bar", cpv: ["55300000", "55410000"] }),
-        pulizia: v({ livello: "B", sottocategorie: ["pulizia_edifici"], sottocategoria: "pulizia_edifici", regole: ["gestione_integrata", "cpv_secondario"], regola: "gestione_integrata", cpv: ["90910000"] }),
-        vigilanza_portierato: v({ livello: "C", sottocategorie: [], regole: ["videosorveglianza_senza_vigilanza"], regola: "videosorveglianza_senza_vigilanza", da: "cpv", cpv: ["79711000"] }),
+        pulizia: v({ livello: "B", sottocategorie: ["pulizia_edifici"], sottocategoria: "pulizia_edifici", regole: ["gestione_integrata", "cpv_secondario"], motivi: ["gestione integrata (sintetico)", "CPV secondario (sintetico)"], regola: "gestione_integrata", cpv: ["90910000"] }),
+        vigilanza_portierato: v({ livello: "C", sottocategorie: [], regole: ["videosorveglianza_fornitura"], regola: "videosorveglianza_fornitura", da: "cpv", cpv: ["79711000"] }),
       },
     };
     const rMulti = righeDaClassificazione(MULTI, ctx({ settoriColonna: ["ristorazione", "pulizia"] }));
     uguale(
-      "C. multisettore: una riga per settore, livello per settore (A, B, C), più sottocategorie nello stesso settore in ordine, regole e CPV",
-      rMulti.map((r) => [r.settore, r.livello, r.sottocategorie, r.regole, r.cpv, r.versione_regole]),
+      "C. multisettore: una riga per settore, rilevanza per settore (A, B, C), più sottocategorie nello stesso settore in ordine, regole e CPV",
+      rMulti.map((r) => [r.settore, r.rilevanza, r.sottocategorie, r.regole, r.cpv, r.versione_regole]),
       [
         ["pulizia", "B", ["pulizia_edifici"], ["gestione_integrata", "cpv_secondario"], ["90910000"], "2026-11-17c"],
         ["ristorazione", "A", ["concessione_bar", "concessione_ristorante"], ["cpv_principale"], ["55300000", "55410000"], "2026-11-17c"],
-        ["vigilanza_portierato", "C", [], ["videosorveglianza_senza_vigilanza"], ["79711000"], "2026-11-17c"],
+        ["vigilanza_portierato", "C", [], ["videosorveglianza_fornitura"], ["79711000"], "2026-11-17c"],
       ],
     );
-    // gara di più fonti: il livello migliore tra dati uniti e fonti, ambigua se non sono d'accordo
-    const r2 = righeDaClassificazione(RSA, ctx({ fonti: ["pvl", "ted"], perFonte: [BAR], settoriColonna: ["ristorazione"] }));
-    uguale("C. più fonti: livello migliore (A dalla fonte, B dai dati uniti), sottocategorie della fonte che lo dà, riga ambigua", r2.map((r) => [r.livello, r.sottocategorie, r.fonti, r.ambigua]), [["A", ["concessione_bar", "concessione_punto_ristoro"], ["pvl", "ted"], true]]);
+    // D3: gara di più fonti: la rilevanza migliore tra dati uniti e fonti, provenienze conservate, ambigua se non sono d'accordo
+    const r2 = righeDaClassificazione(RSA, ctx({ fonti: ["pvl", "ted"], perFonte: [{ fonte: "ted", classificazione: BAR }], settoriColonna: ["ristorazione"] }));
+    uguale("D3. più fonti: rilevanza migliore (A da TED, B dai dati uniti), sottocategorie della fonte che la dà, provenienze conservate, riga ambigua", r2.map((r) => [r.rilevanza, r.sottocategorie, r.fonti, r.per_fonte, r.ambigua]), [["A", ["concessione_bar", "concessione_punto_ristoro"], ["pvl", "ted"], { dati_uniti: "B", ted: "A" }, true]]);
+    atteso("D3. «rilevanza», non ammissibilità: scritto nei commenti e nei nomi del codice", leggi("src/lib/radar/classificazioni-calcoli.ts").includes("RILEVANZA, NON AMMISSIBILITÀ") && leggi("src/lib/radar/classificazioni.ts").includes("NON ammissibilità") && !/ammissibil[a-z]*\s*[:=]/i.test(leggi("src/lib/radar/classificazioni-calcoli.ts")));
     // storico: uguale = niente; cambiata = disattiva + inserisce; settore sparito = disattiva; amministratore protetto
     const attive: RigaClassificazione[] = rMulti.map((r) => ({ ...r }));
     const ancora = righeDaClassificazione(MULTI, ctx({ settoriColonna: ["ristorazione", "pulizia"], fonti: ["ted", "pvl"], autore: "importazione:pvl" }));
@@ -297,51 +315,122 @@ async function principale() {
     const vig = attive.find((r) => r.settore === "vigilanza_portierato") as RigaClassificazione;
     uguale(
       "C. pulizia da B ad A: la riga vecchia si disattiva puntando alla nuova; vigilanza non più considerata: si chiude senza sostituta; ristorazione invariata",
-      [agg.inserisci.map((r) => [r.settore, r.livello]), agg.disattiva.map((d) => [d.id === pul.id ? "pulizia" : d.id === vig.id ? "vigilanza" : "?", d.sostituita_da === agg.inserisci[0]?.id ? "nuova" : d.sostituita_da]), agg.invariate],
+      [agg.inserisci.map((r) => [r.settore, r.rilevanza]), agg.disattiva.map((d) => [d.id === pul.id ? "pulizia" : d.id === vig.id ? "vigilanza" : "?", d.sostituita_da === agg.inserisci[0]?.id ? "nuova" : d.sostituita_da]), agg.invariate],
       [[["pulizia", "A"]], [["pulizia", "nuova"], ["vigilanza", null]], 1],
     );
-    const decisa = decisioneAmministratore(attive.find((r) => r.settore === "ristorazione") ?? null, { proceduraId: "G", settore: "ristorazione", livello: "B", sottocategorie: ["concessione_bar"], nota: "Bar dentro la gestione dell'intero parco: correlata (prova sintetica).", autore: "console:admin-sintetico", versione: MULTI.versione, adessoIso: ISO, nuovoId });
+    const decisa = decisioneAmministratore(attive.find((r) => r.settore === "ristorazione") ?? null, { proceduraId: "G", settore: "ristorazione", rilevanza: "B", sottocategorie: ["concessione_bar"], nota: "Bar dentro la gestione dell'intero parco: correlata (prova sintetica).", autore: "console:admin-sintetico", versione: MULTI.versione, adessoIso: ISO, nuovoId });
+    atteso("D1. la decisione dell'amministratore ha una regola, un motivo pieno (la nota) e una nota piena", decisa.inserisci.every((r) => erroriRiga(r).length === 0 && r.motivi.length === 1 && !!r.nota?.trim()));
     const conDecisione = [...attive.filter((r) => r.settore !== "ristorazione"), ...decisa.inserisci];
     const dopo = aggiornamentoClassificazioni(conDecisione, rMulti, ISO);
-    uguale("C. la decisione dell'amministratore non viene sostituita dal calcolo automatico: resta, e il calcolo diverso è solo segnalato", [dopo.inserisci.filter((r) => r.settore === "ristorazione").length, dopo.protette.map((p) => [p.settore, p.decisione.livello, p.calcolata.livello])], [0, [["ristorazione", "B", "A"]]]);
-    let senzaNota = false;
-    try {
-      decisioneAmministratore(null, { proceduraId: "G", settore: "ristorazione", livello: "B", sottocategorie: [], nota: "  ", autore: "console:x", versione: "v", adessoIso: ISO, nuovoId });
-    } catch {
-      senzaNota = true;
+    uguale("C. la decisione dell'amministratore non viene sostituita dal calcolo automatico: resta, e il calcolo diverso è solo segnalato", [dopo.inserisci.filter((r) => r.settore === "ristorazione").length, dopo.protette.map((p) => [p.settore, p.decisione.rilevanza, p.calcolata.rilevanza])], [0, [["ristorazione", "B", "A"]]]);
+    let senzaNota = 0;
+    for (const nota of ["", "  ", "\t\n "]) {
+      try {
+        decisioneAmministratore(null, { proceduraId: "G", settore: "ristorazione", rilevanza: "B", sottocategorie: [], nota, autore: "console:x", versione: "v", adessoIso: ISO, nuovoId });
+      } catch {
+        senzaNota++;
+      }
     }
-    atteso("C. una decisione dell'amministratore senza nota è rifiutata (come il vincolo della 0121)", senzaNota);
+    uguale("D1. una decisione dell'amministratore con nota vuota o fatta di soli spazi è rifiutata (come il vincolo della 0121)", senzaNota, 3);
     const storico: RigaClassificazione[] = [...rMulti.map((r) => ({ ...r, attiva: false, sostituita_il: ISO })), ...agg.inserisci];
     const rip = righeDaRipristinare(storico, "2026-11-17c", { autore: "riclassificazione:prova", adessoIso: "2026-11-18T08:00:00.000Z", nuovoId });
     uguale("C. ripristino di una versione: le righe tornano come righe NUOVE (lo storico resta intero), con una nota", [rip.length, rip.every((r) => r.origine === "riclassificazione" && !!r.nota && r.attiva && !storico.some((s) => s.id === r.id))], [3, true]);
     atteso("C. due righe uguali per contenuto sono «la stessa classificazione» anche con origine e motivi diversi", stessaClassificazione(rBar[0], { ...rBar[0], origine: "riclassificazione", motivi: ["altro testo"], fonti: ["pvl"] }));
   }
   {
-    // scrittura sul database (in memoria): prima volta inserisce; uguale non scrive; cambiata disattiva e inserisce; settori mai toccati
-    const mem = databaseInMemoria({ radar_procedure: [gara("G", { settori: ["ristorazione"] })], radar_classificazioni: [] }, { fonti: "0121" });
+    // scrittura sul database (in memoria): prima volta inserisce; uguale non scrive; cambiata disattiva e inserisce; settori mai toccati; stato
+    const mem = databaseInMemoria({ radar_procedure: [gara("G", { settori: ["ristorazione"] })], radar_classificazioni: [], radar_classificazioni_stato: [] }, { fonti: "0121" });
     const colonna = JSON.stringify(garaDi(mem, "G"));
     const calcola = (c: ClassificazioneArchivio) => righeDaClassificazione(c, { proceduraId: "G", origine: "riclassificazione", fonti: ["ted"], autore: "riclassificazione:prova", adessoIso: ISO, nuovoId, settoriColonna: ["ristorazione"] });
     const RSA = classificaPerArchivio({ oggetto: "Gestione dei servizi socio-assistenziali e di ristorazione della residenza per anziani (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []);
     const MENSA = classificaPerArchivio({ oggetto: "Servizio di ristorazione scolastica (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []);
-    const e1 = await scriviClassificazioni(mem.client, [{ proceduraId: "G", calcolate: calcola(MENSA) }], misure(), ISO);
-    const e2 = await scriviClassificazioni(mem.client, [{ proceduraId: "G", calcolate: calcola(MENSA) }], misure(), ISO);
-    const e3 = await scriviClassificazioni(mem.client, [{ proceduraId: "G", calcolate: calcola(RSA) }], misure(), "2026-11-18T08:00:00.000Z");
+    const voce = (c: ClassificazioneArchivio) => ({ proceduraId: "G", versione: c.versione, calcolate: calcola(c) });
+    const stato = () => mem.tabelle.radar_classificazioni_stato.find((s) => s.procedura_id === "G");
+    uguale("D2. prima della classificazione: nessuno stato → la gara è «non classificata», mai non pertinente", situazioneGara(null, []).tipo, "non_classificata");
+    await segnaInAttesa(mem.client, ["G"], misure(), ISO);
+    uguale("D2. gara nuova o cambiata: stato «in_attesa»", [stato()?.stato, situazioneGara(stato() as RigaStato, []).tipo], ["in_attesa", "in_attesa"]);
+    const e1 = await scriviClassificazioni(mem.client, [voce(MENSA)], misure(), ISO);
+    uguale("D2. classificata: stato «classificata» con versione e data, un tentativo", [e1.classificate, stato()?.stato, stato()?.versione_regole, stato()?.tentativi, stato()?.errore], [1, "classificata", MENSA.versione, 1, null]);
+    const e2 = await scriviClassificazioni(mem.client, [voce(MENSA)], misure(), ISO);
+    const e3 = await scriviClassificazioni(mem.client, [voce(RSA)], misure(), "2026-11-18T08:00:00.000Z");
     const righe = mem.tabelle.radar_classificazioni;
     uguale("C. scrittura: 1 riga la prima volta, nessuna la seconda, poi 1 disattivata e 1 nuova", [e1.inserite, e2.inserite + e2.disattivate, e3.disattivate, e3.inserite], [1, 0, 1, 1]);
-    uguale("C. storico: una sola riga attiva per gara e settore; la vecchia punta alla nuova", [righe.filter((r) => r.attiva).length, righe.find((r) => !r.attiva)?.sostituita_da === righe.find((r) => r.attiva)?.id], [1, true]);
+    uguale("F3. storico integro: una sola riga attiva per gara e settore; la vecchia punta alla nuova; nessuna riga cancellata", [righe.filter((r) => r.attiva).length, righe.find((r) => !r.attiva)?.sostituita_da === righe.find((r) => r.attiva)?.id, righe.length], [1, true, 2]);
     uguale("C. la colonna «settori» e tutta la riga della gara non cambiano", JSON.stringify(garaDi(mem, "G")) === colonna, true);
+    // classificazione fallita: righe non valide → stato «fallita» con l'errore, righe attive precedenti intatte
+    const rotte = calcola(MENSA).map((r) => ({ ...r, motivi: ["   "] }));
+    const prima = JSON.stringify(righe);
+    const e4 = await scriviClassificazioni(mem.client, [{ proceduraId: "G", versione: MENSA.versione, calcolate: rotte }], misure(), "2026-11-18T09:00:00.000Z");
+    uguale("D2. righe non valide (motivo vuoto): nessuna scrittura, stato «fallita» con l'errore, righe precedenti intatte", [e4.fallite, stato()?.stato, /motivi: nessuno vuoto/.test(String(stato()?.errore)), JSON.stringify(mem.tabelle.radar_classificazioni) === prima], [1, "fallita", true, true]);
+    const sit = situazioneGara(stato() as RigaStato, righe as RigaClassificazione[]);
+    uguale("D2. con la classificazione fallita la gara NON è non pertinente: «da verificare», e non entra nei suggerimenti", [sit.tipo, etichettaRilevanza(sit), gareSuggeribili(righe as RigaClassificazione[], new Map([["G", stato() as RigaStato]]), ["ristorazione"])], ["fallita", "Classificazione da verificare", []]);
     const finto = { from: () => ({ select: () => ({ in: () => ({ eq: () => ({ returns: () => Promise.resolve({ data: null, error: { code: "PGRST205", message: "Could not find the table" } }) }) }) }) }) } as unknown as Parameters<typeof scriviClassificazioni>[0];
-    uguale("C. senza la 0121 (tabella assente) la scrittura non fa nulla e non dà errore", (await scriviClassificazioni(finto, [{ proceduraId: "G", calcolate: calcola(MENSA) }], misure(), ISO)).saltata, true);
-    atteso("C. nessun importatore scrive ancora le classificazioni (0121 non approvata)", ["src/lib/radar/importa.ts", "src/lib/radar/importa-fonti-pagina.ts", "src/lib/radar/importa-pvl-pagina.ts", "src/lib/radar/importa-regionali.ts"].every((f) => !leggi(f).includes("scriviClassificazioni")));
+    uguale("C. senza la 0121 (tabelle assenti) la scrittura non fa nulla e non dà errore", (await scriviClassificazioni(finto, [voce(MENSA)], misure(), ISO)).saltata, true);
+    atteso("C. nessun importatore scrive ancora le classificazioni né lo stato (0121 non approvata)", ["src/lib/radar/importa.ts", "src/lib/radar/importa-fonti-pagina.ts", "src/lib/radar/importa-pvl-pagina.ts", "src/lib/radar/importa-regionali.ts"].every((f) => !/scriviClassificazioni|segnaInAttesa/.test(leggi(f))));
   }
   {
-    // E. le gare non pertinenti non finiscono MAI nei suggerimenti alle imprese
-    const r = (procedura_id: string, settore: string, livello: "A" | "B" | "C", attiva = true) => ({ procedura_id, settore: settore as RigaClassificazione["settore"], livello, attiva });
-    const righe = [r("P1", "ristorazione", "A"), r("P2", "ristorazione", "B"), r("P3", "ristorazione", "C"), r("P4", "pulizia", "A"), r("P5", "ristorazione", "A", false), r("P6", "ristorazione", "C"), r("P6", "pulizia", "A")];
-    uguale("E. suggerimenti: solo righe ATTIVE di livello A nei settori dell'impresa (mai B, mai C, mai righe storiche)", gareSuggeribili(righe, ["ristorazione"]), ["P1"]);
-    uguale("E. una gara C in un settore e A in un altro si suggerisce solo per il settore in cui è A", [gareSuggeribili(righe, ["pulizia"]), gareSuggeribili(righe, ["ristorazione"]).includes("P6")], [["P4", "P6"], false]);
+    // D3: l'arrivo di una NUOVA FONTE su una gara esistente aggiorna la classificazione con lo storico e segnala il conflitto
+    const mem = databaseInMemoria({ radar_procedure: [gara("G", { settori: ["ristorazione"] })], radar_classificazioni: [], radar_classificazioni_stato: [] }, { fonti: "0121" });
+    const MENSA = classificaPerArchivio({ oggetto: "Servizio di ristorazione scolastica (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []);
+    const RSA = classificaPerArchivio({ oggetto: "Gestione dei servizi socio-assistenziali e di ristorazione della residenza per anziani (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []);
+    // gara nata da TED: classificata da sola
+    const soloTed = righeDaClassificazione(MENSA, { proceduraId: "G", origine: "importazione", fonti: ["ted"], autore: "importazione:ted", adessoIso: ISO, nuovoId, settoriColonna: ["ristorazione"] });
+    await scriviClassificazioni(mem.client, [{ proceduraId: "G", versione: MENSA.versione, calcolate: soloTed }], misure(), ISO);
+    const primaRiga = mem.tabelle.radar_classificazioni.find((r) => r.attiva) as RigaClassificazione;
+    // arriva la PVL con un oggetto da gestione complessa (B): dati uniti = testo della PVL (precedenza ai dati descrittivi)
+    const amb = ambiguitaTraFonti({ fonte: "pvl", altreFonti: ["ted"], daFonte: RSA, altre: MENSA, unita: RSA });
+    const dopoUnione = righeDopoUnione({ proceduraId: "G", fonte: "pvl", altreFonti: ["ted"], daFonte: RSA, altre: MENSA, unita: RSA, settoriColonna: ["ristorazione"], autore: "importazione:pvl", adessoIso: "2026-11-18T08:00:00.000Z", nuovoId });
+    const e = await scriviClassificazioni(mem.client, [{ proceduraId: "G", versione: RSA.versione, calcolate: dopoUnione }], misure(), "2026-11-18T08:00:00.000Z");
+    const nuova = mem.tabelle.radar_classificazioni.find((r) => r.attiva) as RigaClassificazione;
+    const vecchia = mem.tabelle.radar_classificazioni.find((r) => r.id === primaRiga.id) as RigaClassificazione;
+    uguale(
+      "D3. nuova fonte su una gara esistente: la riga di prima (solo TED) si disattiva puntando alla nuova; la nuova è attiva con le due fonti",
+      [e.disattivate, e.inserite, vecchia.attiva, vecchia.sostituita_da === nuova.id, nuova.fonti, mem.tabelle.radar_classificazioni.length],
+      [1, 1, false, true, ["pvl", "ted"], 2],
+    );
+    uguale("D3. rilevanza migliore per settore (A da TED), provenienze conservate per fonte e per i dati uniti, conflitto segnato «ambigua»", [nuova.rilevanza, nuova.per_fonte, nuova.ambigua], ["A", { dati_uniti: "B", pvl: "B", ted: "A" }, true]);
+    atteso("D3. il conflitto è segnalato anche nel registro (classificatore unico: rilevanza diversa per lo stesso settore)", !!amb && amb.motivi.some((m) => m.startsWith("Livello diverso per ristorazione collettiva: PVL ANAC B")));
+    uguale("D3. la colonna «settori» non cambia con la nuova fonte", garaDi(mem, "G").settori, ["ristorazione"]);
+    const ancora = righeDopoUnione({ proceduraId: "G", fonte: "pvl", altreFonti: ["ted"], daFonte: RSA, altre: MENSA, unita: RSA, settoriColonna: ["ristorazione"], autore: "importazione:pvl", adessoIso: "2026-11-18T09:00:00.000Z", nuovoId });
+    const e2 = await scriviClassificazioni(mem.client, [{ proceduraId: "G", versione: RSA.versione, calcolate: ancora }], misure(), "2026-11-18T09:00:00.000Z");
+    uguale("D3. la stessa unione riletta non scrive righe nuove", [e2.inserite, e2.disattivate], [0, 0]);
+  }
+  {
+    // E. le gare non pertinenti: mai nei suggerimenti; visibili nella ricerca generale con «fuori dai settori monitorati»; l'assenza di righe
+    // non vale mai C
+    const r = (procedura_id: string, settore: string, rilevanza: "A" | "B" | "C", attiva = true) => ({ procedura_id, settore: settore as RigaClassificazione["settore"], rilevanza, attiva });
+    const righe = [r("P1", "ristorazione", "A"), r("P2", "ristorazione", "B"), r("P3", "ristorazione", "C"), r("P4", "pulizia", "A"), r("P5", "ristorazione", "A", false), r("P6", "ristorazione", "C"), r("P6", "pulizia", "A"), r("P7", "ristorazione", "A")];
+    const st = (s: "in_attesa" | "classificata" | "fallita") => ({ stato: s });
+    const stati = new Map([["P1", st("classificata")], ["P2", st("classificata")], ["P3", st("classificata")], ["P4", st("classificata")], ["P5", st("classificata")], ["P6", st("classificata")], ["P7", st("fallita")]]);
+    uguale("E. suggerimenti: solo gare CLASSIFICATE con una riga ATTIVA di rilevanza A nei settori dell'impresa (mai B, C, righe storiche, gare fallite)", gareSuggeribili(righe, stati, ["ristorazione"]), ["P1"]);
+    uguale("E. una gara C in un settore e A in un altro si suggerisce solo per il settore in cui è A", [gareSuggeribili(righe, stati, ["pulizia"]), gareSuggeribili(righe, stati, ["ristorazione"]).includes("P6")], [["P4", "P6"], false]);
+    uguale("E. senza stato nessun suggerimento, anche con una riga A", gareSuggeribili([r("P9", "ristorazione", "A")], new Map(), ["ristorazione"]), []);
+    const sC = situazioneGara({ stato: "classificata", versione_regole: "2026-11-17c", errore: null }, [r("P3", "ristorazione", "C")]);
+    const sVuota = situazioneGara({ stato: "classificata", versione_regole: "2026-11-17c", errore: null }, []);
+    uguale(
+      "E. ricerca generale: «Fuori dai settori monitorati» SOLO per una gara classificata con righe C e nessuna A o B; mai per una gara senza righe, in attesa o senza stato",
+      [etichettaRilevanza(sC), etichettaRilevanza(sVuota), etichettaRilevanza(situazioneGara({ stato: "in_attesa", versione_regole: null, errore: null }, [])), etichettaRilevanza(situazioneGara(null, [r("P3", "ristorazione", "C")]))],
+      ["Fuori dai settori monitorati", null, null, null],
+    );
+    uguale("E. una gara correlata (solo B) ha la sua etichetta, una pertinente nessuna", [etichettaRilevanza(situazioneGara({ stato: "classificata", versione_regole: "v", errore: null }, [r("P2", "ristorazione", "B")])), etichettaRilevanza(situazioneGara({ stato: "classificata", versione_regole: "v", errore: null }, [r("P1", "ristorazione", "A")]))], ["Correlata ai settori monitorati (appalto misto o gestione complessa)", null]);
     const CASONE = classificaPerArchivio({ oggetto: "Affidamento in concessione del casone “Paduli” per la durata di sette anni (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []);
     uguale("E. una gara non pertinente ha «settori» vuoto: ogni filtro per settore già esistente (Cerca, Monitorate) la esclude", CASONE.settori, []);
+    // conservazione: TED e PVL (query già filtrate per CPV) sì; regionali solo con almeno un CPV del file; mai senza alcun settore considerato
+    const cpvDelFile = new Set(vociCpv().map((x) => x.cpv));
+    const NULLA = classificaPerArchivio({ oggetto: "Fornitura di carta per fotocopiatrici (prova sintetica)", cpv_principale: "30197630", cpv_tutti: ["30197630"], natura_contratto: "forniture" }, []);
+    uguale(
+      "E. conservazione: TED e PVL sì per una C; Sintel/SardegnaCAT solo con un CPV del file; mai una gara pertinente né una senza alcun settore considerato",
+      [
+        conservaComeNonPertinente({ fonte: "ted", classificazione: CASONE, cpvTutti: ["55524000"], cpvDelFile }),
+        conservaComeNonPertinente({ fonte: "pvl", classificazione: CASONE, cpvTutti: ["55524000"], cpvDelFile }),
+        conservaComeNonPertinente({ fonte: "sintel", classificazione: CASONE, cpvTutti: ["55524000"], cpvDelFile }),
+        conservaComeNonPertinente({ fonte: "sardegnacat", classificazione: CASONE, cpvTutti: ["45000000"], cpvDelFile }),
+        conservaComeNonPertinente({ fonte: "ted", classificazione: classificaPerArchivio({ oggetto: "Servizio di ristorazione scolastica (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []), cpvTutti: ["55524000"], cpvDelFile }),
+        conservaComeNonPertinente({ fonte: "ted", classificazione: NULLA, cpvTutti: ["30197630"], cpvDelFile }),
+      ],
+      [true, true, true, false, false, false],
+    );
+    atteso("E. il codice della conservazione resta spento: nessun importatore lo usa finché non c'è la 0121", ["src/lib/radar/importa.ts", "src/lib/radar/importa-fonti-pagina.ts", "src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-calcoli.ts", "src/lib/radar/fonti/sintel-calcoli.ts", "src/lib/radar/fonti/aflink-calcoli.ts"].every((f) => !leggi(f).includes("conservaComeNonPertinente")));
   }
 
   // ═════ D. rettifiche, proroghe ed esiti TED su gare unite, e dopo l'annullamento ═════
