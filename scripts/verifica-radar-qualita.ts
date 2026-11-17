@@ -765,6 +765,7 @@ const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["ristorazione", "Servizio integrato di accoglienza pubblico/biglietteria/conduzione bar/pulizie locali", "elenco"],
   ["ristorazione", "Servizio integrato di accoglienza pubblico / biglietteria / conduzione del bar / pulizie locali", "elenco"],
   ["ristorazione", "Servizio di pulizia e gestione del bar", "elenco"],
+  ["ristorazione", "Servizio di trasporto scolastico, assistenza mensa", "elenco"],
   ["ristorazione", "Affidamento del servizio di gestione del bar", "principale"],
   ["pulizia", "Servizio integrato di accoglienza e pulizia", "elenco"],
   ["multiservizi", "Servizio di pulizia delle aree interne e altri servizi integrati presso gli aeroporti", "elenco"],
