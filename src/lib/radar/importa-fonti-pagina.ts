@@ -12,13 +12,17 @@
 // e la coppia ente + giorno di scadenza danno SOLO suggerimenti, da confermare in console (decisione dell'utente del 17/11/2026).
 // Fonte nascosta ai clienti: i suoi dati non entrano in una gara che ha già una fonte visibile; resta la provenienza (impronta «nascosta:»),
 // e la versione si riapplica quando la fonte diventa visibile.
+// Classificazione (classificazione-unita.ts): i settori restano l'unione delle fonti; quando una fonte si unisce a una gara che ne ha già
+// un'altra, il classificatore unico confronta la fonte, la gara di prima e i dati uniti, e segnala le ambiguità (mai risolte da sole).
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ambiguitaTraFonti, classificaPerArchivio, rigaSegnalazioneClassificazione, type AmbiguitaClassificazione } from "./classificazione-unita";
+import { fontiDellaGara } from "./fonti-gara-calcoli";
 import { COLONNE_RIGA, blocchi, collegaAggiunte, misura, rigaDaScrivere, type Misure } from "./importa";
 import { collegaDoppioniPerAvvisoTed, collegaGare, proponiCollegamenti, type Proposta, type RichiestaCollegamento } from "./collegamenti";
 import { aperta, notificabile, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import type { ScadenzaTed } from "./fonti/ted-calcoli";
 import type { RecordProcedura } from "./fonti/tipi";
-import { unisciLotti, unisciVersione, type FonteUnita, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
+import { eFonteUnita, unisciLotti, unisciVersione, type FonteUnita, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
 
 export type BandoUnificabile = {
   fonte: Exclude<FonteUnita, "ted">;
@@ -88,6 +92,8 @@ export type EsitoPaginaFonte = {
   aggiunteCollegate: number;
   collegateDoppie: number;
   proposte: number;
+  // classificazioni diverse tra le fonti della stessa gara, segnalate all'amministratore (classificazione-unita.ts)
+  ambiguita: number;
 };
 
 type RigaDb = RigaProcedura & { id: string; valore_stimato: number | string | null; valore_base: number | string | null; provenienza_campi: ProvenienzaCampi | null; unita_a: string | null; fonti: string[] | null };
@@ -152,7 +158,7 @@ export async function destinazioniFonte(
 }
 
 export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: readonly BandoUnificabile[], o: OpzioniPaginaFonte): Promise<EsitoPaginaFonte> {
-  const esito: EsitoPaginaFonte = { invariati: 0, conflitti: 0, gare: [], lotti: 0, cigAssegnati: 0, cigScartati: 0, aggiunteCollegate: 0, collegateDoppie: 0, proposte: 0 };
+  const esito: EsitoPaginaFonte = { invariati: 0, conflitti: 0, gare: [], lotti: 0, cigAssegnati: 0, cigScartati: 0, aggiunteCollegate: 0, collegateDoppie: 0, proposte: 0, ambiguita: 0 };
   const { fonte, modo, adesso, misure, nascoste } = o;
   const propri = bandi.filter((b) => b.fonte === fonte);
   if (propri.length === 0) return esito;
@@ -206,6 +212,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     destinazione: Destinazione;
     lottiNonAllineati: boolean;
     cigScartati: number;
+    ambiguita: Map<string, AmbiguitaClassificazione>;
   };
   const stati = new Map<string, Stato>();
   for (const v of [...daApplicare].sort(o.confronta)) {
@@ -232,6 +239,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       destinazione: d,
       lottiNonAllineati: false,
       cigScartati: 0,
+      ambiguita: new Map(),
     };
     // fonte nascosta su una gara già visibile ai clienti: solo provenienza, nessun dato nella gara mostrata
     if (nascosta && iniziale && visibile(iniziale)) {
@@ -240,6 +248,9 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       continue;
     }
     s.avvisi.push(v);
+    const rigaPrima = s.riga;
+    const provenienzaPrima = s.provenienza;
+    const lottiPrima = s.lotti;
     const u = unisciVersione(s.riga, s.provenienza, v.riga, v.versione, iso);
     if (u.campiPresi.length > 0 || u.ultima || !s.riga) s.cambiata = true;
     s.cambiamenti.push(...u.cambiamenti.map((c) => ({ ...c, idFonte: v.idCambiamento })));
@@ -263,6 +274,17 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     s.lotti = ul.lotti;
     s.cigScartati += ul.cigScartati;
     if (!ul.allineati) s.lottiNonAllineati = true;
+    // classificatore unico: solo se la gara aveva già un'altra fonte (una gara di una sola fonte si comporta come sempre)
+    if (rigaPrima) {
+      const amb = ambiguitaTraFonti({
+        fonte,
+        altreFonti: [...fontiDellaGara(rigaPrima.chiave, provenienzaPrima), ...(s.iniziale?.fonti ?? []).filter(eFonteUnita)],
+        daFonte: classificaPerArchivio(v.riga, lottiNuovi),
+        altre: classificaPerArchivio(rigaPrima, lottiPrima),
+        unita: classificaPerArchivio(u.riga, ul.lotti),
+      });
+      if (amb) s.ambiguita.set(amb.chiave, amb);
+    }
     stati.set(chiaveGruppo, s);
   }
 
@@ -389,6 +411,9 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
         notificabile: !nascosta && modo === "incrementale" && !s.iniziale?.unita_a && (eraAperta || aperta(r.stato, sc, adesso)),
       });
     }
+    // classificazioni diverse tra le fonti: segnalazione per l'amministratore, mai notificabile, mai mostrata ai clienti
+    for (const a of s.ambiguita.values()) righe.push(rigaSegnalazioneClassificazione(id, a));
+    esito.ambiguita += s.ambiguita.size;
     return righe;
   });
   for (const b of blocchi(righeAggiornamenti, 200)) {

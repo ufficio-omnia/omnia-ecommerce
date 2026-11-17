@@ -12,6 +12,7 @@ import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opport
 import RigaGara, { hrefGara, type DatiRigaGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
 import { unoPerGaraMostrata } from "@/lib/radar/collegamenti-calcoli";
+import { fontiNascosteAiClienti, fontiVisibiliDa } from "@/lib/radar/fonti-nascoste";
 
 // «Salvate e monitorate» (fase B1): le gare che l'impresa segue, pubbliche e aggiunte a mano, raggruppate per scadenza, con le novità
 // rilevate dall'ultima apertura della scheda (rettifiche, proroghe, annullamenti, esiti). Tutto letto al caricamento della pagina:
@@ -67,6 +68,8 @@ export default async function MonitoratePage() {
           .select("procedura_id, tipo, campo, valore_nuovo, id_fonte, rilevato_il")
           .in("procedura_id", idProcedure)
           .in("tipo", ["rettifica", "proroga", "annullamento", "esito"])
+          // mai novità da una fonte nascosta ai clienti (0120)
+          .in("fonte", fontiVisibiliDa(await fontiNascosteAiClienti()))
           .order("rilevato_il", { ascending: false })
           .limit(1000)
           .returns<Novita[]>(),

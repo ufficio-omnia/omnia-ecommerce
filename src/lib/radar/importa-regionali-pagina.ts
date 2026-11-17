@@ -62,4 +62,5 @@ export async function applicaPaginaBandiRegionali(admin: SupabaseClient, bandi: 
   stat.aggiunteCollegate += e.aggiunteCollegate;
   stat.collegateDoppie += e.collegateDoppie;
   stat.proposte += e.proposte;
+  stat.ambiguita += e.ambiguita;
 }

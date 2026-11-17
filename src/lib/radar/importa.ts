@@ -12,6 +12,8 @@ import { eEsclusione, impronta, type BandoTed, type EsclusioneTed, type EsitoTed
 import { notificabile, piuRecente, rigaDaBando, statoDopoEsito, aperta, type Cambiamento, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
 import { collegaDoppioniPerAvvisoTed } from "./collegamenti";
+import { ambiguitaTraFonti, classificaPerArchivio, rigaSegnalazioneClassificazione } from "./classificazione-unita";
+import { fontiDellaGara } from "./fonti-gara-calcoli";
 
 export type Misure = { richiesteDb: number; msDb: number };
 
@@ -219,6 +221,9 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       lottiPvl.set(l.procedura_id, v);
     }
   }
+  // classificatore unico (classificazione-unita.ts): sulle gare che hanno anche un'altra fonte si confrontano TED, la gara di prima e i dati
+  // uniti; le differenze si segnalano all'amministratore (i settori restano l'unione delle fonti, come prima)
+  const segnalazioni: Record<string, unknown>[] = [];
   const righeLotti = daScrivere.flatMap((s) => {
     const id = ids.get(s.riga!.chiave);
     const b = s.bando!;
@@ -243,6 +248,15 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     if (haAltreFonti(s.iniziale)) {
       const u = unisciLotti(lottiPvl.get(id) ?? [], nuovi, "ted", s.ultimaApplicata);
       esito.cigScartati += u.cigScartati;
+      const prima = s.iniziale as RigaArchivio;
+      const amb = ambiguitaTraFonti({
+        fonte: "ted",
+        altreFonti: fontiDellaGara(prima.chiave, prima.provenienza_campi),
+        daFonte: classificaPerArchivio(rigaDaBando(b, null, adesso), nuovi),
+        altre: classificaPerArchivio(prima, lottiPvl.get(id) ?? []),
+        unita: classificaPerArchivio(s.riga as RigaProcedura, u.lotti),
+      });
+      if (amb) segnalazioni.push(rigaSegnalazioneClassificazione(id, amb));
       return u.lotti.map((l) => ({ ...l, procedura_id: id, aggiornato_il: iso }));
     }
     return nuovi.map((l) => ({ ...l, procedura_id: id, aggiornato_il: iso }));
@@ -311,6 +325,8 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     }
     return righe;
   });
+  // classificazioni diverse tra le fonti: mai notificabili, mai mostrate ai clienti
+  righeAggiornamenti.push(...segnalazioni);
   for (const b of blocchi(righeAggiornamenti, 200)) {
     await misura(misure, "registro dei cambiamenti", () => admin.from("radar_aggiornamenti").upsert(b, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true }));
   }

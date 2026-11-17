@@ -89,3 +89,33 @@ export function erroreAncoraAttuale(ultimoErroreIl: string | null | undefined, u
   if (!ultimoSuccessoIl) return true;
   return Date.parse(ultimoErroreIl) > Date.parse(ultimoSuccessoIl);
 }
+
+// Una segnalazione di classificazione da verificare (classificazione-unita.ts), letta dal registro dei cambiamenti per la console: la fonte
+// che si è unita, le altre fonti, e per ciascuna (e per i dati uniti) settori e livello. Valori non leggibili → elenchi vuoti, mai errori.
+export type LatoClassificazione = { settori: string[]; livello: string | null };
+export type SegnalazioneClassificazioneConsole = { fonte: string; altreFonti: string[]; daFonte: LatoClassificazione; altre: LatoClassificazione; datiUniti: LatoClassificazione };
+
+function lato(o: unknown): LatoClassificazione {
+  const x = (o && typeof o === "object" ? o : {}) as { settori?: unknown; livello?: unknown };
+  return { settori: Array.isArray(x.settori) ? x.settori.filter((s): s is string => typeof s === "string") : [], livello: typeof x.livello === "string" ? x.livello : null };
+}
+
+export function leggiSegnalazioneClassificazione(fonte: string, valorePrecedente: string | null, valoreNuovo: string | null): SegnalazioneClassificazioneConsole {
+  const prova = (t: string | null): Record<string, unknown> => {
+    try {
+      const o: unknown = JSON.parse(t ?? "{}");
+      return o && typeof o === "object" ? (o as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  };
+  const prima = prova(valorePrecedente);
+  const nuovo = prova(valoreNuovo);
+  return {
+    fonte,
+    altreFonti: Array.isArray(prima.fonti) ? prima.fonti.filter((f): f is string => typeof f === "string") : [],
+    daFonte: lato(nuovo),
+    altre: lato(prima),
+    datiUniti: lato(nuovo.dati_uniti),
+  };
+}

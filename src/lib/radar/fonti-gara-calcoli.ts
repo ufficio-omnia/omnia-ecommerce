@@ -23,6 +23,16 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
 
 const eFonte = eFonteUnita;
 
+// Righe INTERNE del registro dei cambiamenti: suggerimenti di unione e segnalazioni di classificazione da verificare. Le vede solo
+// l'amministratore in console; nella scheda della gara non compaiono mai (senza questo filtro comparirebbero come «Rettifica»).
+export const CAMPO_CLASSIFICAZIONE_AMBIGUA = "classificazione_ambigua";
+export const CAMPI_INTERNI_REGISTRO: readonly string[] = ["collegamento_proposto", "collegamento_proposta_decisa", CAMPO_CLASSIFICAZIONE_AMBIGUA];
+
+// Una riga del registro si mostra al cliente solo se non è interna e non viene da una fonte nascosta ai clienti (0120).
+export function aggiornamentoPerCliente(a: { campo: string | null; fonte: string }, nascoste: ReadonlySet<string>): boolean {
+  return !(a.campo !== null && CAMPI_INTERNI_REGISTRO.includes(a.campo)) && !nascoste.has(a.fonte);
+}
+
 // Una gara si mostra ai clienti solo se almeno una delle sue fonti è visibile (controllo di accettazione 6 dell'utente). Le gare di prima
 // della 0120 hanno le fonti riempite dalla migrazione; in mancanza vale la fonte della chiave.
 export function garaVisibileAiClienti(g: { fonti?: readonly string[] | null; chiave: string }, nascoste: ReadonlySet<string>): boolean {

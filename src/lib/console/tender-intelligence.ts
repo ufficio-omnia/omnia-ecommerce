@@ -14,6 +14,8 @@ import { limitiPvlDaRighe, type LimitiPvl } from "@/lib/radar/fonti/pvl-calcoli"
 import { CRON_PVL_PROPOSTO, ORE_GIRI_PVL, prossimoGiroPvl, type StatistichePvl } from "@/lib/radar/importa-pvl-calcoli";
 import { FONTI_REGIONALI, type FonteRegionale, type StatisticheRegionali } from "@/lib/radar/importa-regionali-calcoli";
 import { leggiProposteAperte } from "@/lib/radar/collegamenti";
+import { CAMPO_CLASSIFICAZIONE_AMBIGUA } from "@/lib/radar/fonti-gara-calcoli";
+import { leggiSegnalazioneClassificazione, type SegnalazioneClassificazioneConsole } from "./tender-intelligence-calcoli";
 
 export type StatoFonteDb = {
   attiva: boolean;
@@ -252,7 +254,10 @@ export type DatiFonteRegionaleConsole = {
 export type ProvaGaraConsole = { id: string; titolo: string; ente: string | null; codiceFiscale: string | null; scadenzaGiorno: string | null; scadenzaIstante: string | null; importo: number | null; tipoImporto: "valore stimato" | "base d'asta" | null; collegamento: string | null; fonti: string[] };
 export type PropostaConsole = { a: ProvaGaraConsole; b: ProvaGaraConsole; motivo: string; il: string };
 
-export type DatiRegionaliConsole = { fonti: DatiFonteRegionaleConsole[]; proposte: PropostaConsole[] | null; giriProgrammati: boolean };
+// classificazioni diverse tra le fonti della stessa gara (classificazione-unita.ts): si vedono, non si decidono da sole
+export type ClassificazioneDaVerificareConsole = SegnalazioneClassificazioneConsole & { gara: { id: string; titolo: string }; motivo: string | null; il: string };
+
+export type DatiRegionaliConsole = { fonti: DatiFonteRegionaleConsole[]; proposte: PropostaConsole[] | null; classificazioni: ClassificazioneDaVerificareConsole[] | null; giriProgrammati: boolean };
 
 async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): Promise<DatiRegionaliConsole | null> {
   const { data: righe, error } = await admin
@@ -298,6 +303,31 @@ async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): 
   } catch {
     proposte = null;
   }
+  let classificazioni: ClassificazioneDaVerificareConsole[] | null = null;
+  {
+    type RigaSegnalazione = { procedura_id: string; fonte: string; valore_precedente: string | null; valore_nuovo: string | null; nota: string | null; rilevato_il: string };
+    const { data: segnalazioni, error: e } = await admin
+      .from("radar_aggiornamenti")
+      .select("procedura_id, fonte, valore_precedente, valore_nuovo, nota, rilevato_il")
+      .eq("tipo", "correzione_dati")
+      .eq("campo", CAMPO_CLASSIFICAZIONE_AMBIGUA)
+      .order("rilevato_il", { ascending: false })
+      .limit(30)
+      .returns<RigaSegnalazione[]>();
+    if (!e) {
+      const ids = [...new Set((segnalazioni ?? []).map((s) => s.procedura_id))];
+      const { data: gare } = ids.length
+        ? await admin.from("radar_procedure").select("id, oggetto_breve, oggetto").in("id", ids).returns<{ id: string; oggetto_breve: string | null; oggetto: string }[]>()
+        : { data: [] as { id: string; oggetto_breve: string | null; oggetto: string }[] };
+      const titolo = new Map((gare ?? []).map((g) => [g.id, g.oggetto_breve ?? g.oggetto]));
+      classificazioni = (segnalazioni ?? []).map((s) => ({
+        ...leggiSegnalazioneClassificazione(s.fonte, s.valore_precedente, s.valore_nuovo),
+        gara: { id: s.procedura_id, titolo: titolo.get(s.procedura_id) ?? s.procedura_id },
+        motivo: s.nota,
+        il: s.rilevato_il,
+      }));
+    }
+  }
   return {
     fonti: FONTI_REGIONALI.map((f, i) => {
       const r = (righe ?? []).find((x) => x.fonte === f);
@@ -314,6 +344,7 @@ async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): 
       };
     }),
     proposte,
+    classificazioni,
     giriProgrammati: process.env.RADAR_REGIONALI_CRON === "attivo",
   };
 }

@@ -121,11 +121,13 @@ export type StatisticheRegionali = {
   aggiunteCollegate: number;
   collegateDoppie: number;
   proposte: number;
+  // classificazioni diverse tra le fonti della stessa gara, segnalate all'amministratore
+  ambiguita: number;
   mancanti: Record<string, number>;
 };
 
 export function statisticheRegionaliVuote(): StatisticheRegionali {
-  return { letti: 0, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, suGaraEsistente: {}, suGaraCollegata: 0, rettifiche: 0, annullate: 0, lotti: 0, cigAssegnati: 0, cigScartati: 0, conflitti: 0, nonApplicateNascosta: 0, aggiunteCollegate: 0, collegateDoppie: 0, proposte: 0, mancanti: {} };
+  return { letti: 0, esclusi: {}, invariati: 0, nuove: 0, aggiornate: 0, suGaraEsistente: {}, suGaraCollegata: 0, rettifiche: 0, annullate: 0, lotti: 0, cigAssegnati: 0, cigScartati: 0, conflitti: 0, nonApplicateNascosta: 0, aggiunteCollegate: 0, collegateDoppie: 0, proposte: 0, ambiguita: 0, mancanti: {} };
 }
 
 export function conta(m: Record<string, number>, k: string, n = 1): void {

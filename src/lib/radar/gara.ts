@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StatoProcedura } from "./importa-calcoli";
 import type { ProvenienzaCampi } from "./unione-calcoli";
-import { garaVisibileAiClienti, type FonteGara } from "./fonti-gara-calcoli";
+import { aggiornamentoPerCliente, garaVisibileAiClienti, type FonteGara } from "./fonti-gara-calcoli";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "./fonti-nascoste";
 import { FONTI_UNITE } from "./unione-calcoli";
 
@@ -126,7 +126,8 @@ export async function leggiGaraPubblica(admin: SupabaseClient, id: string): Prom
     gara: { ...gara, valore_stimato: numero(gara.valore_stimato), valore_base: numero(gara.valore_base) },
     lotti: (lotti.data ?? []).map((l) => ({ ...l, valore_stimato: numero(l.valore_stimato) })),
     provenienze: [...(provenienze.data ?? []), ...avvisiCollegati].filter((p) => !nascoste.has(p.fonte)).sort((a, b) => (b.pubblicato_il ?? "").localeCompare(a.pubblicato_il ?? "")),
-    aggiornamenti: aggiornamenti.data ?? [],
+    // mai le righe interne (suggerimenti di unione, classificazioni da verificare) né quelle di una fonte nascosta ai clienti
+    aggiornamenti: (aggiornamenti.data ?? []).filter((a) => aggiornamentoPerCliente(a, nascoste)),
     controlli: Object.fromEntries((fonti.data ?? []).map((f) => [f.fonte, f.ultimo_successo_il])),
     collegate,
     cigCollegati,

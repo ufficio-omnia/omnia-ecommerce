@@ -411,6 +411,54 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
           </Pannello>
         </div>
       )}
+      {regionali.classificazioni && (
+        <div className="cn-sezione">
+          <Pannello titolo={`Classificazioni da verificare (${numero(regionali.classificazioni.length)})`}>
+            <p className="cn-nota">
+              Gare pubblicate da più fonti che, classificate con le stesse regole, danno settori o livelli diversi (A pertinente, B correlata, C non pertinente). Nessuna scelta automatica: la gara resta nei settori riconosciuti da tutte le fonti insieme, e i clienti non vedono queste righe. Il modo di registrare la decisione arriva con la proposta 0121, da approvare.
+            </p>
+            {regionali.classificazioni.length === 0 ? (
+              <p className="cn-nota">Nessuna classificazione da verificare.</p>
+            ) : (
+              <div className="cn-scorri">
+                <table className="cn-tab">
+                  <thead>
+                    <tr>
+                      <th>Gara</th>
+                      <th>Fonte arrivata</th>
+                      <th>Altre fonti</th>
+                      <th>Dati uniti</th>
+                      <th>Perché</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {regionali.classificazioni.map((c, i) => (
+                      <tr key={`${c.gara.id}|${i}`}>
+                        <td>
+                          <strong>{c.gara.titolo}</strong>
+                          <div className="cn-nota">{c.gara.id}</div>
+                        </td>
+                        <td>
+                          {c.fonte}: {c.daFonte.settori.join(", ") || "nessun settore"} {c.daFonte.livello ? `(livello ${c.daFonte.livello})` : ""}
+                        </td>
+                        <td>
+                          {c.altreFonti.join(", ") || "—"}: {c.altre.settori.join(", ") || "nessun settore"} {c.altre.livello ? `(livello ${c.altre.livello})` : ""}
+                        </td>
+                        <td>
+                          {c.datiUniti.settori.join(", ") || "nessun settore"} {c.datiUniti.livello ? `(livello ${c.datiUniti.livello})` : ""}
+                        </td>
+                        <td>
+                          {data(c.il)} · {c.motivo ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Pannello>
+        </div>
+      )}
     </>
   );
 }
