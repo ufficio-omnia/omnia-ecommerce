@@ -10,7 +10,7 @@ import { ETICHETTA_STATO, statoMostrato } from "@/lib/radar/importa-calcoli";
 import { distanzaScadenza, sintesiDeterministica, scadenzaLeggibile, euro, giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import { confrontaConSoglia, sogliaApplicabile } from "@/lib/radar/soglie-ue";
 import { tipoEnteTed, fusoItaliano } from "@/lib/radar/fonti/ted-calcoli";
-import { nomeSettore, voceCpv, type SettoreRadar } from "@/lib/radar/settori";
+import { descriviCorrezioneSettori, nomeSettore, voceCpv, type SettoreRadar } from "@/lib/radar/settori";
 import { ATTRIBUZIONE_FONTE, NOME_FONTE, descriviAvvisoLetto, etichettaFonti, fontiDellaGara, fonteDelDato, riepilogoFonti } from "@/lib/radar/fonti-gara-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
@@ -47,6 +47,7 @@ function descriviAggiornamento(a: AggiornamentoGara): string {
   if (a.tipo === "esito") return `Esito pubblicato (${avv}): ${a.valore_nuovo === "aggiudicata" ? "aggiudicata" : "chiusa senza aggiudicazione"}.`;
   if (a.tipo === "correzione_dati" && (a.campo === "collegata_da" || a.campo === "collegata_a")) return `Il ${quando} l'abbiamo riconosciuta come la stessa gara pubblicata due volte (avviso TED ${a.id_fonte ?? ""}) e le due schede sono state collegate.`;
   if (a.tipo === "correzione_dati" && a.campo === "collegamento_annullato") return `Il ${quando} il collegamento con un'altra scheda è stato annullato.`;
+  if (a.tipo === "correzione_dati" && (a.campo === "settori" || a.campo === "settori_ripristinati")) return descriviCorrezioneSettori(quando, a.valore_precedente, a.valore_nuovo, a.id_fonte);
   const verbo = a.tipo === "proroga" ? "Proroga" : "Rettifica";
   if (a.campo === "scadenza_offerte") return `${verbo} (${avv}): scadenza da ${leggibileDaValore(a.valore_precedente) ?? "non indicata"} a ${leggibileDaValore(a.valore_nuovo) ?? "non indicata"}.`;
   if (a.campo === "valore_stimato") return `${verbo} (${avv}): valore stimato da ${euro(a.valore_precedente ? Number(a.valore_precedente) : null) ?? "non indicato"} a ${euro(a.valore_nuovo ? Number(a.valore_nuovo) : null) ?? "non indicato"}.`;
