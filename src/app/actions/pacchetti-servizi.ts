@@ -23,6 +23,7 @@ import {
   testoUnita,
 } from "@/lib/pacchetti-servizi-calcoli";
 import { VERSIONE_CONDIZIONI_PIANO_LAVORO, testoCanonicoCondizioniPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcoli";
+import { VERSIONE_CONDIZIONI_COPERTINA, testoCanonicoCondizioniCopertina } from "@/lib/copertina-acquisto-calcoli";
 
 // Pacchetti prepagati dei servizi aggiuntivi (migrazione 0104). Il titolare compra: avvertenze e clausole (versionate) da accettare, poi il
 // pagamento su Stripe; le unità si accreditano SOLO dal webhook. L'Ufficio Gare non compra: con «Acquista» manda al titolare una email
@@ -50,7 +51,8 @@ export async function acquistaPacchettoServizio(_prevState: AcquistoPacchettoSta
   if (formData.get("accettaClausole") !== "on") return { error: "Devi approvare specificamente le clausole indicate." };
 
   const admin = createAdminClient();
-  if (!(await venditaPacchettiAttiva(admin)) || !(await pacchettiDisponibili(admin))) return { error: "L'acquisto dei pacchetti non è ancora disponibile." };
+  // l'interruttore e le tabelle del servizio scelto (la copertina ha i suoi, e la migrazione 0130)
+  if (!(await venditaPacchettiAttiva(admin, servizio)) || !(await pacchettiDisponibili(admin, servizio))) return { error: "L'acquisto dei pacchetti non è ancora disponibile." };
 
   // un'offerta dedicata al cliente (offertaId) oppure un pacchetto dell'elenco: quantità e prezzo si rileggono qui, mai dal browser
   const offertaId = String(formData.get("offertaId") ?? "").trim();
@@ -72,9 +74,10 @@ export async function acquistaPacchettoServizio(_prevState: AcquistoPacchettoSta
       prezzo_centesimi: pacchetto.prezzoCentesimi,
       condizioni_versione: VERSIONE_CONDIZIONI_PACCHETTI,
       condizioni_hash: impronta(testoCanonicoCondizioniPacchetti()),
-      // le avvertenze sul servizio: per il piano di lavoro sono quelle già approvate dal legale
-      servizio_condizioni_versione: VERSIONE_CONDIZIONI_PIANO_LAVORO,
-      servizio_condizioni_hash: impronta(testoCanonicoCondizioniPianoLavoro()),
+      // le avvertenze sul servizio: per il piano di lavoro sono quelle già approvate dal legale; per la copertina le condizioni di acquisto approvate
+      // dal titolare l'11/11/2026 (le stesse dell'acquisto della singola gara)
+      servizio_condizioni_versione: servizio === "copertina" ? VERSIONE_CONDIZIONI_COPERTINA : VERSIONE_CONDIZIONI_PIANO_LAVORO,
+      servizio_condizioni_hash: impronta(servizio === "copertina" ? testoCanonicoCondizioniCopertina() : testoCanonicoCondizioniPianoLavoro()),
       accettato_il: new Date().toISOString(),
       accept_ip: ip,
       accept_user_agent: (userAgent ?? "").slice(0, 490) || null,
@@ -158,7 +161,7 @@ export async function richiediAcquistoPacchetto(_prevState: RichiestaPacchettoSt
   const servizio = servizioGrezzo;
 
   const admin = createAdminClient();
-  if (!(await venditaPacchettiAttiva(admin)) || !(await pacchettiDisponibili(admin))) return { error: TESTI_PACCHETTI.venditaSpenta };
+  if (!(await venditaPacchettiAttiva(admin, servizio)) || !(await pacchettiDisponibili(admin, servizio))) return { error: TESTI_PACCHETTI.venditaSpenta };
   // si avvisa solo per un pacchetto davvero in vendita, oppure per un'offerta dedicata a QUESTO cliente ancora valida
   const offertaId = String(formData.get("offertaId") ?? "").trim();
   const pacchetto = await risolviPacchetto(admin, { accountId: contesto.accountId, servizio, offertaId, quantita: formData.get("quantita") });

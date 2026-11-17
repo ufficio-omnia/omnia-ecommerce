@@ -166,7 +166,9 @@ export async function leggiPianoLavoroConsole(): Promise<DatiPianoLavoroConsole>
   const righe = concessioniQ.error ? [] : (concessioniQ.data ?? []);
 
   // Le offerte dedicate: senza la migrazione 0105 non ci sono (la pagina lo dice, senza errori).
-  const offerte = await leggiOfferteDedicateConsole({ limite: 200 });
+  const tutteLeOfferte = await leggiOfferteDedicateConsole({ limite: 200 });
+  // in questa pagina solo quelle del piano di lavoro (le offerte della copertina sono nella pagina Copertina)
+  const offerte = { ...tutteLeOfferte, elenco: tutteLeOfferte.elenco.filter((o) => o.servizio === "piano_lavoro") };
 
   let emailUtente = new Map<string, string>();
   const usate = new Map<string, Set<string>>();

@@ -860,12 +860,24 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                   Rettifica il saldo
                 </h3>
                 <p className="cn-nota-inline" style={{ marginBottom: 10 }}>
-                  Aggiungi (numero positivo: un regalo, un rimborso in unità) o togli (numero negativo: una correzione) piani di lavoro. Il motivo è obbligatorio e resta nel registro dei movimenti con la tua email; il saldo non può scendere sotto zero.
+                  Aggiungi (numero positivo: un regalo, un rimborso in unità) o togli (numero negativo: una correzione) unità di un servizio: piani di lavoro o gare con copertina. Il motivo è obbligatorio e resta nel registro dei movimenti con la tua email; il saldo non può scendere sotto zero.
                 </p>
-                <ModuloAzione azione={rettificaPacchettiCliente} campi={{ userId: s.utente.id, servizio: "piano_lavoro" }} etichetta="Applica la rettifica" etichettaInCorso="Applico…" messaggioOk="Rettifica registrata." variante="primario" svuota classe="cn-modulo-linea">
+                <ModuloAzione azione={rettificaPacchettiCliente} campi={{ userId: s.utente.id }} etichetta="Applica la rettifica" etichettaInCorso="Applico…" messaggioOk="Rettifica registrata." variante="primario" svuota classe="cn-modulo-linea">
+                  <div>
+                    <label className="cn-etichetta" htmlFor="servizio-pacchetti">
+                      Servizio
+                    </label>
+                    <select className="cn-input" id="servizio-pacchetti" name="servizio" defaultValue="piano_lavoro">
+                      {SERVIZI_PACCHETTO.filter((servizio) => SERVIZI[servizio].disponibile).map((servizio) => (
+                        <option key={servizio} value={servizio}>
+                          {SERVIZI[servizio].nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="cn-etichetta" htmlFor="delta-pacchetti">
-                      Piani di lavoro (+ aggiunge, − toglie)
+                      Unità (+ aggiunge, − toglie)
                     </label>
                     <input className="cn-input" id="delta-pacchetti" name="delta" inputMode="numeric" required placeholder="es. 2 oppure -1" style={{ maxWidth: 150 }} autoComplete="off" />
                   </div>
@@ -929,10 +941,22 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                     <p className="cn-nota-inline" style={{ margin: "10px 0" }}>
                       Crea un pacchetto privato a prezzo e numero decisi da te: lo vede solo questo cliente (e il suo Ufficio Gare), si compra una volta sola ed è visibile solo con la vendita accesa. Prezzo totale IVA inclusa.
                     </p>
-                    <ModuloAzione azione={creaOffertaDedicataCliente} campi={{ email: s.utente.email, servizio: "piano_lavoro" }} etichetta="Crea l'offerta dedicata" etichettaInCorso="Creo…" messaggioOk="Offerta creata: il cliente la vede nella sua area." variante="primario" svuota classe="cn-modulo-linea">
+                    <ModuloAzione azione={creaOffertaDedicataCliente} campi={{ email: s.utente.email }} etichetta="Crea l'offerta dedicata" etichettaInCorso="Creo…" messaggioOk="Offerta creata: il cliente la vede nella sua area." variante="primario" svuota classe="cn-modulo-linea">
+                      <div>
+                        <label className="cn-etichetta" htmlFor="servizio-offerta">
+                          Servizio
+                        </label>
+                        <select className="cn-input" id="servizio-offerta" name="servizio" defaultValue="piano_lavoro">
+                          {SERVIZI_PACCHETTO.filter((servizio) => SERVIZI[servizio].disponibile).map((servizio) => (
+                            <option key={servizio} value={servizio}>
+                              {SERVIZI[servizio].nome}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div>
                         <label className="cn-etichetta" htmlFor="quantita-offerta">
-                          Quanti piani di lavoro
+                          Quante unità (piani di lavoro o gare con copertina)
                         </label>
                         <input className="cn-input" id="quantita-offerta" name="quantita" inputMode="numeric" required placeholder={`da ${LIMITI_OFFERTA.quantitaMinima} a ${LIMITI_OFFERTA.quantitaMassima}`} style={{ maxWidth: 150 }} autoComplete="off" />
                       </div>
@@ -1037,7 +1061,7 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
         </Pannello>
       </div>
 
-      {/* ───── Copertina della relazione tecnica: acceso/spento, gratis o a pagamento, per cliente ───── */}
+      {/* ───── Copertina della relazione tecnica: condizioni particolari del cliente (gratis o prezzo suo); le regole generali sono nella pagina «Copertina» ───── */}
       {s.utente.ruolo !== "admin" && (
         <div className="cn-sezione">
           <Pannello titolo="Copertina della relazione tecnica">
@@ -1053,10 +1077,10 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                   return (
                     <>
                       <p className="cn-nota-inline" style={{ marginTop: 0 }}>
-                        Il cliente genera una copertina grafica A4 per la relazione tecnica (stile stilizzato o realistico, fino a 3 generazioni per stile e per gara). Di base il servizio è <strong>spento</strong>: lo accendi tu, cliente per cliente.
+                        Il cliente genera una copertina grafica A4 per la relazione tecnica (stile stilizzato o realistico, fino a 3 generazioni per stile e per gara). Per tutti valgono le <Link href="/copertina">regole generali della pagina Copertina</Link> (vendita, prezzo per gara, pacchetti, concessioni). Qui puoi dare a QUESTO cliente condizioni particolari, che prevalgono: <strong>gratis</strong> (con gare e scadenza facoltative) oppure un <strong>prezzo suo</strong> per gara (vale anche a vendita spenta).
                       </p>
                       <p className="cn-nota-inline">
-                        {imp?.attivo ? <Badge tono="ok">acceso</Badge> : <Badge tono="neutro">spento</Badge>} {descriviImpostazioniCopertina(imp)}
+                        {imp?.attivo ? <Badge tono="ok">condizioni particolari</Badge> : <Badge tono="neutro">regole generali</Badge>} {descriviImpostazioniCopertina(imp)}
                         {imp?.nota ? ` Nota: ${imp.nota}` : ""}
                       </p>
                       <p className="cn-nota-inline">
@@ -1077,11 +1101,11 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                       >
                         <div>
                           <label className="cn-etichetta" htmlFor="copertina-stato">
-                            Servizio
+                            Condizioni particolari
                           </label>
                           <select className="cn-input" id="copertina-stato" name="stato" defaultValue={imp?.attivo ? "acceso" : "spento"}>
-                            <option value="spento">Spento</option>
-                            <option value="acceso">Acceso</option>
+                            <option value="spento">Nessuna (regole generali)</option>
+                            <option value="acceso">Attive</option>
                           </select>
                         </div>
                         <div>
@@ -1095,7 +1119,7 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                         </div>
                         <div>
                           <label className="cn-etichetta" htmlFor="copertina-prezzo">
-                            Prezzo per gara (€, IVA inclusa) — solo «a pagamento»
+                            Prezzo dedicato per gara (€, IVA inclusa) — solo «a pagamento»
                           </label>
                           <input className="cn-input" id="copertina-prezzo" name="prezzo" inputMode="decimal" placeholder="es. 49" autoComplete="off" defaultValue={prezzoIniziale} style={{ maxWidth: 130 }} />
                         </div>
@@ -1119,7 +1143,7 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                         </div>
                       </ModuloAzione>
                       <p className="cn-nota-inline">
-                        Una gara «usa» una gara gratis alla sua prima copertina; le altre copertine della stessa gara (fino a 3 per stile) non ne usano altre. Con «a pagamento» il titolare paga ogni gara con carta su Stripe, una volta, al prezzo qui indicato (il prezzo si fissa al pagamento: cambiarlo vale solo per i prossimi); chi ha già pagato una gara la tiene anche se poi spegni il servizio. {NOTA_CONSOLE_CONDIZIONI_COPERTINA}
+                        Una gara «usa» una gara gratis alla sua prima copertina; le altre copertine della stessa gara (fino a 3 per stile) non ne usano altre. Con «a pagamento» il titolare paga ogni gara con carta su Stripe, una volta, al prezzo qui indicato invece di quello generale (il prezzo si fissa al pagamento: cambiarlo vale solo per i prossimi); chi ha già pagato una gara la tiene anche se poi togli le condizioni. Le concessioni gratuite, i pacchetti e le offerte dedicate si gestiscono dalla pagina Copertina e dal riquadro dei pacchetti qui sopra. {NOTA_CONSOLE_CONDIZIONI_COPERTINA}
                       </p>
                     </>
                   );

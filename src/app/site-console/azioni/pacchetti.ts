@@ -6,7 +6,18 @@ import { richiediAdminAzione } from "@/lib/console/accesso";
 import { MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO, MESSAGGIO_E_UN_UFFICIO_GARE, leggiTitolareDelMembro } from "@/lib/console/ufficio-gare";
 import { giornoRoma } from "@/lib/omnia-ai-catalogo-calcoli";
 import { creaOffertaDedicata, rettificaPacchetti, revocaOffertaDedicata } from "@/lib/pacchetti-servizi";
-import { SERVIZI, eServizioPacchetto, validaNuovaOfferta } from "@/lib/pacchetti-servizi-calcoli";
+import { SERVIZI, eServizioPacchetto, validaNuovaOfferta, type ServizioPacchetto } from "@/lib/pacchetti-servizi-calcoli";
+import { migrazioneCopertinaPacchettiEseguita } from "@/lib/copertina-vendita";
+
+// La copertina nei pacchetti richiede la migrazione 0130 (il database accetta il servizio «copertina»): senza, si dice subito invece di fallire contro
+// il vincolo. null = si può procedere.
+async function controlloServizio(servizio: ServizioPacchetto): Promise<string | null> {
+  if (servizio !== "copertina") return null;
+  const eseguita = await migrazioneCopertinaPacchettiEseguita();
+  if (eseguita === "no") return "Per la copertina serve prima la migrazione 0130 (pacchetti e concessioni della copertina): eseguila e riprova.";
+  if (eseguita === "errore") return "Non riesco a controllare la migrazione 0130. Riprova.";
+  return null;
+}
 
 // Pacchetti prepagati di servizi aggiuntivi, dalla console: aggiungere o correggere le unità di un cliente (un regalo è una rettifica positiva con un
 // motivo) e creare o revocare le OFFERTE DEDICATE (pacchetti privati, a prezzo e quantità decisi qui, che vede solo quel cliente). Ogni azione parte da
@@ -28,6 +39,8 @@ export async function rettificaPacchettiCliente(_stato: StatoPacchettiConsole, f
   const servizio = formData.get("servizio");
   if (!eServizioPacchetto(servizio)) return { errore: "Servizio non valido." };
   if (!SERVIZI[servizio].disponibile) return { errore: `${SERVIZI[servizio].nome} non è ancora disponibile: non ci sono unità da assegnare.` };
+  const problemaServizio = await controlloServizio(servizio);
+  if (problemaServizio) return { errore: problemaServizio };
 
   // la variazione è un intero, positivo (aggiunge) o negativo (toglie), mai zero
   const variazioneTesto = String(formData.get("delta") ?? "").trim();
@@ -83,6 +96,8 @@ export async function creaOffertaDedicataCliente(_stato: StatoPacchettiConsole, 
   );
   if (!esito.ok) return { errore: esito.errore };
   const { valori } = esito;
+  const problemaServizio = await controlloServizio(valori.servizio);
+  if (problemaServizio) return { errore: problemaServizio };
 
   const admin = createAdminClient();
   const { data: utente, error: erroreUtente } = await admin.from("users").select("id").eq("email", valori.email).maybeSingle<{ id: string }>();

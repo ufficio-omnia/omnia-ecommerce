@@ -5,8 +5,31 @@ import { controllaSessioneAcquisto, type EsitoControlloSessione, type ModalitaSt
 // scripts/verifica-copertina-acquisto.ts. Le usano la pagina della gara, l'azione che avvia il pagamento (che ricalcola SEMPRE tutto, mai ciò che arriva
 // dal browser), il webhook e il test. Stessa struttura dell'acquisto del piano di lavoro (piano-lavoro-acquisto-calcoli.ts).
 //
-// Il PREZZO è quello deciso dalla console per quel cliente (impostazioni «a pagamento», copertina-diritto-calcoli.ts) e si fissa al momento del
-// pagamento. Una gara si paga una volta sola e dà diritto a fino a 3 generazioni per stile.
+// Il PREZZO è quello generale della console (pagina «Copertina», 50 € di partenza) oppure, se la console ne ha deciso uno per quel cliente
+// (impostazioni «a pagamento», copertina-diritto-calcoli.ts), quello del cliente; si fissa al momento del pagamento. Una gara si paga una volta sola e
+// dà diritto a fino a 3 generazioni per stile.
+
+// ───── la vendita a tutti (console «Copertina», richiesta dell'utente del 17/11/2026) ─────
+//
+// Come il piano di lavoro: un interruttore di vendita (spento di base), un prezzo per gara uguale per tutti (50 € IVA inclusa di partenza), una regola
+// per gli account in prova. Le condizioni particolari di un cliente (impostazioni per cliente: gratis, o un prezzo suo) restano e prevalgono.
+
+export const PREZZO_COPERTINA = { predefinitoCentesimi: 5000, minimoCentesimi: 100, massimoCentesimi: 100_000 } as const;
+export const CHIAVE_PREZZO_COPERTINA = "copertina_prezzo_singolo_centesimi";
+export const CHIAVE_VENDITA_COPERTINA = "vendita_copertina_attiva";
+export const CHIAVE_POLITICA_PROVA_COPERTINA = "copertina_prova_politica";
+
+// Il valore salvato: un intero in centesimi nei limiti; qualunque altra cosa = il prezzo del codice.
+export function interpretaPrezzoCopertina(valore: string | number | null | undefined): number {
+  const testo = typeof valore === "number" ? String(valore) : (valore ?? "").trim();
+  if (!/^\d{1,9}$/.test(testo)) return PREZZO_COPERTINA.predefinitoCentesimi;
+  const n = Number(testo);
+  return n >= PREZZO_COPERTINA.minimoCentesimi && n <= PREZZO_COPERTINA.massimoCentesimi ? n : PREZZO_COPERTINA.predefinitoCentesimi;
+}
+
+export function interpretaInterruttoreVenditaCopertina(valore: string | null | undefined): boolean {
+  return valore === "1";
+}
 
 // ───── quando si può pagare ─────
 

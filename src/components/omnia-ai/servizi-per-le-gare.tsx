@@ -50,7 +50,7 @@ export default function ServiziPerLeGare({ schede, titolare }: { schede: SchedaS
                     {TESTI_PACCHETTI.saldoEtichetta} <strong>{s.saldo}</strong> {s.saldo === 1 ? SERVIZI[s.servizio].unitaSingolare : SERVIZI[s.servizio].unitaPlurale}
                   </>
                 ) : s.haAvutoUnita ? (
-                  TESTI_PACCHETTI.saldoZero
+                  TESTI_PACCHETTI.saldoZeroDi(s.servizio)
                 ) : (
                   TESTI_PACCHETTI.nessunPacchetto
                 )}
@@ -64,7 +64,7 @@ export default function ServiziPerLeGare({ schede, titolare }: { schede: SchedaS
                     <strong>{TESTI_PACCHETTI.concessioneEtichetta}:</strong> {testo}
                   </p>
                 ))}
-                <p className="omnia-pacchetto-nota">{TESTI_PACCHETTI.concessioneNota}</p>
+                <p className="omnia-pacchetto-nota">{TESTI_PACCHETTI.concessioneNotaDi(s.servizio)}</p>
               </div>
             )}
 

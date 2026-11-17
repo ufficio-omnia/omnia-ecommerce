@@ -49,7 +49,9 @@ import { annullaModifica, completaModifica, interpretaRichiesta, leggiChat, rise
 import { preparaLogo } from "@/lib/copertina-loghi";
 import { logAiUsage } from "@/lib/ai-usage";
 import { operazionePerRegistro } from "@/lib/anthropic";
-import { annullaCopertina, completaCopertina, decidi, leggiContestoCopertina, riservaCopertina } from "@/lib/copertina-diritto";
+import { altreGenerazioniDellaGara, annullaCopertina, completaCopertina, decidi, leggiContestoCopertina, riservaCopertina } from "@/lib/copertina-diritto";
+import { consumaUnita, riaccreditaUnita } from "@/lib/pacchetti-servizi";
+import { TESTI_COPERTINA_PACCHETTO } from "@/lib/copertina-diritto-calcoli";
 
 // «Genera copertina relazione tecnica»: dentro la gara due pulsanti (stile stilizzato e stile realistico) chiedono a OpenAI di leggere il
 // disciplinare/capitolato scelto (titolo, CIG e indicazioni per lo sfondo) e di disegnare una copertina A4 nello stile scelto, con il logo della
@@ -127,6 +129,8 @@ export async function generaCopertinaGara(_prevState: CopertinaState, formData: 
   if (ctx.errore) return { error: "Non riesco a controllare il servizio in questo momento. Riprova tra qualche istante." };
   const diritto = decidi(ctx, gara.id, stile);
   if (!diritto.ok) return { error: diritto.messaggio };
+  // La prima copertina della gara pagata con il pacchetto usa un'unità: il cliente l'ha confermato nella pagina (il pulsante lo dice e chiede conferma).
+  if (diritto.consumaUnita && formData.get("usaPacchetto") !== "1") return { error: TESTI_COPERTINA_PACCHETTO.usoNonConfermato };
 
   // Settore (migrazione 0103), in una lettura a parte: se la colonna non c'è la copertina si basa solo sulla lettura del documento
   const { data: settoreRiga, error: erroreSettore } = await supabase.from("gare").select("settore").eq("id", garaId).maybeSingle<{ settore: string | null }>();
@@ -134,9 +138,30 @@ export async function generaCopertinaGara(_prevState: CopertinaState, formData: 
 
   // Si registra che la generazione parte (così limite e gare gratis tengono conto anche di questa, mentre è in corso). Senza la tabella (migrazione 0106)
   // si procede solo in sviluppo locale, dove `decidi` ha già dato il via libera.
-  const riserva = await riservaCopertina(admin, { garaId: gara.id, userId: contesto.accountId, stile, fonte: diritto.fonte });
-  if (riserva.stato === "errore") return { error: "Non riesco a registrare la generazione in questo momento. Riprova tra qualche istante." };
-  if (riserva.stato === "schema_assente" && diritto.fonte !== "sviluppo") return { error: "Il servizio non è ancora disponibile. Riprova più tardi." };
+  // Il pacchetto: l'unità si toglie PRIMA di generare (una sola per gara, anche con due generazioni contemporanee); se poi la generazione non riesce e la
+  // gara non ha altre copertine, si rimette.
+  let unitaConsumata = false;
+  if (diritto.fonte === "pacchetto" && diritto.consumaUnita) {
+    const consumo = await consumaUnita(admin, { accountId: contesto.accountId, servizio: "copertina", garaId: gara.id, garaTitolo: gara.titolo });
+    if (consumo === "errore") return { error: "Non riesco a usare il pacchetto in questo momento. Riprova tra qualche istante." };
+    if (consumo === "saldo_insufficiente") return { error: TESTI_COPERTINA_PACCHETTO.saldoEsaurito };
+    unitaConsumata = consumo === "consumata";
+  }
+  const restituisciUnita = async (rigaDaEscludere: string | null) => {
+    if (!unitaConsumata) return;
+    const altre = await altreGenerazioniDellaGara(admin, gara.id, rigaDaEscludere);
+    if (altre === 0) await riaccreditaUnita(admin, { accountId: contesto.accountId, servizio: "copertina", garaId: gara.id, motivo: "Copertina non generata (errore del servizio)" });
+  };
+
+  const riserva = await riservaCopertina(admin, { garaId: gara.id, userId: contesto.accountId, stile, fonte: diritto.fonte, concessioneId: diritto.concessioneId ?? null });
+  if (riserva.stato === "errore") {
+    await restituisciUnita(null);
+    return { error: "Non riesco a registrare la generazione in questo momento. Riprova tra qualche istante." };
+  }
+  if (riserva.stato === "schema_assente" && diritto.fonte !== "sviluppo") {
+    await restituisciUnita(null);
+    return { error: "Il servizio non è ancora disponibile. Riprova più tardi." };
+  }
   const rigaId = riserva.stato === "ok" ? riserva.id : null;
 
   let esito: Awaited<ReturnType<typeof generaCopertina>>;
@@ -163,6 +188,8 @@ export async function generaCopertinaGara(_prevState: CopertinaState, formData: 
     if (esito.ok) await completaCopertina(admin, rigaId, esito.marca);
     else await annullaCopertina(admin, rigaId);
   }
+  // non riuscita con l'unità appena usata: si rimette (se la gara non ha altre copertine che la tengono)
+  if (!esito.ok) await restituisciUnita(rigaId);
 
   revalidatePath(`/dashboard/omnia-ai/gare/${garaId}`);
   if (!esito.ok) return { error: esito.errore };

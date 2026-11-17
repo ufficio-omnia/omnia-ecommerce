@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { notificaAcquistoPacchetto } from "@/lib/omnia-ai-email-pacchetti";
 import { leggiPrezzoPianoLavoro, venditaPianoLavoroAttiva } from "@/lib/piano-lavoro-acquisto";
+import { leggiPrezzoCopertina, migrazioneCopertinaPacchettiEseguita, venditaCopertinaAttiva } from "@/lib/copertina-vendita";
 import { controllaSessioneAcquisto } from "@/lib/piano-lavoro-acquisto-calcoli";
 import {
   SERVIZI,
@@ -50,15 +51,19 @@ export async function leggiCatalogoPacchetti(servizio: ServizioPacchetto, client
   return interpretaCatalogoPacchetti(servizio, await leggiImpostazione(db, SERVIZI[servizio].chiaveCatalogo));
 }
 
-// L'interruttore di vendita dei servizi aggiuntivi è UNO solo (lo stesso del piano di lavoro singolo): spento, né il singolo né i pacchetti si
-// comprano. Qualunque errore = no.
-export async function venditaPacchettiAttiva(client?: SupabaseClient): Promise<boolean> {
+// L'interruttore di vendita di un servizio vale per la singola gara E per i suoi pacchetti: quello del piano di lavoro per il piano di lavoro, quello della
+// copertina (pagina «Copertina» della console, 17/11/2026) per la copertina. Spento, né il singolo né i pacchetti si comprano. Qualunque errore = no.
+export async function venditaPacchettiAttiva(client?: SupabaseClient, servizio: ServizioPacchetto = "piano_lavoro"): Promise<boolean> {
+  if (servizio === "copertina") return venditaCopertinaAttiva(client);
+  if (servizio === "food_menu") return false;
   return venditaPianoLavoroAttiva(client);
 }
 
 // Il prezzo della singola gara, per dire «quanto si risparmia» (null = il servizio non si compra singolarmente).
 export async function leggiPrezzoSingoloServizio(servizio: ServizioPacchetto, client?: SupabaseClient): Promise<number | null> {
-  return servizio === "piano_lavoro" ? leggiPrezzoPianoLavoro(client) : null;
+  if (servizio === "piano_lavoro") return leggiPrezzoPianoLavoro(client);
+  if (servizio === "copertina") return leggiPrezzoCopertina(client);
+  return null;
 }
 
 type RigaSaldo = { servizio: string; saldo: number };
@@ -82,10 +87,11 @@ export async function leggiSaldiPacchetti(admin: SupabaseClient, accountId: stri
 }
 
 // Le tabelle dei pacchetti ci sono (migrazione 0104 eseguita) e rispondono? Se no, nulla si offre e nulla si compra: un cliente non deve vedere un
-// pacchetto che non può pagare.
-export async function pacchettiDisponibili(admin: SupabaseClient): Promise<boolean> {
+// pacchetto che non può pagare. Per la copertina serve anche la migrazione 0130 (il servizio «copertina» ammesso dalle tabelle).
+export async function pacchettiDisponibili(admin: SupabaseClient, servizio: ServizioPacchetto = "piano_lavoro"): Promise<boolean> {
   const { error } = await admin.from("omnia_ai_pacchetti_saldi").select("user_id").limit(1);
-  return !error;
+  if (error) return false;
+  return servizio === "copertina" ? (await migrazioneCopertinaPacchettiEseguita(admin)) === "si" : true;
 }
 
 // Quanti acquisti pagati ha l'account, per servizio (per mostrare il servizio a chi ha già speso, anche a saldo zero).
@@ -228,10 +234,10 @@ export async function revocaOffertaDedicata(admin: SupabaseClient, offertaId: st
 type RigaConcessioneScheda = { id: string; tipo: "tutte" | "gara"; gara_titolo: string | null; gare_massime: number | null; scade_il: string | null };
 
 // Le concessioni gratuite attive e non scadute del cliente, ognuna in una riga («Fino a 20 gare, fino al 31/12/2026 — usate 1 su 20»), così la scheda
-// del piano di lavoro spiega perché lo si può generare anche senza pacchetto. Senza la migrazione 0101: nessuna.
-export async function leggiConcessioniPerScheda(admin: SupabaseClient, accountId: string): Promise<string[]> {
+// del servizio spiega perché lo si può generare anche senza pacchetto. Senza la migrazione (0101 per il piano di lavoro, 0130 per la copertina): nessuna.
+export async function leggiConcessioniPerScheda(admin: SupabaseClient, accountId: string, servizio: "piano_lavoro" | "copertina" = "piano_lavoro"): Promise<string[]> {
   const { data, error } = await admin
-    .from("omnia_ai_piano_lavoro_concessioni")
+    .from(servizio === "copertina" ? "omnia_ai_copertina_concessioni" : "omnia_ai_piano_lavoro_concessioni")
     .select("id, tipo, gara_titolo, gare_massime, scade_il")
     .eq("user_id", accountId)
     .eq("attiva", true)
@@ -249,7 +255,10 @@ export async function leggiConcessioniPerScheda(admin: SupabaseClient, accountId
   const conLimite = valide.filter((c) => c.tipo === "tutte" && c.gare_massime !== null).map((c) => c.id);
   const usate: Record<string, Set<string>> = {};
   if (conLimite.length > 0) {
-    const { data: piani } = await admin.from("gara_piani_lavoro").select("gara_id, concessione_id").in("concessione_id", conLimite).in("stato", ["in_corso", "pronto"]).returns<{ gara_id: string; concessione_id: string }[]>();
+    const { data: piani } =
+      servizio === "copertina"
+        ? await admin.from("gara_copertine").select("gara_id, concessione_id").in("concessione_id", conLimite).returns<{ gara_id: string; concessione_id: string }[]>()
+        : await admin.from("gara_piani_lavoro").select("gara_id, concessione_id").in("concessione_id", conLimite).in("stato", ["in_corso", "pronto"]).returns<{ gara_id: string; concessione_id: string }[]>();
     for (const r of piani ?? []) (usate[r.concessione_id] ??= new Set()).add(r.gara_id);
   }
   return valide.map((c) => {
@@ -280,18 +289,26 @@ export async function leggiSchedeServizi({
     leggiOfferteAttive(admin, accountId),
     leggiConcessioniPerScheda(admin, accountId),
   ]);
+  // la copertina (17/11/2026): interruttore, prezzo e pacchetti suoi; i pacchetti solo con la migrazione 0130
+  const [venditaCopertina, catalogoCopertina, prezzoCopertina, concessioniCopertina, copertinaDisponibile] = await Promise.all([
+    venditaPacchettiAttiva(admin, "copertina"),
+    leggiCatalogoPacchetti("copertina", admin),
+    leggiPrezzoSingoloServizio("copertina", admin),
+    leggiConcessioniPerScheda(admin, accountId, "copertina"),
+    migrazioneCopertinaPacchettiEseguita(admin),
+  ]);
   return costruisciSchede({
     settoriGare,
     saldi,
     acquisti,
     titolare,
     // senza la migrazione 0104 non si offre nulla (il saldo, se c'è, si vede comunque)
-    venditaAttiva: venditaAttiva && disponibile,
-    cataloghi: { piano_lavoro: catalogoPianoLavoro },
-    prezzoSingolo: { piano_lavoro: prezzoPianoLavoro },
+    venditaAttiva: { piano_lavoro: venditaAttiva && disponibile, copertina: venditaCopertina && disponibile && copertinaDisponibile === "si" },
+    cataloghi: { piano_lavoro: catalogoPianoLavoro, copertina: catalogoCopertina },
+    prezzoSingolo: { piano_lavoro: prezzoPianoLavoro, copertina: prezzoCopertina },
     // le offerte dedicate e le concessioni: ciò che il cliente ha di suo (senza le tabelle, nulla)
     offerte,
-    concessioni: { piano_lavoro: concessioniPianoLavoro },
+    concessioni: { piano_lavoro: concessioniPianoLavoro, copertina: concessioniCopertina },
   });
 }
 

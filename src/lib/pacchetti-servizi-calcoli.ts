@@ -16,7 +16,7 @@ import type { RigaAcquistoPianoLavoro } from "@/lib/piano-lavoro-acquisto-calcol
 
 // ───── i servizi che si vendono a pacchetto ─────
 
-export const SERVIZI_PACCHETTO = ["piano_lavoro", "food_menu"] as const;
+export const SERVIZI_PACCHETTO = ["piano_lavoro", "copertina", "food_menu"] as const;
 export type ServizioPacchetto = (typeof SERVIZI_PACCHETTO)[number];
 
 export type DescrizioneServizio = {
@@ -40,6 +40,16 @@ export const SERVIZI: Record<ServizioPacchetto, DescrizioneServizio> = {
     disponibile: true,
     chiaveCatalogo: "pacchetti_piano_lavoro",
     descrizione: "Per le gare di servizi di pulizia: l'Excel con formule attive, costruito dai documenti di gara (monte ore, organico, macchinari).",
+  },
+  // La copertina della relazione tecnica (richiesta dell'utente, 17/11/2026): un'unità = la copertina di UNA gara (fino a 3 generazioni per stile),
+  // per qualunque settore. Si vende come il piano di lavoro, ma con un interruttore e un prezzo suoi (copertina-acquisto-calcoli.ts).
+  copertina: {
+    nome: "Copertina relazione tecnica",
+    unitaSingolare: "gara con copertina",
+    unitaPlurale: "gare con copertina",
+    disponibile: true,
+    chiaveCatalogo: "pacchetti_copertina",
+    descrizione: "Per ogni gara: la copertina A4 della relazione tecnica, costruita sul disciplinare con i loghi, fino a 3 generazioni per stile (stilizzato e realistico).",
   },
   food_menu: {
     nome: "OMNIA FOOD MENU",
@@ -76,6 +86,8 @@ export const LIMITI_CATALOGO = {
 // L'esempio dell'utente: 5 piani di lavoro a 300 € (IVA inclusa). Vale finché la console non imposta altro.
 export const CATALOGO_PREDEFINITO: Record<ServizioPacchetto, PacchettoCatalogo[]> = {
   piano_lavoro: [{ quantita: 5, prezzoCentesimi: 30000 }],
+  // richiesta dell'utente (17/11/2026): 5 gare a 175 € (contro 50 € a gara)
+  copertina: [{ quantita: 5, prezzoCentesimi: 17500 }],
   food_menu: [],
 };
 
@@ -287,7 +299,8 @@ export function serviziPerLaHome(c: {
 }): ServizioInHome[] {
   const risultato: ServizioInHome[] = [];
   for (const servizio of SERVIZI_PACCHETTO) {
-    const trattaIlSettore = c.settoriGare.some((s) => (servizio === "piano_lavoro" ? proponePianoLavoro(s) : proponeFoodMenu(s)));
+    // la copertina serve a ogni gara, di qualunque settore
+    const trattaIlSettore = servizio === "copertina" ? c.settoriGare.length > 0 : c.settoriGare.some((s) => (servizio === "piano_lavoro" ? proponePianoLavoro(s) : proponeFoodMenu(s)));
     if (trattaIlSettore) risultato.push({ servizio, motivo: "settore" });
     else if ((c.saldi[servizio] ?? 0) > 0) risultato.push({ servizio, motivo: "saldo" });
     else if ((c.acquisti[servizio] ?? 0) > 0) risultato.push({ servizio, motivo: "acquisti" });
@@ -309,7 +322,7 @@ export type SchedaServizio = {
   offerta: OffertaPacchetti;
   // i pacchetti da mostrare (solo se si possono comprare o richiedere): prima le offerte dedicate al cliente, poi quelli dell'elenco
   pacchetti: PacchettoConConvenienza[];
-  // concessioni gratuite attive della console, già raccontate in una riga (solo per il piano di lavoro)
+  // concessioni gratuite attive della console, già raccontate in una riga (piano di lavoro e copertina)
   concessioni: string[];
 };
 
@@ -320,7 +333,8 @@ export function costruisciSchede(c: {
   saldi: Partial<Record<ServizioPacchetto, number>>;
   acquisti: Partial<Record<ServizioPacchetto, number>>;
   titolare: boolean;
-  venditaAttiva: boolean;
+  // un interruttore per servizio (il piano di lavoro e la copertina si accendono separatamente); un valore solo = uguale per tutti
+  venditaAttiva: boolean | Partial<Record<ServizioPacchetto, boolean>>;
   cataloghi: Partial<Record<ServizioPacchetto, PacchettoCatalogo[]>>;
   prezzoSingolo: Partial<Record<ServizioPacchetto, number | null>>;
   // le offerte dedicate attive e non scadute di QUESTO cliente (già filtrate)
@@ -338,7 +352,8 @@ export function costruisciSchede(c: {
     const haAvutoUnita = c.saldi[servizio] !== undefined || (c.acquisti[servizio] ?? 0) > 0;
     const concessioni = c.concessioni?.[servizio] ?? [];
     const proprie = offerteDi(servizio);
-    const offerta = valutaOffertaPacchetti({ servizio, titolare: c.titolare, venditaAttiva: c.venditaAttiva, catalogo: c.cataloghi[servizio] ?? [], haOfferte: proprie.length > 0 });
+    const venditaAttiva = typeof c.venditaAttiva === "boolean" ? c.venditaAttiva : (c.venditaAttiva[servizio] ?? false);
+    const offerta = valutaOffertaPacchetti({ servizio, titolare: c.titolare, venditaAttiva, catalogo: c.cataloghi[servizio] ?? [], haOfferte: proprie.length > 0 });
     if (offerta.stato === "nessuna" && saldo === 0 && concessioni.length === 0) continue;
     const singolo = c.prezzoSingolo[servizio] ?? null;
     const conConvenienza = (p: PacchettoCatalogo) => (singolo === null ? { perUnitaCentesimi: Math.round(p.prezzoCentesimi / p.quantita), risparmioCentesimi: null } : convenienzaPacchetto(p, singolo));
@@ -406,13 +421,16 @@ export const TESTI_PACCHETTI = {
   dettaglioPacchetto: "Non scadono: si esauriscono man mano che li usi, anche in più mesi. Si perdono se l'abbonamento cessa.",
   saldoEtichetta: "Ti restano",
   saldoZero: "Nessun piano di lavoro residuo",
+  saldoZeroDi: (servizio: ServizioPacchetto) => (servizio === "copertina" ? "Nessuna gara con copertina residua" : `Nessun ${SERVIZI[servizio].unitaSingolare} residuo`),
   // chi non ha mai avuto unità non ha «finito» nulla
   nessunPacchetto: "Non hai pacchetti attivi",
   offertaDedicata: "Offerta dedicata a te",
   validaFinoAl: (iso: string) => `valida fino al ${dataItaliana(iso)}`,
   concessioneEtichetta: "Concessione gratuita",
   concessioneNota: "Per le gare coperte dalla concessione il piano di lavoro non consuma il pacchetto.",
-  pacchettoPagato: "Pagamento ricevuto: sto aggiungendo i piani di lavoro al tuo saldo. Se non li vedi, aggiorna la pagina tra qualche istante.",
+  concessioneNotaDi: (servizio: ServizioPacchetto) =>
+    servizio === "copertina" ? "Per le gare coperte dalla concessione la copertina non consuma il pacchetto." : "Per le gare coperte dalla concessione il piano di lavoro non consuma il pacchetto.",
+  pacchettoPagato: "Pagamento ricevuto: sto aggiungendo le unità del pacchetto al tuo saldo. Se non le vedi, aggiorna la pagina tra qualche istante.",
   pacchettoAnnullato: "Pagamento annullato: non è stato addebitato nulla.",
   soloTitolareNota: "Il pacchetto lo acquista e lo paga l'amministratore dell'azienda: premendo «Acquista» gli arriva una email con la tua richiesta.",
   avvisoInviato: "Ho avvisato l'amministratore: troverà il pacchetto nella sua area riservata.",

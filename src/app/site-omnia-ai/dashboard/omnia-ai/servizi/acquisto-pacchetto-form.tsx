@@ -5,6 +5,15 @@ import { acquistaPacchettoServizio, type AcquistoPacchettoState } from "@/app/ac
 import { CLAUSOLE_PACCHETTI, CLAUSOLE_SPECIFICHE_PACCHETTI, VERSIONE_CONDIZIONI_PACCHETTI, formattaEuro, testoUnita, type ServizioPacchetto } from "@/lib/pacchetti-servizi-calcoli";
 import { CLAUSOLE_PIANO_LAVORO, CLAUSOLE_SPECIFICHE_PIANO_LAVORO, VERSIONE_CONDIZIONI_PIANO_LAVORO } from "@/lib/piano-lavoro-acquisto-calcoli";
 import { ETICHETTA_LINK_CONDIZIONI, PERCORSO_CONDIZIONI_PIANO_LAVORO } from "@/lib/piano-lavoro-testi";
+import { CLAUSOLE_COPERTINA, CLAUSOLE_SPECIFICHE_COPERTINA, VERSIONE_CONDIZIONI_COPERTINA } from "@/lib/copertina-acquisto-calcoli";
+
+// Le avvertenze del servizio che si accettano insieme alle condizioni del pacchetto: quelle del piano di lavoro (approvate dal legale) o le condizioni di
+// acquisto della copertina (approvate dal titolare l'11/11/2026), le stesse dell'acquisto della singola gara.
+function avvertenzeServizio(servizio: ServizioPacchetto) {
+  return servizio === "copertina"
+    ? { nome: "copertina della relazione tecnica", clausole: CLAUSOLE_COPERTINA, specifiche: CLAUSOLE_SPECIFICHE_COPERTINA, versione: VERSIONE_CONDIZIONI_COPERTINA, link: null }
+    : { nome: "piano di lavoro", clausole: CLAUSOLE_PIANO_LAVORO, specifiche: CLAUSOLE_SPECIFICHE_PIANO_LAVORO, versione: VERSIONE_CONDIZIONI_PIANO_LAVORO, link: PERCORSO_CONDIZIONI_PIANO_LAVORO };
+}
 
 const statoIniziale: AcquistoPacchettoState = {};
 
@@ -33,6 +42,7 @@ export default function AcquistoPacchettoForm({
   const prezzo = stato.prezzoAggiornatoCentesimi ?? prezzoCentesimi;
   const aggiornato = stato.prezzoAggiornatoCentesimi !== undefined && stato.prezzoAggiornatoCentesimi !== prezzoCentesimi;
   const unita = testoUnita(quantita, servizio);
+  const avv = avvertenzeServizio(servizio);
 
   return (
     <form action={formAction} style={{ marginTop: 14 }}>
@@ -43,7 +53,7 @@ export default function AcquistoPacchettoForm({
 
       <details open={aperto}>
         <summary style={{ cursor: "pointer" }}>
-          Condizioni del pacchetto (versione {VERSIONE_CONDIZIONI_PACCHETTI}) e avvertenze sul servizio (versione {VERSIONE_CONDIZIONI_PIANO_LAVORO})
+          Condizioni del pacchetto (versione {VERSIONE_CONDIZIONI_PACCHETTI}) e avvertenze sul servizio (versione {avv.versione})
         </summary>
         <div style={{ marginTop: 10, maxHeight: 280, overflowY: "auto", paddingRight: 8, fontSize: 14, lineHeight: 1.55 }}>
           <p style={{ margin: "0 0 8px" }}>
@@ -58,9 +68,9 @@ export default function AcquistoPacchettoForm({
             </p>
           ))}
           <p style={{ margin: "14px 0 8px" }}>
-            <strong>Le avvertenze sul servizio «piano di lavoro»</strong>
+            <strong>Le avvertenze sul servizio «{avv.nome}»</strong>
           </p>
-          {CLAUSOLE_PIANO_LAVORO.map((c) => (
+          {avv.clausole.map((c) => (
             <p key={`s${c.numero}`} style={{ margin: "0 0 10px" }}>
               <strong>
                 {c.numero}. {c.titolo}.
@@ -68,19 +78,21 @@ export default function AcquistoPacchettoForm({
               {c.testo}
             </p>
           ))}
-          <p style={{ margin: 0 }}>
-            <a href={PERCORSO_CONDIZIONI_PIANO_LAVORO} target="_blank" rel="noopener noreferrer">
-              {ETICHETTA_LINK_CONDIZIONI}
-            </a>
-          </p>
+          {avv.link && (
+            <p style={{ margin: 0 }}>
+              <a href={avv.link} target="_blank" rel="noopener noreferrer">
+                {ETICHETTA_LINK_CONDIZIONI}
+              </a>
+            </p>
+          )}
         </div>
       </details>
 
       <div className="omnia-check-riga">
         <input id={`accettaCondizioni-${suffisso}`} name="accettaCondizioni" type="checkbox" checked={accetta} onChange={(e) => setAccetta(e.target.checked)} required />
         <label htmlFor={`accettaCondizioni-${suffisso}`}>
-          Dichiaro di aver letto e accettato le condizioni del pacchetto (versione {VERSIONE_CONDIZIONI_PACCHETTI}) e le avvertenze sul piano di lavoro (versione{" "}
-          {VERSIONE_CONDIZIONI_PIANO_LAVORO}) e di aver preso visione della{" "}
+          Dichiaro di aver letto e accettato le condizioni del pacchetto (versione {VERSIONE_CONDIZIONI_PACCHETTI}) e le avvertenze sul servizio «{avv.nome}» (versione{" "}
+          {avv.versione}) e di aver preso visione della{" "}
           {privacyVersione ? (
             <a href={`/documenti-legali/privacy-policy/${privacyVersione}`} target="_blank" rel="noopener noreferrer">
               Privacy policy (versione {privacyVersione})
@@ -95,8 +107,8 @@ export default function AcquistoPacchettoForm({
         <input id={`accettaClausole-${suffisso}`} name="accettaClausole" type="checkbox" checked={approva} onChange={(e) => setApprova(e.target.checked)} required />
         <label htmlFor={`accettaClausole-${suffisso}`}>
           Dichiaro di approvare specificamente, ai sensi di legge, le clausole n. {CLAUSOLE_SPECIFICHE_PACCHETTI.map((c) => c.numero).join(", ")} del pacchetto (
-          {CLAUSOLE_SPECIFICHE_PACCHETTI.map((c) => c.titolo.toLowerCase()).join("; ")}) e le clausole n. {CLAUSOLE_SPECIFICHE_PIANO_LAVORO.map((c) => c.numero).join(", ")} delle avvertenze sul
-          piano di lavoro ({CLAUSOLE_SPECIFICHE_PIANO_LAVORO.map((c) => c.titolo.toLowerCase()).join("; ")}).
+          {CLAUSOLE_SPECIFICHE_PACCHETTI.map((c) => c.titolo.toLowerCase()).join("; ")}) e le clausole n. {avv.specifiche.map((c) => c.numero).join(", ")} delle avvertenze sul
+          servizio «{avv.nome}» ({avv.specifiche.map((c) => c.titolo.toLowerCase()).join("; ")}).
         </label>
       </div>
 

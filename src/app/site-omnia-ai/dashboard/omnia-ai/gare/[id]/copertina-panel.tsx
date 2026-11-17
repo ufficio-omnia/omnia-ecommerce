@@ -9,7 +9,8 @@ import ServizioRichiudibile from "./servizio-richiudibile";
 import CopertinaChat from "./copertina-chat";
 import CopertineGalleria from "./copertine-galleria";
 import { CIG_CAMPO_MASSIMO, ETICHETTA_STILE, SOTTOTITOLO_MASSIMO, TITOLO_PRINCIPALE_MASSIMO, TITOLO_PRINCIPALE_PREDEFINITO, type Stile } from "@/lib/copertina-relazione-calcoli";
-import { prezzoCopertina, type MotivoNegato } from "@/lib/copertina-diritto-calcoli";
+import { TESTI_COPERTINA_PACCHETTO, prezzoCopertina, type MotivoNegato } from "@/lib/copertina-diritto-calcoli";
+import { TESTI_PACCHETTI, formattaEuro, testoUnita, type PacchettoNellaGara } from "@/lib/pacchetti-servizi-calcoli";
 import { TESTI_COPERTINA, type OffertaCopertina, type RitornoPagamentoCopertina } from "@/lib/copertina-acquisto-calcoli";
 
 const statoIniziale: CopertinaState = {};
@@ -65,6 +66,10 @@ export type DocumentoScelta = { id: string; nome_file: string };
 // Per ogni stile: quante generazioni ha già fatto su questa gara, il massimo, e se può farne un'altra (con il perché, se no). Lo decide il server.
 export type StatoStile = { stile: Stile; fatte: number; massime: number; consentito: boolean; motivo: MotivoNegato | null; messaggio: string | null };
 
+// Il pacchetto prepagato delle copertine nella gara: le gare residue, se la prossima copertina userebbe un'unità (il pulsante lo dice e chiede conferma) e, a
+// chi può comprare la singola gara, il pacchetto più conveniente da proporre accanto.
+export type PacchettoCopertinaVista = { saldo: number; consumaUnita: boolean; proposta: PacchettoNellaGara["proposta"] };
+
 // Riquadro «Copertina relazione tecnica» dentro la gara: due pulsanti (stile stilizzato e stile realistico) leggono il disciplinare o il capitolato scelto
 // (titolo, CIG e ciò che il documento dice della gara) e creano una copertina in formato A4, con il logo della stazione appaltante in alto a sinistra e
 // quello del cliente in basso a destra. Il cliente può generarle in entrambi gli stili e poi scegliere: ogni generazione si aggiunge alle precedenti
@@ -78,6 +83,8 @@ export default function CopertinaPanel({
   documentoPredefinito,
   stili,
   righeGratis,
+  righeFonte,
+  pacchetto,
   offerta,
   ritorno,
   privacyVersione,
@@ -95,6 +102,9 @@ export default function CopertinaPanel({
   stili: StatoStile[];
   // ciò che resta del periodo gratuito (vuote se il servizio non è gratuito per questo cliente)
   righeGratis: string[];
+  // da dove viene il diritto quando non è il gratis del cliente (concessione, pacchetto, prova)
+  righeFonte: string[];
+  pacchetto: PacchettoCopertinaVista;
   // servizio «a pagamento» per questo cliente: se la gara si può comprare adesso, e da chi (il titolare; l'Ufficio Gare vede che serve il titolare)
   offerta: OffertaCopertina;
   // l'esito del pagamento, dal parametro con cui Stripe riporta il cliente alla gara
@@ -244,11 +254,13 @@ export default function CopertinaPanel({
         </fieldset>
 
         {/* Ciò che resta del periodo gratuito, e perché non si può generare (servizio non attivo, periodo finito, a pagamento): lo dice il server, qui si mostra */}
-        {righeGratis.length > 0 && (
+        {[...righeGratis, ...righeFonte].length > 0 && (
           <p className="omnia-riquadro-nota" style={{ marginTop: 14, marginBottom: 0 }}>
-            {righeGratis.join(" ")}
+            {[...righeGratis, ...righeFonte].join(" ")}
           </p>
         )}
+        {/* la prima copertina della gara pagata con il pacchetto usa un'unità: il server la pretende confermata */}
+        {pacchetto.consumaUnita && <input type="hidden" name="usaPacchetto" value="1" />}
         {motivoGenerale && (
           <div className="omnia-messaggio-stato avviso" style={{ marginTop: 14 }}>
             <p style={{ margin: 0 }}>{motivoGenerale}</p>
@@ -265,10 +277,18 @@ export default function CopertinaPanel({
                 name="stile"
                 value={s.stile}
                 disabled={pending || documenti.length === 0 || !s.consentito}
-                onClick={() => setStileInCorso(s.stile)}
+                onClick={(e) => {
+                  if (pacchetto.consumaUnita && !window.confirm(TESTI_COPERTINA_PACCHETTO.confermaUsoUnita)) {
+                    e.preventDefault();
+                    return;
+                  }
+                  setStileInCorso(s.stile);
+                }}
                 className={s.stile === "stilizzato" ? "omnia-btn omnia-btn-p omnia-btn-piccolo" : "omnia-btn omnia-btn-s omnia-btn-piccolo"}
               >
-                {pending && stileInCorso === s.stile ? "Generazione in corso..." : `Genera copertina relazione tecnica — ${ETICHETTA_STILE[s.stile].toLowerCase()}`}
+                {pending && stileInCorso === s.stile
+                  ? "Generazione in corso..."
+                  : `Genera copertina relazione tecnica — ${ETICHETTA_STILE[s.stile].toLowerCase()}${pacchetto.consumaUnita && s.consentito ? ` (${TESTI_COPERTINA_PACCHETTO.usaUnita(pacchetto.saldo)})` : ""}`}
               </button>
               <span className="omnia-riquadro-nota" style={{ margin: 0 }}>
                 {ETICHETTA_STILE[s.stile]}: {s.fatte} di {s.massime} generazioni fatte
@@ -286,6 +306,18 @@ export default function CopertinaPanel({
       {ritorno === "pagato" && acquistata && puoGenerare && <p className="omnia-messaggio-stato successo">{TESTI_COPERTINA.pagamentoConfermato}</p>}
       {/* appena pagato, finché il webhook non conferma, il modulo di acquisto non si offre di nuovo (si rischierebbe un secondo pagamento) */}
       {offerta.stato === "acquistabile" && !inConferma && <AcquistoCopertina garaId={garaId} prezzoCentesimi={offerta.prezzoCentesimi} privacyVersione={privacyVersione} />}
+      {offerta.stato === "acquistabile" && !inConferma && pacchetto.proposta && (
+        <p className="omnia-messaggio-stato avviso" style={{ marginTop: 14 }}>
+          <strong>
+            {pacchetto.proposta.offertaId ? `${TESTI_PACCHETTI.offertaDedicata}: ` : "Prepari più gare? Con un pacchetto: "}
+            {testoUnita(pacchetto.proposta.quantita, "copertina")} a {formattaEuro(pacchetto.proposta.prezzoCentesimi)} (IVA inclusa), {formattaEuro(pacchetto.proposta.perUnitaCentesimi)} a gara.
+          </strong>{" "}
+          {TESTI_PACCHETTI.dettaglioPacchetto}{" "}
+          <Link href={pacchetto.proposta.offertaId ? `/dashboard/omnia-ai/servizi?servizio=copertina&offerta=${pacchetto.proposta.offertaId}` : "/dashboard/omnia-ai/servizi?servizio=copertina"}>
+            {pacchetto.proposta.offertaId ? "Vedi l'offerta" : "Vedi i pacchetti"}
+          </Link>
+        </p>
+      )}
       {offerta.stato === "solo_titolare" && (
         <p className="omnia-messaggio-stato avviso" style={{ marginTop: 12 }}>
           {TESTI_COPERTINA.soloTitolare(prezzoCopertina(offerta.prezzoCentesimi))}
