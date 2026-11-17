@@ -24,9 +24,15 @@
 63122000-0;63122000;Servizi di magazzino;Facchinaggio e movimentazione
 98392000-7;98392000;Servizi di trasloco;Facchinaggio e movimentazione
 55300000-3;55300000;Servizi di ristorazione e di distribuzione pasti;Ristorazione collettiva
+55310000-6;55310000;Servizi di ristorazione con cameriere;Ristorazione collettiva
+55311000-3;55311000;Servizi di ristorazione con cameriere in ristoranti per clientela ristretta;Ristorazione collettiva
+55312000-0;55312000;Servizi di ristorazione con cameriere per clientela non ristretta;Ristorazione collettiva
 55320000-9;55320000;Servizi di distribuzione pasti;Ristorazione collettiva
 55321000-6;55321000;Servizi di preparazione pasti;Ristorazione collettiva
 55322000-3;55322000;Servizi di cottura pasti;Ristorazione collettiva
+55330000-2;55330000;Servizi di caffetteria;Ristorazione collettiva
+55400000-4;55400000;Servizi di mescita di bevande;Ristorazione collettiva
+55410000-7;55410000;Servizi di gestione bar;Ristorazione collettiva
 55500000-5;55500000;Servizi di mensa e servizi di catering;Ristorazione collettiva
 55510000-8;55510000;Servizi di mensa;Ristorazione collettiva
 55511000-5;55511000;Servizi di mensa ed altri servizi di caffetteria per clientela ristretta;Ristorazione collettiva

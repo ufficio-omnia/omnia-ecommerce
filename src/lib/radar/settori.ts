@@ -205,7 +205,10 @@ export const SOTTOCATEGORIE: Record<SettoreRadar, readonly Sottocategoria[]> = {
     { id: "distribuzione_pasti", nome: "Distribuzione pasti", testo: /\b(distribuzion\w* (dei |di )?pasti|consegna (dei |di )?pasti|pasti a domicilio|fornitura (dei |di )?pasti|trasporto (dei |di )?pasti)\b/, cpv: ["55320000", "55521000", "55521100", "55521200"] },
     { id: "concessione_bar", nome: "Concessione bar e caffetteria", testo: /\b(bar|caffetteri\w*|enotec\w*|chiosc\w*)\b/ },
     { id: "concessione_ristorante", nome: "Concessione ristorante", testo: /\b(ristorant\w*|locanda|trattori\w*|pizzeri\w*|food beverage|somministrazione al pubblico)\b/ },
-    { id: "concessione_punto_ristoro", nome: "Concessione punto ristoro", testo: /\b(ristoro|distributor\w* automatic\w*|distribuzione automatica|vending|panin\w*|prodotti da forno|merend\w*|snack)\b/ },
+    { id: "concessione_punto_ristoro", nome: "Concessione punto ristoro", testo: /\b(ristoro|panin\w*|prodotti da forno|merend\w*)\b/ },
+    // decisione dell'utente del 17/11: le concessioni autonome di distributori automatici sono ristorazione A, in una sottocategoria
+    // DEDICATA, distinta dal punto ristoro (dove i distributori sono accessori a un affidamento più ampio valgono le regole B generali)
+    { id: "distributori_automatici", nome: "Concessione distributori automatici di alimenti e bevande", testo: /\b(distributor\w* automatic\w*|distribuzione automatica|vending)\b/ },
     { id: "appalti_multiservizi", nome: "Ristorazione dentro appalti multiservizi e gestioni integrate" },
   ],
   vigilanza_portierato: [
@@ -286,6 +289,8 @@ export type RegolaEsclusione = {
   casi: readonly string[];
   condizione?: (c: ContestoCpv) => boolean;
   ancheConNucleo?: boolean;
+  // se vale anche una correlazione (gestione di una struttura, evento, finanza di progetto…), il livello è B invece di C
+  cedeAlleCorrelazioni?: boolean;
 };
 
 // Videosorveglianza: gli oggetti tecnici e il servizio operativo (decisione dell'utente del 17/11)
@@ -293,9 +298,27 @@ const VIDEO = /\b(video ?sorveglianz\w*|telecamer\w*|fototrappol\w*|tvcc|impiant
 const OPERATIVO =
   /\b(monitoraggio|presidi\w*|vigilanz\w*|guardi\w* giurat\w*|piantonament\w*|pattugliament\w*|pronto intervento|ronda|ronde|valori|centrale operativa|control room|sala (di )?controllo|telesorveglianz\w*|teleallarm\w*|teleradioallarm\w*|televigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|operatori)\b/;
 
+// I 6 CPV di bar e ristoranti approvati dall'utente il 17/11 (verificati su EUR-Lex, regolamento (CE) n. 213/2008): valgono solo con il
+// contesto. Se in ristorazione c'è SOLO uno di questi codici, l'oggetto deve nominare il servizio di ristorazione.
+export const CPV_CON_CONTESTO: readonly string[] = ["55410000", "55400000", "55330000", "55310000", "55311000", "55312000"];
+const NOMINA_RISTORAZIONE =
+  /\b(bar|caffetteri\w*|ristorant\w*|ristorazion\w*|ristoro|punt\w* (di )?ristoro|somministrazion\w*|mens[ae]|refezion\w*|past[oi]|catering|tavola (calda|fredda)|enotec\w*|distributor\w* automatic\w*|vending|food beverage|locanda|trattori\w*|pizzeri\w*)\b/;
+
 const MOVIMENTAZIONE = /\b(facchinagg\w*|trasloc\w*|movimentazion\w*|carico|scarico|magazzin\w*|immagazzin\w*|stoccaggi\w*|logistic\w*|manovalanza|smontaggi\w*|montaggi\w*|allestiment\w*|sgomber\w*|smistament\w*|imballagg\w*)\b/;
 
 export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
+  {
+    // regola del contesto dei 6 CPV nuovi (decisione dell'utente del 17/11): un CPV non basta. Se l'oggetto non nomina il servizio, la
+    // gara è C; ma se l'oggetto descrive una gestione più ampia (struttura, evento, finanza di progetto…), la ristorazione è accessoria: B
+    id: "cpv_nuovi_senza_oggetto",
+    settori: ["ristorazione"],
+    cerca: new RegExp(`^(?!.*${NOMINA_RISTORAZIONE.source})`),
+    salvo: null,
+    condizione: (c) => c.delSettore.length > 0 && c.delSettore.every((x) => CPV_CON_CONTESTO.includes(x)),
+    cedeAlleCorrelazioni: true,
+    motivo: "Solo un CPV di bar, caffetteria o ristorazione con cameriere, ma l'oggetto non nomina bar, caffetteria, ristorante, punto ristoro, somministrazione o mensa",
+    casi: ["Concessione di spazi commerciali presso la stazione marittima"],
+  },
   {
     id: "concessione_di_immobili",
     settori: ["ristorazione"],
@@ -491,7 +514,7 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
     id: "gestione_di_struttura",
     settori: "tutti",
     cerca:
-      /\b(gestion\w*|concession\w*|conduzion\w*)( \w+){0,4} (centr[oi]|struttur\w*|rsa|r s a|cas[ae] (di riposo|protett\w*|di soggiorno|famiglia|albergo)|residen\w*|asil\w*|nid\w*|comunita|hotspot|impiant\w* sportiv\w*|impianto e|piscin\w*|palestr\w*|palazzett\w*|stabil[ei]|compendi\w*|convitt\w*|ostell\w*|rifugi\w*|campeggi\w*|muse\w*|teatr\w*)\b/,
+      /\b(gestion\w*|concession\w*|conduzion\w*)( \w+){0,4} (centr[oi]|struttur\w*|rsa|r s a|cas[ae] (di riposo|protett\w*|di soggiorno|famiglia|albergo)|residen\w*|asil\w*|nid\w*|comunita|hotspot|impiant\w* sportiv\w*|impianto e|piscin\w*|palestr\w*|palazzett\w*|stabil[ei]|compendi\w*|convitt\w*|ostell\w*|rifugi\w*|campeggi\w*|alberg\w*|hotel|muse\w*|teatr\w*)\b/,
     salvo: new RegExp(`${GESTIONE_DEL_SERVIZIO.source}|\\bcentr\\w* (di )?cottura\\b`),
     motivo: "Gestione o concessione di una struttura (centro, residenza, asilo nido, impianto sportivo, museo, immobile): il servizio ne è una parte",
     casi: ["Gara europea per l'affidamento servizi gestione centri accoglienza straordinari", "Concessione in gestione dell'impianto sportivo comunale", "Concessione in gestione dello stabile comunale costituito da bar, ristorante, pizzeria e servizio mensa per la scuola dell'infanzia"],
@@ -513,13 +536,29 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
     motivo: "Concessione in finanza di progetto (lavori e gestione): il servizio ne è una parte",
     casi: ["Affidamento mediante project financing degli interventi di riqualificazione dell'Isola Comacina finalizzato alla concessione del servizio bar/ristoro e gestione della locanda"],
   },
+  // «solo_distributori» (B) non c'è più: decisione dell'utente del 17/11, le concessioni autonome di distributori automatici sono A nella
+  // sottocategoria «distributori_automatici»
   {
-    id: "solo_distributori",
+    // eventi: la ristorazione è accessoria se l'oggetto principale è l'organizzazione dell'evento (viene prima); principale se il servizio
+    // di ristorazione viene prima («servizio di catering per gli eventi»). Decisione dell'utente del 17/11: niente limite automatico a B
+    id: "organizzazione_eventi",
+    settori: ["ristorazione", "pulizia", "vigilanza_portierato", "facchinaggio"],
+    // «gestione» solo se riferita direttamente all'evento: «gestione bar, catering per gli eventi» è il servizio, non l'organizzazione
+    cerca:
+      /\b(organizzazion\w*|allestiment\w*)( \w+){0,4} (event\w*|congress\w*|convegn\w*|manifestazion\w*|fier[ae]|festival|concert\w*|spettacol\w*|edizion\w*)\b|\bgestion\w* (dell |della |del |dei |degli |delle )?(event\w*|congress\w*|convegn\w*|manifestazion\w*|fier[ae]|festival)\b/,
+    salvo: null,
+    motivo: "Organizzazione di un evento, di un congresso o di una manifestazione: il servizio ne è una parte",
+    casi: ["Concessione del servizio di organizzazione e gestione della decima edizione del congresso europeo di matematica, comprensivo di catering"],
+  },
+  {
+    // trasporti: la ristorazione a bordo è accessoria se l'oggetto principale è il trasporto (viene prima)
+    id: "trasporto_con_ristorazione",
     settori: ["ristorazione"],
-    cerca: /\b(distributor\w* automatic\w*|distribuzione automatica|vending)\b/,
-    salvo: /\b(bar|caffetteri\w*|ristorant\w*|ristorazion\w*|punt\w* (di )?ristoro|ristoro interno|mens[ae]|refezion\w*|past[oi]|catering|panin\w*)\b/,
-    motivo: "Solo distributori automatici: servizio vicino alla ristorazione, non è una mensa né un bar",
-    casi: ["Servizio di somministrazione di bevande e alimenti tramite distributori automatici"],
+    // non «navigazione» da sola: «servizio di navigazione nelle residenze e mense universitarie» è la connessione a internet (caso reale)
+    cerca: /\b(trasporto (ferroviari\w*|passegger\w*|marittim\w*|aere\w*|turistic\w*)|navigazione (marittim\w*|lacustr\w*|fluvial\w*|laguna\w*|turistic\w*)|crocier\w*|traghett\w*|servizi\w* ferroviari\w*)\b/,
+    salvo: null,
+    motivo: "Servizio di trasporto che comprende la ristorazione a bordo: la ristorazione è accessoria",
+    casi: ["Dialogo competitivo per servizio di trasporto ferroviario passeggeri a fini turistici, comprensivo di servizi di ristorazione a bordo"],
   },
   {
     id: "logistica_senza_facchinaggio",
@@ -562,7 +601,15 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
 // Le correlazioni che, in ristorazione, portano alla sottocategoria «dentro appalti multiservizi e gestioni integrate»
 const CORRELAZIONI_DI_GESTIONE = new Set(["gestione_integrata", "gestione_di_struttura", "servizi_alla_persona"]);
 // Le correlazioni che valgono solo se vengono prima del servizio del settore nell'oggetto (vedi valutaSettore)
-const CORRELAZIONI_DI_POSIZIONE = new Set(["gestione_integrata", "gestione_di_struttura", "servizi_alla_persona", "finanza_di_progetto", "videosorveglianza_mista"]);
+const CORRELAZIONI_DI_POSIZIONE = new Set([
+  "gestione_integrata",
+  "gestione_di_struttura",
+  "servizi_alla_persona",
+  "finanza_di_progetto",
+  "videosorveglianza_mista",
+  "organizzazione_eventi",
+  "trasporto_con_ristorazione",
+]);
 
 // Dove l'oggetto nomina per la prima volta il servizio del settore (parole approvate o sottocategorie); -1 se non lo nomina.
 function posizioneDelServizio(settore: SettoreRadar, t: string): number {
@@ -644,7 +691,9 @@ function valutazione(settore: SettoreRadar, livello: Livello, sottocategorie: st
 function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, da: "cpv" | "parole_chiave"): Valutazione {
   const cpvDelSettore = da === "cpv" ? contesto.delSettore : [];
   const escluse = regoleDiEsclusione(settore, t, contesto);
-  if (escluse.length) return valutazione(settore, "C", [], escluse.map((r) => ({ id: r.id, motivo: r.motivo })), da, cpvDelSettore);
+  // una regola che «cede alle correlazioni» esclude solo se nessuna correlazione vale (vedi sotto: B invece di C)
+  const escluseFerme = escluse.filter((r) => !r.cedeAlleCorrelazioni);
+  if (escluseFerme.length) return valutazione(settore, "C", [], escluse.map((r) => ({ id: r.id, motivo: r.motivo })), da, cpvDelSettore);
   const daTesto = sottocategorieDaTesto(settore, t);
   const daCpv = sottocategorieDaCpv(settore, contesto.delSettore);
   const predefinita = SOTTOCATEGORIE[settore][0].id;
@@ -667,6 +716,8 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
     const sottocategorie = daTesto.length || diGestione.length ? [...daTesto, ...diGestione] : daCpv.length ? daCpv : [predefinita];
     return valutazione(settore, "B", sottocategorie, correlate.map((r) => ({ id: r.id, motivo: r.motivo })), da, cpvDelSettore);
   }
+  // nessuna correlazione: le regole che cedevano alle correlazioni escludono
+  if (escluse.length) return valutazione(settore, "C", [], escluse.map((r) => ({ id: r.id, motivo: r.motivo })), da, cpvDelSettore);
   const haNucleo = !!t && !!nucleoDel(settore)?.test(t);
   const principale = contesto.principale ? MAPPA_CPV.get(contesto.principale) : undefined;
   const sottocategorie = daTesto.length ? daTesto : daCpv.length ? daCpv : [predefinita];
@@ -688,7 +739,7 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // correzione dei settori di una gara già in archivio (registro dei cambiamenti, «correzione_dati» sul campo «settori»), così ogni
 // correzione dice con quali regole è stata fatta e si può annullare. «2026-11-17b»: regole definitive dell'utente del 17/11.
 // «2026-11-17c»: più sottocategorie per settore, quattro tipi di videosorveglianza, parole chiave della vigilanza senza «videosorveglianza».
-export const VERSIONE_REGOLE_SETTORI = "2026-11-17c";
+export const VERSIONE_REGOLE_SETTORI = "2026-11-17d";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Identificativo della correzione nel registro: versione e regole («regole-settori-2026-11-17b:rifiuti»). Rifare la stessa correzione
@@ -746,7 +797,37 @@ function livelloMigliore(v: readonly Valutazione[]): Livello | null {
   return v.some((x) => x.livello === "A") ? "A" : v.some((x) => x.livello === "B") ? "B" : v.length ? "C" : null;
 }
 
-export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?: readonly (string | null | undefined)[]; testo?: string | null }): Classificazione {
+export type DatiGara = {
+  cpvPrincipale?: string | null;
+  cpvTutti?: readonly (string | null | undefined)[];
+  // oggetto della gara e dei lotti, insieme (come oggi)
+  testo?: string | null;
+  // FACOLTATIVO (17/11): i lotti, con oggetto e CPV di ciascuno. Con due o più lotti, un lotto che da solo è pertinente per un settore
+  // rende quel settore AUTONOMO nella gara: A invece di B (per esempio un lotto «servizi di catering» in un appalto di eventi). Senza i
+  // lotti il risultato non cambia
+  lotti?: readonly { testo?: string | null; cpv?: readonly (string | null | undefined)[] }[];
+};
+
+const MOTIVO_LOTTO_AUTONOMO = "Un lotto della gara è dedicato al servizio del settore: è autonomo, non accessorio";
+
+export function classificaGara(dati: DatiGara): Classificazione {
+  const c = classificaSenzaLotti(dati);
+  const lotti = dati.lotti ?? [];
+  if (lotti.length < 2 || !c.valutazioni.some((v) => v.livello === "B")) return c;
+  const perLotto = lotti.map((l) => classificaSenzaLotti({ cpvPrincipale: l.cpv?.[0] ?? null, cpvTutti: l.cpv ?? [], testo: l.testo ?? null }));
+  const valutazioni = c.valutazioni.map((v) => {
+    if (v.livello !== "B") return v;
+    const lotto = perLotto.map((p) => p.valutazioni.find((x) => x.settore === v.settore && x.livello === "A")).find((x) => !!x);
+    if (!lotto) return v;
+    const sottocategorie = [...lotto.sottocategorie, ...v.sottocategorie.filter((s) => s !== "appalti_multiservizi")];
+    const regole = [{ id: "lotto_autonomo", motivo: MOTIVO_LOTTO_AUTONOMO }, ...v.regole.map((id, i) => ({ id, motivo: v.motivi[i] ?? "" }))];
+    return valutazione(v.settore, "A", sottocategorie, regole, v.da, v.cpv);
+  });
+  const tenute = valutazioni.filter((v) => c.settori.includes(v.settore));
+  return { ...c, valutazioni, livello: tenute.length ? livelloMigliore(tenute) : c.livello };
+}
+
+function classificaSenzaLotti(dati: DatiGara): Classificazione {
   const principale = normalizzaCpv(dati.cpvPrincipale);
   const tutti = [...new Set([principale, ...(dati.cpvTutti ?? []).map(normalizzaCpv)].filter((c): c is string => !!c))];
   const voci = tutti.map((c) => MAPPA_CPV.get(c)).filter((v): v is VoceCpv => !!v);
@@ -762,6 +843,12 @@ export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?:
     // l'ausiliariato non ha CPV: se le parole lo indicano si aggiunge, con il suo motivo
     const valutazioni = [...valutazioniCpv];
     if (settoriParole.includes("ausiliariato") && !tenute.some((v) => v.settore === "ausiliariato")) valutazioni.push(valutaSettore("ausiliariato", t, contesto("ausiliariato"), "parole_chiave"));
+    // i 6 CPV nuovi (17/11) non tolgono i settori che la gara aveva per parola chiave: se i settori tenuti vengono SOLO da quei codici,
+    // restano anche i settori delle parole chiave («concessione del bar e del parcheggio con servizio di pulizia e guardiania», Università
+    // di Sassari, casi reali di TED)
+    if (tenute.every((v) => v.cpv.every((c) => CPV_CON_CONTESTO.includes(c)))) {
+      for (const s of settoriParole) if (s !== "ausiliariato" && !valutazioni.some((v) => v.settore === s)) valutazioni.push(valutaSettore(s, t, contesto(s), "parole_chiave"));
+    }
     const settori = valutazioni.filter((v) => v.livello !== "C").map((v) => v.settore);
     const vociTenute = voci.filter((v) => settori.includes(v.settore));
     const motivi = vociTenute.map((v) => `CPV ${v.cpv} ${v.descrizione}`);
