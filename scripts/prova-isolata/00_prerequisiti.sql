@@ -24,8 +24,13 @@ create table if not exists public.console_impostazioni (
   aggiornato_da uuid
 );
 grant select, insert, update on public.console_impostazioni to service_role;
+-- 0092: il titolare effettivo dell'utente collegato (usato dalle regole RLS della 0112). Qui nessun utente è collegato: restituisce null,
+-- quindi quelle regole non concedono nulla
+create or replace function public.omnia_ai_titolare_effettivo() returns uuid language sql stable as $$ select null::uuid $$;
 
--- funzioni di controllo della prova (schema a parte, tolto alla fine con il contenitore)
+-- funzioni di controllo della prova (schema a parte, tolto alla fine con il contenitore). Le tabelle del radar nascono dopo, con le
+-- migrazioni: il corpo delle funzioni si controlla quando vengono usate, non adesso
+set check_function_bodies = off;
 create schema if not exists prova;
 create or replace function prova.verifica(nome text, ok boolean) returns void language plpgsql as $$
 begin

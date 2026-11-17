@@ -109,6 +109,21 @@ end $$;
 do $$
 declare n int := 0;
 begin
+  -- anon e authenticated non leggono né scrivono gare e provenienze (0109), e non possono eseguire la funzione delle fonti
+  begin set local role anon; perform 1 from public.radar_procedure; exception when insufficient_privilege then n := n + 1; end;
+  reset role;
+  begin set local role authenticated; perform 1 from public.radar_procedure_fonti; exception when insufficient_privilege then n := n + 1; end;
+  reset role;
+  begin set local role authenticated; insert into public.radar_procedure_fonti (procedura_id, fonte, id_fonte) values ('00000000-0000-0000-0000-0000000000d1', 'ted', 'prova-anon'); exception when insufficient_privilege then n := n + 1; end;
+  reset role;
+  perform prova.verifica('permessi: anon e authenticated senza accesso a gare e provenienze',
+    n = 3 and not has_function_privilege('anon', 'public.radar_allinea_fonti_della_gara()', 'execute') and not has_function_privilege('authenticated', 'public.radar_allinea_fonti_della_gara()', 'execute')
+    and has_function_privilege('service_role', 'public.radar_allinea_fonti_della_gara()', 'execute'));
+end $$;
+
+do $$
+declare n int := 0;
+begin
   set local role service_role;
   -- seconda riga attiva per la stessa gara e settore
   begin insert into public.radar_classificazioni (procedura_id, settore, livello, regole, da, versione_regole, origine) values ('00000000-0000-0000-0000-0000000000a1', 'ristorazione', 'B', '{gestione_di_struttura}', 'cpv', '2026-11-17c', 'importazione'); exception when unique_violation then n := n + 1; end;
