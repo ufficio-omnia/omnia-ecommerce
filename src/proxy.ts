@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { ambienteAnteprimaValido } from "@/lib/anteprima-guardia-ambiente";
 import {
   CONSOLE_PERCORSI_CONDIVISI,
   DEV_ZONE_COOKIE,
@@ -15,7 +16,17 @@ import {
   type Zone,
 } from "@/lib/zone";
 
-const IS_DEV = process.env.NODE_ENV !== "production";
+// SOLO SUL RAMO anteprima/tender-intelligence-staging (mai in master): validità dell'ambiente calcolata una volta per
+// processo (le variabili non cambiano a runtime).
+let ambienteValido: boolean | undefined;
+function anteprimaAutorizzata(): boolean {
+  if (ambienteValido === undefined) ambienteValido = ambienteAnteprimaValido(process.env);
+  return ambienteValido;
+}
+
+// Su un'anteprima Vercel con la guardia superata si può scegliere la zona con ?__zone=omnia-ai o ?__zone=console come in
+// sviluppo, perché un indirizzo *.vercel.app ricadrebbe sempre sull'e-commerce. In produzione questo ramo non va mai.
+const IS_DEV = process.env.NODE_ENV !== "production" || (process.env.VERCEL_ENV === "preview" && anteprimaAutorizzata());
 
 // Path garantito senza corrispondenza (prefisso "_" = cartella privata,
 // esclusa dal routing di Next per convenzione): usato per forzare un 404
@@ -42,6 +53,15 @@ function resolveZone(request: NextRequest): { zone: Zone; recognized: boolean } 
 }
 
 export async function proxy(request: NextRequest) {
+  // SOLO SUL RAMO D'ANTEPRIMA (mai in master): blocco a runtime, PRIMA di qualsiasi altra cosa (anche prima di Supabase
+  // Auth). Se l'ambiente non è lo staging autorizzato con i servizi finti, ogni richiesta (pagine, azioni, API, cron) riceve 503.
+  if (!anteprimaAutorizzata()) {
+    return new NextResponse("Servizio non disponibile: ambiente non autorizzato per l'anteprima di Tender Intelligence.", {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
   const { zone, recognized } = resolveZone(request);
 
   // Inoltrati alla richiesta upstream (non alla risposta): permettono a
