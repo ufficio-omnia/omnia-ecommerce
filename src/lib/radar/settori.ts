@@ -75,7 +75,8 @@ export function testoPerConfronto(testo: string | null | undefined): string {
     .trim();
 }
 
-type RegolaParole = { settore: SettoreRadar; cerca: RegExp; escludi: RegExp | null; esempio: string };
+// «salvo»: se l'oggetto affida esplicitamente il servizio, «escludi» non vale
+type RegolaParole = { settore: SettoreRadar; cerca: RegExp; escludi: RegExp | null; salvo?: RegExp; esempio: string };
 
 // Le esclusioni vengono dai casi reali dello spike (02, §4.1 e 04, §4.1): «pulizia» compare anche in fognature, strade, rifiuti; «mensa» nei
 // buoni pasto e negli arredi; «vigilanza» nella videosorveglianza e negli impianti. «Custodia» non è tra le parole: catturava canili e cimiteri.
@@ -109,7 +110,11 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
   {
     settore: "vigilanza_portierato",
     cerca: /\b(vigilanza|portierato|portineria|guardiania|reception)\b/,
-    escludi: /\b(videosorveglianza|impiant\w*|manutenzion\w*|attraversament\w*|scuolabus)\b/,
+    // «videosorveglianza» da sola non esclude più (decisione dell'utente del 17/11): la vigilanza che comprende la videosorveglianza
+    // resta; forniture, installazioni e manutenzioni di impianti si riconoscono con le regole dei quattro tipi (ESCLUSIONI_OGGETTO e
+    // CORRELAZIONI). «Impianti» e «manutenzione» restano esclusioni dello spike, ma non quando l'oggetto affida esplicitamente il servizio
+    escludi: /\b(impiant\w*|manutenzion\w*|attraversament\w*|scuolabus)\b/,
+    salvo: /\b(servizi?o? (di )?(vigilanza|portierato|portineria|guardiania|reception)|vigilanza (armata|non armata|privata|fissa|ispettiva|attiva)|guardi\w* giurat\w*|istitut\w* di vigilanza)\b/,
     esempio: "vigilanza, portierato, guardiania",
   },
   {
@@ -158,7 +163,7 @@ export function settoriDaParole(testo: string | null | undefined): SettoreRadar[
   const t = testoPerConfronto(testo);
   // un oggetto informatico entra per parola chiave solo se affida esplicitamente il servizio del settore
   if (!t || (PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t))) return [];
-  return REGOLE_PAROLE.filter((r) => r.cerca.test(t) && !(r.escludi && r.escludi.test(t))).map((r) => r.settore);
+  return REGOLE_PAROLE.filter((r) => r.cerca.test(t) && !(r.escludi && r.escludi.test(t) && !(r.salvo && r.salvo.test(t)))).map((r) => r.settore);
 }
 
 // ───── rilevanza: livelli A, B, C e sottocategorie (decisione definitiva dell'utente, 17/11/2026) ─────
@@ -174,10 +179,13 @@ export function settoriDaParole(testo: string | null | undefined): SettoreRadar[
 export type Livello = "A" | "B" | "C";
 export const NOMI_LIVELLI: Record<Livello, string> = { A: "pertinente", B: "correlata", C: "non pertinente" };
 
-type Sottocategoria = { id: string; nome: string; testo?: RegExp; cpv?: readonly string[] };
+// «debole»: un segnale che vale solo fuori da un contesto («vigilanza» da sola, ma non nei musei, dove è la sorveglianza di sala)
+type Sottocategoria = { id: string; nome: string; testo?: RegExp; debole?: { cerca: RegExp; nonSe: RegExp }; cpv?: readonly string[] };
 
-// Sottocategorie interne di ogni settore. Si sceglie la prima che l'oggetto nomina; altrimenti quella del CPV del settore; altrimenti la
-// prima. Ristorazione: le 7 decise dall'utente; le concessioni di bar e ristoranti restano concessioni, mai mense.
+// Sottocategorie interne di ogni settore. Una gara può averne più d'una nello stesso settore (decisione dell'utente del 17/11): tutte
+// quelle che l'oggetto nomina, in ordine di comparsa; se l'oggetto non ne nomina, quelle del CPV del settore; altrimenti la prima.
+// Ristorazione: le 7 decise dall'utente; le concessioni di bar e ristoranti restano concessioni, mai mense (il CPV generico 55300000 non
+// aggiunge «mense» a una concessione di bar: le sottocategorie dei CPV valgono solo quando l'oggetto non ne nomina).
 export const SOTTOCATEGORIE: Record<SettoreRadar, readonly Sottocategoria[]> = {
   pulizia: [
     { id: "pulizia_edifici", nome: "Pulizia di edifici, uffici e scuole", testo: /\bpulizi\w*/, cpv: ["90900000", "90910000", "90911000", "90911100", "90911200", "90911300", "90914000", "90917000", "90919000", "90919100", "90919200", "90919300"] },
@@ -185,7 +193,14 @@ export const SOTTOCATEGORIE: Record<SettoreRadar, readonly Sottocategoria[]> = {
     { id: "disinfestazione", nome: "Disinfestazione e derattizzazione", testo: /\b(disinfestazion\w*|derattizzazion\w*|deblattizzazion\w*|fumigazion\w*)\b/, cpv: ["90920000", "90921000", "90922000", "90923000", "90924000"] },
   ],
   ristorazione: [
-    { id: "mense", nome: "Mense e ristorazione collettiva", testo: /\b(mens[ae]|refezion\w*|ristorazione (scolastica|collettiva|aziendale|ospedaliera|universitaria|sanitaria)|centr\w* (di )?cottura|degent\w*|vitto)\b/, cpv: ["55300000", "55500000", "55510000", "55511000", "55512000", "55523100", "55524000"] },
+    // «degenti» vale solo vicino a ristorazione, pasti o vitto: il «bar … per le necessità dei degenti» resta una concessione, non una mensa
+    // (caso reale di TED 786982-2026, 17/11/2026)
+    {
+      id: "mense",
+      nome: "Mense e ristorazione collettiva",
+      testo: /\b(mens[ae]|refezion\w*|ristorazione (scolastica|collettiva|aziendale|ospedaliera|universitaria|sanitaria)|centr\w* (di )?cottura|(ristorazion\w*|past[oi]|vitto)( \w+){0,4} degent\w*|vitto)\b/,
+      cpv: ["55300000", "55500000", "55510000", "55511000", "55512000", "55523100", "55524000"],
+    },
     { id: "catering", nome: "Catering e preparazione pasti", testo: /\b(catering|preparazion\w* (dei |di )?pasti|cottura (dei |di )?pasti|business lunch|coffee break|banqueting)\b/, cpv: ["55520000", "55523000", "55321000", "55322000"] },
     { id: "distribuzione_pasti", nome: "Distribuzione pasti", testo: /\b(distribuzion\w* (dei |di )?pasti|consegna (dei |di )?pasti|pasti a domicilio|fornitura (dei |di )?pasti|trasporto (dei |di )?pasti)\b/, cpv: ["55320000", "55521000", "55521100", "55521200"] },
     { id: "concessione_bar", nome: "Concessione bar e caffetteria", testo: /\b(bar|caffetteri\w*|enotec\w*|chiosc\w*)\b/ },
@@ -199,9 +214,18 @@ export const SOTTOCATEGORIE: Record<SettoreRadar, readonly Sottocategoria[]> = {
       nome: "Vigilanza privata (istituti autorizzati)",
       // «vigilanza» da sola nei musei, nei teatri e nelle biblioteche è di solito la sorveglianza di sala, non la vigilanza privata
       // regolamentata: lì serve un segnale forte (armata, guardie giurate, pattugliamento…), altrimenti è accoglienza o presidio
+      testo: /\b(guardi\w* giurat\w*|armat\w*|piantonament\w*|pattugliament\w*|pronto intervento|valori|security|istitut\w* di vigilanza|vigilanza privata|vigilanza ispettiva)\b/,
+      debole: { cerca: /\bvigilanz\w*/, nonSe: /\b(muse\w*|teatr\w*|bibliotec\w*|mostr[ae]|spettator\w*|visitator\w*|non armat\w*|fiduciar\w*)\b/ },
+      cpv: ["98341140", "79710000", "79713000", "79714000", "79715000"],
+    },
+    {
+      // decisione dell'utente del 17/11: il servizio operativo (monitoraggio delle immagini, centrale operativa, telesorveglianza) è
+      // pertinente; la sola fornitura, installazione o manutenzione degli impianti no (ESCLUSIONI_OGGETTO), l'affidamento misto è correlato
+      id: "videosorveglianza_operativa",
+      nome: "Videosorveglianza e telesorveglianza operativa (monitoraggio, centrale operativa)",
       testo:
-        /\b(guardi\w* giurat\w*|armat\w*|piantonament\w*|pattugliament\w*|pronto intervento|valori|telesorveglianz\w*|teleallarm\w*|centrale operativa|security|istitut\w* di vigilanza|vigilanza privata|vigilanza ispettiva)\b|^(?!.*\b(muse\w*|teatr\w*|bibliotec\w*|mostr[ae]|spettator\w*|visitator\w*|non armat\w*|fiduciar\w*)\b).*\bvigilanz\w*/,
-      cpv: ["98341140", "79710000", "79711000", "79713000", "79714000", "79715000"],
+        /\b(telesorveglianz\w*|teleallarm\w*|teleradioallarm\w*|televigilanz\w*|centrale operativa|control room|sala (di )?controllo|monitoraggio (h24 |continuo |costante )?(delle |degli |dei |di )?(immagini|telecamer\w*|allarm\w*|segnal\w*|impiant\w*|sistem\w*)|gestione (del |dei |della |delle )?(sistem\w*|impiant\w*|servizi\w*) (di )?video ?sorveglianz\w*|video ?sorveglianz\w* (attiva|da remoto|in remoto|operativa|h24))\b/,
+      cpv: ["79711000"],
     },
     { id: "portierato_reception", nome: "Portierato, reception e accoglienza", testo: /\b(portierat\w*|portineri\w*|reception|front office|centralin\w*|accoglienz\w*|hostess|steward\w*|maschere|biglietteri\w*)\b/, cpv: ["98341120", "79992000"] },
     { id: "presidio_accessi", nome: "Presidio, custodia e controllo accessi", testo: /\b(presidi\w*|controllo (degli |degl )?accessi|guardiani\w*|custodi\w*|apertura e chiusura)\b/, cpv: ["98341130"] },
@@ -222,12 +246,25 @@ export function nomeSottocategoria(settore: SettoreRadar, id: string | null): st
   return SOTTOCATEGORIE[settore].find((s) => s.id === id)?.nome ?? null;
 }
 
-function sottocategoriaDaTesto(settore: SettoreRadar, t: string): string | null {
-  return t ? (SOTTOCATEGORIE[settore].find((s) => s.testo && s.testo.test(t))?.id ?? null) : null;
+// Dove l'oggetto nomina la sottocategoria (prima posizione), -1 se non la nomina.
+function posizioneSottocategoria(s: Sottocategoria, t: string): number {
+  const posizioni = [s.testo ? t.search(s.testo) : -1, s.debole && !s.debole.nonSe.test(t) ? t.search(s.debole.cerca) : -1].filter((p) => p >= 0);
+  return posizioni.length ? Math.min(...posizioni) : -1;
 }
 
-function sottocategoriaDaCpv(settore: SettoreRadar, cpv: readonly string[]): string | null {
-  return SOTTOCATEGORIE[settore].find((s) => s.cpv && cpv.some((c) => s.cpv?.includes(c)))?.id ?? null;
+// Tutte le sottocategorie che l'oggetto nomina, in ordine di comparsa.
+function sottocategorieDaTesto(settore: SettoreRadar, t: string): string[] {
+  if (!t) return [];
+  return SOTTOCATEGORIE[settore]
+    .map((s) => ({ id: s.id, p: posizioneSottocategoria(s, t) }))
+    .filter((x) => x.p >= 0)
+    .sort((a, b) => a.p - b.p)
+    .map((x) => x.id);
+}
+
+// Le sottocategorie dei CPV del settore trovati nell'avviso, nell'ordine dell'elenco.
+function sottocategorieDaCpv(settore: SettoreRadar, cpv: readonly string[]): string[] {
+  return SOTTOCATEGORIE[settore].filter((s) => s.cpv && cpv.some((c) => s.cpv?.includes(c))).map((s) => s.id);
 }
 
 // Il contesto dei CPV per le regole che combinano CPV e oggetto: CPV principale, tutti i CPV, i CPV del file per il settore valutato.
@@ -250,6 +287,11 @@ export type RegolaEsclusione = {
   condizione?: (c: ContestoCpv) => boolean;
   ancheConNucleo?: boolean;
 };
+
+// Videosorveglianza: gli oggetti tecnici e il servizio operativo (decisione dell'utente del 17/11)
+const VIDEO = /\b(video ?sorveglianz\w*|telecamer\w*|fototrappol\w*|tvcc|impiant\w* (di )?(allarme|antintrusione|videosorveglianza)|sistem\w* di (video\w*|allarme|antintrusione|controllo accessi)|software)\b/;
+const OPERATIVO =
+  /\b(monitoraggio|presidi\w*|vigilanz\w*|guardi\w* giurat\w*|piantonament\w*|pattugliament\w*|pronto intervento|ronda|ronde|valori|centrale operativa|control room|sala (di )?controllo|telesorveglianz\w*|teleallarm\w*|teleradioallarm\w*|televigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|operatori)\b/;
 
 const MOVIMENTAZIONE = /\b(facchinagg\w*|trasloc\w*|movimentazion\w*|carico|scarico|magazzin\w*|immagazzin\w*|stoccaggi\w*|logistic\w*|manovalanza|smontaggi\w*|montaggi\w*|allestiment\w*|sgomber\w*|smistament\w*|imballagg\w*)\b/;
 
@@ -288,6 +330,28 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     motivo: "Accoglienza e integrazione di richiedenti asilo o stranieri: il CPV «servizi di accoglienza» qui indica un servizio sociale, non la portineria",
     casi: ["Affidamento della gestione del servizio di accoglienza integrata (SAI) - categoria minori stranieri non accompagnati (MSNA)", "Servizio mediatori culturali"],
   },
+  // Videosorveglianza, decisione dell'utente del 17/11: quattro tipi. La sola parola «videosorveglianza» non include né esclude.
+  //   1. sola fornitura o installazione di telecamere, software o impianti → C (videosorveglianza_fornitura);
+  //   2. manutenzione degli impianti → C (videosorveglianza_manutenzione);
+  //   3. servizio operativo di monitoraggio, presidio o vigilanza → A (sottocategoria videosorveglianza_operativa o vigilanza privata);
+  //   4. affidamento misto (fornitura o manutenzione con il servizio operativo) → B (CORRELAZIONI, videosorveglianza_mista), A se il
+  //      servizio operativo è l'oggetto principale (viene prima).
+  {
+    id: "videosorveglianza_fornitura",
+    settori: ["vigilanza_portierato"],
+    cerca: new RegExp(`^(?=.*\\b(fornitur\\w*|installazion\\w*|posa in opera|realizzazion\\w*|acquist\\w*|noleggi\\w*|potenziament\\w*|ampliament\\w*|implementazion\\w*)\\b)(?=.*${VIDEO.source})`),
+    salvo: OPERATIVO,
+    motivo: "Sola fornitura o installazione di telecamere, software o impianti di videosorveglianza, senza servizio operativo: non è vigilanza",
+    casi: ["Servizio di installazione, puntamento, disinstallazione telecamere mobili e analisi flussi video", "Fornitura e posa in opera di un sistema di videosorveglianza per il centro storico"],
+  },
+  {
+    id: "videosorveglianza_manutenzione",
+    settori: ["vigilanza_portierato"],
+    cerca: new RegExp(`^(?=.*\\bmanutenzion\\w*)(?=.*${VIDEO.source})`),
+    salvo: OPERATIVO,
+    motivo: "Manutenzione degli impianti di videosorveglianza o di allarme, senza servizio operativo: non è vigilanza",
+    casi: ["Servizio di manutenzione ordinaria e straordinaria degli impianti di videosorveglianza e antintrusione degli edifici comunali"],
+  },
   {
     id: "rifiuti",
     settori: "tutti",
@@ -321,8 +385,10 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     id: "forniture_di_beni",
     settori: "tutti",
     cerca: /\bfornitur\w*\b/,
-    // basta che l'oggetto parli di servizi: «fornitura di servizi di catering», «fornitura di beni ed erogazione servizi di accoglienza»
-    salvo: /\b(serviz\w*|catering|concession\w*)\b/,
+    // basta che l'oggetto parli di servizi: «fornitura di servizi di catering», «fornitura di beni ed erogazione servizi di accoglienza»;
+    // o di un servizio operativo di sorveglianza («fornitura … con monitoraggio delle immagini dalla centrale operativa»: affidamento misto)
+    // (non «presidio» né «valori»: «Presidi ERDIS» sono le sedi di una fornitura di derrate, caso reale di TED del 17/11/2026)
+    salvo: /\b(serviz\w*|catering|concession\w*|monitoraggio|centrale operativa|control room|sala (di )?controllo|telesorveglianz\w*|televigilanz\w*|pronto intervento|piantonament\w*|pattugliament\w*)\b/,
     motivo: "Fornitura di beni senza un servizio del settore",
     casi: [
       "Fornitura di derrate alimentari sostenibili per la ristorazione delle mense universitarie a gestione diretta",
@@ -373,15 +439,6 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     casi: ["Servizio di misurazioni strumentali degli agenti fisici, delle sostanze pericolose e degli agenti biologici"],
   },
   {
-    id: "videosorveglianza_senza_vigilanza",
-    settori: ["vigilanza_portierato"],
-    cerca: /\b(telecamer\w*|fototrappol\w*|videosorveglianz\w*|video sorveglianz\w*|tvcc|impiant\w* (di )?(allarme|antintrusione))\b/,
-    // con un'attività di vigilanza (ronde, pronto intervento, trasporto valori, piantonamento) resta vigilanza
-    salvo: /\b(vigilanz\w*|guardi\w* giurat\w*|piantonament\w*|pattugliament\w*|pronto intervento|valori|ronda|ronde|ispezion\w*|portierat\w*|portineri\w*|guardiani\w*)\b/,
-    motivo: "Telecamere o videosorveglianza senza attività di vigilanza (ronde, pronto intervento, trasporto valori): è un servizio tecnologico, non vigilanza privata",
-    casi: ["Servizio di installazione, puntamento, disinstallazione telecamere mobili e analisi flussi video", "Servizio di gestione dell'impianto di videosorveglianza comunale"],
-  },
-  {
     id: "lavori_e_progettazione",
     settori: "tutti",
     cerca:
@@ -410,7 +467,8 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
 
 // ───── livello B: gare correlate ─────
 
-export type RegolaCorrelazione = { id: string; settori: readonly SettoreRadar[] | "tutti"; cerca: RegExp; salvo: RegExp | null; motivo: string; casi: readonly string[] };
+// «richiede»: un secondo segnale che deve esserci in qualunque punto dell'oggetto (la posizione è quella di «cerca»)
+export type RegolaCorrelazione = { id: string; settori: readonly SettoreRadar[] | "tutti"; cerca: RegExp; richiede?: RegExp; salvo: RegExp | null; motivo: string; casi: readonly string[] };
 
 // Il servizio del settore è l'oggetto della gestione («gestione della mensa dell'asilo nido», «gestione del servizio di pulizia»): non è
 // una gestione complessa.
@@ -480,6 +538,17 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
     casi: ["Assegnazione di 4 concessioni demaniali a finalità turistico-ricreativa, di cui 3 esercizi di somministrazione"],
   },
   {
+    // tipo 4 della videosorveglianza: fornitura, installazione o manutenzione con il servizio operativo; correlata se la parte tecnica
+    // viene prima del servizio (oggetto principale tecnico), pertinente se viene prima il servizio di vigilanza o di monitoraggio
+    id: "videosorveglianza_mista",
+    settori: ["vigilanza_portierato"],
+    cerca: /\b(fornitur\w*|installazion\w*|posa in opera|realizzazion\w*|manutenzion\w*|noleggi\w*|potenziament\w*|ampliament\w*)\b/,
+    richiede: VIDEO,
+    salvo: null,
+    motivo: "Affidamento misto: fornitura, installazione o manutenzione di impianti di videosorveglianza insieme al servizio operativo",
+    casi: ["Fornitura, installazione e gestione di un sistema di videosorveglianza con monitoraggio delle immagini dalla centrale operativa"],
+  },
+  {
     id: "antincendio",
     settori: ["vigilanza_portierato"],
     cerca: /\b(antincendio|prevenzione incendi|gestione delle emergenze)\b/,
@@ -493,19 +562,37 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
 // Le correlazioni che, in ristorazione, portano alla sottocategoria «dentro appalti multiservizi e gestioni integrate»
 const CORRELAZIONI_DI_GESTIONE = new Set(["gestione_integrata", "gestione_di_struttura", "servizi_alla_persona"]);
 // Le correlazioni che valgono solo se vengono prima del servizio del settore nell'oggetto (vedi valutaSettore)
-const CORRELAZIONI_DI_POSIZIONE = new Set(["gestione_integrata", "gestione_di_struttura", "servizi_alla_persona", "finanza_di_progetto"]);
+const CORRELAZIONI_DI_POSIZIONE = new Set(["gestione_integrata", "gestione_di_struttura", "servizi_alla_persona", "finanza_di_progetto", "videosorveglianza_mista"]);
 
 // Dove l'oggetto nomina per la prima volta il servizio del settore (parole approvate o sottocategorie); -1 se non lo nomina.
 function posizioneDelServizio(settore: SettoreRadar, t: string): number {
-  const posizioni = [nucleoDel(settore), ...SOTTOCATEGORIE[settore].map((s) => s.testo)]
-    .filter((r): r is RegExp => !!r)
-    .map((r) => t.search(r))
-    .filter((p) => p >= 0);
+  const nucleo = nucleoDel(settore);
+  const posizioni = [nucleo ? t.search(nucleo) : -1, ...SOTTOCATEGORIE[settore].map((s) => posizioneSottocategoria(s, t))].filter((p) => p >= 0);
   return posizioni.length ? Math.min(...posizioni) : -1;
 }
 
 export type Esclusione = { settore: SettoreRadar; regola: string; motivo: string };
-export type Valutazione = { settore: SettoreRadar; livello: Livello; sottocategoria: string | null; regola: string; motivo: string; da: "cpv" | "parole_chiave" };
+
+// INTERFACCIA per la 0121 (comunicata a B2 il 17/11): una valutazione per settore considerato. Gli elenchi sono in ordine di evidenza (il
+// primo è il principale); i campi singoli restano per compatibilità e valgono il primo elemento. I motivi si ricavano da regole e versione:
+// non serve salvarli.
+export type Valutazione = {
+  settore: SettoreRadar;
+  livello: Livello;
+  // id di SOTTOCATEGORIE[settore]; [] se il livello è C
+  sottocategorie: string[];
+  // id delle regole che decidono il livello: «cpv_principale», «oggetto», «cpv_del_settore», «parole_chiave», «cpv_secondario», un id di
+  // CORRELAZIONI (B) o di ESCLUSIONI_OGGETTO (C)
+  regole: string[];
+  // un motivo leggibile per ogni regola, stesso ordine
+  motivi: string[];
+  da: "cpv" | "parole_chiave";
+  // i CPV del file approvato trovati per questo settore ([] se da parole chiave)
+  cpv: string[];
+  sottocategoria: string | null;
+  regola: string;
+  motivo: string;
+};
 
 function vale(r: { settori: readonly SettoreRadar[] | "tutti" }, settore: SettoreRadar): boolean {
   return r.settori === "tutti" || r.settori.includes(settore);
@@ -517,67 +604,91 @@ function nucleoDel(settore: SettoreRadar): RegExp | undefined {
 
 const CONTESTO_VUOTO: ContestoCpv = { principale: null, tutti: [], delSettore: [] };
 
-// La prima regola di esclusione che vale per il settore, o null. Testo già normalizzato con testoPerConfronto.
-function regolaDiEsclusione(settore: SettoreRadar, t: string, contesto: ContestoCpv): RegolaEsclusione | null {
-  if (!t) return null;
+// Tutte le regole di esclusione che valgono per il settore (la prima è la principale). Testo già normalizzato con testoPerConfronto.
+function regoleDiEsclusione(settore: SettoreRadar, t: string, contesto: ContestoCpv): RegolaEsclusione[] {
+  if (!t) return [];
   const haNucleo = !!nucleoDel(settore)?.test(t);
-  return (
-    ESCLUSIONI_OGGETTO.find(
-      (r) => vale(r, settore) && (r.ancheConNucleo || !haNucleo) && r.cerca.test(t) && !(r.salvo && r.salvo.test(t)) && (!r.condizione || r.condizione(contesto)),
-    ) ?? null
+  return ESCLUSIONI_OGGETTO.filter(
+    (r) => vale(r, settore) && (r.ancheConNucleo || !haNucleo) && r.cerca.test(t) && !(r.salvo && r.salvo.test(t)) && (!r.condizione || r.condizione(contesto)),
   );
 }
 
-// I settori che l'oggetto esclude (livello C), con la regola e il motivo. Senza contesto valgono solo le regole che non guardano il CPV.
+// I settori che l'oggetto esclude (livello C), con la regola principale e il motivo. Senza contesto valgono solo le regole che non guardano
+// il CPV.
 export function esclusioniOggetto(testoNormalizzato: string, settori: readonly SettoreRadar[], contesto: ContestoCpv = CONTESTO_VUOTO): Esclusione[] {
   return settori.flatMap((settore) => {
-    const r = regolaDiEsclusione(settore, testoNormalizzato, contesto);
+    const r = regoleDiEsclusione(settore, testoNormalizzato, contesto)[0];
     return r ? [{ settore, regola: r.id, motivo: r.motivo }] : [];
   });
 }
 
-// Livello, sottocategoria, regola e motivo di un settore.
+const MOTIVO_CPV_SECONDARIO = "Il servizio è tra i CPV dell'avviso ma non è l'oggetto principale (appalto misto)";
+
+function valutazione(settore: SettoreRadar, livello: Livello, sottocategorie: string[], regole: { id: string; motivo: string }[], da: "cpv" | "parole_chiave", cpv: readonly string[]): Valutazione {
+  const sc = [...new Set(sottocategorie)];
+  return {
+    settore,
+    livello,
+    sottocategorie: sc,
+    regole: regole.map((r) => r.id),
+    motivi: regole.map((r) => r.motivo),
+    da,
+    cpv: [...cpv],
+    sottocategoria: sc[0] ?? null,
+    regola: regole[0]?.id ?? "",
+    motivo: regole[0]?.motivo ?? "",
+  };
+}
+
+// Livello, sottocategorie, regole e motivi di un settore.
 function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, da: "cpv" | "parole_chiave"): Valutazione {
-  const esclusa = regolaDiEsclusione(settore, t, contesto);
-  if (esclusa) return { settore, livello: "C", sottocategoria: null, regola: esclusa.id, motivo: esclusa.motivo, da };
-  const daTesto = sottocategoriaDaTesto(settore, t);
-  const daCpv = sottocategoriaDaCpv(settore, contesto.delSettore);
+  const cpvDelSettore = da === "cpv" ? contesto.delSettore : [];
+  const escluse = regoleDiEsclusione(settore, t, contesto);
+  if (escluse.length) return valutazione(settore, "C", [], escluse.map((r) => ({ id: r.id, motivo: r.motivo })), da, cpvDelSettore);
+  const daTesto = sottocategorieDaTesto(settore, t);
+  const daCpv = sottocategorieDaCpv(settore, contesto.delSettore);
   const predefinita = SOTTOCATEGORIE[settore][0].id;
   // le correlazioni «di gestione» valgono solo se la gestione complessa viene PRIMA del servizio del settore nell'oggetto: «appalto del
   // servizio di ristorazione scolastica … nei servizi educativi» è ristorazione (A); «gestione dei servizi socio-assistenziali e di
   // ristorazione» è correlata (B). Casi reali di TED, 17/11/2026
   const primoServizio = posizioneDelServizio(settore, t);
-  const correlata = t
-    ? CORRELAZIONI.find(
+  const correlate = t
+    ? CORRELAZIONI.filter(
         (r) =>
           vale(r, settore) &&
           r.cerca.test(t) &&
+          (!r.richiede || r.richiede.test(t)) &&
           !(r.salvo && r.salvo.test(t)) &&
           (!CORRELAZIONI_DI_POSIZIONE.has(r.id) || primoServizio < 0 || t.search(r.cerca) < primoServizio),
       )
-    : undefined;
-  if (correlata) {
-    const diGestione = settore === "ristorazione" && CORRELAZIONI_DI_GESTIONE.has(correlata.id) ? "appalti_multiservizi" : null;
-    return { settore, livello: "B", sottocategoria: daTesto ?? diGestione ?? daCpv ?? predefinita, regola: correlata.id, motivo: correlata.motivo, da };
+    : [];
+  if (correlate.length) {
+    const diGestione = settore === "ristorazione" && correlate.some((r) => CORRELAZIONI_DI_GESTIONE.has(r.id)) ? ["appalti_multiservizi"] : [];
+    const sottocategorie = daTesto.length || diGestione.length ? [...daTesto, ...diGestione] : daCpv.length ? daCpv : [predefinita];
+    return valutazione(settore, "B", sottocategorie, correlate.map((r) => ({ id: r.id, motivo: r.motivo })), da, cpvDelSettore);
   }
   const haNucleo = !!t && !!nucleoDel(settore)?.test(t);
   const principale = contesto.principale ? MAPPA_CPV.get(contesto.principale) : undefined;
-  if (da === "cpv" && contesto.principale && principale?.settore !== settore && !haNucleo && !daTesto) {
-    return { settore, livello: "B", sottocategoria: daCpv ?? predefinita, regola: "cpv_secondario", motivo: "Il servizio è tra i CPV dell'avviso ma non è l'oggetto principale (appalto misto)", da };
+  const sottocategorie = daTesto.length ? daTesto : daCpv.length ? daCpv : [predefinita];
+  if (da === "parole_chiave") return valutazione(settore, "A", sottocategorie, [{ id: "parole_chiave", motivo: "Trovata per parola chiave nell'oggetto" }], da, []);
+  if (contesto.principale && principale?.settore !== settore && !haNucleo && !daTesto.length) {
+    return valutazione(settore, "B", sottocategorie, [{ id: "cpv_secondario", motivo: MOTIVO_CPV_SECONDARIO }], da, cpvDelSettore);
   }
-  const motivo =
-    da === "parole_chiave"
-      ? "Trovata per parola chiave nell'oggetto"
-      : principale?.settore === settore
-        ? `CPV principale ${principale.cpv} ${principale.descrizione}`
-        : "L'oggetto nomina il servizio del settore";
-  return { settore, livello: "A", sottocategoria: daTesto ?? daCpv ?? predefinita, regola: da === "parole_chiave" ? "parole_chiave" : principale?.settore === settore ? "cpv_principale" : "oggetto", motivo, da };
+  const regole: { id: string; motivo: string }[] = [];
+  if (principale?.settore === settore) regole.push({ id: "cpv_principale", motivo: `CPV principale ${principale.cpv} ${principale.descrizione}` });
+  if (haNucleo || daTesto.length) regole.push({ id: "oggetto", motivo: "L'oggetto nomina il servizio del settore" });
+  if (!regole.length) {
+    const v = MAPPA_CPV.get(cpvDelSettore[0] ?? "");
+    regole.push({ id: "cpv_del_settore", motivo: v ? `CPV ${v.cpv} ${v.descrizione} (nessun CPV principale indicato)` : "CPV del settore" });
+  }
+  return valutazione(settore, "A", sottocategorie, regole, da, cpvDelSettore);
 }
 
 // Versione delle regole: si cambia a ogni modifica di REGOLE_PAROLE, ESCLUSIONI_OGGETTO, CORRELAZIONI o SOTTOCATEGORIE. Accompagna ogni
 // correzione dei settori di una gara già in archivio (registro dei cambiamenti, «correzione_dati» sul campo «settori»), così ogni
 // correzione dice con quali regole è stata fatta e si può annullare. «2026-11-17b»: regole definitive dell'utente del 17/11.
-export const VERSIONE_REGOLE_SETTORI = "2026-11-17b";
+// «2026-11-17c»: più sottocategorie per settore, quattro tipi di videosorveglianza, parole chiave della vigilanza senza «videosorveglianza».
+export const VERSIONE_REGOLE_SETTORI = "2026-11-17c";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Identificativo della correzione nel registro: versione e regole («regole-settori-2026-11-17b:rifiuti»). Rifare la stessa correzione
@@ -613,6 +724,8 @@ export function descriviCorrezioneSettori(quando: string | null, valorePrecedent
 // ───── classificazione di una gara ─────
 
 export type Classificazione = {
+  // la versione delle regole con cui è stata fatta (VERSIONE_REGOLE_SETTORI)
+  versione: string;
   // dove la gara compare: i settori di livello A e B (la colonna «settori» dell'archivio, come prima)
   settori: SettoreRadar[];
   // settore principale: quello del CPV principale se non escluso, altrimenti il primo pertinente
@@ -655,6 +768,7 @@ export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?:
     if (settori.includes("ausiliariato") && !valutazioniCpv.some((v) => v.settore === "ausiliariato")) motivi.push("Oggetto che parla di ausiliariato");
     const sp = principale ? MAPPA_CPV.get(principale)?.settore : undefined;
     return {
+      versione: VERSIONE_REGOLE_SETTORI,
       settori,
       settorePrincipale: sp && settori.includes(sp) ? sp : (valutazioni.find((v) => v.livello === "A")?.settore ?? settori[0]),
       metodo: "cpv",
@@ -674,6 +788,7 @@ export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?:
   const settori = valutazioniParole.filter((v) => v.livello !== "C").map((v) => v.settore);
   if (settori.length > 0) {
     return {
+      versione: VERSIONE_REGOLE_SETTORI,
       settori,
       settorePrincipale: valutazioniParole.find((v) => v.livello === "A")?.settore ?? settori[0],
       metodo: "parole_chiave",
@@ -685,5 +800,5 @@ export function classificaGara(dati: { cpvPrincipale?: string | null; cpvTutti?:
     };
   }
 
-  return { settori: [], settorePrincipale: null, metodo: null, motivi: [], cpvRiconosciuti: [], valutazioni, livello: livelloMigliore(valutazioni), esclusioni: tutteLeEsclusioni };
+  return { versione: VERSIONE_REGOLE_SETTORI, settori: [], settorePrincipale: null, metodo: null, motivi: [], cpvRiconosciuti: [], valutazioni, livello: livelloMigliore(valutazioni), esclusioni: tutteLeEsclusioni };
 }
