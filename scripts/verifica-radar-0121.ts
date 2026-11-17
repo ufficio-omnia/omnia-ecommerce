@@ -9,7 +9,7 @@
 import fs from "fs";
 import path from "path";
 import { databaseInMemoria, type RigaMem } from "./lib/db-in-memoria";
-import { SETTORI_RADAR } from "../src/lib/radar/settori";
+import { SETTORI_RADAR, VERSIONE_REGOLE_SETTORI } from "../src/lib/radar/settori";
 import { classificaPerArchivio, type ClassificazioneArchivio, type ValutazioneSettore } from "../src/lib/radar/classificazione-unita";
 import { aggiornamentoClassificazioni, decisioneAmministratore, gareSuggeribili, righeDaClassificazione, righeDaRipristinare, stessaClassificazione, type RigaClassificazione } from "../src/lib/radar/classificazioni-calcoli";
 import { scriviClassificazioni } from "../src/lib/radar/classificazioni";
@@ -250,7 +250,13 @@ async function principale() {
     const CASONE = classificaPerArchivio({ oggetto: "Affidamento in concessione del casone “Paduli” per la durata di sette anni (prova sintetica)", cpv_principale: "55524000", cpv_tutti: ["55524000"], natura_contratto: "servizi" }, []);
     const ctx = (p: Partial<Parameters<typeof righeDaClassificazione>[1]> = {}) => ({ proceduraId: "G", origine: "importazione" as const, fonti: ["ted"], autore: "importazione:ted", adessoIso: ISO, nuovoId, ...p });
     const rBar = righeDaClassificazione(BAR, ctx({ settoriColonna: ["ristorazione"] }));
-    uguale("C. concessione del bar: una riga, ristorazione A, sottocategoria concessione_bar, regola, versione, non ambigua", rBar.map((r) => [r.settore, r.livello, r.sottocategorie, r.regole[0], r.versione_regole, r.ambigua]), [["ristorazione", "A", ["concessione_bar"], "cpv_principale", BAR.versione, false]]);
+    // regole 2026-11-17c della PVL (interfaccia reale): «bar e punto ristoro» ha DUE sottocategorie nello stesso settore, e i CPV del settore
+    uguale(
+      "C. concessione del bar e punto ristoro: una riga, ristorazione A, due sottocategorie in ordine (dal classificatore vero), regola, CPV, versione, non ambigua",
+      rBar.map((r) => [r.settore, r.livello, r.sottocategorie, r.regole[0], r.cpv, r.versione_regole, r.ambigua]),
+      [["ristorazione", "A", ["concessione_bar", "concessione_punto_ristoro"], "cpv_principale", ["55300000"], BAR.versione, false]],
+    );
+    atteso("C. la versione delle regole viene da classificaGara (interfaccia della PVL)", BAR.versione === VERSIONE_REGOLE_SETTORI && /^\d{4}-\d{2}-\d{2}[a-z]?$/.test(BAR.versione));
     const rCas = righeDaClassificazione(CASONE, ctx({ settoriColonna: ["ristorazione"] }));
     uguale("C. casone: ristorazione C senza sottocategorie, con la regola; la colonna lo ha ancora → ambigua (da decidere, non cambiata)", rCas.map((r) => [r.livello, r.sottocategorie, r.regole, r.ambigua]), [["C", [], ["concessione_di_immobili"], true]]);
     atteso("C. i motivi si salvano (spiegano la riga anche se le regole cambieranno)", rBar[0].motivi.length > 0 && rCas[0].motivi.length > 0);
@@ -279,7 +285,7 @@ async function principale() {
     );
     // gara di più fonti: il livello migliore tra dati uniti e fonti, ambigua se non sono d'accordo
     const r2 = righeDaClassificazione(RSA, ctx({ fonti: ["pvl", "ted"], perFonte: [BAR], settoriColonna: ["ristorazione"] }));
-    uguale("C. più fonti: livello migliore (A dalla fonte, B dai dati uniti), sottocategoria della fonte che lo dà, riga ambigua", r2.map((r) => [r.livello, r.sottocategorie, r.fonti, r.ambigua]), [["A", ["concessione_bar"], ["pvl", "ted"], true]]);
+    uguale("C. più fonti: livello migliore (A dalla fonte, B dai dati uniti), sottocategorie della fonte che lo dà, riga ambigua", r2.map((r) => [r.livello, r.sottocategorie, r.fonti, r.ambigua]), [["A", ["concessione_bar", "concessione_punto_ristoro"], ["pvl", "ted"], true]]);
     // storico: uguale = niente; cambiata = disattiva + inserisce; settore sparito = disattiva; amministratore protetto
     const attive: RigaClassificazione[] = rMulti.map((r) => ({ ...r }));
     const ancora = righeDaClassificazione(MULTI, ctx({ settoriColonna: ["ristorazione", "pulizia"], fonti: ["ted", "pvl"], autore: "importazione:pvl" }));
