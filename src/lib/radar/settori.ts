@@ -1019,15 +1019,29 @@ function settoriDaValore(v: string | null): SettoreRadar[] {
 }
 
 // La frase per il cliente nella scheda della gara: quali settori sono stati tolti e perché. La gara resta nell'archivio.
+// Fase B2b: lo script unico di popolamento (di B2) può anche AGGIUNGERE settori. L'identificativo diventa
+// «regole-settori-<versione>:<regole>:<esecuzione>»; il secondo pezzo restano le regole di esclusione («aggiunta» se la correzione aggiunge
+// soltanto). Frasi: «abbiamo tolto la gara da: Y (motivi)», «abbiamo aggiunto la gara a: X», «abbiamo tolto la gara da: Y (motivi) e
+// l'abbiamo aggiunta a: X»; poi «Resta in: …» se ha solo tolto, «Ora è in: …» se ha aggiunto.
 export function descriviCorrezioneSettori(quando: string | null, valorePrecedente: string | null, valoreNuovo: string | null, idFonte: string | null): string {
   const prima = settoriDaValore(valorePrecedente);
   const dopo = settoriDaValore(valoreNuovo);
-  const tolti = prima.filter((s) => !dopo.includes(s)).map((s) => nomeSettore(s).toLowerCase());
+  const nomi = (l: readonly SettoreRadar[]) => l.map((s) => nomeSettore(s).toLowerCase()).join(", ");
+  const tolti = prima.filter((s) => !dopo.includes(s));
+  const aggiunti = dopo.filter((s) => !prima.includes(s));
   const regole = (idFonte ?? "").startsWith(PREFISSO_CORREZIONE) ? (idFonte ?? "").split(":")[1]?.split("+") ?? [] : [];
   const motivi = [...new Set(regole.map((r) => ESCLUSIONI_OGGETTO.find((e) => e.id === r)?.motivo).filter((m): m is string => !!m))];
-  const cosa = tolti.length ? `abbiamo tolto la gara da: ${tolti.join(", ")}` : "abbiamo corretto i settori della gara";
-  const resta = dopo.length ? `Resta in: ${dopo.map((s) => nomeSettore(s).toLowerCase()).join(", ")}.` : "Resta consultabile nell'archivio.";
-  return `${quando ? `Il ${quando} ` : ""}${quando ? cosa : cosa.charAt(0).toUpperCase() + cosa.slice(1)}${motivi.length ? ` (${motivi.join("; ")})` : ""}. ${resta}`;
+  const perche = motivi.length ? ` (${motivi.join("; ")})` : "";
+  const cosa =
+    tolti.length && aggiunti.length
+      ? `abbiamo tolto la gara da: ${nomi(tolti)}${perche} e l'abbiamo aggiunta a: ${nomi(aggiunti)}`
+      : tolti.length
+        ? `abbiamo tolto la gara da: ${nomi(tolti)}${perche}`
+        : aggiunti.length
+          ? `abbiamo aggiunto la gara a: ${nomi(aggiunti)}`
+          : `abbiamo corretto i settori della gara${perche}`;
+  const resta = dopo.length ? `${aggiunti.length ? "Ora è in" : "Resta in"}: ${nomi(dopo)}.` : "Resta consultabile nell'archivio.";
+  return `${quando ? `Il ${quando} ` : ""}${quando ? cosa : cosa.charAt(0).toUpperCase() + cosa.slice(1)}. ${resta}`;
 }
 
 // Concessioni di bar, caffetterie, ristoranti, punti ristoro, distributori automatici e chioschi (fase B2b): senza un CPV del file entrano

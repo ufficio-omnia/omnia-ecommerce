@@ -39,6 +39,16 @@
 //   - «navigazione internet nelle mense» (caso ARDSU): prima A, ora C con la regola «servizi_di_connettivita»;
 //   - versione delle regole «2026-11-17g».
 // Nessun controllo tolto. I controlli nuovi sono nella sezione «fase B2b».
+// Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
+// che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
+// file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
+//   - riclassificaGara: gara pertinente e gara correlata invariate, gara esclusa che toglie e basta, oggetti dei lotti, «una gara che
+//     guadagnerebbe un settore non si tocca» (non vale più: ora si aggiunge), parola chiave su una fornitura (6);
+//   - registro: valore leggibile, forma breve, valore illeggibile; nota entro 1000 caratteri (4);
+//   - script: porta, porta prima del database, solo staging, nessuna cancellazione, scritture condizionate, tetto, registro mai
+//     notificabile, «.update» solo di settori, metodo e data (8); scheda della gara con la sua frase (1).
+// Restano qui, sulle funzioni di settori.ts: versione, identificativo della correzione (forma e lunghezza) e frase per il cliente, con i
+// casi nuovi del settore aggiunto e del settore tolto e aggiunto.
 import fs from "fs";
 import path from "path";
 import {
@@ -61,7 +71,6 @@ import {
   type ContestoCpv,
   type SettoreRadar,
 } from "../src/lib/radar/settori";
-import { notaCorrezione, riclassificaGara, statoDaRegistro, valoreRegistro } from "../src/lib/radar/riclassifica-settori";
 
 const RADICE = path.join(__dirname, "..");
 const fallimenti: string[] = [];
@@ -1003,66 +1012,39 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
   atteso(`${f}: nessuna regola di classificazione propria`, !/ESCLUSIONI_OGGETTO\s*=|REGOLE_PAROLE\s*=|CORRELAZIONI\s*=/.test(t));
 }
 
-// ───── 8. riclassificazione delle gare già in archivio ─────
-const base = { id: "00000000-0000-0000-0000-000000000001", cpv_tutti: null, natura_contratto: "servizi" };
-uguale(
-  "riclassificazione: gara pertinente invariata",
-  riclassificaGara({ ...base, oggetto: "Servizio di refezione scolastica", cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "cpv" }, []).tipo,
-  "invariata",
-);
-uguale(
-  "riclassificazione: gara correlata (B) invariata nella colonna settori",
-  riclassificaGara({ ...base, oggetto: "Servizi di gestione e funzionamento del centro di accoglienza", cpv_principale: "85311000", cpv_tutti: ["85311000", "55300000"], settori: ["ristorazione"], metodo_settore: "cpv" }, []).tipo,
-  "invariata",
-);
-const corr = riclassificaGara({ ...base, oggetto: "Fornitura pizza scuole Betti", cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "cpv" }, []);
-atteso(
-  "riclassificazione: gara esclusa → correzione che toglie e basta",
-  corr.tipo === "correzione" && corr.dopo.settori.length === 0 && corr.dopo.metodo === null && corr.idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
-  JSON.stringify(corr),
-);
+// ───── 8. correzioni dei settori: identificativo e frase per il cliente (settori.ts) ─────
+// Fase B2b: i controlli sulla riclassificazione (riclassificaGara, statoDaRegistro, valoreRegistro, notaCorrezione) e sullo script di
+// riclassificazione e la scheda della gara sono SPOSTATI a B2 (scripts/verifica-radar-popolamento.ts, nel livello 1), perché quei file
+// sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
+// settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
+const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
 uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17g");
-const lotti = riclassificaGara({ ...base, oggetto: "lotto1", cpv_principale: "90910000", cpv_tutti: ["90910000", "98341130"], settori: ["pulizia", "vigilanza_portierato"], metodo_settore: "cpv" }, [
-  { oggetto: "SERVIZIO DI CUSTODIA, SICUREZZA E PULIZIA AMBIENTALE DEGLI IMPIANTI SPORTIVI", cpv_principale: "90910000", cpv_tutti: null },
-]);
-uguale("riclassificazione: legge anche gli oggetti dei lotti (come gli importatori)", lotti.tipo, "invariata");
 uguale(
-  "riclassificazione: una gara che guadagnerebbe un settore non si tocca",
-  riclassificaGara({ ...base, oggetto: "Servizio di refezione scolastica", cpv_principale: "55524000", settori: [], metodo_settore: null }, []).tipo,
-  "da_decidere",
+  "identificativo della correzione: versione e regole",
+  idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
+  `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
 );
-uguale(
-  "riclassificazione: parola chiave su una fornitura → fuori (regola degli importatori)",
-  (() => {
-    const r = riclassificaGara({ ...base, oggetto: "Fornitura di attrezzature per la pulizia con servizio di pulizia", cpv_principale: "39000000", settori: ["pulizia"], metodo_settore: "parole_chiave", natura_contratto: "forniture" }, []);
-    return r.tipo === "correzione" ? r.dopo.settori : r.tipo;
-  })(),
-  [],
-);
-const stato = { settori: ["ristorazione", "pulizia"], metodo: "cpv" };
-uguale("registro: valore di prima leggibile per il ripristino", statoDaRegistro(valoreRegistro(stato)), stato);
-uguale("registro: forma breve (solo settori)", statoDaRegistro('["pulizia"]'), { settori: ["pulizia"], metodo: null });
-uguale("registro: valore illeggibile = nessun ripristino", statoDaRegistro("{rotto"), null);
-atteso("nota del registro entro 1000 caratteri", notaCorrezione(Array.from({ length: 50 }, () => ({ settore: "ristorazione" as const, regola: "x", motivo: "m".repeat(80) }))).length <= 1000);
 atteso("identificativo della correzione entro 200 caratteri", idFonteCorrezioneSettori(ESCLUSIONI_OGGETTO.map((r) => ({ settore: "pulizia" as const, regola: r.id, motivo: "" }))).length <= 200);
 uguale(
-  "frase per il cliente nella scheda",
-  descriviCorrezioneSettori("17/11/2026", valoreRegistro({ settori: ["ristorazione"], metodo: "cpv" }), valoreRegistro({ settori: [], metodo: null }), `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`),
+  "frase per il cliente: settore tolto",
+  descriviCorrezioneSettori("17/11/2026", registro(["ristorazione"], "cpv"), registro([], null), `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`),
   "Il 17/11/2026 abbiamo tolto la gara da: ristorazione collettiva (Fornitura di beni senza un servizio del settore). Resta consultabile nell'archivio.",
 );
-
-// ───── 9. script di riclassificazione: porta, tetto, nessuna cancellazione ─────
-const script = leggi("scripts/radar-riclassifica-settori.ts");
-atteso("script: porta delle autorizzazioni con il suo nome", script.includes('controllaPorta({ script: "radar-riclassifica-settori.ts" })'));
-atteso("script: la porta viene prima di ogni accesso al database per applica e annulla", script.indexOf('if (modo !== "prova") await porta();') > 0 && script.indexOf('if (modo !== "prova") await porta();') < script.indexOf("const db = createClient"));
-atteso("script: solo staging, mai produzione", script.includes("PROGETTO_PRODUZIONE") && script.includes("RADAR_STAGING_REF"));
-atteso("script: nessuna cancellazione né funzione del database", !/\.delete\(|\.rpc\(|truncate|drop /i.test(script));
-atteso("script: scritture condizionate ai settori trovati (contiene E contenuto)", /contains\("settori"/.test(script) && /containedBy\("settori"/.test(script));
-atteso("script: tetto di gare, si ferma prima di scrivere", script.includes("più del massimo autorizzato") && script.includes("massimo <= 500"));
-atteso("script: registro mai notificabile", (script.match(/notificabile: false/g) ?? []).length === 2 && !script.includes("notificabile: true"));
-atteso("script: cambia solo settori, metodo e data di aggiornamento", (script.match(/\.update\(\{[^}]*\}/g) ?? []).every((u) => /^\.update\(\{ settori: [^,]+, metodo_settore: [^,]+, aggiornata_il: iso \}$/.test(u)));
-const scheda = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx");
-atteso("scheda della gara: la correzione dei settori ha la sua frase (non «Rettifica»)", scheda.includes("descriviCorrezioneSettori(quando, a.valore_precedente, a.valore_nuovo, a.id_fonte)"));
+uguale(
+  "frase per il cliente: settore aggiunto (fase B2b, identificativo con l'esecuzione)",
+  descriviCorrezioneSettori("18/11/2026", registro(["pulizia"], "cpv"), registro(["pulizia", "vigilanza_portierato"], "cpv"), `regole-settori-${VERSIONE_REGOLE_SETTORI}:aggiunta:esecuzione-1`),
+  "Il 18/11/2026 abbiamo aggiunto la gara a: vigilanza privata e portierato. Ora è in: pulizia e sanificazione, vigilanza privata e portierato.",
+);
+uguale(
+  "frase per il cliente: settore tolto e settore aggiunto",
+  descriviCorrezioneSettori("18/11/2026", registro(["ristorazione"], "parole_chiave"), registro(["pulizia"], "cpv"), `regole-settori-${VERSIONE_REGOLE_SETTORI}:servizi_di_connettivita:esecuzione-1`),
+  "Il 18/11/2026 abbiamo tolto la gara da: ristorazione collettiva (Servizio di connessione a internet o di telecomunicazioni: non è un servizio del settore, anche se nomina i luoghi (mense, residenze)) e l'abbiamo aggiunta a: pulizia e sanificazione. Ora è in: pulizia e sanificazione.",
+);
+uguale(
+  "frase per il cliente: settori uguali, senza data",
+  descriviCorrezioneSettori(null, registro(["pulizia"], "parole_chiave"), registro(["pulizia"], "cpv"), null),
+  "Abbiamo corretto i settori della gara. Resta in: pulizia e sanificazione.",
+);
 
 if (fallimenti.length) {
   console.error(`\n${fallimenti.length} controlli falliti:\n- ${fallimenti.join("\n- ")}`);
