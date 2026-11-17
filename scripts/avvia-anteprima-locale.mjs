@@ -36,7 +36,17 @@ for (const riga of fs.readFileSync(assoluto, "utf8").split(/\r?\n/)) {
   variabili[m[1]] = v;
 }
 
-const env = { ...process.env, ...variabili, NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: RAMO };
+// Ambiente PULITO, come su Vercel: niente di quello che c'è nel terminale (dove potrebbero esserci variabili di
+// produzione esportate a mano o di altri programmi), solo le variabili di sistema indispensabili per avviare Node su
+// Windows e su Unix, più quelle del file. NODE_OPTIONS e OSSERVA_RETE_FILE passano solo se impostati (osservazione
+// della rete durante le prove locali); anche loro restano soggetti alla guardia.
+const SISTEMA = new Set([
+  "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "APPDATA",
+  "LOCALAPPDATA", "HOMEDRIVE", "HOMEPATH", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
+  "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS", "LANG", "NODE_OPTIONS", "OSSERVA_RETE_FILE",
+]);
+const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => SISTEMA.has(k.toUpperCase())));
+const env = { ...base, ...variabili, NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: RAMO };
 const node = process.execPath;
 const tsx = path.join(cartella, "node_modules", "tsx", "dist", "cli.mjs");
 

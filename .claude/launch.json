@@ -2,9 +2,23 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "tender-intelligence-anteprima-locale",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": [
+        "C:\\Users\\Dell\\Desktop\\OMNIA-PROGETTO1\\.claude\\worktrees\\tender-intelligence-anteprima\\scripts\\avvia-anteprima-locale.mjs",
+        "avvia",
+        "C:\\Users\\Dell\\Desktop\\OMNIA-PROGETTO1\\.env.vercel-anteprima-ti",
+        "3110"
+      ],
+      "port": 3110
+    },
+    {
       "name": "omnia-dev",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "runtimeArgs": [
+        "node_modules/next/dist/bin/next",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
