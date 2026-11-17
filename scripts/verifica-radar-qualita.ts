@@ -144,7 +144,8 @@ const RICHIESTI: Caso[] = [
     nome: "accoglienza museale (non vigilanza privata)",
     cpv: ["79992000"],
     testo: "Affidamento del servizio di accoglienza ed assistenza al pubblico nell'ambito delle attività del museo, con vigilanza delle sale",
-    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategoria: "portierato_reception" }],
+    // la «vigilanza delle sale» di un museo non aggiunge la vigilanza privata tra le sottocategorie
+    attesi: [{ settore: "vigilanza_portierato", livello: "A", sottocategorie: ["portierato_reception"] }],
   },
   {
     nome: "servizio solo informatico (CPV principale informatico)",
@@ -415,6 +416,13 @@ const VIDEOSORVEGLIANZA: Caso[] = [
   },
 ];
 for (const c of VIDEOSORVEGLIANZA) provaCaso(c);
+provaCaso({
+  nome: "noleggio senza videosorveglianza prima del servizio di portierato: non è un affidamento misto (testo sintetico)",
+  cpv: ["98341120"],
+  testo: "Noleggio di una guardiola prefabbricata e servizio di portierato presso il parcheggio comunale",
+  attesi: [{ settore: "vigilanza_portierato", livello: "A" }],
+});
+uguale("parole chiave: «vigilanza e videosorveglianza» senza la frase «servizio di» resta", settoriDaParole("Vigilanza e videosorveglianza degli edifici comunali"), ["vigilanza_portierato"]);
 provaCaso({
   nome: "fornitura di derrate per i «Presidi ERDIS» (sedi, non presidio di sorveglianza): resta esclusa",
   cpv: ["15000000", "63110000"],
