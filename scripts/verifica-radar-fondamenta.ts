@@ -43,13 +43,13 @@ const leggi = (relativo: string) => fs.readFileSync(path.join(RADICE, relativo),
 
 // ───── 1. mappa CPV: il file approvato è l'unica fonte ─────
 const csv = leggiCsvCpvSettori(path.join(RADICE, "src/lib/radar/dati/cpv-settori-omnia.csv"));
-uguale("il file approvato contiene 50 codici", csv.length, 50);
+uguale("il file approvato contiene 56 codici (50 dell'11/11 più i 6 di bar e ristoranti approvati dall'utente il 17/11)", csv.length, 56);
 uguale("settori-dati.ts coincide con il CSV, codice per codice (rigenerarlo con scripts/genera-cpv-radar.ts)", CPV_SETTORI_OMNIA.map((r) => ({ ...r })), csv);
 uguale("nessun codice ripetuto", new Set(csv.map((r) => r.cpv)).size, csv.length);
 uguale("ogni settore del file è un settore noto", csv.filter((r) => !settoreDaNomeFile(r.settore)).map((r) => r.settore), []);
 uguale("i sei settori: cinque dal file più l'ausiliariato (solo parole)", SETTORI_RADAR.map((s) => s.id), ["pulizia", "ristorazione", "vigilanza_portierato", "facchinaggio", "multiservizi", "ausiliariato"]);
 uguale("l'ausiliariato non ha CPV", cpvDelSettore("ausiliariato"), []);
-uguale("conteggi per settore come nel file", SETTORI_RADAR.map((s) => cpvDelSettore(s.id).length), [17, 15, 9, 7, 2, 0]);
+uguale("conteggi per settore come nel file", SETTORI_RADAR.map((s) => cpvDelSettore(s.id).length), [17, 21, 9, 7, 2, 0]);
 
 // ───── 2. normalizzazione e classificazione ─────
 uguale("CPV con cifra di controllo", normalizzaCpv("90910000-9"), "90910000");
