@@ -1000,11 +1000,16 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 export const VERSIONE_REGOLE_SETTORI = "2026-11-17g";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
+// Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
+// correzione. Nome scelto insieme a B2 il 17/11 (fase B2b): «parole_chiave» sembrava la regola che rende pertinente una gara.
+export const REGOLA_NON_RICONOSCIUTO = "non_riconosciuto";
+export const MOTIVO_NON_RICONOSCIUTO = "Né i CPV né l'oggetto indicano più il settore";
+
 // Identificativo della correzione nel registro: versione e regole («regole-settori-2026-11-17b:rifiuti»). Rifare la stessa correzione
-// con le stesse regole non la duplica (chiave unica del registro).
+// con le stesse regole non la duplica (chiave unica del registro). Senza regole di esclusione: «non_riconosciuto».
 export function idFonteCorrezioneSettori(esclusioni: readonly Esclusione[]): string {
   const regole = [...new Set(esclusioni.map((e) => e.regola))].sort();
-  return `${PREFISSO_CORREZIONE}${VERSIONE_REGOLE_SETTORI}:${regole.length ? regole.join("+") : "parole_chiave"}`.slice(0, 200);
+  return `${PREFISSO_CORREZIONE}${VERSIONE_REGOLE_SETTORI}:${regole.length ? regole.join("+") : REGOLA_NON_RICONOSCIUTO}`.slice(0, 200);
 }
 
 // Il registro tiene {"settori": [...], "metodo": ...} (o, in forma breve, solo l'elenco dei settori).
@@ -1030,7 +1035,9 @@ export function descriviCorrezioneSettori(quando: string | null, valorePrecedent
   const tolti = prima.filter((s) => !dopo.includes(s));
   const aggiunti = dopo.filter((s) => !prima.includes(s));
   const regole = (idFonte ?? "").startsWith(PREFISSO_CORREZIONE) ? (idFonte ?? "").split(":")[1]?.split("+") ?? [] : [];
-  const motivi = [...new Set(regole.map((r) => ESCLUSIONI_OGGETTO.find((e) => e.id === r)?.motivo).filter((m): m is string => !!m))];
+  const motivi = [
+    ...new Set(regole.map((r) => (r === REGOLA_NON_RICONOSCIUTO ? MOTIVO_NON_RICONOSCIUTO : ESCLUSIONI_OGGETTO.find((e) => e.id === r)?.motivo)).filter((m): m is string => !!m)),
+  ];
   const perche = motivi.length ? ` (${motivi.join("; ")})` : "";
   const cosa =
     tolti.length && aggiunti.length

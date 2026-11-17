@@ -49,6 +49,8 @@
 //     notificabile, «.update» solo di settori, metodo e data (8); scheda della gara con la sua frase (1).
 // Restano qui, sulle funzioni di settori.ts: versione, identificativo della correzione (forma e lunghezza) e frase per il cliente, con i
 // casi nuovi del settore aggiunto e del settore tolto e aggiunto.
+// Nuovi (accordo con B2 del 17/11): il settore che le regole non vedono più ha la regola «non_riconosciuto» (prima l'identificativo diceva
+// «parole_chiave», che sembrava la regola che rende pertinente) e il motivo «Né i CPV né l'oggetto indicano più il settore».
 import fs from "fs";
 import path from "path";
 import {
@@ -1025,6 +1027,13 @@ uguale(
   `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`,
 );
 atteso("identificativo della correzione entro 200 caratteri", idFonteCorrezioneSettori(ESCLUSIONI_OGGETTO.map((r) => ({ settore: "pulizia" as const, regola: r.id, motivo: "" }))).length <= 200);
+// settore che le regole non vedono più: «non_riconosciuto» (nome scelto con B2 il 17/11; prima «parole_chiave»)
+uguale("identificativo senza regole di esclusione: settore non riconosciuto", idFonteCorrezioneSettori([]), `regole-settori-${VERSIONE_REGOLE_SETTORI}:non_riconosciuto`);
+uguale(
+  "frase per il cliente: settore non più riconosciuto, con il suo motivo",
+  descriviCorrezioneSettori("18/11/2026", registro(["ristorazione"], "parole_chiave"), registro([], null), `regole-settori-${VERSIONE_REGOLE_SETTORI}:non_riconosciuto:esecuzione-1`),
+  "Il 18/11/2026 abbiamo tolto la gara da: ristorazione collettiva (Né i CPV né l'oggetto indicano più il settore). Resta consultabile nell'archivio.",
+);
 uguale(
   "frase per il cliente: settore tolto",
   descriviCorrezioneSettori("17/11/2026", registro(["ristorazione"], "cpv"), registro([], null), `regole-settori-${VERSIONE_REGOLE_SETTORI}:forniture_di_beni`),
