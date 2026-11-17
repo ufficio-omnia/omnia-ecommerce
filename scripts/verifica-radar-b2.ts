@@ -219,11 +219,17 @@ async function principale() {
   uguale("Sintel: righe raggruppate per procedura, righe senza identificativo scartate", [tutte.procedure.length, tutte.righeScartate, tutte.procedure.map((p) => p.tipo)], [2, 1, ["bando", "esclusione"]]);
 
   // ───── 3bis. esclusioni per oggetto (regole della PVL in settori.ts, uguali per tutte le fonti): contate a parte, con la regola ─────
+  // Regole definitive del 17/11/2026 (2026-11-17b, decisione dell'utente): le concessioni pubbliche di bar e ristoranti ENTRANO in
+  // ristorazione; resta esclusa, per esempio, la concessione di un immobile senza il servizio di ristorazione.
   {
-    const bar = leggiProceduraSintel("900000009", [rigaSintel({ id_procedura: "900000009", codice_cpv: "55300000-3", nome_procedura: "Concessione della gestione del bar e punto ristoro del parco comunale (prova sintetica)" })], OGGI) as EsclusioneSintel;
-    uguale("Sintel: un bar con CPV della ristorazione è escluso per oggetto, con la regola", [bar.motivo, bar.regole], ["esclusa_per_oggetto", ["ristorazione_commerciale"]]);
-    const barS = leggiElementoAflink("sardegnacat", { ...elementoBase("700099"), CPV: "55300000-3 - Servizi di ristorazione", Oggetto: "Concessione della gestione del bar e punto ristoro del parco comunale (prova sintetica)", TitoloDocumento: "Bar del parco (prova)" }, ADESSO) as EsclusioneAflink;
-    uguale("SardegnaCAT: stesso caso, stessa esclusione (classificatore unico)", [barS.motivo, barS.regole], ["esclusa_per_oggetto", ["ristorazione_commerciale"]]);
+    const bar = leggiProceduraSintel("900000009", [rigaSintel({ id_procedura: "900000009", codice_cpv: "55300000-3", nome_procedura: "Concessione della gestione del bar e punto ristoro del parco comunale (prova sintetica)" })], OGGI) as BandoSintel | EsclusioneSintel;
+    uguale("Sintel: la concessione di un bar con CPV della ristorazione entra in ristorazione (regole definitive)", [bar.tipo, bar.tipo === "bando" ? bar.settori : null], ["bando", ["ristorazione"]]);
+    const barS = leggiElementoAflink("sardegnacat", { ...elementoBase("700099"), CPV: "55300000-3 - Servizi di ristorazione", Oggetto: "Concessione della gestione del bar e punto ristoro del parco comunale (prova sintetica)", TitoloDocumento: "Bar del parco (prova)" }, ADESSO) as BandoAflink | EsclusioneAflink;
+    uguale("SardegnaCAT: stesso caso, stesso risultato (classificatore unico)", [barS.tipo, barS.tipo === "bando" ? barS.settori : null], ["bando", ["ristorazione"]]);
+    const casone = leggiProceduraSintel("900000010", [rigaSintel({ id_procedura: "900000010", codice_cpv: "55300000-3", nome_procedura: "Affidamento in concessione del casone “Paduli” per la durata di sette anni (prova sintetica)" })], OGGI) as EsclusioneSintel;
+    uguale("Sintel: la concessione di un immobile con CPV della ristorazione è esclusa per oggetto, con la regola", [casone.motivo, casone.regole], ["esclusa_per_oggetto", ["concessione_di_immobili"]]);
+    const casoneS = leggiElementoAflink("sardegnacat", { ...elementoBase("700098"), CPV: "55300000-3 - Servizi di ristorazione", Oggetto: "Affidamento in concessione del casone “Paduli” per la durata di sette anni (prova sintetica)", TitoloDocumento: "Casone (prova)" }, ADESSO) as EsclusioneAflink;
+    uguale("SardegnaCAT: stesso caso, stessa esclusione (classificatore unico)", [casoneS.motivo, casoneS.regole], ["esclusa_per_oggetto", ["concessione_di_immobili"]]);
   }
 
   // ───── 4. Sintel: rete simulata ─────
