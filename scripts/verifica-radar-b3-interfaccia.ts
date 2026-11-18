@@ -190,6 +190,8 @@ async function provaComportamento() {
 // ───── script del collaudo con accesso: SOLO prove a secco (porta e fetch finti, nessuna rete esterna, nessuno staging) ─────
 async function provaCollaudo() {
   const ca = await import("./collaudo-accesso-b3.mjs");
+  const { createServerClient } = await import("@supabase/ssr");
+  const http = await import("node:http");
   const os = await import("node:os");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "b3-collaudo-"));
   const progetto = path.join(tmp, "progetto");
@@ -201,30 +203,52 @@ async function provaCollaudo() {
   fs.writeFileSync(fileDentro, variabiliValide);
   const fileProd = path.join(tmp, "variabili-prod.txt");
   fs.writeFileSync(fileProd, variabiliValide.replace("ryawdldqiumqsskrnyps", "bihfrzspqxsrzlbqqvqa"));
+  const COOKIE: string = ca.COOKIE_SESSIONE;
+  // Token d'accesso lungo apposta: la libreria divide il cookie in due parti (.0 e .1), come succede con i token veri.
+  const ACCESSO = `ACCESSO_SINTETICO_${"x".repeat(3000)}`;
   const chiamate: { url: string; metodo: string; corpo: string }[] = [];
+  let verificaFallisce = false;
+  const json = { "Content-Type": "application/json" };
   const fetchFinto = (async (url: string, init?: RequestInit) => {
-    chiamate.push({ url, metodo: init?.method ?? "GET", corpo: String(init?.body ?? "") });
-    return new Response(JSON.stringify({ hashed_token: `TOKEN_SINTETICO_${chiamate.length}` }), { status: 200 });
+    const u = String(url);
+    chiamate.push({ url: u, metodo: init?.method ?? "GET", corpo: String(init?.body ?? "") });
+    if (u === "https://ryawdldqiumqsskrnyps.supabase.co/auth/v1/admin/generate_link") return new Response(JSON.stringify({ hashed_token: `TOKEN_SINTETICO_${chiamate.length}` }), { status: 200, headers: json });
+    if (u === "https://ryawdldqiumqsskrnyps.supabase.co/auth/v1/verify") {
+      if (verificaFallisce) return new Response(JSON.stringify({ code: 403, error_code: "otp_expired", msg: "scaduto" }), { status: 403, headers: json });
+      const utente = { id: "00000000-0000-4000-8000-0000000000aa", aud: "authenticated", role: "authenticated", email: "sintetico@prova.test", app_metadata: {}, user_metadata: {} };
+      return new Response(JSON.stringify({ access_token: ACCESSO, token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: "RINNOVO_SINTETICO", user: utente }), { status: 200, headers: json });
+    }
+    return new Response("{}", { status: 404, headers: json });
   }) as unknown as typeof fetch;
   const portaOk = () => ({ id: "AUT-SINTETICA", uso: "U1" });
   const ferma = async (nome: string, argv: string[], opzioni: Record<string, unknown>) => {
     const prima = chiamate.length;
     let fermato = "";
     try {
-      await ca.collaudo(argv, {}, { cartella: progetto, fetchFn: fetchFinto, portaRinvio: 0, ...opzioni });
+      await ca.collaudo(argv, {}, { cartella: progetto, fetchFn: fetchFinto, portaAccesso: 0, ...opzioni });
     } catch (e) {
       fermato = e instanceof ca.Fermo ? e.message : `errore inatteso: ${e}`;
     }
     atteso(nome, fermato !== "" && !fermato.startsWith("errore inatteso") && chiamate.length === prima && !/SINTETICA_DA_NON_STAMPARE|bihfrzspqxsrzlbqqvqa\.supabase/.test(fermato), fermato || "non si è fermato");
   };
+  // una richiesta con un Host scelto (DNS rebinding): fetch non lo permette, node:http sì
+  const conHost = (porta: number, percorso: string, host: string) =>
+    new Promise<number>((risolvi, rifiuta) => {
+      const r = http.request({ host: "localhost", port: porta, path: percorso, method: "GET", headers: { Host: host } }, (res) => {
+        res.resume();
+        risolvi(res.statusCode ?? 0);
+      });
+      r.on("error", rifiuta);
+      r.end();
+    });
   try {
     await ferma("CA1. senza il lanciatore delle autorizzazioni (TI_REGISTRO assente) si ferma prima di qualunque rete", [fileFuori, "3110"], {});
     await ferma("CA2. porta che nega l'esecuzione → fermo, nessuna rete", [fileFuori, "3110"], { controllaPorta: () => { throw new Error("autorizzazione inesistente"); } });
     await ferma("CA3. file delle variabili dentro il progetto → fermo", [fileDentro, "3110"], { controllaPorta: portaOk, avvia: async () => 0 });
     await ferma("CA4. variabili di produzione → fermo, i messaggi non riportano valori", [fileProd, "3110"], { controllaPorta: portaOk, avvia: async () => 0 });
-    await ferma("CA5. lanciatore dell'anteprima mancante → fermo prima di generare i collegamenti", [fileFuori, "3110"], { controllaPorta: portaOk });
+    await ferma("CA5. lanciatore dell'anteprima mancante → fermo prima di avviare qualunque server", [fileFuori, "3110"], { controllaPorta: portaOk });
 
-    // giro completo a secco: il «server dell'app» finto prova il reindirizzamento come farebbe il browser
+    // giro completo a secco: il «browser» chiede /pronto, prova le strade sbagliate, poi preme i pulsanti
     const stampato: string[] = [];
     const logOriginale = console.log;
     console.log = (...a: unknown[]) => stampato.push(a.map(String).join(" "));
@@ -236,63 +260,145 @@ async function provaCollaudo() {
         cartella: progetto,
         fetchFn: fetchFinto,
         controllaPorta: portaOk,
-        portaRinvio: 0,
-        avvia: async ({ portaRinvio }: { portaRinvio: number }) => {
-          portaUsata = portaRinvio;
-          const base = `http://127.0.0.1:${portaRinvio}`;
-          const prima = await fetch(`${base}/accesso/ti-titolare`, { redirect: "manual" });
-          const seconda = await fetch(`${base}/accesso/ti-titolare`, { redirect: "manual" });
-          const console_ = await fetch(`${base}/accesso/ti-admin`, { redirect: "manual" });
-          const ignoto = await fetch(`${base}/accesso/qualcuno`, { redirect: "manual" });
-          const post = await fetch(`${base}/accesso/ti-titolare2`, { method: "POST", redirect: "manual" });
-          const dopoPost = await fetch(`${base}/accesso/ti-titolare2`, { redirect: "manual" });
-          esiti.prima = [prima.status, prima.headers.get("location") ?? "", prima.headers.get("cache-control"), prima.headers.get("referrer-policy")];
-          esiti.seconda = seconda.status;
-          esiti.console = [console_.status, console_.headers.get("location") ?? ""];
-          esiti.ignoto = ignoto.status;
-          esiti.post = post.status;
-          esiti.dopoPost = dopoPost.status;
+        portaAccesso: 0,
+        avvia: async ({ portaAccesso }: { portaAccesso: number }) => {
+          portaUsata = portaAccesso;
+          const base = `http://localhost:${portaAccesso}`;
+          esiti.chiamateAllAvvio = chiamate.length;
+          const pronto = await fetch(`${base}/pronto`);
+          const html = await pronto.text();
+          esiti.pronto = { stato: pronto.status, cache: pronto.headers.get("cache-control"), referrer: pronto.headers.get("referrer-policy"), cornici: pronto.headers.get("x-frame-options"), csp: pronto.headers.get("content-security-policy") ?? "", html };
+          const via = (html.match(/name="via" value="([^"]+)"/) ?? [])[1] ?? "";
+          const invia = (p: string, campi: Record<string, string>, extra: Record<string, string> = {}) =>
+            fetch(`${base}${p}`, { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: base, ...extra }, body: new URLSearchParams(campi).toString() });
+          esiti.strade = [
+            (await fetch(`${base}/accesso/ti-titolare`, { redirect: "manual" })).status,
+            (await invia("/accesso/ti-titolare", {})).status,
+            (await invia("/accesso/ti-titolare", { via: "codice-sbagliato" })).status,
+            (await invia("/accesso/ti-titolare", { via }, { Origin: "http://altro-sito.test" })).status,
+            (await invia("/accesso/ti-titolare", { via }, { Origin: "null" })).status,
+            await conHost(portaAccesso, "/pronto", "altro-sito.test"),
+            await conHost(portaAccesso, "/accesso/ti-titolare", `127.0.0.1:${portaAccesso}`),
+          ];
+          esiti.chiamatePrimaDelVia = chiamate.length;
+          const titolare = await invia("/accesso/ti-titolare", { via }, { Cookie: `${COOKIE}=vecchio-non-diviso; altro=1` });
+          esiti.titolare = { stato: titolare.status, location: titolare.headers.get("location") ?? "", cache: titolare.headers.get("cache-control"), referrer: titolare.headers.get("referrer-policy"), cookie: titolare.headers.getSetCookie() };
+          esiti.chiamateTitolare = chiamate.slice(esiti.chiamatePrimaDelVia as number);
+          const ripetuto = await invia("/accesso/ti-titolare", { via });
+          esiti.ripetuto = [ripetuto.status, chiamate.length];
+          const admin = await invia("/accesso/ti-admin", { via });
+          esiti.admin = [admin.status, admin.headers.get("location") ?? ""];
+          verificaFallisce = true;
+          const fallito = await invia("/accesso/ti-titolare2", { via });
+          esiti.fallito = [fallito.status, fallito.headers.getSetCookie().length, (await invia("/accesso/ti-titolare2", { via })).status];
+          esiti.ignoto = (await invia("/accesso/qualcuno", { via })).status;
+          esiti.prontoDopo = await (await fetch(`${base}/pronto`)).text();
           return 0;
         },
       });
     } finally {
       console.log = logOriginale;
+      verificaFallisce = false;
     }
-    const [statoPrima, destinazione, cache, referer] = esiti.prima as [number, string, string, string];
-    atteso("CA6. /accesso/ti-titolare: 302 al collegamento vero dell'app su 127.0.0.1 (pagina d'attivazione), senza cache né referer", statoPrima === 302 && destinazione.startsWith("http://127.0.0.1:3110/attiva-account?type=email") && destinazione.includes("token_hash=TOKEN_SINTETICO_") && cache === "no-store" && referer === "no-referrer");
-    uguale("CA7. lo stesso percorso la seconda volta: 410 (un solo uso)", esiti.seconda, 410);
-    atteso("CA8. /accesso/ti-admin porta alla conferma della console su 127.0.0.1", (esiti.console as [number, string])[0] === 302 && (esiti.console as [number, string])[1].startsWith("http://127.0.0.1:3110/auth/conferma?token_hash="));
-    uguale("CA9. percorso sconosciuto 404; metodo diverso da GET 405 e il collegamento resta servibile una volta", [esiti.ignoto, esiti.post, esiti.dopoPost], [404, 405, 302]);
+    const pronto = esiti.pronto as { stato: number; cache: string; referrer: string; cornici: string; csp: string; html: string };
+    uguale("CA6. all'avvio NESSUN collegamento: zero chiamate allo staging finché non si preme un pulsante (anche con GET, codice, origine o host sbagliati)", [esiti.chiamateAllAvvio, esiti.chiamatePrimaDelVia], [0, 0]);
+    atteso("CA7. /pronto: 200 senza token né cache, referer solo verso sé stessa (con «no-referrer» il browser manderebbe Origin: null e i pulsanti verrebbero respinti), non incorniciabile, un pulsante POST per ciascuno dei 3 utenti", pronto.stato === 200 && pronto.cache === "no-store" && pronto.referrer === "same-origin" && pronto.html.includes('<meta name="referrer" content="same-origin">') && pronto.cornici === "DENY" && pronto.csp.includes("frame-ancestors 'none'") && ["ti-admin", "ti-titolare", "ti-titolare2"].every((u) => pronto.html.includes(`<form method="post" action="/accesso/${u}">`)) && !/TOKEN_SINTETICO|token_hash|ACCESSO_SINTETICO/.test(pronto.html));
+    uguale("CA8. strade sbagliate respinte: GET 405, senza codice 403, codice sbagliato 403, altra origine o «null» 403, host estraneo o numerico 403", esiti.strade, [405, 403, 403, 403, 403, 403, 403]);
+    const t = esiti.titolare as { stato: number; location: string; cache: string; referrer: string; cookie: string[] };
+    const ct = esiti.chiamateTitolare as { url: string; metodo: string; corpo: string }[];
+    atteso(
+      "CA9. pulsante di ti-titolare: un collegamento generato e verificato SUBITO lato server (2 chiamate), poi 303 all'app su localhost senza token nell'indirizzo",
+      t.stato === 303 && t.location === "http://localhost:3110/dashboard/omnia-ai/opportunita/cerca?__zone=omnia-ai" && t.cache === "no-store" && t.referrer === "no-referrer" &&
+        ct.length === 2 && ct[0].url.endsWith("/auth/v1/admin/generate_link") && JSON.parse(ct[0].corpo).email === "ti-titolare@prova.test" && JSON.parse(ct[0].corpo).type === "magiclink" &&
+        ct[1].url.endsWith("/auth/v1/verify") && ct[1].metodo === "POST" && JSON.parse(ct[1].corpo).token_hash === "TOKEN_SINTETICO_1" && JSON.parse(ct[1].corpo).type === "magiclink" &&
+        !ct.some((c) => /TOKEN_SINTETICO/.test(c.url)),
+      JSON.stringify({ stato: t.stato, location: t.location, chiamate: ct.map((c) => c.url) }),
+    );
+    const impostati = t.cookie.filter((c) => !/Max-Age=0/.test(c)).map((c) => c.split(";")[0]);
+    const scaduti = t.cookie.filter((c) => /Max-Age=0/.test(c)).map((c) => c.split("=")[0]);
+    atteso("CA10. cookie di sessione per «localhost»: diviso in .0 e .1, Path=/, SameSite=Lax, mai Domain; il vecchio cookie non diviso scade, gli altri restano", impostati.map((c) => c.split("=")[0]).join(",") === `${COOKIE}.0,${COOKIE}.1` && t.cookie.every((c) => /; Path=\//.test(c) && /SameSite=Lax/.test(c) && !/Domain=/i.test(c)) && scaduti.join(",") === COOKIE);
+    const letti = impostati.map((c) => ({ name: c.slice(0, c.indexOf("=")), value: c.slice(c.indexOf("=") + 1) }));
+    const lettore = createServerClient("https://ryawdldqiumqsskrnyps.supabase.co", "sb_publishable_SINTETICA", { cookies: { getAll: () => letti, setAll: () => {} }, global: { fetch: fetchFinto } });
+    const primaLettura = chiamate.length;
+    const { data: sessioneLetta } = await lettore.auth.getSession();
+    atteso("CA11. l'app legge quei cookie con la sua libreria (@supabase/ssr): stessa sessione, senza alcuna chiamata", sessioneLetta.session?.access_token === ACCESSO && chiamate.length === primaLettura);
+    uguale("CA12. lo stesso pulsante la seconda volta: 410 e nessuna nuova chiamata", esiti.ripetuto, [410, 2]);
+    uguale("CA13. pulsante di ti-admin: 303 alla console su localhost", esiti.admin, [303, "http://localhost:3110/?__zone=console"]);
+    uguale("CA14. verifica rifiutata: 502 senza cookie, poi 410 (un solo tentativo per utente); utente sconosciuto 404", [esiti.fallito, esiti.ignoto], [[502, 0, 410], 404]);
+    atteso("CA15. /pronto dopo gli accessi: i pulsanti usati risultano «già usato» e disattivati", ((esiti.prontoDopo as string).match(/disabled>Entra come/g) ?? []).length === 3 && (esiti.prontoDopo as string).includes("già usato"));
     let chiuso = false;
     try {
-      await fetch(`http://127.0.0.1:${portaUsata}/accesso/ti-titolare2`, { redirect: "manual", signal: AbortSignal.timeout(2000) });
+      await fetch(`http://localhost:${portaUsata}/pronto`, { signal: AbortSignal.timeout(2000) });
     } catch {
       chiuso = true;
     }
-    atteso("CA10. allo spegnimento dell'app il reindirizzamento è chiuso e il codice d'uscita è quello dell'app", chiuso && codice === 0);
-    atteso("CA11. nell'uscita nessun token, chiave o collegamento vero (solo gli indirizzi /accesso su 127.0.0.1)", stampato.some((r) => r.includes("http://127.0.0.1:") && r.includes("/accesso/ti-titolare")) && !stampato.some((r) => /TOKEN_SINTETICO|sb_secret_|token_hash=|attiva-account|auth\/conferma/.test(r)));
-    atteso("CA12. nessun file con i collegamenti nel progetto (e nessuna scrittura su file nello script: CA16)", fs.readdirSync(progetto).every((f) => f === "scripts" || f === "variabili.txt"));
-    // il server cade: il reindirizzamento si chiude lo stesso
+    atteso("CA16. allo spegnimento dell'app il server d'accesso è chiuso e il codice d'uscita è quello dell'app", chiuso && codice === 0);
+    atteso(
+      "CA17. nell'uscita nessun token, chiave, cookie o collegamento (solo /pronto su localhost e l'esito per utente)",
+      stampato.some((r) => r.includes(`http://localhost:${portaUsata}/pronto`)) && stampato.some((r) => r.includes("Accesso di ti-titolare: sessione impostata")) && stampato.some((r) => r.includes("Accesso di ti-titolare2 NON riuscito")) &&
+        !stampato.some((r) => /TOKEN_SINTETICO|ACCESSO_SINTETICO|RINNOVO_SINTETICO|sb_secret_|token_hash|base64-|127\.0\.0\.1/.test(r)),
+    );
+    atteso("CA18. nessun file scritto nel progetto (e nessuna scrittura su file nello script: CA23)", fs.readdirSync(progetto).every((f) => f === "scripts" || f === "variabili.txt"));
+    // l'app cade: il server d'accesso si chiude lo stesso
     let portaCaduta = 0;
     try {
-      await ca.collaudo([fileFuori, "3110"], {}, { cartella: progetto, fetchFn: fetchFinto, controllaPorta: portaOk, portaRinvio: 0, avvia: async ({ portaRinvio }: { portaRinvio: number }) => { portaCaduta = portaRinvio; throw new Error("server caduto"); } });
+      await ca.collaudo([fileFuori, "3110"], {}, { cartella: progetto, fetchFn: fetchFinto, controllaPorta: portaOk, portaAccesso: 0, avvia: async ({ portaAccesso }: { portaAccesso: number }) => { portaCaduta = portaAccesso; throw new Error("server caduto"); } });
     } catch {
       // atteso
     }
     let chiusoDopoErrore = false;
     try {
-      await fetch(`http://127.0.0.1:${portaCaduta}/accesso/ti-titolare`, { redirect: "manual", signal: AbortSignal.timeout(2000) });
+      await fetch(`http://localhost:${portaCaduta}/pronto`, { signal: AbortSignal.timeout(2000) });
     } catch {
       chiusoDopoErrore = true;
     }
-    atteso("CA13. se l'app cade, il reindirizzamento si chiude lo stesso", portaCaduta > 0 && chiusoDopoErrore);
-    const server = ca.serverReindirizzamento([{ percorso: "/accesso/x", collegamento: "http://127.0.0.1:3110/x" }]);
+    atteso("CA19. se l'app cade, il server d'accesso si chiude lo stesso", portaCaduta > 0 && chiusoDopoErrore);
+
+    // controllo preliminare: nessuna autorizzazione, nessun file, nessuna rete
+    const primaPreliminare = chiamate.length;
+    const stampatoPre: string[] = [];
+    console.log = (...a: unknown[]) => stampatoPre.push(a.map(String).join(" "));
+    let pre: { html: string; post: number; portaAccesso: number } = { html: "", post: 0, portaAccesso: 0 };
+    let codicePre: number | null = null;
+    try {
+      codicePre = await ca.collaudo(["--preliminare", "3110"], {}, {
+        fetchFn: fetchFinto,
+        portaAccesso: 0,
+        attendi: async ({ portaAccesso }: { portaAccesso: number }) => {
+          const base = `http://localhost:${portaAccesso}`;
+          const html = await (await fetch(`${base}/pronto`)).text();
+          const via = (html.match(/name="via" value="([^"]+)"/) ?? [])[1] ?? "";
+          const post = await fetch(`${base}/accesso/ti-admin`, { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: base }, body: new URLSearchParams({ via }).toString() });
+          pre = { html, post: post.status, portaAccesso };
+        },
+      });
+    } finally {
+      console.log = logOriginale;
+    }
+    let chiusoPre = false;
+    try {
+      await fetch(`http://localhost:${pre.portaAccesso}/pronto`, { signal: AbortSignal.timeout(2000) });
+    } catch {
+      chiusoPre = true;
+    }
+    atteso(
+      "CA20. --preliminare: senza autorizzazione né variabili, /pronto in modalità preliminare con i 3 pulsanti bloccati, un POST valido riceve 409 e nessuna chiamata; poi si chiude",
+      codicePre === 0 && pre.html.includes("MODALITÀ PRELIMINARE") && (pre.html.match(/disabled>Entra come/g) ?? []).length === 3 && pre.post === 409 && chiamate.length === primaPreliminare && chiusoPre && stampatoPre.some((r) => r.includes(`http://localhost:${pre.portaAccesso}/pronto`)),
+    );
+    const server = ca.serverAccesso({ portaApp: "3110", accedi: async () => [] });
     const indirizzo = await ca.ascoltaSoloLocale(server, 0);
-    atteso("CA14. il reindirizzamento ascolta SOLO su 127.0.0.1", indirizzo.address === "127.0.0.1");
+    atteso("CA21. il server d'accesso ascolta SOLO sul loopback (nome «localhost»)", ["::1", "127.0.0.1"].includes(indirizzo.address), indirizzo.address);
     await ca.chiudi(server);
-    uguale("CA15. utenti del collaudo: solo amministratore e due titolari di imprese diverse, tutti @prova.test", ca.UTENTI_COLLAUDO.map((u: { email: string }) => u.email), ["ti-admin@prova.test", "ti-titolare@prova.test", "ti-titolare2@prova.test"]);
+    uguale("CA22. utenti del collaudo: solo amministratore e due titolari di imprese diverse, tutti @prova.test", ca.UTENTI_COLLAUDO.map((u: { email: string }) => u.email), ["ti-admin@prova.test", "ti-titolare@prova.test", "ti-titolare2@prova.test"]);
     const codiceScript = leggi("scripts/collaudo-accesso-b3.mjs");
-    atteso("CA16. lo script controlla la porta prima della guardia, la guardia prima della rete; nessun file scritto; app e collegamenti su 127.0.0.1", codiceScript.indexOf("controllaPorta({ script: NOME_SCRIPT })") < codiceScript.indexOf("erroriAmbiente(variabili)") && codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("await generaCollegamenti(") && !/writeFileSync|appendFileSync/.test(codiceScript) && codiceScript.includes('SOLO_LOCALE = "127.0.0.1"') && !codiceScript.includes("localhost"));
+    atteso(
+      "CA23. lo script: porta delle autorizzazioni prima della guardia, guardia prima del server; collegamenti generati SOLO dentro il pulsante; nessun file scritto; solo «localhost», mai l'indirizzo numerico",
+      codiceScript.indexOf("controllaPorta({ script: NOME_SCRIPT })") < codiceScript.indexOf("erroriAmbiente(variabili)") &&
+        codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("serverAccesso({ portaApp: porta, accedi })") &&
+        (codiceScript.match(/await generaCollegamento\(/g) ?? []).length === 1 && codiceScript.indexOf("await generaCollegamento(") > codiceScript.indexOf("const accedi = async (utente) =>") &&
+        (codiceScript.match(/await accedi\(utente\)/g) ?? []).length === 1 &&
+        !/writeFileSync|appendFileSync/.test(codiceScript) && codiceScript.includes('SOLO_LOCALE = "localhost"') && !/http:\/\/127\.0\.0\.1|SOLO_LOCALE = "127/.test(codiceScript),
+    );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
