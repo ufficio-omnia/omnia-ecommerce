@@ -70,6 +70,9 @@
 //   - versione delle regole «2026-11-18d».
 //   Nuovi: Reggio Calabria (TED 3b0902ca) C; uffici e spiagge resta pulizia; motivo di acque e coste; buoni pasto D2 (tre B, quattro C,
 //   una B per ACEA, una A, nessuna fornitura per analogia); D3 «per alcune parti di igiene ambientale» B.
+// Controlli CAMBIATI con la versione «2026-11-18e» (controllo del coordinamento del 18/11 sulla 18d):
+//   - versione delle regole «2026-11-18e». Nessun altro controllo cambiato; nuovi: le frasi sintetiche del coordinamento su «parte/parti»
+//     (A da sola, B solo coordinata dopo un altro servizio), «in tutto o in parte», «da parte del servizio», spiagge e servizi igienici A.
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -900,6 +903,23 @@ uguale(
   livelli(gara2b("APPALTO A CORPO PER L'AFFIDAMENTO DEI SERVIZI SANITARI, ASSISTENZIALI E PER ALCUNE PARTI DI IGIENE AMBIENTALE", ["85144000"])),
   [["pulizia", "B", "servizio_accessorio"]],
 );
+// 18e (controllo del coordinamento sulla 18d): «parte/parti» è accessorio solo coordinato dopo un altro servizio affidato; da solo è una
+// parola comune (frasi sintetiche del coordinamento, 18/11)
+uguale("«affidamento di parte del servizio di pulizia», senza CPV: A (la pulizia è l'oggetto)", livelli(gara2b("Affidamento di parte del servizio di pulizia degli immobili comunali")), [["pulizia", "A", "parole_chiave"]]);
+uguale("«per la parte relativa alla sede centrale»: A", livelli(gara2b("Servizio di pulizia degli uffici per la parte relativa alla sede centrale")), [["pulizia", "A", "parole_chiave"]]);
+uguale("«da parte di istituto autorizzato»: vigilanza A", livelli(gara2b("Servizio di vigilanza armata da parte di istituto autorizzato")), [["vigilanza_portierato", "A", "parole_chiave"]]);
+uguale("«parte prima: uffici giudiziari»: A", livelli(gara2b("Servizio di pulizia, parte prima: uffici giudiziari")), [["pulizia", "A", "parole_chiave"]]);
+uguale("«servizi sanitari, assistenziali e per alcune parti di igiene ambientale», senza CPV: pulizia B", livelli(gara2b("Servizi sanitari, assistenziali e per alcune parti di igiene ambientale")), [["pulizia", "B", "servizio_accessorio"]]);
+uguale(
+  "«servizi di vigilanza e in parte di pulizia»: pulizia B, vigilanza A",
+  livelli(gara2b("Servizi di vigilanza e in parte di pulizia delle sedi")),
+  [["pulizia", "B", "servizio_accessorio"], ["vigilanza_portierato", "A", "parole_chiave"]],
+);
+uguale("«in tutto o in parte del servizio di pulizia»: A (non è coordinata a un altro servizio)", livelli(gara2b("Affidamento in tutto o in parte del servizio di pulizia delle sedi comunali")), [["pulizia", "A", "parole_chiave"]]);
+uguale("«utilizzo dei locali da parte del servizio di ristorazione»: C, la ristorazione è solo citata", livelli(gara2b("Utilizzo dei locali da parte del servizio di ristorazione")), [["ristorazione", "C", "parola_chiave_citata"]]);
+// 18e: il «salvo» di acque e coste vale anche per gli edifici coordinati alle spiagge
+uguale("pulizia delle spiagge e dei servizi igienici degli stabilimenti, senza CPV: pulizia A", livelli(gara2b("Pulizia delle spiagge e dei servizi igienici degli stabilimenti comunali")), [["pulizia", "A", "parole_chiave"]]);
+uguale("pulizia delle spiagge e dei servizi igienici degli stabilimenti, con il CPV della pulizia: pulizia A", livelli(gara2b("Pulizia delle spiagge e dei servizi igienici degli stabilimenti comunali", ["90910000"])), [["pulizia", "A", "cpv_principale"]]);
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
   "manutenzione IN global service delle strutture (TED 54bdd6eb): multiservizi A",
@@ -1221,7 +1241,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18d");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18e");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
