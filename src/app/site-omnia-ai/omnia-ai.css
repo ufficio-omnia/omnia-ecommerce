@@ -5614,6 +5614,37 @@ html.omnia-scorrimento-bloccato body {
   color: var(--testo);
   margin-right: 6px;
 }
+/* Tender Intelligence, fase B3: «Perché questa gara è qui» nella scheda */
+.omnia-opp-classificazione {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+.omnia-opp-classificazione-elenco {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.omnia-opp-classificazione-testa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.omnia-opp-classificazione-sotto {
+  font-size: 13px;
+  color: var(--testo-2);
+  margin-top: 2px;
+}
+.omnia-opp-classificazione-motivi {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--testo-2);
+  line-height: 1.5;
+}
 .omnia-opp-riga-novita {
   font-size: 13px;
   color: var(--ambra);

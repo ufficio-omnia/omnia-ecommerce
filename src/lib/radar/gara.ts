@@ -6,6 +6,7 @@ import type { ProvenienzaCampi } from "./unione-calcoli";
 import { aggiornamentoPerCliente, garaVisibileAiClienti, type FonteGara } from "./fonti-gara-calcoli";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "./fonti-nascoste";
 import { FONTI_UNITE } from "./unione-calcoli";
+import { CLASSIFICAZIONI_SCHEDA, COLONNA_RIGHE_ATTIVE, classificazioneDaRiga, type ClassificazioneLetta, type ConClassificazioni } from "./classificazioni-lettura";
 
 export type GaraPubblica = {
   id: string;
@@ -90,12 +91,27 @@ export type DatiGaraPubblica = {
   // gare collegate a questa (0117): restano intere nel database; qui se ne mostrano fonti e CIG dei lotti con lo stesso numero
   collegate: string[];
   cigCollegati: Map<string, string>;
+  // fase B3: classificazione per settore della 0121 (solo con l'interruttore acceso e le tabelle leggibili); null = come prima
+  classificazione: ClassificazioneLetta | null;
 };
 
 // controlli = ultimo giro riuscito di ciascuna fonte (la gara risulta verificata su quella fonte fino a quel momento)
-export async function leggiGaraPubblica(admin: SupabaseClient, id: string): Promise<DatiGaraPubblica | null> {
-  const { data: gara, error } = await admin.from("radar_procedure").select(COLONNE_GARA).eq("id", id).maybeSingle<GaraPubblica>();
-  if (error || !gara) return null;
+// Fase B3: con le classificazioni accese, stato e righe attive della 0121 arrivano nella STESSA richiesta della gara (nessuna lettura in più).
+export async function leggiGaraPubblica(admin: SupabaseClient, id: string, opzioni: { classificazioni?: boolean } = {}): Promise<DatiGaraPubblica | null> {
+  const leggi = (conClassificazioni: boolean) =>
+    conClassificazioni
+      ? admin.from("radar_procedure").select(`${COLONNE_GARA}, ${CLASSIFICAZIONI_SCHEDA}`).eq("id", id).eq(COLONNA_RIGHE_ATTIVE, true).maybeSingle<GaraPubblica & ConClassificazioni>()
+      : admin.from("radar_procedure").select(COLONNE_GARA).eq("id", id).maybeSingle<GaraPubblica & ConClassificazioni>();
+  let conClassificazioni = opzioni.classificazioni === true;
+  let { data: letta, error } = await leggi(conClassificazioni);
+  if (error && conClassificazioni) {
+    // tabelle della 0121 assenti o non leggibili: la scheda resta quella di prima
+    conClassificazioni = false;
+    ({ data: letta, error } = await leggi(false));
+  }
+  if (error || !letta) return null;
+  const { classificazione_stato, classificazioni, ...gara } = letta;
+  const classificazione = conClassificazioni ? classificazioneDaRiga({ classificazione_stato, classificazioni }) : null;
   // fonti non ancora mostrabili ai clienti (0120): una gara che ha SOLO quelle non esiste per il cliente; nelle altre non compaiono.
   // Una gara collegata a un'altra resta leggibile: la sua pagina porta alla gara che resta (0117).
   const nascoste = new Set(await fontiNascosteAiClienti());
@@ -131,6 +147,7 @@ export async function leggiGaraPubblica(admin: SupabaseClient, id: string): Prom
     controlli: Object.fromEntries((fonti.data ?? []).map((f) => [f.fonte, f.ultimo_successo_il])),
     collegate,
     cigCollegati,
+    classificazione,
   };
 }
 
