@@ -61,7 +61,8 @@ if (modo === "build") {
 }
 
 if (!fs.existsSync(path.join(cartella, ".next", "BUILD_ID"))) ferma("build mancante: eseguire prima «build» con lo stesso file");
-console.log(`Anteprima locale (come la Preview, solo staging) su http://localhost:${porta} — zone: ?__zone=omnia-ai, ?__zone=console`);
-const server = spawn(node, [path.join(cartella, "node_modules", "next", "dist", "bin", "next"), "start", "-p", porta], { cwd: cartella, env, stdio: "inherit" });
+// Solo su 127.0.0.1 (condizione 7 dell'utente, 18/11): il server non è raggiungibile dalla rete locale né da fuori.
+console.log(`Anteprima locale (come la Preview, solo staging) su http://127.0.0.1:${porta}, solo su questo computer — zone: ?__zone=omnia-ai, ?__zone=console`);
+const server = spawn(node, [path.join(cartella, "node_modules", "next", "dist", "bin", "next"), "start", "-H", "127.0.0.1", "-p", porta], { cwd: cartella, env, stdio: "inherit" });
 server.on("exit", (codice) => process.exit(codice ?? 0));
 for (const segnale of ["SIGINT", "SIGTERM"]) process.on(segnale, () => server.kill(segnale));

@@ -197,6 +197,11 @@ async function principale() {
   const bannerEcommerce = fs.readFileSync(path.join(RADICE, "src/components/cookie-consent.tsx"), "utf8");
   atteso("banner dell'e-commerce: sulle anteprime non compare (nessun tag Google nemmeno dopo «Accetta»)", bannerEcommerce.includes('if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") return null;') && bannerEcommerce.indexOf('if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") return null;') < bannerEcommerce.indexOf('status === "accepted"'));
   atteso("lanciatore locale: simula NEXT_PUBLIC_VERCEL_ENV=preview come Vercel", fs.readFileSync(path.join(RADICE, "scripts/avvia-anteprima-locale.mjs"), "utf8").includes('NEXT_PUBLIC_VERCEL_ENV: "preview"'));
+  // condizione 7 dell'utente (18/11): il server locale non deve essere raggiungibile dalla rete
+  const lanciatore = fs.readFileSync(path.join(RADICE, "scripts/avvia-anteprima-locale.mjs"), "utf8");
+  const avvii = [...lanciatore.matchAll(/"start",[^\]]*\]/g)].map((m) => m[0]);
+  atteso("lanciatore locale: next start SOLO su 127.0.0.1 (-H 127.0.0.1), mai su tutte le interfacce", avvii.length === 1 && avvii[0].includes('"-H", "127.0.0.1"') && !/0\.0\.0\.0|"--hostname"|"-H", "(?!127\.0\.0\.1)/.test(lanciatore));
+  atteso("lanciatore locale: il messaggio d'avvio indica http://127.0.0.1:<porta>", lanciatore.includes("su http://127.0.0.1:${porta}") && !lanciatore.includes("http://localhost:${porta}"));
   const vercel = JSON.parse(fs.readFileSync(path.join(RADICE, "vercel.json"), "utf8")) as { crons: { path: string }[] };
   atteso("vercel.json invariato: 5 cron (Vercel li esegue solo in produzione, mai sulle anteprime)", vercel.crons.length === 5);
 
