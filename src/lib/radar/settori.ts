@@ -85,8 +85,9 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
     settore: "pulizia",
     cerca: /\b(pulizi[ae]|sanificazion[ei]|disinfezion[ei]|disinfestazion[ei]|igiene ambientale)\b/,
     // fase B2b: anche i centri di raccolta dei rifiuti («facchinaggio RAEE e pulizia CCR», TED 3cc0553b: igiene urbana, non pulizia)
-    // 18/11: anche gli specchi acquei e le aree costiere («pulizia … degli specchi acquei portuali e delle aree costiere», TED feb5aec8)
-    escludi: /\b(strad\w*|fognat\w*|fogn\w*|caditoi\w*|spurg\w*|rifiut\w*|spiagg\w*|arenil\w*|alve\w*|neve|prodott\w*|material\w*|cassonett\w*|raee|ccr|centr\w* (comunal\w* )?di raccolta|isol\w* ecologic\w*|specch\w* acque\w*|aree costier\w*|fondal\w*)\b/,
+    // 18/11: spiagge, arenili, alvei, specchi acquei, aree costiere e fondali non sono più qui ma nella regola C «acque_e_coste»
+    // (ESCLUSIONI_OGGETTO), che vale negli stessi casi (senza un CPV della pulizia) e dà un motivo leggibile
+    escludi: /\b(strad\w*|fognat\w*|fogn\w*|caditoi\w*|spurg\w*|rifiut\w*|neve|prodott\w*|material\w*|cassonett\w*|raee|ccr|centr\w* (comunal\w* )?di raccolta|isol\w* ecologic\w*)\b/,
     esempio: "pulizia, sanificazione, disinfestazione",
   },
   {
@@ -551,6 +552,8 @@ export type RegolaEsclusione = {
   casi: readonly string[];
   condizione?: (c: ContestoCpv) => boolean;
   ancheConNucleo?: boolean;
+  // vale solo se la gara non ha un CPV del file per il settore (trovata per parola chiave): come le esclusioni delle parole chiave
+  soloSenzaCpvDelSettore?: boolean;
   // se vale anche una correlazione (gestione di una struttura, evento, finanza di progetto…), il livello è B invece di C
   cedeAlleCorrelazioni?: boolean;
 };
@@ -788,6 +791,20 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     ancheConNucleo: true,
     motivo: "Lavaggio, sanificazione o stiratura di indumenti, tessuti o dispositivi: non è pulizia e sanificazione degli ambienti",
     casi: ["Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento del personale"],
+  },
+  {
+    // decisione del coordinamento del 18/11 («ogni gara con una motivazione comprensibile»): la pulizia di acque e coste è igiene ambientale
+    // del territorio, non pulizia degli edifici («servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi
+    // acquei portuali e delle aree costiere», TED feb5aec8, CPV 90733100). Prima era un'esclusione delle parole chiave, senza motivo; vale
+    // negli stessi casi, cioè senza un CPV della pulizia (una gara con il CPV della pulizia resta decisa dal CPV, come prima)
+    id: "acque_e_coste",
+    settori: ["pulizia"],
+    cerca: /\b(spiagg\w*|arenil\w*|alve\w*|specch\w* acque\w*|aree costier\w*|fondal\w*)\b/,
+    salvo: null,
+    ancheConNucleo: true,
+    soloSenzaCpvDelSettore: true,
+    motivo: "Pulizia di acque e coste (spiagge, arenili, alvei, specchi acquei): igiene ambientale del territorio, non pulizia degli edifici",
+    casi: ["Servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e delle aree costiere"],
   },
   {
     // la pulizia dei cani randagi o delle gabbie non è pulizia degli ambienti (TED 8a89e9f9, canile); la pulizia dei locali dello stabulario sì
@@ -1034,7 +1051,13 @@ function regoleDiEsclusione(settore: SettoreRadar, t: string, contesto: Contesto
   if (!t) return [];
   const haNucleo = !!nucleoDel(settore)?.test(t);
   return ESCLUSIONI_OGGETTO.filter(
-    (r) => vale(r, settore) && (r.ancheConNucleo || !haNucleo) && r.cerca.test(t) && !(r.salvo && r.salvo.test(t)) && (!r.condizione || r.condizione(contesto)),
+    (r) =>
+      vale(r, settore) &&
+      (r.ancheConNucleo || !haNucleo) &&
+      (!r.soloSenzaCpvDelSettore || contesto.delSettore.length === 0) &&
+      r.cerca.test(t) &&
+      !(r.salvo && r.salvo.test(t)) &&
+      (!r.condizione || r.condizione(contesto)),
   );
 }
 
@@ -1143,7 +1166,9 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // sottocategoria; lavaggio di indumenti e vigilanza amministrativa C; global service di ospitalità B.
 // «2026-11-18b»: «comprendente» introduce un servizio accessorio, e una testa coordinata a una testa accessoria è accessoria (gestione degli
 // stabulari, TED 465af5a5: pulizia da A a B; segnalato dal coordinamento il 18/11).
-export const VERSIONE_REGOLE_SETTORI = "2026-11-18b";
+// «2026-11-18c»: la pulizia di acque e coste (spiagge, arenili, alvei, specchi acquei) diventa una regola C con un motivo leggibile,
+// «acque_e_coste», invece di un'esclusione delle parole chiave senza motivo; stessi casi, stessi numeri.
+export const VERSIONE_REGOLE_SETTORI = "2026-11-18c";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
