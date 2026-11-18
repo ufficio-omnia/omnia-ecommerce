@@ -276,6 +276,7 @@ async function provaCollaudo() {
             (await invia("/accesso/ti-titolare", {})).status,
             (await invia("/accesso/ti-titolare", { via: "codice-sbagliato" })).status,
             (await invia("/accesso/ti-titolare", { via }, { Origin: "http://altro-sito.test" })).status,
+            (await invia("/accesso/ti-titolare", { via }, { Origin: "null" })).status,
             await conHost(portaAccesso, "/pronto", "altro-sito.test"),
             await conHost(portaAccesso, "/accesso/ti-titolare", `127.0.0.1:${portaAccesso}`),
           ];
@@ -301,8 +302,8 @@ async function provaCollaudo() {
     }
     const pronto = esiti.pronto as { stato: number; cache: string; referrer: string; cornici: string; csp: string; html: string };
     uguale("CA6. all'avvio NESSUN collegamento: zero chiamate allo staging finché non si preme un pulsante (anche con GET, codice, origine o host sbagliati)", [esiti.chiamateAllAvvio, esiti.chiamatePrimaDelVia], [0, 0]);
-    atteso("CA7. /pronto: 200 senza token, senza cache né referer, non incorniciabile, con un pulsante POST per ciascuno dei 3 utenti", pronto.stato === 200 && pronto.cache === "no-store" && pronto.referrer === "no-referrer" && pronto.html.includes('<meta name="referrer" content="no-referrer">') && pronto.cornici === "DENY" && pronto.csp.includes("frame-ancestors 'none'") && ["ti-admin", "ti-titolare", "ti-titolare2"].every((u) => pronto.html.includes(`<form method="post" action="/accesso/${u}">`)) && !/TOKEN_SINTETICO|token_hash|ACCESSO_SINTETICO/.test(pronto.html));
-    uguale("CA8. strade sbagliate respinte: GET 405, senza codice 403, codice sbagliato 403, altra origine 403, host estraneo o numerico 403", esiti.strade, [405, 403, 403, 403, 403, 403]);
+    atteso("CA7. /pronto: 200 senza token né cache, referer solo verso sé stessa (con «no-referrer» il browser manderebbe Origin: null e i pulsanti verrebbero respinti), non incorniciabile, un pulsante POST per ciascuno dei 3 utenti", pronto.stato === 200 && pronto.cache === "no-store" && pronto.referrer === "same-origin" && pronto.html.includes('<meta name="referrer" content="same-origin">') && pronto.cornici === "DENY" && pronto.csp.includes("frame-ancestors 'none'") && ["ti-admin", "ti-titolare", "ti-titolare2"].every((u) => pronto.html.includes(`<form method="post" action="/accesso/${u}">`)) && !/TOKEN_SINTETICO|token_hash|ACCESSO_SINTETICO/.test(pronto.html));
+    uguale("CA8. strade sbagliate respinte: GET 405, senza codice 403, codice sbagliato 403, altra origine o «null» 403, host estraneo o numerico 403", esiti.strade, [405, 403, 403, 403, 403, 403, 403]);
     const t = esiti.titolare as { stato: number; location: string; cache: string; referrer: string; cookie: string[] };
     const ct = esiti.chiamateTitolare as { url: string; metodo: string; corpo: string }[];
     atteso(
