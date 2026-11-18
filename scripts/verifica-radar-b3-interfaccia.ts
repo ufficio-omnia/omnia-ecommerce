@@ -187,7 +187,7 @@ async function provaComportamento() {
   }
 }
 
-// ───── script del collaudo con accesso: SOLO prove a secco (porta e fetch finti, nessuna rete, nessuno staging) ─────
+// ───── script del collaudo con accesso: SOLO prove a secco (porta e fetch finti, nessuna rete esterna, nessuno staging) ─────
 async function provaCollaudo() {
   const ca = await import("./collaudo-accesso-b3.mjs");
   const os = await import("node:os");
@@ -207,59 +207,92 @@ async function provaCollaudo() {
     return new Response(JSON.stringify({ hashed_token: `TOKEN_SINTETICO_${chiamate.length}` }), { status: 200 });
   }) as unknown as typeof fetch;
   const portaOk = () => ({ id: "AUT-SINTETICA", uso: "U1" });
-  const fileCollegamenti = path.join(tmp, "fuori", "collegamenti.json");
-  const ferma = async (nome: string, argv: string[], env: Record<string, string>, opzioni: Record<string, unknown>) => {
+  const ferma = async (nome: string, argv: string[], opzioni: Record<string, unknown>) => {
     const prima = chiamate.length;
     let fermato = "";
     try {
-      await ca.collaudo(argv, env, { cartella: progetto, fetchFn: fetchFinto, ...opzioni });
+      await ca.collaudo(argv, {}, { cartella: progetto, fetchFn: fetchFinto, portaRinvio: 0, ...opzioni });
     } catch (e) {
       fermato = e instanceof ca.Fermo ? e.message : `errore inatteso: ${e}`;
     }
     atteso(nome, fermato !== "" && !fermato.startsWith("errore inatteso") && chiamate.length === prima && !/SINTETICA_DA_NON_STAMPARE|bihfrzspqxsrzlbqqvqa\.supabase/.test(fermato), fermato || "non si è fermato");
   };
   try {
-    await ferma("CA1. senza il lanciatore delle autorizzazioni (TI_REGISTRO assente) si ferma prima di qualunque rete", [fileFuori, "3110"], {}, {});
-    await ferma("CA2. porta che nega l'esecuzione → fermo, nessuna rete", [fileFuori, "3110"], {}, { controllaPorta: () => { throw new Error("autorizzazione inesistente"); } });
-    await ferma("CA3. file delle variabili dentro il progetto → fermo", [fileDentro, "3110"], {}, { controllaPorta: portaOk, avvia: async () => 0 });
-    await ferma("CA4. variabili di produzione → fermo, i messaggi non riportano valori", [fileProd, "3110"], {}, { controllaPorta: portaOk, avvia: async () => 0 });
-    await ferma("CA5. lanciatore dell'anteprima mancante → fermo prima di generare i collegamenti", [fileFuori, "3110"], {}, { controllaPorta: portaOk });
-    await ferma("CA6. file dei collegamenti dentro il progetto → fermo", [fileFuori, "3110"], {}, { controllaPorta: portaOk, avvia: async () => 0, fileCollegamenti: path.join(progetto, "collegamenti.json") });
+    await ferma("CA1. senza il lanciatore delle autorizzazioni (TI_REGISTRO assente) si ferma prima di qualunque rete", [fileFuori, "3110"], {});
+    await ferma("CA2. porta che nega l'esecuzione → fermo, nessuna rete", [fileFuori, "3110"], { controllaPorta: () => { throw new Error("autorizzazione inesistente"); } });
+    await ferma("CA3. file delle variabili dentro il progetto → fermo", [fileDentro, "3110"], { controllaPorta: portaOk, avvia: async () => 0 });
+    await ferma("CA4. variabili di produzione → fermo, i messaggi non riportano valori", [fileProd, "3110"], { controllaPorta: portaOk, avvia: async () => 0 });
+    await ferma("CA5. lanciatore dell'anteprima mancante → fermo prima di generare i collegamenti", [fileFuori, "3110"], { controllaPorta: portaOk });
 
+    // giro completo a secco: il «server dell'app» finto prova il reindirizzamento come farebbe il browser
     const stampato: string[] = [];
     const logOriginale = console.log;
     console.log = (...a: unknown[]) => stampato.push(a.map(String).join(" "));
-    let duranteIlServer: { esiste: boolean; contenuto: { email: string; collegamento: string }[] } = { esiste: false, contenuto: [] };
+    const esiti: Record<string, unknown> = {};
+    let portaUsata = 0;
     let codice: number | null = null;
     try {
       codice = await ca.collaudo([fileFuori, "3110"], {}, {
         cartella: progetto,
         fetchFn: fetchFinto,
         controllaPorta: portaOk,
-        fileCollegamenti,
-        avvia: async () => {
-          duranteIlServer = { esiste: fs.existsSync(fileCollegamenti), contenuto: JSON.parse(fs.readFileSync(fileCollegamenti, "utf8")) };
+        portaRinvio: 0,
+        avvia: async ({ portaRinvio }: { portaRinvio: number }) => {
+          portaUsata = portaRinvio;
+          const base = `http://127.0.0.1:${portaRinvio}`;
+          const prima = await fetch(`${base}/accesso/ti-titolare`, { redirect: "manual" });
+          const seconda = await fetch(`${base}/accesso/ti-titolare`, { redirect: "manual" });
+          const console_ = await fetch(`${base}/accesso/ti-admin`, { redirect: "manual" });
+          const ignoto = await fetch(`${base}/accesso/qualcuno`, { redirect: "manual" });
+          const post = await fetch(`${base}/accesso/ti-titolare2`, { method: "POST", redirect: "manual" });
+          const dopoPost = await fetch(`${base}/accesso/ti-titolare2`, { redirect: "manual" });
+          esiti.prima = [prima.status, prima.headers.get("location") ?? "", prima.headers.get("cache-control"), prima.headers.get("referrer-policy")];
+          esiti.seconda = seconda.status;
+          esiti.console = [console_.status, console_.headers.get("location") ?? ""];
+          esiti.ignoto = ignoto.status;
+          esiti.post = post.status;
+          esiti.dopoPost = dopoPost.status;
           return 0;
         },
       });
     } finally {
       console.log = logOriginale;
     }
-    const generate = chiamate.slice(-3);
-    uguale("CA7. collegamenti generati SOLO per i tre utenti di prova, con POST a generate_link dello staging", generate.map((c) => `${c.metodo} ${c.url.replace("https://ryawdldqiumqsskrnyps.supabase.co", "STAGING")} ${JSON.parse(c.corpo).email}`), ["POST STAGING/auth/v1/admin/generate_link ti-admin@prova.test", "POST STAGING/auth/v1/admin/generate_link ti-titolare@prova.test", "POST STAGING/auth/v1/admin/generate_link ti-titolare2@prova.test"]);
-    atteso("CA8. durante il server il file dei collegamenti esiste, fuori dal progetto, con un collegamento per utente (console e area clienti)", duranteIlServer.esiste && duranteIlServer.contenuto.length === 3 && duranteIlServer.contenuto[0].collegamento.includes("/auth/conferma?token_hash=") && duranteIlServer.contenuto[1].collegamento.includes("/attiva-account?type=email"));
-    atteso("CA9. allo spegnimento il file dei collegamenti è cancellato e il codice d'uscita è quello del server", !fs.existsSync(fileCollegamenti) && codice === 0);
-    atteso("CA10. nell'uscita nessun token né chiave (solo dove sta il file)", stampato.length > 0 && !stampato.some((r) => /TOKEN_SINTETICO|sb_secret_|token_hash=/.test(r)));
-    let cancellatoDopoErrore = false;
+    const [statoPrima, destinazione, cache, referer] = esiti.prima as [number, string, string, string];
+    atteso("CA6. /accesso/ti-titolare: 302 al collegamento vero dell'app su 127.0.0.1 (pagina d'attivazione), senza cache né referer", statoPrima === 302 && destinazione.startsWith("http://127.0.0.1:3110/attiva-account?type=email") && destinazione.includes("token_hash=TOKEN_SINTETICO_") && cache === "no-store" && referer === "no-referrer");
+    uguale("CA7. lo stesso percorso la seconda volta: 410 (un solo uso)", esiti.seconda, 410);
+    atteso("CA8. /accesso/ti-admin porta alla conferma della console su 127.0.0.1", (esiti.console as [number, string])[0] === 302 && (esiti.console as [number, string])[1].startsWith("http://127.0.0.1:3110/auth/conferma?token_hash="));
+    uguale("CA9. percorso sconosciuto 404; metodo diverso da GET 405 e il collegamento resta servibile una volta", [esiti.ignoto, esiti.post, esiti.dopoPost], [404, 405, 302]);
+    let chiuso = false;
     try {
-      await ca.collaudo([fileFuori, "3110"], {}, { cartella: progetto, fetchFn: fetchFinto, controllaPorta: portaOk, fileCollegamenti, avvia: async () => { throw new Error("server caduto"); } });
+      await fetch(`http://127.0.0.1:${portaUsata}/accesso/ti-titolare2`, { redirect: "manual", signal: AbortSignal.timeout(2000) });
     } catch {
-      cancellatoDopoErrore = !fs.existsSync(fileCollegamenti);
+      chiuso = true;
     }
-    atteso("CA11. se il server cade, il file dei collegamenti si cancella lo stesso", cancellatoDopoErrore);
-    uguale("CA12. utenti del collaudo: solo amministratore e due titolari di imprese diverse, tutti @prova.test", ca.UTENTI_COLLAUDO.map((u: { email: string }) => u.email), ["ti-admin@prova.test", "ti-titolare@prova.test", "ti-titolare2@prova.test"]);
+    atteso("CA10. allo spegnimento dell'app il reindirizzamento è chiuso e il codice d'uscita è quello dell'app", chiuso && codice === 0);
+    atteso("CA11. nell'uscita nessun token, chiave o collegamento vero (solo gli indirizzi /accesso su 127.0.0.1)", stampato.some((r) => r.includes("http://127.0.0.1:") && r.includes("/accesso/ti-titolare")) && !stampato.some((r) => /TOKEN_SINTETICO|sb_secret_|token_hash=|attiva-account|auth\/conferma/.test(r)));
+    atteso("CA12. nessun file con i collegamenti nel progetto (e nessuna scrittura su file nello script: CA16)", fs.readdirSync(progetto).every((f) => f === "scripts" || f === "variabili.txt"));
+    // il server cade: il reindirizzamento si chiude lo stesso
+    let portaCaduta = 0;
+    try {
+      await ca.collaudo([fileFuori, "3110"], {}, { cartella: progetto, fetchFn: fetchFinto, controllaPorta: portaOk, portaRinvio: 0, avvia: async ({ portaRinvio }: { portaRinvio: number }) => { portaCaduta = portaRinvio; throw new Error("server caduto"); } });
+    } catch {
+      // atteso
+    }
+    let chiusoDopoErrore = false;
+    try {
+      await fetch(`http://127.0.0.1:${portaCaduta}/accesso/ti-titolare`, { redirect: "manual", signal: AbortSignal.timeout(2000) });
+    } catch {
+      chiusoDopoErrore = true;
+    }
+    atteso("CA13. se l'app cade, il reindirizzamento si chiude lo stesso", portaCaduta > 0 && chiusoDopoErrore);
+    const server = ca.serverReindirizzamento([{ percorso: "/accesso/x", collegamento: "http://127.0.0.1:3110/x" }]);
+    const indirizzo = await ca.ascoltaSoloLocale(server, 0);
+    atteso("CA14. il reindirizzamento ascolta SOLO su 127.0.0.1", indirizzo.address === "127.0.0.1");
+    await ca.chiudi(server);
+    uguale("CA15. utenti del collaudo: solo amministratore e due titolari di imprese diverse, tutti @prova.test", ca.UTENTI_COLLAUDO.map((u: { email: string }) => u.email), ["ti-admin@prova.test", "ti-titolare@prova.test", "ti-titolare2@prova.test"]);
     const codiceScript = leggi("scripts/collaudo-accesso-b3.mjs");
-    atteso("CA13. lo script controlla la porta (TI_REGISTRO, controllaPorta) prima della guardia e della rete", codiceScript.indexOf("controllaPorta({ script: NOME_SCRIPT })") < codiceScript.indexOf("erroriAmbiente(variabili)") && codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("await generaCollegamenti("));
+    atteso("CA16. lo script controlla la porta prima della guardia, la guardia prima della rete; nessun file scritto; app e collegamenti su 127.0.0.1", codiceScript.indexOf("controllaPorta({ script: NOME_SCRIPT })") < codiceScript.indexOf("erroriAmbiente(variabili)") && codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("await generaCollegamenti(") && !/writeFileSync|appendFileSync/.test(codiceScript) && codiceScript.includes('SOLO_LOCALE = "127.0.0.1"') && !codiceScript.includes("localhost"));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
