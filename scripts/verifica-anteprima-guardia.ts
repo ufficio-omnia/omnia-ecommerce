@@ -5,6 +5,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { formatHostname } from "next/dist/server/lib/format-hostname";
+import { NextURL } from "next/dist/server/web/next-url";
+import { parseRelativeURL } from "next/dist/shared/lib/router/utils/relativize-url";
 import {
   CONFIGURAZIONI_LIBERE,
   INTERRUTTORI_SPENTI,
@@ -200,8 +203,19 @@ async function principale() {
   // condizione 7 dell'utente (18/11): il server locale non deve essere raggiungibile dalla rete
   const lanciatore = fs.readFileSync(path.join(RADICE, "scripts/avvia-anteprima-locale.mjs"), "utf8");
   const avvii = [...lanciatore.matchAll(/"start",[^\]]*\]/g)].map((m) => m[0]);
-  atteso("lanciatore locale: next start SOLO su 127.0.0.1 (-H 127.0.0.1), mai su tutte le interfacce", avvii.length === 1 && avvii[0].includes('"-H", "127.0.0.1"') && !/0\.0\.0\.0|"--hostname"|"-H", "(?!127\.0\.0\.1)/.test(lanciatore));
-  atteso("lanciatore locale: il messaggio d'avvio indica http://127.0.0.1:<porta>", lanciatore.includes("su http://127.0.0.1:${porta}") && !lanciatore.includes("http://localhost:${porta}"));
+  atteso("lanciatore locale: next start SOLO sul loopback con il nome «localhost» (-H localhost), mai 127.0.0.1, ::1, 0.0.0.0 o senza -H", avvii.length === 1 && avvii[0].includes('"-H", "localhost"') && !/0\.0\.0\.0|"::1?"|"--hostname"|"-H", "(?!localhost")/.test(lanciatore) && !lanciatore.includes('"127.0.0.1"'));
+  atteso("lanciatore locale: il messaggio d'avvio indica http://localhost:<porta>", lanciatore.includes("su http://localhost:${porta}") && !lanciatore.includes("http://127.0.0.1:${porta}"));
+  // Regressione del 18/11 (118 richieste interne, ciclo nella console): con l'host del lanciatore il riscritto di zona del proxy deve restare
+  // INTERNO per Next. Si ricostruisce il confronto di Next 16 (resolve-routes: origine di partenza http://<-H>:<porta> contro la destinazione
+  // del riscritto, che NextURL normalizza in «localhost»). Controprova: con 127.0.0.1 il riscritto risulta esterno.
+  const hostLanciatore = (avvii[0]?.match(/"-H", "([^"]+)"/) ?? [])[1] ?? "";
+  const riscrittoInterno = (host: string) => {
+    const partenza = `http://${formatHostname(host)}:3110/login?__zone=console`;
+    const richiesta = new NextURL(partenza);
+    const destinazione = new URL(`/site-console${richiesta.pathname}${richiesta.search}`, richiesta.href).toString();
+    return parseRelativeURL(destinazione, partenza).isRelative;
+  };
+  atteso("lanciatore locale: con il suo host i riscritti di zona restano interni (nessun secondo giro del proxy, nessun ciclo); con 127.0.0.1 no (controprova)", hostLanciatore === "localhost" && riscrittoInterno(hostLanciatore) && !riscrittoInterno("127.0.0.1"), `host del lanciatore: «${hostLanciatore}»`);
   const vercel = JSON.parse(fs.readFileSync(path.join(RADICE, "vercel.json"), "utf8")) as { crons: { path: string }[] };
   atteso("vercel.json invariato: 5 cron (Vercel li esegue solo in produzione, mai sulle anteprime)", vercel.crons.length === 5);
 
