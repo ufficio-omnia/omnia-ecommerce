@@ -1,8 +1,12 @@
 // Verifica della fase B3, interfaccia di Tender Intelligence (18/11/2026): i 10 requisiti della ricerca, la scheda, Monitorate, la lettura
 // delle classificazioni solo lato server e nella stessa richiesta, il contratto del Radar personalizzato. Solo dati SINTETICI, in memoria:
 // nessun database, nessuna rete.
+import "./lib/senza-cache-next";
 import fs from "node:fs";
 import path from "node:path";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { cercaGare } from "../src/lib/radar/ricerca";
+import { filtriDaParametri } from "../src/lib/radar/ricerca-calcoli";
 import { CLASSIFICAZIONI_ELENCO, CLASSIFICAZIONI_SCHEDA, classificazioneDaRiga, messaggioStato, rilevanzaPerRicerca } from "../src/lib/radar/classificazioni-lettura";
 import { COLONNE_RISULTATO, colonneElenco, conRilevanza } from "../src/lib/radar/ricerca";
 import {
@@ -141,6 +145,48 @@ const pagine = ["cerca/page.tsx", "gara/[id]/page.tsx", "monitorate/page.tsx"].m
 atteso("L8. nessuna interrogazione periodica nuova (setInterval, setTimeout, router.refresh) nelle pagine e nei componenti toccati", !/setInterval|setTimeout|router\.refresh|revalidate\s*=/.test(pagine));
 uguale("L9. rilevanzaPerRicerca: livello per settore e sottocategorie (nome leggibile) dei soli A e B", rilevanzaPerRicerca(classificazioneDaRiga({ classificazione_stato: { stato: "classificata" }, classificazioni: [{ settore: "pulizia", rilevanza: "A", sottocategorie: ["sanificazione"], attiva: true }, { settore: "ristorazione", rilevanza: "C", sottocategorie: [], attiva: true }] })), { stato: "classificata", perSettore: { pulizia: "A", ristorazione: "C" }, sottocategorie: { pulizia: [nomeSottocategoria("pulizia", "sanificazione")] } });
 
+// ───── comportamento: un client finto registra le richieste della ricerca vera (nessuna rete) ─────
+type Chiamata = { tabella: string; passi: { metodo: string; argomenti: unknown[] }[] };
+function clienteFinto(chiamate: Chiamata[]): SupabaseClient {
+  const costruttore = (c: Chiamata): unknown =>
+    new Proxy(
+      {},
+      {
+        get(_t, nome: string) {
+          if (nome === "then") return (risolvi: (v: unknown) => void) => risolvi({ data: [], error: null });
+          return (...argomenti: unknown[]) => {
+            c.passi.push({ metodo: nome, argomenti });
+            return costruttore(c);
+          };
+        },
+      },
+    );
+  return {
+    from(tabella: string) {
+      const c: Chiamata = { tabella, passi: [] };
+      chiamate.push(c);
+      return costruttore(c);
+    },
+  } as unknown as SupabaseClient;
+}
+async function richiesteDellaRicerca(accese: boolean, parametri: Record<string, string> = {}): Promise<Chiamata[]> {
+  const chiamate: Chiamata[] = [];
+  await cercaGare(clienteFinto(chiamate), filtriDaParametri(parametri), adesso, { classificazioni: accese });
+  return chiamate;
+}
+async function provaComportamento() {
+  for (const [nome, parametri] of [["senza filtri", {}], ["con il filtro pulizia", { settore: "pulizia" }]] as const) {
+    const spente = await richiesteDellaRicerca(false, parametri);
+    const accese = await richiesteDellaRicerca(true, parametri);
+    const select = (c: Chiamata[]) => String(c[0]?.passi.find((p) => p.metodo === "select")?.argomenti[0] ?? "");
+    const filtroRighe = (c: Chiamata[]) => c[0]?.passi.some((p) => p.metodo === "eq" && p.argomenti[0] === "classificazioni.attiva") ?? false;
+    uguale(`C1. ${nome}: UNA sola richiesta (radar_procedure) con l'interruttore spento e acceso`, [spente.map((c) => c.tabella), accese.map((c) => c.tabella)], [["radar_procedure"], ["radar_procedure"]]);
+    atteso(`C2. ${nome}, spento: nessun incorporamento di radar_classificazioni né filtro sulle righe attive`, !select(spente).includes("radar_classificazioni") && !filtroRighe(spente) && select(spente) === COLONNE_RISULTATO);
+    atteso(`C3. ${nome}, acceso: stato e righe incorporati e filtro sulle sole righe attive, nella stessa richiesta`, select(accese).includes("radar_classificazioni_stato") && select(accese).includes("radar_classificazioni(") && filtroRighe(accese));
+    atteso(`C4. ${nome}: copie collegate escluse in entrambi i casi`, [spente, accese].every((c) => c[0]?.passi.some((p) => p.metodo === "is" && p.argomenti[0] === "unita_a" && p.argomenti[1] === null)));
+  }
+}
+
 // ───── Radar personalizzato: SOLO il contratto (non collegato a nulla) ─────
 const profilo: ProfiloRadar = { impresaId: "I1", settori: ["pulizia", "ristorazione"], sottocategorie: {}, procedure: [], regioni: [], importoMin: null, importoMax: null, vedereCorrelate: false };
 const gr = (id: string, righe: GaraPerRadar["righe"], extra: Partial<GaraPerRadar> = {}): GaraPerRadar => ({ id, unitaA: null, statoClassificazione: "classificata", righe, tipoProcedura: "aperta", regioni: ["ITF2"], valore: 200000, aperta: true, ...extra });
@@ -168,8 +214,12 @@ uguale("RP4. le preferenze restringono (sottocategorie, procedure, regioni, impo
 uguale("RP5. da rivalutare dopo un giro: solo le gare cambiate, classificate, aperte e non collegate (nessuna scansione dell'archivio)", gareDaRivalutare(gareRadar.slice(0, 8)), ["P1", "P2", "P3", "P4", "P7"]);
 atteso("RP6. il contratto del Radar non è usato da nessuna pagina, azione o cron (solo predisposto)", !fs.readdirSync(path.join(RADICE, "src/app"), { recursive: true }).some((f) => /\.(tsx?)$/.test(String(f)) && leggi(path.join("src/app", String(f))).includes("radar-personalizzato-contratto")));
 
-if (fallimenti.length) {
-  console.error(`\n${fallimenti.length} controlli della fase B3 (interfaccia) NON superati.`);
-  process.exit(1);
-}
-console.log("\nTutti i controlli della fase B3 (interfaccia) sono superati.");
+provaComportamento()
+  .catch((e) => atteso("C. prova di comportamento eseguita", false, e instanceof Error ? e.message : String(e)))
+  .finally(() => {
+    if (fallimenti.length) {
+      console.error(`\n${fallimenti.length} controlli della fase B3 (interfaccia) NON superati.`);
+      process.exit(1);
+    }
+    console.log("\nTutti i controlli della fase B3 (interfaccia) sono superati.");
+  });
