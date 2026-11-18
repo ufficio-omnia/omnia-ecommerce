@@ -35,7 +35,7 @@ export default function ProfiloMenu({ email }: { email: string }) {
       {open && (
         <div className="omnia-profilo-menu-dropdown">
           <div className="omnia-profilo-menu-email">{email}</div>
-          <Link href="/dashboard/omnia-ai/impostazioni" onClick={() => setOpen(false)}>
+          <Link href="/dashboard/omnia-ai/impostazioni" prefetch={false} onClick={() => setOpen(false)}>
             Impostazioni
           </Link>
           <form action={signOut}>

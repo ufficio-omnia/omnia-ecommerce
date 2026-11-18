@@ -15,7 +15,8 @@ export default function Topbar({ nomeSaluto, email, ufficioGare = false }: { nom
       </div>
 
       <div className="omnia-topbar-azioni">
-        <Link href="/dashboard/omnia-ai/gare" className="omnia-btn omnia-btn-nuova-gara">
+        {/* prefetch={false}: menu dell'area riservata, vedi sidebar-nav.tsx */}
+        <Link href="/dashboard/omnia-ai/gare" prefetch={false} className="omnia-btn omnia-btn-nuova-gara">
           Nuova gara
         </Link>
         {!ufficioGare && <NotificationBell />}

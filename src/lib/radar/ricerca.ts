@@ -66,7 +66,14 @@ export type RisultatoRicerca = {
 
 // Fase B2b (pacchetto 16, punto 7): con le classificazioni accese (ambiente.ts, SPENTE di base) punteggio, ordinamento ed etichette
 // distinguono le gare pertinenti (A) dalle correlate (B); spente, la ricerca è quella di prima.
-export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, adesso: Date, opzioni: { classificazioni?: boolean } = {}): Promise<RisultatoRicerca> {
+// `fontiNascoste`: chi legge le fonti non mostrabili ai clienti. Le pagine non lo passano (vale la lettura vera, con la cache); le verifiche
+// passano una versione finta, così la prova non interroga mai il database configurato (nemmeno durante la build).
+export async function cercaGare(
+  admin: SupabaseClient,
+  filtri: FiltriRicerca,
+  adesso: Date,
+  opzioni: { classificazioni?: boolean; fontiNascoste?: () => Promise<string[]> } = {},
+): Promise<RisultatoRicerca> {
   const inizio = Date.now();
   const domanda = analizzaDomanda(filtri.q);
   const vuoto = (errore: boolean): RisultatoRicerca => ({ righe: [], candidati: 0, oltreTetto: false, domanda, pagine: 0, ms: Date.now() - inizio, errore, classificazioni: false, scartatePerCoerenza: 0 });
@@ -85,7 +92,7 @@ export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, ad
 
   // le gare collegate a un'altra (copie nascoste, 0117) non compaiono mai negli elenchi; né quelle che hanno SOLO fonti non ancora mostrabili
   // ai clienti (0120: SardegnaCAT finché manca il parere legale)
-  const visibili = fontiVisibiliDa(await fontiNascosteAiClienti());
+  const visibili = fontiVisibiliDa(await (opzioni.fontiNascoste ?? fontiNascosteAiClienti)());
   const oggi = giornoIso(adesso);
   // fase B3: con le classificazioni accese, stato e righe attive della 0121 arrivano nella STESSA richiesta (nessuna lettura in più)
   const interroga = (conClassificazioni: boolean) => {

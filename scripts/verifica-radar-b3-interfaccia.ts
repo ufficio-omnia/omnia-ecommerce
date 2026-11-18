@@ -23,6 +23,19 @@ import {
 import { daNotificare, gareDaRivalutare, opportunitaPerImpresa, type GaraPerRadar, type ProfiloRadar } from "../src/lib/radar/radar-personalizzato-contratto";
 import { nomeSottocategoria } from "../src/lib/radar/settori";
 
+// Nessuna rete verso l'esterno: ammessi solo i server locali delle prove del collaudo. Una richiesta a qualunque altro host (per esempio il
+// database configurato, quando la verifica gira nel prebuild di una build) viene bloccata e fa fallire la verifica (controllo N).
+const richiesteEsterne: string[] = [];
+const fetchVero = globalThis.fetch;
+globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const host = new URL(url instanceof Request ? url.url : String(url)).hostname;
+  if (!["localhost", "127.0.0.1", "[::1]", "::1"].includes(host)) {
+    richiesteEsterne.push(host);
+    throw new Error(`verifica B3: richiesta di rete vietata verso ${host}`);
+  }
+  return fetchVero(url, init);
+}) as typeof fetch;
+
 const RADICE = path.resolve(__dirname, "..");
 const leggi = (p: string) => fs.readFileSync(path.join(RADICE, p), "utf8");
 const fallimenti: string[] = [];
@@ -169,9 +182,15 @@ function clienteFinto(chiamate: Chiamata[]): SupabaseClient {
     },
   } as unknown as SupabaseClient;
 }
+// Le fonti nascoste arrivano da una dipendenza finta: la prova non legge mai radar_fonti_stato del database configurato.
+let lettureFontiFinte = 0;
+const fontiNascosteFinte = async () => {
+  lettureFontiFinte++;
+  return ["sardegnacat"];
+};
 async function richiesteDellaRicerca(accese: boolean, parametri: Record<string, string> = {}): Promise<Chiamata[]> {
   const chiamate: Chiamata[] = [];
-  await cercaGare(clienteFinto(chiamate), filtriDaParametri(parametri), adesso, { classificazioni: accese });
+  await cercaGare(clienteFinto(chiamate), filtriDaParametri(parametri), adesso, { classificazioni: accese, fontiNascoste: fontiNascosteFinte });
   return chiamate;
 }
 async function provaComportamento() {
@@ -185,6 +204,7 @@ async function provaComportamento() {
     atteso(`C3. ${nome}, acceso: stato e righe incorporati e filtro sulle sole righe attive, nella stessa richiesta`, select(accese).includes("radar_classificazioni_stato") && select(accese).includes("radar_classificazioni(") && filtroRighe(accese));
     atteso(`C4. ${nome}: copie collegate escluse in entrambi i casi`, [spente, accese].every((c) => c[0]?.passi.some((p) => p.metodo === "is" && p.argomenti[0] === "unita_a" && p.argomenti[1] === null)));
   }
+  uguale("C5. le fonti nascoste della ricerca vengono dalla dipendenza finta (4 ricerche, 4 letture finte, nessun database)", lettureFontiFinte, 4);
 }
 
 // ───── script del collaudo con accesso: SOLO prove a secco (porta e fetch finti, nessuna rete esterna, nessuno staging) ─────
@@ -394,10 +414,70 @@ async function provaCollaudo() {
     atteso(
       "CA23. lo script: porta delle autorizzazioni prima della guardia, guardia prima del server; collegamenti generati SOLO dentro il pulsante; nessun file scritto; solo «localhost», mai l'indirizzo numerico",
       codiceScript.indexOf("controllaPorta({ script: NOME_SCRIPT })") < codiceScript.indexOf("erroriAmbiente(variabili)") &&
-        codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("serverAccesso({ portaApp: porta, accedi })") &&
+        codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("serverAccesso({ portaApp: porta, accedi, dopoAccesso })") &&
         (codiceScript.match(/await generaCollegamento\(/g) ?? []).length === 1 && codiceScript.indexOf("await generaCollegamento(") > codiceScript.indexOf("const accedi = async (utente) =>") &&
         (codiceScript.match(/await accedi\(utente\)/g) ?? []).length === 1 &&
         !/writeFileSync|appendFileSync/.test(codiceScript) && codiceScript.includes('SOLO_LOCALE = "localhost"') && !/http:\/\/127\.0\.0\.1|SOLO_LOCALE = "127/.test(codiceScript),
+    );
+
+    // ───── verifica dell'isolamento lato server (impresa 2): solo GET, solo conteggi ─────
+    const ID_IMPRESA1 = "00000000-0000-4000-8000-000000000111";
+    const ID_IMPRESA2 = "00000000-0000-4000-8000-000000000222";
+    const SEGRETA = "Bearer sb_secret_SINTETICA_DA_NON_STAMPARE";
+    const vistePerTabella: Record<string, number> = {};
+    const chiamateIso: { metodo: string; auth: string }[] = [];
+    const fetchIsolamento = (async (url: string, init?: RequestInit) => {
+      const u = new URL(String(url));
+      const auth = String((init?.headers as Record<string, string> | undefined)?.Authorization ?? "");
+      chiamateIso.push({ metodo: init?.method ?? "GET", auth });
+      if (u.pathname === "/auth/v1/user") return auth === `Bearer ${ACCESSO}` ? new Response(JSON.stringify({ id: ID_IMPRESA2, email: "ti-titolare2@prova.test" }), { status: 200, headers: json }) : new Response("{}", { status: 401, headers: json });
+      if (u.pathname === "/rest/v1/users") return new Response(JSON.stringify(auth === SEGRETA ? [{ id: ID_IMPRESA1 }] : []), { status: 200, headers: json });
+      const tabella = u.pathname.replace("/rest/v1/", "");
+      const filtro = u.searchParams.get("user_id") ?? "";
+      const n = auth === SEGRETA ? (filtro === `eq.${ID_IMPRESA1}` && tabella !== "omnia_ai_notifiche" ? 5 : 0) : filtro === `eq.${ID_IMPRESA2}` ? 1 : (vistePerTabella[tabella] ?? 0);
+      return new Response("[]", { status: 200, headers: { ...json, "Content-Range": n ? `0-0/${n}` : "*/0" } });
+    }) as unknown as typeof fetch;
+    const variabiliIso = { SUPABASE_SERVICE_ROLE_KEY: "sb_secret_SINTETICA_DA_NON_STAMPARE", NEXT_PUBLIC_SUPABASE_ANON_KEY: "sb_publishable_SINTETICA" };
+    const argomentiIso = { variabili: variabiliIso, accessToken: ACCESSO, emailUtente: "ti-titolare2@prova.test", emailAltraImpresa: "ti-titolare@prova.test", fetchFn: fetchIsolamento };
+    const tabelleIso: string[] = ca.TABELLE_ISOLAMENTO;
+    const iso = await ca.verificaIsolamento(argomentiIso);
+    atteso(
+      "CA24. isolamento: controllo positivo sulla propria riga, poi 0 righe dell'impresa 1 viste con la sessione dell'impresa 2 in ogni tabella che ne ha; «non eseguita» dove l'impresa 1 non ha righe",
+      iso.ok && iso.righe.some((r: string) => r.includes("controllo positivo") && r.endsWith("→ ok")) && iso.righe.filter((r: string) => / → ok$/.test(r) && !r.includes("controllo positivo")).length === tabelleIso.length - 1 && iso.righe.some((r: string) => r.includes("omnia_ai_notifiche") && r.includes("non eseguita")) && !iso.righe.some((r: string) => r.includes("VIOLAZIONE")) && iso.righe[iso.righe.length - 1].includes("nessuna violazione"),
+      iso.righe.join(" | "),
+    );
+    atteso(
+      "CA25. isolamento: solo GET; la sessione dell'utente per le righe viste, la chiave di servizio solo per i confronti; nell'uscita nessun token, chiave o id completo",
+      chiamateIso.every((c) => c.metodo === "GET") && chiamateIso.filter((c) => c.auth === `Bearer ${ACCESSO}`).length === tabelleIso.length + 2 && chiamateIso.filter((c) => c.auth === SEGRETA).length === tabelleIso.length + 1 && !iso.righe.some((r: string) => /ACCESSO_SINTETICO|sb_secret_|sb_publishable_|000000000111|000000000222/.test(r)),
+    );
+    vistePerTabella.omnia_ai_radar_salvate = 2;
+    const violata = await ca.verificaIsolamento(argomentiIso);
+    vistePerTabella.omnia_ai_radar_salvate = 0;
+    atteso("CA26. una riga dell'altra impresa vista con la sessione → «VIOLAZIONE» e STOP", !violata.ok && violata.righe.some((r: string) => r.includes("omnia_ai_radar_salvate") && r.includes("VIOLAZIONE")) && violata.righe[violata.righe.length - 1].includes("STOP"));
+    const estranea = await ca.verificaIsolamento({ ...argomentiIso, accessToken: "TOKEN_ESTRANEO" });
+    atteso("CA27. sessione non riconosciuta → verifica NON eseguita, mai «ok» per difetto", !estranea.ok && estranea.righe.length === 1 && estranea.righe[0].includes("NON eseguita"));
+    const stampatoIso: string[] = [];
+    console.log = (...a: unknown[]) => stampatoIso.push(a.map(String).join(" "));
+    try {
+      await ca.collaudo([fileFuori, "3110"], {}, {
+        cartella: progetto,
+        controllaPorta: portaOk,
+        portaAccesso: 0,
+        fetchFn: (async (url: string, init?: RequestInit) => (/generate_link|\/auth\/v1\/verify/.test(String(url)) ? fetchFinto(url, init) : fetchIsolamento(url, init))) as unknown as typeof fetch,
+        avvia: async ({ portaAccesso }: { portaAccesso: number }) => {
+          const base = `http://localhost:${portaAccesso}`;
+          const via = ((await (await fetch(`${base}/pronto`)).text()).match(/name="via" value="([^"]+)"/) ?? [])[1] ?? "";
+          await fetch(`${base}/accesso/ti-titolare2`, { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: base }, body: new URLSearchParams({ via }).toString() });
+          return 0;
+        },
+      });
+    } finally {
+      console.log = logOriginale;
+    }
+    atteso(
+      "CA28. dopo l'accesso di ti-titolare2 lo script esegue da solo la verifica dell'isolamento e ne stampa solo i conteggi",
+      stampatoIso.some((r) => r.includes("Isolamento di ti-titolare2: nessuna violazione")) && !stampatoIso.some((r) => /ACCESSO_SINTETICO|TOKEN_SINTETICO|sb_secret_|000000000111/.test(r)),
+      stampatoIso.join(" | "),
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -435,6 +515,7 @@ provaComportamento()
   .then(provaCollaudo)
   .catch((e) => atteso("C. prova di comportamento eseguita", false, e instanceof Error ? e.message : String(e)))
   .finally(() => {
+    atteso("N. nessuna richiesta di rete verso host esterni durante la verifica (database configurato compreso)", richiesteEsterne.length === 0, [...new Set(richiesteEsterne)].join(", "));
     if (fallimenti.length) {
       console.error(`\n${fallimenti.length} controlli della fase B3 (interfaccia) NON superati.`);
       process.exit(1);

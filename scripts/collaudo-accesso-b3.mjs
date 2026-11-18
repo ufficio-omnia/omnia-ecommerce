@@ -20,6 +20,8 @@
 //      per «localhost» (i cookie valgono per l'host su tutte le porte). Il token non compare mai in un indirizzo, quindi né nella
 //      cronologia del browser né nei Referer, e mai a schermo, nei log o su disco (condizione 7 dell'utente del 18/11). Un solo tentativo
 //      per utente (poi 410): un rifiuto del browser PRIMA del pulsante non consuma nulla;
+//   5b. subito dopo l'accesso dell'impresa 2: verifica dell'ISOLAMENTO lato server con la sua sessione (verificaIsolamento: solo GET, solo
+//      conteggi; le righe dell'impresa 1 devono risultare 0 per la RLS);
 //   6. allo spegnimento dell'app si chiude anche il server d'accesso (anche in caso di errore o interruzione).
 //
 // Perché «localhost» e mai l'indirizzo numerico di loopback: con quello Next tratta come esterni i riscritti di zona del proxy e la console
@@ -41,11 +43,24 @@ export const COOKIE_SESSIONE = `sb-${STAGING_REF}-auth-token`;
 const PRODUZIONE_REF = "bihfrzspqxsrzlbqqvqa";
 const INDIRIZZI_LOOPBACK = new Set(["::1", "127.0.0.1"]);
 
-// Gli unici utenti del collaudo (documento 20, §2): amministratore per la console, titolari di due imprese DIVERSE.
+// Gli unici utenti del collaudo (documento 20, §2): amministratore per la console, titolari di due imprese DIVERSE. Per l'impresa 2, subito
+// dopo l'accesso, la verifica dell'isolamento lato server contro i dati dell'impresa 1 (verificaIsolamento, solo GET e solo conteggi).
 export const UTENTI_COLLAUDO = [
   { email: "ti-admin@prova.test", zona: "console", arrivo: "/" },
   { email: "ti-titolare@prova.test", zona: "omnia-ai", arrivo: "/dashboard/omnia-ai/opportunita/cerca" },
-  { email: "ti-titolare2@prova.test", zona: "omnia-ai", arrivo: "/dashboard/omnia-ai/opportunita/cerca" },
+  { email: "ti-titolare2@prova.test", zona: "omnia-ai", arrivo: "/dashboard/omnia-ai/opportunita/cerca", verificaIsolamentoDa: "ti-titolare@prova.test" },
+];
+
+// Tabelle con i dati di un'impresa (colonna user_id) che la sessione di un'ALTRA impresa non deve poter leggere (RLS).
+export const TABELLE_ISOLAMENTO = [
+  "omnia_ai_radar_salvate",
+  "omnia_ai_radar_gare_aggiunte",
+  "omnia_ai_radar_impostazioni",
+  "omnia_ai_radar_utilizzi",
+  "omnia_ai_notifiche",
+  "gare",
+  "subscriptions",
+  "omnia_ai_gare_gratuite",
 ];
 
 export class Fermo extends Error {}
@@ -120,7 +135,54 @@ export async function cookieDiSessione({ variabili, tokenHash, fetchFn = fetch }
   if (error || !data?.session) throw new Fermo(`verifica dell'accesso non riuscita (${error?.code ?? error?.status ?? "nessuna sessione"})`);
   const cookie = impostati.filter((c) => (c.name === COOKIE_SESSIONE || c.name.startsWith(`${COOKIE_SESSIONE}.`)) && c.value);
   if (!cookie.length) throw new Fermo("verifica riuscita ma nessun cookie di sessione prodotto");
-  return cookie;
+  // Il token d'accesso resta solo in memoria: serve alla verifica dell'isolamento (sola lettura) e poi si dimentica.
+  return { cookie, accessToken: data.session.access_token };
+}
+
+/**
+ * Verifica dell'isolamento LATO SERVER (non solo l'HTML): con la sessione dell'utente appena entrato, SOLO GET, SOLO conteggi.
+ * 1. il token è proprio di quell'utente (auth/v1/user);
+ * 2. controllo positivo: la sua riga di omnia_ai_radar_impostazioni si legge (1), quindi il token funziona;
+ * 3. per ogni tabella di TABELLE_ISOLAMENTO, filtrando sull'id dell'ALTRA impresa: righe viste con la sua sessione (attese 0) e, per
+ *    confronto, righe esistenti (chiave di servizio, sempre e solo GET). Nessuna esistente: «non eseguita». Viste > 0: «VIOLAZIONE».
+ * Stampa solo conteggi: mai token, id completi o contenuti.
+ */
+export async function verificaIsolamento({ variabili, accessToken, emailUtente, emailAltraImpresa, fetchFn = fetch }) {
+  const soloGet = (url, headers) => fetchFn(url, { method: "GET", headers });
+  const servizio = { apikey: variabili.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${variabili.SUPABASE_SERVICE_ROLE_KEY}` };
+  const sessione = { apikey: variabili.NEXT_PUBLIC_SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` };
+  const nome = nomeUtente(emailUtente);
+  const conta = async (tabella, filtro, intestazioni) => {
+    const r = await soloGet(`${STAGING_URL}/rest/v1/${tabella}?select=user_id&${filtro}&limit=1`, { ...intestazioni, Prefer: "count=exact" });
+    if (!r.ok) return { errore: r.status };
+    const n = Number((r.headers.get("content-range") ?? "").split("/")[1]);
+    return Number.isFinite(n) ? { n } : { errore: "conteggio assente" };
+  };
+  const righe = [];
+  const io = await soloGet(`${STAGING_URL}/auth/v1/user`, sessione);
+  const datiIo = io.ok ? await io.json() : null;
+  if (String(datiIo?.email ?? "").toLowerCase() !== emailUtente || !datiIo?.id) return { ok: false, righe: [`Isolamento di ${nome}: sessione non riconosciuta, verifica NON eseguita.`] };
+  const altra = await soloGet(`${STAGING_URL}/rest/v1/users?select=id&email=eq.${encodeURIComponent(emailAltraImpresa)}`, servizio);
+  const idAltra = altra.ok ? (await altra.json())?.[0]?.id : null;
+  if (!idAltra) return { ok: false, righe: [`Isolamento di ${nome}: utente ${nomeUtente(emailAltraImpresa)} non trovato, verifica NON eseguita.`] };
+  const propria = await conta("omnia_ai_radar_impostazioni", `user_id=eq.${datiIo.id}`, sessione);
+  const positivo = propria.n === 1;
+  righe.push(`Isolamento di ${nome}: controllo positivo (propria impostazione del Radar letta con la sua sessione) ${propria.n ?? `errore ${propria.errore}`} → ${positivo ? "ok" : "NON riuscito"}`);
+  let violazioni = 0;
+  for (const tabella of TABELLE_ISOLAMENTO) {
+    const filtro = `user_id=eq.${idAltra}`;
+    const esistono = await conta(tabella, filtro, servizio);
+    const viste = await conta(tabella, filtro, sessione);
+    let esito;
+    if (viste.n > 0) {
+      violazioni++;
+      esito = "VIOLAZIONE";
+    } else if (!(esistono.n > 0)) esito = "non eseguita (l'altra impresa non ha righe)";
+    else esito = viste.n === 0 ? "ok" : `ok (accesso negato, ${viste.errore})`;
+    righe.push(`Isolamento di ${nome} rispetto a ${nomeUtente(emailAltraImpresa)}, ${tabella}: viste ${viste.n ?? `errore ${viste.errore}`}, esistenti ${esistono.n ?? `errore ${esistono.errore}`} → ${esito}`);
+  }
+  righe.push(violazioni ? `Isolamento di ${nome}: ${violazioni} VIOLAZIONI — STOP.` : `Isolamento di ${nome}: nessuna violazione.`);
+  return { ok: positivo && violazioni === 0, righe };
 }
 
 /** Set-Cookie per «localhost»: mai Domain (vale solo per l'host), Path, Max-Age e SameSite come li dà la libreria. Solo caratteri sicuri. */
@@ -184,7 +246,7 @@ function paginaPronto({ portaApp, preliminare, codice, usati }) {
  * e host di questo server: accedi(utente) → cookie di sessione → 303 verso l'app. Ogni altro metodo 405, ogni altro percorso 404, host
  * estranei 403. Nessun registro, nessuna cache, nessun referer.
  */
-export function serverAccesso({ portaApp, preliminare = false, accedi }) {
+export function serverAccesso({ portaApp, preliminare = false, accedi, dopoAccesso = null }) {
   const codice = randomBytes(24).toString("base64url");
   const usati = new Set();
   const utenti = new Map(UTENTI_COLLAUDO.map((u) => [percorsoAccesso(u.email), u]));
@@ -227,7 +289,7 @@ export function serverAccesso({ portaApp, preliminare = false, accedi }) {
     if (usati.has(percorso)) return testo(410, "Accesso già usato per questo utente: ne serve uno nuovo con una nuova autorizzazione.");
     usati.add(percorso);
     try {
-      const cookie = await accedi(utente);
+      const { cookie, accessToken } = await accedi(utente);
       const nuovi = new Set(cookie.map((c) => c.name));
       const vecchi = nomiCookie(richiesta.headers.cookie).filter((n) => (n === COOKIE_SESSIONE || n.startsWith(`${COOKIE_SESSIONE}.`)) && !nuovi.has(n));
       risposta.writeHead(303, {
@@ -237,6 +299,7 @@ export function serverAccesso({ portaApp, preliminare = false, accedi }) {
       });
       risposta.end();
       console.log(`Accesso di ${nomeUtente(utente.email)}: sessione impostata nel browser (nessun collegamento in un indirizzo).`);
+      if (dopoAccesso) await dopoAccesso(utente, accessToken).catch(() => console.log(`Verifica dopo l'accesso di ${nomeUtente(utente.email)} NON riuscita.`));
     } catch (e) {
       console.log(`Accesso di ${nomeUtente(utente.email)} NON riuscito: ${e instanceof Fermo ? e.message : "errore inatteso"}.`);
       testo(502, `Accesso non riuscito per ${nomeUtente(utente.email)}: nessun altro tentativo per questo utente senza una nuova autorizzazione.`);
@@ -330,7 +393,13 @@ export async function collaudo(argv, env, opzioni = {}) {
     const tokenHash = await generaCollegamento({ variabili, email: utente.email, fetchFn });
     return cookieDiSessione({ variabili, tokenHash, fetchFn });
   };
-  const server = serverAccesso({ portaApp: porta, accedi });
+  // Dopo l'accesso dell'impresa 2: verifica dell'isolamento lato server (solo GET, solo conteggi), poi il token si dimentica.
+  const dopoAccesso = async (utente, accessToken) => {
+    if (!utente.verificaIsolamentoDa) return;
+    const esito = await verificaIsolamento({ variabili, accessToken, emailUtente: utente.email, emailAltraImpresa: utente.verificaIsolamentoDa, fetchFn });
+    for (const riga of esito.righe) console.log(riga);
+  };
+  const server = serverAccesso({ portaApp: porta, accedi, dopoAccesso });
 
   // 4. server dell'app; 6. alla fine si chiude tutto in ogni caso
   try {
