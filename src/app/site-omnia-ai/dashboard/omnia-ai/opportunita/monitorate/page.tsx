@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
-import { COLONNE_RISULTATO, type RigaRisultato } from "@/lib/radar/ricerca";
+import { colonneElenco, conRilevanza, type RigaRisultato } from "@/lib/radar/ricerca";
+import { COLONNA_RIGHE_ATTIVE, type ConClassificazioni } from "@/lib/radar/classificazioni-lettura";
+import { etichettaRicerca, etichettaStatoClassificazione, settoriDellaRiga } from "@/lib/radar/ricerca-calcoli";
+import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { leggiFontiGare } from "@/lib/radar/gara";
 import { etichettaFonti, type FonteGara } from "@/lib/radar/fonti-gara-calcoli";
 import { statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
@@ -60,9 +63,18 @@ export default async function MonitoratePage() {
   const resta = new Map((collegateRaw ?? []).map((c) => [c.id, c.unita_a]));
   const mostrata = (id: string | null | undefined) => (id ? (resta.get(id) ?? id) : undefined);
   const idProcedure = [...new Set(idSalvati.map((id) => resta.get(id) ?? id))];
+  // fase B3: con le classificazioni accese, stato e righe attive della 0121 nella STESSA richiesta delle gare (nessuna lettura in più)
+  const conClassificazioni = classificazioniAttive(process.env);
+  const leggiProcedure = async () => {
+    const q = admin.from("radar_procedure").select(colonneElenco(conClassificazioni)).in("id", idProcedure);
+    const letta = await (conClassificazioni ? q.eq(COLONNA_RIGHE_ATTIVE, true) : q).returns<(RigaRisultato & ConClassificazioni)[]>();
+    if (!letta.error || !conClassificazioni) return { data: (letta.data ?? []).map((p) => (conClassificazioni ? conRilevanza(p) : p)) };
+    // tabelle della 0121 non leggibili: le gare come prima
+    return admin.from("radar_procedure").select(colonneElenco(false)).in("id", idProcedure).returns<RigaRisultato[]>();
+  };
   const [{ data: procedureRaw }, { data: novitaRaw }, fontiGare] = idProcedure.length
     ? await Promise.all([
-        admin.from("radar_procedure").select(COLONNE_RISULTATO).in("id", idProcedure).returns<RigaRisultato[]>(),
+        leggiProcedure(),
         admin
           .from("radar_aggiornamenti")
           .select("procedura_id, tipo, campo, valore_nuovo, id_fonte, rilevato_il")
@@ -107,6 +119,10 @@ export default async function MonitoratePage() {
         stato: p.stato,
         rettificata: p.rettificata,
         motivi: aggiunta ? ["aggiunta da te, poi trovata nelle fonti"] : [],
+        // fase B3: rilevanza (correlata o fuori dai settori), settori con livello e sottocategorie, stato della classificazione
+        rilevanza: etichettaRicerca(p, { settori: [] }),
+        settoriDettaglio: settoriDellaRiga(p),
+        statoClassificazione: etichettaStatoClassificazione(p),
         fonte: etichettaFonti(fontiGare.get(p.id) ?? ["ted"]),
         verificataIl: p.ultima_rilevazione_il,
         salvata: true,
