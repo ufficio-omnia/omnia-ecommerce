@@ -235,6 +235,9 @@ export type Riepilogo = {
   categorie: Record<CategoriaGara, number>;
   colonna: { invariate: number; cambiate: number; perdono: number; acquisiscono: number; fuoriDaTutti: number; soloMetodo: number };
   multisettore: number;
+  // righe segnate «ambigua»: CONFLITTO TRA FONTI (le fonti della stessa gara danno rilevanze diverse). Da non confondere con i «casi da
+  // confermare» della PVL, che sono giudizi sulle regole da far confermare all'utente (pacchetto 16, punto 11)
+  conflittiTraFonti: number;
   righe: {
     radar_procedure: { aggiorna: number };
     radar_aggiornamenti: { inserisce: number };
@@ -253,6 +256,7 @@ export function riepilogoPiani(piani: readonly PianoGara[]): Riepilogo {
     categorie: { A: 0, B: 0, misti: 0, C: 0, nessun_settore: 0 },
     colonna: { invariate: 0, cambiate: 0, perdono: 0, acquisiscono: 0, fuoriDaTutti: 0, soloMetodo: 0 },
     multisettore: 0,
+    conflittiTraFonti: 0,
     righe: {
       radar_procedure: { aggiorna: 0 },
       radar_aggiornamenti: { inserisce: 0 },
@@ -270,6 +274,7 @@ export function riepilogoPiani(piani: readonly PianoGara[]): Riepilogo {
     r.categorie[categoriaGara(p.calcolate)]++;
     const ric = p.ric as Riclassificazione;
     if (ric.dopo.settori.length >= 2) r.multisettore++;
+    r.conflittiTraFonti += p.calcolate.filter((x) => x.ambigua).length;
     if (p.cambiaSettori) {
       r.colonna.cambiate++;
       if (ric.tolti.length) r.colonna.perdono++;

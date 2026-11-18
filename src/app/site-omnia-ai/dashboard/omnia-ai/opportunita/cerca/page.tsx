@@ -8,7 +8,8 @@ import { cercaGare, type RisultatoRicerca } from "@/lib/radar/ricerca";
 import { leggiFontiGare, leggiSalvataggi } from "@/lib/radar/gara";
 import { contaUtilizziRadar, registraUtilizzoRadar } from "@/lib/radar/utilizzi";
 import { inizioFinestra, limiteEffettivo, verificaLimite } from "@/lib/radar/diritto-calcoli";
-import { PROCEDURE_RICERCA, SCADENZE_RAPIDE, filtriAttivi, filtriDaParametri, parametriDaFiltri, type FiltriRicerca } from "@/lib/radar/ricerca-calcoli";
+import { PROCEDURE_RICERCA, SCADENZE_RAPIDE, etichettaRicerca, filtriAttivi, filtriDaParametri, parametriDaFiltri, type FiltriRicerca } from "@/lib/radar/ricerca-calcoli";
+import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { SETTORI_RADAR, nomeSettore } from "@/lib/radar/settori";
 import { REGIONI, nomeRegione } from "@/lib/radar/territorio";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
@@ -62,7 +63,8 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
     if (usate === null || !verificaLimite(usate, limiteEffettivo(parametri, cliente, "ricerche_minuto")).consentito) {
       limitata = true;
     } else {
-      risultato = await cercaGare(admin, filtri, adesso);
+      // fase B2b: pertinenti (A) e correlate (B) distinte solo con le classificazioni accese (spente di base)
+      risultato = await cercaGare(admin, filtri, adesso, { classificazioni: classificazioniAttive(process.env) });
       after(() => registraUtilizzoRadar({ accountId: contesto.accountId, membroId: contesto.userId, azione: "ricerca" }));
     }
   }
@@ -245,6 +247,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
                       stato: r.stato,
                       rettificata: r.rettificata,
                       motivi: r.punteggio.motivi,
+                      rilevanza: etichettaRicerca(r, filtri),
                       fonte: etichettaFonti(fontiGare.get(r.id) ?? ["ted"]),
                       verificataIl: r.ultima_rilevazione_il,
                       salvata: !!s,

@@ -19,6 +19,7 @@ import {
 import { aggiungiGiorni, giornoIso } from "./importa-ted-calcoli";
 import type { StatoProcedura } from "./importa-calcoli";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "./fonti-nascoste";
+import { leggiRilevanze } from "./classificazioni";
 
 export const COLONNE_RISULTATO =
   "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale, unita_a";
@@ -48,7 +49,9 @@ export type RisultatoRicerca = {
   errore: boolean;
 };
 
-export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, adesso: Date): Promise<RisultatoRicerca> {
+// Fase B2b (pacchetto 16, punto 7): con le classificazioni accese (ambiente.ts, SPENTE di base) punteggio, ordinamento ed etichette
+// distinguono le gare pertinenti (A) dalle correlate (B); spente, la ricerca è quella di prima.
+export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, adesso: Date, opzioni: { classificazioni?: boolean } = {}): Promise<RisultatoRicerca> {
   const inizio = Date.now();
   const domanda = analizzaDomanda(filtri.q);
   const vuoto = (errore: boolean): RisultatoRicerca => ({ righe: [], candidati: 0, oltreTetto: false, domanda, pagine: 0, ms: Date.now() - inizio, errore });
@@ -90,8 +93,13 @@ export async function cercaGare(admin: SupabaseClient, filtri: FiltriRicerca, ad
   }
   const righe = (data ?? []).map((r) => ({ ...r, valore_stimato: r.valore_stimato === null ? null : Number(r.valore_stimato) }));
   const oltreTetto = righe.length > CANDIDATI_MASSIMI;
-  const candidati = righe.slice(0, CANDIDATI_MASSIMI).map((r) => ({ ...r, punteggio: punteggioRilevanza(r, domanda, filtri, adesso) }));
-  const ordinati = ordinaCandidati(candidati, filtri.ordina);
+  const primi = righe.slice(0, CANDIDATI_MASSIMI);
+  const rilevanze = opzioni.classificazioni ? await leggiRilevanze(admin, primi.map((r) => r.id)) : null;
+  const candidati = primi.map((r) => {
+    const c = rilevanze ? { ...r, rilevanza: rilevanze.get(r.id) ?? null } : r;
+    return { ...c, punteggio: punteggioRilevanza(c, domanda, filtri, adesso) };
+  });
+  const ordinati = ordinaCandidati(candidati, filtri.ordina, filtri);
   const pagine = Math.max(1, Math.ceil(ordinati.length / RISULTATI_PER_PAGINA));
   const pagina = Math.min(filtri.pagina, pagine);
   return {

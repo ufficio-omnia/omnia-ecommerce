@@ -180,7 +180,41 @@ export type CandidatoRicerca = {
   data_pubblicazione: string | null;
   valore_stimato: number | null;
   rettificata: boolean;
+  // fase B2b (pacchetto 16, punto 7), solo con le classificazioni accese: lo stato della classificazione e la rilevanza per settore
+  // (A pertinente, B correlata, C non pertinente). Assente = come prima (settori e metodo della colonna).
+  rilevanza?: RilevanzaRicerca | null;
 };
+
+export type RilevanzaRicerca = { stato: "classificata" | "in_attesa" | "fallita"; perSettore: Partial<Record<string, "A" | "B" | "C">> };
+
+// I livelli dei settori che contano per questa ricerca (quelli scelti nei filtri, o tutti). Solo per una gara CLASSIFICATA.
+function livelliCercati(c: CandidatoRicerca, filtri: Pick<FiltriRicerca, "settori">): ("A" | "B" | "C")[] | null {
+  const r = c.rilevanza;
+  if (!r || r.stato !== "classificata") return null;
+  const settori = filtri.settori.length ? filtri.settori : Object.keys(r.perSettore);
+  return settori.map((s) => r.perSettore[s]).filter((l): l is "A" | "B" | "C" => !!l);
+}
+
+/**
+ * L'etichetta della rilevanza nella riga del risultato: le correlate (B) NON valgono come le pertinenti (A). Solo con la classificazione:
+ * A → nessuna etichetta; solo B → «Correlata…»; solo C (gara classificata fuori dai settori) → «Fuori dai settori monitorati»; classificazione
+ * fallita → «Classificazione da verificare». In attesa o senza classificazione → nessuna etichetta (mai «non pertinente»).
+ */
+export function etichettaRicerca(c: CandidatoRicerca, filtri: Pick<FiltriRicerca, "settori">): string | null {
+  if (c.rilevanza?.stato === "fallita") return "Classificazione da verificare";
+  const l = livelliCercati(c, filtri);
+  if (!l || l.length === 0 || l.includes("A")) return null;
+  if (l.includes("B")) return "Correlata: appalto misto o servizio accessorio";
+  return "Fuori dai settori monitorati";
+}
+
+// Fascia per l'ordinamento «per rilevanza»: le gare correlate (B) e quelle fuori dai settori (C) vengono DOPO le pertinenti e quelle non
+// ancora classificate (che restano come prima).
+export function fasciaRilevanza(c: CandidatoRicerca, filtri: Pick<FiltriRicerca, "settori">): number {
+  const l = livelliCercati(c, filtri);
+  if (!l || l.length === 0 || l.includes("A")) return 0;
+  return l.includes("B") ? 1 : 2;
+}
 
 export type Punteggio = { punti: number; motivi: string[] };
 
@@ -212,7 +246,17 @@ export function punteggioRilevanza(c: CandidatoRicerca, domanda: DomandaAnalizza
   }
 
   const settoriCercati = filtri.settori.length > 0 ? c.settori.filter((s) => filtri.settori.includes(s as SettoreRadar)) : c.settori;
-  if (settoriCercati.length > 0) {
+  const livelli = livelliCercati(c, filtri);
+  if (livelli) {
+    // gara classificata (0121): decide la rilevanza, non il metodo; le correlate valgono meno delle pertinenti
+    if (livelli.includes("A")) {
+      punti += 10;
+      motivi.push("pertinente al settore");
+    } else if (livelli.includes("B")) {
+      punti += 3;
+      motivi.push("correlata al settore (appalto misto o servizio accessorio)");
+    }
+  } else if (settoriCercati.length > 0) {
     if (c.metodo_settore === "cpv") {
       punti += 10;
       motivi.push("settore riconosciuto dal CPV");
@@ -245,7 +289,7 @@ export function punteggioRilevanza(c: CandidatoRicerca, domanda: DomandaAnalizza
   return { punti: Math.round(punti * 10) / 10, motivi };
 }
 
-export function ordinaCandidati<T extends CandidatoRicerca>(righe: (T & { punteggio: Punteggio })[], ordina: Ordinamento): (T & { punteggio: Punteggio })[] {
+export function ordinaCandidati<T extends CandidatoRicerca>(righe: (T & { punteggio: Punteggio })[], ordina: Ordinamento, filtri: Pick<FiltriRicerca, "settori"> = { settori: [] }): (T & { punteggio: Punteggio })[] {
   // per giorno, poi per ora (a parità di giorno, quella con l'ora prima di quella senza); senza scadenza in fondo
   const scad = (x: CandidatoRicerca) => `${x.scadenza_giorno ?? "9999-99-99"}|${x.scadenza_offerte ?? "~"}`;
   const pub = (x: CandidatoRicerca) => x.data_pubblicazione ?? "";
@@ -254,7 +298,8 @@ export function ordinaCandidati<T extends CandidatoRicerca>(righe: (T & { punteg
     if (ordina === "recenti") return pub(b).localeCompare(pub(a)) || a.id.localeCompare(b.id);
     if (ordina === "scadenza") return scad(a).localeCompare(scad(b)) || a.id.localeCompare(b.id);
     if (ordina === "importo") return (b.valore_stimato ?? -1) - (a.valore_stimato ?? -1) || a.id.localeCompare(b.id);
-    return b.punteggio.punti - a.punteggio.punti || scad(a).localeCompare(scad(b)) || a.id.localeCompare(b.id);
+    // per rilevanza: prima la fascia (le correlate dopo le pertinenti, solo per le gare classificate), poi il punteggio
+    return fasciaRilevanza(a, filtri) - fasciaRilevanza(b, filtri) || b.punteggio.punti - a.punteggio.punti || scad(a).localeCompare(scad(b)) || a.id.localeCompare(b.id);
   });
   return copia;
 }

@@ -357,9 +357,9 @@ async function principale() {
     atteso("7. i campi interni sono quelli scritti dal motore (collegamenti.ts) e dal classificatore", leggi("src/lib/radar/collegamenti.ts").includes('campo: "collegamento_proposto"') && leggi("src/lib/radar/collegamenti.ts").includes('campo: "collegamento_proposta_decisa"') && CAMPO_CLASSIFICAZIONE_AMBIGUA === "classificazione_ambigua");
     atteso("7. la scheda della gara filtra il registro con aggiornamentoPerCliente", leggi("src/lib/radar/gara.ts").includes("filter((a) => aggiornamentoPerCliente(a, nascoste))"));
     atteso("7. Monitorate: solo rettifiche, proroghe, annullamenti ed esiti, e solo dalle fonti visibili", /\.in\("tipo", \["rettifica", "proroga", "annullamento", "esito"\]\)\s*\n\s*\/\/[^\n]*\n\s*\.in\("fonte", fontiVisibiliDa\(await fontiNascosteAiClienti\(\)\)\)/.test(leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx")));
-    atteso("7. la console mostra le classificazioni da verificare in sola lettura (nessuna azione che scelga)", (() => {
+    atteso("7. la console mostra i conflitti tra fonti in sola lettura (nessuna azione che scelga)", (() => {
       const v = leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx");
-      const i = v.indexOf("Classificazioni da verificare");
+      const i = v.indexOf("Conflitti tra fonti nella classificazione");
       const fine = v.indexOf("</Pannello>", i);
       return i > 0 && fine > i && !v.slice(i, fine).includes("ModuloAzione");
     })());

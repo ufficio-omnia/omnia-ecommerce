@@ -36,7 +36,9 @@ import { applicaPaginaBandiRegionali } from "../src/lib/radar/importa-regionali-
 import { bandoDaAflink, statisticheRegionaliVuote, type BandoRegionale } from "../src/lib/radar/importa-regionali-calcoli";
 import { leggiElementoAflink, type BandoAflink } from "../src/lib/radar/fonti/aflink-calcoli";
 import { eEsclusione, leggiBandoTed } from "../src/lib/radar/fonti/ted-calcoli";
-import type { RigaClassificazione } from "../src/lib/radar/classificazioni-calcoli";
+import { etichettaRilevanza, gareSuggeribili, situazioneGara, type RigaClassificazione } from "../src/lib/radar/classificazioni-calcoli";
+import { leggiRilevanze } from "../src/lib/radar/classificazioni";
+import { analizzaDomanda, etichettaRicerca, ordinaCandidati, punteggioRilevanza } from "../src/lib/radar/ricerca-calcoli";
 import { archivioDaFile, fetchSoloLettura } from "./radar-riclassifica-settori";
 
 const RADICE = path.join(__dirname, "..");
@@ -420,6 +422,67 @@ async function principale() {
     uguale("E. prova da un'esportazione: stesso archivio (lotti in ordine di numero), tabelle della 0121 presenti", [daFile.gare.length, daFile.lotti.get("F1")?.map((l) => l.oggetto), daFile.tabelle0121], [1, ["Lotto 1 (prova sintetica)", null], true]);
     const scheda = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx");
     atteso("E. scheda della gara: la correzione dei settori ha la sua frase (non «Rettifica»)", scheda.includes("descriviCorrezioneSettori(quando, a.valore_precedente, a.valore_nuovo, a.id_fonte)"));
+  }
+
+  // ═════ F. Radar: pertinenti (A) e correlate (B) distinte; gare unite senza doppioni (pacchetto 16, punti 7 e 9) ═════
+  {
+    const d = analizzaDomanda("");
+    const base = { oggetto_breve: null, sa_denominazione: null, metodo_settore: "cpv", scadenza_giorno: "2026-12-20", scadenza_offerte: null, valore_stimato: null, rettificata: false };
+    const gA = { ...base, id: "A1", oggetto: "Servizio di pulizia degli uffici", settori: ["pulizia"], data_pubblicazione: "2026-11-01", rilevanza: { stato: "classificata" as const, perSettore: { pulizia: "A" as const } } };
+    const gB = { ...base, id: "B1", oggetto: "Gestione integrata della struttura con pulizia", settori: ["pulizia"], data_pubblicazione: "2026-11-15", rilevanza: { stato: "classificata" as const, perSettore: { pulizia: "B" as const } } };
+    const gN = { ...base, id: "N1", oggetto: "Servizio di pulizia", settori: ["pulizia"], data_pubblicazione: "2026-11-10" };
+    const adesso = new Date("2026-11-18T09:00:00Z");
+    const p = (g: typeof gA | typeof gB | typeof gN, settori: string[] = []) => punteggioRilevanza(g, d, { settori: settori as never[] }, adesso);
+    uguale("F. punteggio: pertinente (A) +10, correlata (B) +3 con il suo motivo; senza classificazione come prima (metodo)", [p(gA).motivi[0], p(gB).motivi[0], p(gN).motivi[0], p(gA).punti - p({ ...gB, data_pubblicazione: gA.data_pubblicazione }).punti], ["pertinente al settore", "correlata al settore (appalto misto o servizio accessorio)", "settore riconosciuto dal CPV", 7]);
+    const conPunti = [gB, gA, gN].map((g) => ({ ...g, punteggio: p(g) }));
+    conPunti[0].punteggio = { punti: 99, motivi: ["testo molto vicino"] };
+    uguale("F. ordinamento per rilevanza: la correlata (B) viene DOPO le pertinenti e le non classificate, anche con più punti", ordinaCandidati(conPunti, "rilevanza").map((x) => x.id), ["N1", "A1", "B1"]);
+    uguale("F. ordinamento per data: l'ordine cronologico (data di pubblicazione) NON cambia con la classificazione", ordinaCandidati(conPunti, "recenti").map((x) => x.id), ["B1", "N1", "A1"]);
+    const gAB = { ...gA, id: "AB", rilevanza: { stato: "classificata" as const, perSettore: { pulizia: "A" as const, vigilanza_portierato: "B" as const } } };
+    const gC = { ...gA, id: "C1", settori: [], rilevanza: { stato: "classificata" as const, perSettore: { ristorazione: "C" as const } } };
+    uguale("F. etichette: A nessuna; B «Correlata…»; C «Fuori dai settori monitorati»; fallita «da verificare»; in attesa e non classificata nessuna", [
+      etichettaRicerca(gA, { settori: [] }),
+      etichettaRicerca(gB, { settori: [] }),
+      etichettaRicerca(gC, { settori: [] }),
+      etichettaRicerca({ ...gA, rilevanza: { stato: "fallita", perSettore: {} } }, { settori: [] }),
+      etichettaRicerca({ ...gA, rilevanza: { stato: "in_attesa", perSettore: {} } }, { settori: [] }),
+      etichettaRicerca(gN, { settori: [] }),
+    ], [null, "Correlata: appalto misto o servizio accessorio", "Fuori dai settori monitorati", "Classificazione da verificare", null, null]);
+    uguale("F. con il filtro di un settore conta quel settore: A in pulizia ma B in vigilanza → «Correlata» se si cerca la vigilanza", [etichettaRicerca(gAB, { settori: ["pulizia"] }), etichettaRicerca(gAB, { settori: ["vigilanza_portierato"] })], [null, "Correlata: appalto misto o servizio accessorio"]);
+    const ric = leggi("src/lib/radar/ricerca.ts");
+    atteso("F. la ricerca legge le classificazioni SOLO con l'interruttore acceso, e mai le copie collegate (.is(\"unita_a\", null))", /opzioni\.classificazioni \? await leggiRilevanze\(/.test(ric) && ric.includes('.is("unita_a", null)'));
+    atteso("F. la pagina Cerca passa l'interruttore dall'ambiente e mostra l'etichetta", leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx").includes("classificazioni: classificazioniAttive(process.env)") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx").includes("rilevanza: etichettaRicerca(r, filtri)") && leggi("src/components/omnia-ai/opportunita/riga-gara.tsx").includes("{d.rilevanza && "));
+    // gare unite: la copia collegata C e la gara che resta T, entrambe classificate A
+    const righe = [{ procedura_id: "T", settore: "pulizia" as const, rilevanza: "A" as const, attiva: true }, { procedura_id: "C", settore: "pulizia" as const, rilevanza: "A" as const, attiva: true }, { procedura_id: "B", settore: "pulizia" as const, rilevanza: "B" as const, attiva: true }];
+    const stati = new Map([["T", { stato: "classificata" as const }], ["C", { stato: "classificata" as const }], ["B", { stato: "classificata" as const }]]);
+    uguale("F. suggerimenti: solo A, e la gara unita UNA volta (la canonica); la copia collegata classificata non si suggerisce", gareSuggeribili(righe, stati, ["pulizia"], new Set(["C"])), ["T"]);
+    const memR = databaseInMemoria({ radar_classificazioni: [{ id: "r1", procedura_id: "T", settore: "pulizia", rilevanza: "A", attiva: true }, { id: "r2", procedura_id: "T", settore: "vigilanza_portierato", rilevanza: "B", attiva: true }, { id: "r3", procedura_id: "T", settore: "ristorazione", rilevanza: "A", attiva: false }], radar_classificazioni_stato: [{ procedura_id: "T", stato: "classificata" }, { procedura_id: "W", stato: "in_attesa" }] });
+    const lette = await leggiRilevanze(memR.client, ["T", "W", "N"]);
+    uguale("F. lettura per la ricerca: solo righe ATTIVE, lo stato di ogni gara, nessuna voce per le gare mai classificate", [lette.get("T"), lette.get("W"), lette.has("N")], [{ stato: "classificata", perSettore: { pulizia: "A", vigilanza_portierato: "B" } }, { stato: "in_attesa", perSettore: {} }, false]);
+    atteso("F. nessun doppione altrove (prove esistenti): Monitorate una riga per gara mostrata, la scheda di una copia porta alla canonica, la ricerca per CIG porta alla canonica", leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx").includes("unoPerGaraMostrata(salvate,") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx").includes("if (g.unita_a) redirect(") && ric.includes("idDaCig.map((id) => collegate?.find((c) => c.id === id)?.unita_a ?? id)"));
+    atteso("F. notifiche: mai su una gara collegata a un'altra (importatori), mai dalle tracce della classificazione (notificabile: false)", leggi("src/lib/radar/importa.ts").includes("!prima?.unita_a") && leggi("src/lib/radar/importa-fonti-pagina.ts").includes("!s.iniziale?.unita_a") && !leggi("src/lib/radar/classificazioni-importazione.ts").includes("notificabile: true"));
+  }
+
+  // ═════ G. una gara C non si confonde con «in attesa» né con «fallita» (pacchetto 16, punto 11) ═════
+  {
+    const c = situazioneGara({ stato: "classificata", versione_regole: VERSIONE_REGOLE_SETTORI, errore: null }, [{ settore: "ristorazione", rilevanza: "C", attiva: true }]);
+    const attesa = situazioneGara({ stato: "in_attesa", versione_regole: null, errore: null }, [{ settore: "ristorazione", rilevanza: "C", attiva: true }]);
+    const fallita = situazioneGara({ stato: "fallita", versione_regole: null, errore: "Righe non valide" }, []);
+    const senza = situazioneGara(null, []);
+    uguale("G. codice: C = classificata con righe C (fuori dai settori); in attesa e fallita sono altri stati anche se ci sono righe C; senza stato = mai classificata", [c.tipo, c.tipo === "classificata" && c.fuoriDaiSettori, attesa.tipo, fallita.tipo, senza.tipo], ["classificata", true, "in_attesa", "fallita", "non_classificata"]);
+    uguale("G. etichette diverse: C «Fuori dai settori monitorati», fallita «Classificazione da verificare», in attesa e mai classificata nessuna", [etichettaRilevanza(c), etichettaRilevanza(fallita), etichettaRilevanza(attesa), etichettaRilevanza(senza)], ["Fuori dai settori monitorati", "Classificazione da verificare", null, null]);
+    const sql = leggi("supabase/migrations/0121_radar_classificazioni.sql");
+    atteso("G. database (0121): stato solo «in_attesa», «classificata», «fallita»; fallita SE E SOLO SE c'è l'errore; classificata con versione e data; rilevanza solo A, B, C", sql.includes("stato text not null check (stato in ('in_attesa', 'classificata', 'fallita'))") && sql.includes("constraint radar_classificazioni_stato_errore check ((stato = 'fallita') = (errore is not null))") && sql.includes("constraint radar_classificazioni_stato_classificata check (stato <> 'classificata' or (versione_regole is not null and classificata_il is not null))") && sql.includes("rilevanza text not null check (rilevanza in ('A', 'B', 'C'))"));
+    // dopo lo script: la gara esclusa è classificata con righe C; dopo l'annullamento è «in attesa» (e non più C)
+    const memG = databaseInMemoria(archivio(), { fonti: "0121" });
+    const isoG = "2026-11-18T08:00:00.000Z";
+    const esG = idEsecuzione(isoG);
+    await applicaPiani(memG.client, pianiDaArchivio(await leggiArchivio(memG.client, misure()), esG, isoG, nuovoId), misure(), isoG);
+    const situazioneDi = (id: string) => situazioneGara((statoDi(memG, id) as never) ?? null, memG.tabelle.radar_classificazioni.filter((r) => r.procedura_id === id) as never);
+    const dopo = situazioneDi("G2");
+    await annullaEsecuzione(memG.client, esG, 10, misure(), "2026-11-18T09:00:00.000Z", nuovoId);
+    const annullata = situazioneDi("G2");
+    uguale("G. archivio: dopo lo script la gara esclusa è «classificata» e fuori dai settori; dopo l'annullamento è «in attesa», non C", [dopo.tipo, dopo.tipo === "classificata" && dopo.fuoriDaiSettori, annullata.tipo], ["classificata", true, "in_attesa"]);
   }
 
   console.log("");

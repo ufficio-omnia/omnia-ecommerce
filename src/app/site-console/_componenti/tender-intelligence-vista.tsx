@@ -413,12 +413,12 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
       )}
       {regionali.classificazioni && (
         <div className="cn-sezione">
-          <Pannello titolo={`Classificazioni da verificare (${numero(regionali.classificazioni.length)})`}>
+          <Pannello titolo={`Conflitti tra fonti nella classificazione (${numero(regionali.classificazioni.length)})`}>
             <p className="cn-nota">
               Gare pubblicate da più fonti che, classificate con le stesse regole, danno settori o livelli diversi (A pertinente, B correlata, C non pertinente). Nessuna scelta automatica: la gara resta nei settori riconosciuti da tutte le fonti insieme, e i clienti non vedono queste righe. Il modo di registrare la decisione arriva con la proposta 0121, da approvare.
             </p>
             {regionali.classificazioni.length === 0 ? (
-              <p className="cn-nota">Nessuna classificazione da verificare.</p>
+              <p className="cn-nota">Nessun conflitto tra fonti.</p>
             ) : (
               <div className="cn-scorri">
                 <table className="cn-tab">

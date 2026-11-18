@@ -310,15 +310,17 @@ export function etichettaRilevanza(s: SituazioneGara): string | null {
 /**
  * La regola UNICA dei suggerimenti alle imprese (Radar personalizzato e notifiche di settore, D-C9 e decisione dell'utente del 17/11): solo
  * le gare CLASSIFICATE (stato «classificata») con una riga ATTIVA di rilevanza A in uno dei settori dell'impresa. Mai B, mai C, mai righe
- * storiche, mai gare in attesa o con la classificazione fallita, mai gare senza stato.
+ * storiche, mai gare in attesa o con la classificazione fallita, mai gare senza stato. Gare UNITE (pacchetto 16, punto 9): le copie collegate a
+ * un'altra gara (unita_a) sono classificate ma non si suggeriscono mai; il cliente vede una sola opportunità, quella canonica.
  */
 export function gareSuggeribili(
   righeAttive: readonly Pick<RigaClassificazione, "procedura_id" | "settore" | "rilevanza" | "attiva">[],
   stati: ReadonlyMap<string, Pick<RigaStato, "stato">>,
   settoriImpresa: readonly string[],
+  collegate: ReadonlySet<string> = new Set(),
 ): string[] {
   const settori = new Set(settoriImpresa);
-  return [...new Set(righeAttive.filter((r) => r.attiva && r.rilevanza === "A" && settori.has(r.settore) && stati.get(r.procedura_id)?.stato === "classificata").map((r) => r.procedura_id))].sort();
+  return [...new Set(righeAttive.filter((r) => r.attiva && r.rilevanza === "A" && settori.has(r.settore) && !collegate.has(r.procedura_id) && stati.get(r.procedura_id)?.stato === "classificata").map((r) => r.procedura_id))].sort();
 }
 
 /** Lo stato dopo un tentativo: riuscito (versione e data della classificazione) o fallito (errore pieno, righe precedenti intatte). */

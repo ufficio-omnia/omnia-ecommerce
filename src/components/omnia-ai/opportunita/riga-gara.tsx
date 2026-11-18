@@ -27,6 +27,9 @@ export type DatiRigaGara = {
   salvata: boolean;
   monitorata: boolean;
   novita?: string | null;
+  // fase B2b (pacchetto 16, punto 7): «Correlata…», «Fuori dai settori monitorati», «Classificazione da verificare» (solo con le
+  // classificazioni accese); assente = nessuna etichetta
+  rilevanza?: string | null;
 };
 
 // La riga di una gara negli elenchi (Cerca, Salvate e monitorate): le quattro informazioni chiave (cosa, chi, quanto, entro quando),
@@ -71,6 +74,7 @@ export default function RigaGara({ d, adesso }: { d: DatiRigaGara; adesso: Date 
         <span className="omnia-opp-badge-gruppo">
           {stato !== "aperta" && <span className={`omnia-badge ${stato === "annullata" || stato === "chiusa_senza_aggiudicazione" ? "rosso" : "ambra"}`}>{ETICHETTA_STATO[stato]}</span>}
           {d.rettificata && <span className="omnia-badge ambra">Rettificata</span>}
+          {d.rilevanza && <span className={`omnia-badge${d.rilevanza === "Classificazione da verificare" ? " ambra" : ""}`}>{d.rilevanza}</span>}
           {d.monitorata ? <span className="omnia-badge verde">Monitorata</span> : d.salvata ? <span className="omnia-badge verde">Salvata</span> : null}
         </span>
         <span className="omnia-opp-fonte">

@@ -138,6 +138,28 @@ export async function scriviClassificazioni(
   return esito;
 }
 
+/**
+ * Fase B2b (pacchetto 16, punto 7): la rilevanza per settore e lo stato delle gare di una ricerca, per distinguere le pertinenti (A) dalle
+ * correlate (B). Due letture per blocco di 100 gare, SOLO con le classificazioni accese; tabelle assenti o errore = mappa vuota (la ricerca
+ * resta come prima). Gare senza stato: assenti dalla mappa (mai «non pertinenti»).
+ */
+export async function leggiRilevanze(admin: SupabaseClient, ids: readonly string[]): Promise<Map<string, { stato: RigaStato["stato"]; perSettore: Partial<Record<string, "A" | "B" | "C">> }>> {
+  const out = new Map<string, { stato: RigaStato["stato"]; perSettore: Partial<Record<string, "A" | "B" | "C">> }>();
+  for (const b of blocchi([...new Set(ids)], 100)) {
+    const [st, cl] = await Promise.all([
+      admin.from("radar_classificazioni_stato").select("procedura_id, stato").in("procedura_id", b).returns<{ procedura_id: string; stato: RigaStato["stato"] }[]>(),
+      admin.from("radar_classificazioni").select("procedura_id, settore, rilevanza").in("procedura_id", b).eq("attiva", true).returns<{ procedura_id: string; settore: string; rilevanza: "A" | "B" | "C" }[]>(),
+    ]);
+    if (st.error || cl.error) return new Map();
+    for (const s of st.data ?? []) out.set(s.procedura_id, { stato: s.stato, perSettore: {} });
+    for (const r of cl.data ?? []) {
+      const g = out.get(r.procedura_id);
+      if (g) g.perSettore[r.settore] = r.rilevanza;
+    }
+  }
+  return out;
+}
+
 /** Gare nuove o cambiate da riclassificare: stato «in_attesa» (la versione e la data dell'ultima classificazione riuscita restano). */
 export async function segnaInAttesa(admin: SupabaseClient, ids: readonly string[], misure: Misure, adessoIso: string): Promise<{ saltata: boolean; segnate: number }> {
   let segnate = 0;

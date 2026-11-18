@@ -84,7 +84,7 @@ function stampaPiano(a: ArchivioLetto, piani: PianoGara[], esecuzione: string) {
   const r = riepilogoPiani(piani);
   const daScrivere = piani.filter((p) => p.tipo === "da_scrivere");
   console.log(`Regole ${VERSIONE_REGOLE_SETTORI}. Archivio: ${a.gare.length} gare, ${a.nLotti} lotti, ${[...a.attive.values()].flat().length} classificazioni attive, ${a.stati.size} stati. Esecuzione ${esecuzione}.`);
-  console.log(`Gare già classificate con queste regole e non cambiate: ${r.giaClassificate}; da scrivere: ${r.daScrivere}; con righe non valide (fallite): ${r.fallite}.`);
+  console.log(`Gare già classificate con queste regole e non cambiate: ${r.giaClassificate}; da scrivere: ${r.daScrivere}; con righe non valide (fallite): ${r.fallite}; righe con conflitto tra fonti: ${r.conflittiTraFonti}.`);
   console.log(`Categorie: A ${r.categorie.A}, B ${r.categorie.B}, misti A+B ${r.categorie.misti}, C ${r.categorie.C}, nessun settore considerato ${r.categorie.nessun_settore}. Multisettore: ${r.multisettore}.`);
   console.log(`Colonna settori: invariate ${r.colonna.invariate}, cambiano ${r.colonna.cambiate} (perdono ${r.colonna.perdono}, acquisiscono ${r.colonna.acquisiscono}, fuori da tutti ${r.colonna.fuoriDaTutti}, solo metodo ${r.colonna.soloMetodo}).`);
   console.log(`Righe da scrivere: ${JSON.stringify(r.righe)}`);
