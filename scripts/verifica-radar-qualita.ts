@@ -804,6 +804,12 @@ const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["pulizia", "Servizi cimiteriali, operazioni tanatologiche, custodia, pulizia e manutenzione", "principale"],
   ["pulizia", "Servizio di fornitura, pulizia e manutenzione di bagni a funzionamento chimico", "principale"],
   ["ristorazione", "Servizio di vigilanza presso le scuole e mense comunali", null],
+  // casi che separano le strade del riconoscimento (prova di mutazione del 18/11)
+  ["vigilanza_portierato", "Servizio di pulizia con ridotto impatto ambientale delle sedi e vigilanza", "principale"],
+  ["pulizia", "Appalto relativo alla pulizia delle sedi", "principale"],
+  ["vigilanza_portierato", "Appalto relativo alla pulizia e alla vigilanza delle sedi", "principale"],
+  ["ristorazione", "Servizio di vigilanza presso le scuole, assistenza mensa", null],
+  ["ristorazione", "Servizi di accoglienza dei visitatori del museo e di bar", "principale"],
 ];
 for (const [s, testo, a] of AFFIDAMENTI) uguale(`affidamento esplicito (${s}): «${testo.slice(0, 70)}»`, affidamentoEsplicito(s, parole(s), testo), a);
 
@@ -876,6 +882,7 @@ uguale(
 );
 uguale("concessione del bar senza CPV, affidata: A", gara2b("Concessione del servizio bar presso l'ospedale civile").valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie]), [["ristorazione", "A", ["concessione_bar"]]]);
 uguale("bar solo citato senza CPV (lavori): nessun settore", gara2b("Lavori di ristrutturazione del bar comunale").settori, []);
+uguale("bar solo citato senza CPV: la concessione non è nemmeno considerata (nessuna riga C)", gara2b("Lavori di ristrutturazione del bar comunale").valutazioni, []);
 uguale("pulizia del bar senza CPV: pulizia, non ristorazione", gara2b("Servizio di pulizia del bar comunale").settori, ["pulizia"]);
 // decisione del 18/11 (ACEA Pinerolese): il servizio sostitutivo di mensa è B, con la sua sottocategoria; mai A né C in automatico
 const sottoLivelli = (c: ReturnType<typeof classificaGara>) => c.valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie, v.regola]);

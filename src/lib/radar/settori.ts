@@ -388,8 +388,8 @@ function affidamentoInPosizione(p: readonly string[], i: number, profondita = 0)
     return r === null ? null : unisci(base, r);
   }
   // complemento di un'altra cosa: preposizione subito prima, con una parola piena prima di lei («pulizia della mensa»)
-  // (non contano gli aggettivi della testa: «servizio integrato di accoglienza»)
-  if (k >= 0 && PREPOSIZIONI.test(mezzo[k]) && mezzo.slice(0, k).some((w) => !PREPOSIZIONI.test(w) && !ARTICOLI.test(w) && !COORDINAZIONE.test(w) && !REGGONO_LA_TESTA.test(w))) return null;
+  // (non contano gli aggettivi della testa, «servizio integrato di accoglienza», né i raccordi, «appalto relativo alla pulizia»)
+  if (k >= 0 && PREPOSIZIONI.test(mezzo[k]) && mezzo.slice(0, k).some((w) => !PREPOSIZIONI.test(w) && !ARTICOLI.test(w) && !COORDINAZIONE.test(w) && !REGGONO_LA_TESTA.test(w) && !RACCORDI.test(w))) return null;
   return base;
 }
 
