@@ -6,6 +6,7 @@ import { escapeHtml } from "@/lib/html";
 import { creaNotifica } from "@/lib/omnia-ai-notifiche";
 import { PIANI, PIANI_ORDINE, normalizzaPianoSlug, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
+import { leggiGareOmaggioInCorso } from "@/lib/omnia-ai-gare-omaggio";
 import { formattaGiorno } from "@/lib/omnia-ai-catalogo-calcoli";
 import { GIORNI_PREAVVISO_PILOT, fineScontoStripe, gareIncluseEffettive, promemoriaPilot, scadenzaPilot, testoPromemoriaPilot, type OffertaPilot } from "@/lib/omnia-ai-pilot-calcoli";
 
@@ -101,7 +102,8 @@ export async function leggiPilotAcquistato(userId: string, admin: ReturnType<typ
 // L'UNICO punto in cui si decide quante gare al mese ha un abbonamento attivo: le gare del piano, oppure quelle
 // dedicate dall'offerta pilot finché il prezzo pilot è in corso (regole in gareIncluseEffettive). Lo usano il
 // consumo di una gara, la verifica del diritto e il riepilogo del periodo: leggere il numero da PIANI nei singoli
-// punti farebbe divergere i tre. Un piano non riconosciuto vale 0 gare (come prima); se l'offerta non si legge
+// punti farebbe divergere i tre. A queste si sommano le gare in omaggio regalate dalla console, finché il loro
+// periodo è in corso (migrazione 0131). Un piano non riconosciuto vale 0 gare (come prima); se l'offerta non si legge
 // (tabella o colonna assenti, errore) valgono le gare del piano, mai un blocco.
 export async function gareInclusePerAbbonamento(params: {
   userId: string;
@@ -112,10 +114,17 @@ export async function gareInclusePerAbbonamento(params: {
 }): Promise<number> {
   const slug = normalizzaPianoSlug(params.piano);
   if (!slug) return 0;
+  const adesso = params.adesso ?? new Date();
+  // Gare in omaggio dalla console (migrazione 0131): si sommano finché il periodo dell'omaggio è in corso.
+  const omaggio = await leggiGareOmaggioInCorso(params.userId, adesso, params.admin);
+  return (await gareDelPianoOPilot(slug, params, adesso)) + omaggio;
+}
+
+async function gareDelPianoOPilot(slug: PianoSlug, params: { userId: string; stripeSubscriptionId: string | null | undefined; admin?: ReturnType<typeof createAdminClient> }, adesso: Date): Promise<number> {
   const gareDelPiano = PIANI[slug]?.gareIncluse ?? 0;
   if (!params.stripeSubscriptionId) return gareDelPiano;
   const offerta = await leggiPilotAcquistato(params.userId, params.admin);
-  return gareIncluseEffettive({ gareDelPiano, pianoAbbonamento: slug, stripeSubscriptionId: params.stripeSubscriptionId, offerta, adesso: params.adesso ?? new Date() });
+  return gareIncluseEffettive({ gareDelPiano, pianoAbbonamento: slug, stripeSubscriptionId: params.stripeSubscriptionId, offerta, adesso });
 }
 
 // ───── Acquisto: dal webhook Stripe ─────

@@ -160,7 +160,8 @@ async function main() {
   const gare = async (r: Risposta, p: Partial<{ piano: string | null; stripeSubscriptionId: string | null; adesso: Date }> = {}) => {
     const f = finto(r);
     const n = await gareInclusePerAbbonamento({ userId: "u1", piano: "starter", stripeSubscriptionId: "sub_AAA", adesso: ADESSO, ...p, admin: f.admin });
-    return { n, chiamate: f.chiamate.length };
+    // si contano le letture dell'offerta pilot (quella delle gare in omaggio, migrazione 0131, ha le sue prove)
+    return { n, chiamate: f.chiamate.filter((t) => t === "omnia_ai_offerte_pilot").length };
   };
   uguale("offerta in regola: 4 gare, una sola lettura", await gare({ data: riga(), error: null }), { n: 4, chiamate: 1 });
   uguale("nessuna offerta acquistata: 3 gare (quelle di Starter)", (await gare({ data: null, error: null })).n, 3);
