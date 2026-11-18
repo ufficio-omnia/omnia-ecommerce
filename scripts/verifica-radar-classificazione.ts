@@ -415,6 +415,11 @@ async function principale() {
       [{ settori: [], livello: null, per: {} }, PER_NATURA("pulizia"), PER_NATURA("ristorazione")],
     );
     uguale("9. archivio: nella stessa gara resta solo il servizio sostitutivo (B); la pulizia «fornitura» è C per natura", f(MISTA), { settori: ["ristorazione"], livello: "B", per: { pulizia: "C:natura_non_servizio", ristorazione: "B:servizio_sostitutivo_mensa" } });
+    uguale(
+      "9. archivio: con la mensa interna la gara mista resta A (livello migliore tra i settori che restano); la pulizia «fornitura» è C",
+      f("Servizio di mensa interno, servizio sostitutivo di mensa mediante buoni pasto e servizio di pulizia degli uffici (prova sintetica)"),
+      { settori: ["ristorazione"], livello: "A", per: { pulizia: "C:natura_non_servizio", ristorazione: "A:parole_chiave" } },
+    );
     uguale("9. archivio: i lavori restano esclusi anche con i buoni pasto", f(BUONI, [CPV_BUONI], "lavori"), PER_NATURA("ristorazione"));
     uguale("9. archivio: con natura «servizi» o non indicata, come prima (B)", [f(BUONI, [CPV_BUONI], "servizi"), f(BUONI, [CPV_BUONI], null)], [B, B]);
     const ricl = riclassificaGara({ id: "x", ...dati(BUONI, [CPV_BUONI], "forniture"), settori: [], metodo_settore: null }, []);
