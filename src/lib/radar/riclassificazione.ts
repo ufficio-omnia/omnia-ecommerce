@@ -137,8 +137,10 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
       if ((data ?? []).length === 0) {
         // nessuna riga con la colonna di prima: o l'ha già scritta questa esecuzione prima di interrompersi (si completa la traccia), o è
         // cambiata dopo la lettura (niente righe né stato, si rifà alla prossima esecuzione)
-        const { data: ora } = await db.from("radar_procedure").select("settori, metodo_settore").eq("id", p.proceduraId).maybeSingle<{ settori: string[] | null; metodo_settore: string | null }>();
+        const { data: ora, error: eOra } = await db.from("radar_procedure").select("settori, metodo_settore").eq("id", p.proceduraId).maybeSingle<{ settori: string[] | null; metodo_settore: string | null }>();
         misure.richiesteDb++;
+        // pacchetto 16, punto 5: una lettura non riuscita è un ERRORE (si ferma e si rilancia lo stesso comando), mai «cambiata nel frattempo»
+        if (eOra) throw new Error(`colonna della gara ${p.proceduraId}: ${eOra.message}`);
         if (!ora || !stessiSettoriColonna(ora.settori, dopo.settori) || (ora.metodo_settore ?? null) !== (dopo.metodo ?? null)) {
           esito.cambiateNelFrattempo++;
           continue;

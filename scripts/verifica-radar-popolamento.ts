@@ -682,6 +682,70 @@ async function principale() {
       uguale(`H. annullamento con errore restituito: rilanciando lo stesso comando (${rilanci} rilanci) si arriva allo stato giusto; nessuna copia riportata due volte; nessuna gara «classificata» senza righe attive`, diversi, []);
       uguale("H. riferimento: due annullamenti in catena senza guasti, nessuna copia doppia e nessuna gara «classificata» senza righe", [copieDoppie(rif), classificateSenzaRighe(rif)], [0, 0]);
     }
+    // pacchetto 16, punto 5: ERRORE RESTITUITO a ogni LETTURA del popolamento, nella RIPRESA (colonna già scritta, traccia mancante) e nel
+    // PRIMO popolamento (gara cambiata nel frattempo, così la lettura della colonna avviene davvero). Sempre un ERRORE che ferma l'esecuzione,
+    // mai «cambiata nel frattempo»; rilanciando lo stesso comando con lo stesso diario si arriva allo stato giusto, con la traccia, senza doppioni
+    {
+      const iso = "2026-11-18T12:00:00.000Z";
+      const es = idEsecuzione(iso);
+      const m0 = databaseInMemoria(archivio(), { fonti: "0121" });
+      const diario = diarioDaPiani(pianiDaArchivio(await leggiArchivio(m0.client, misure()), es, iso, (() => { let i = 0; return () => `d-${++i}`; })()), es, iso, VERSIONE_REGOLE_SETTORI);
+      const ripresa = async (m: MemH) => {
+        // il processo si ferma subito DOPO la prima scrittura della colonna: colonna nuova, traccia mancante
+        m.guasto(1, "dopo");
+        try {
+          await applicaPiani(m.client, diario.piani, misure(), iso);
+        } catch {
+          // processo fermo
+        }
+        m.guasto(null);
+      };
+      const cambiata = async (m: MemH) => {
+        garaDi(m, "G2").settori = ["ristorazione", "pulizia"];
+      };
+      for (const [nome, prepara] of [["ripresa", ripresa], ["primo popolamento con una gara cambiata nel frattempo", cambiata]] as const) {
+        const rif = databaseInMemoria(archivio(), { fonti: "0121" });
+        await prepara(rif);
+        const r0 = rif.richiesteLettura();
+        const esitoRif = await applicaPiani(rif.client, diario.piani, misure(), iso);
+        const R = rif.richiesteLettura() - r0;
+        const fotoRif = foto(rif);
+        const nonSegnalati: string[] = [];
+        const diversi: string[] = [];
+        let etichetteSbagliate = 0;
+        let colonnaColpita = 0;
+        for (let n = 1; n <= R; n++) {
+          const m = databaseInMemoria(archivio(), { fonti: "0121" });
+          await prepara(m);
+          m.guastoLettura(n);
+          let segnalato = false;
+          try {
+            const e = await applicaPiani(m.client, diario.piani, misure(), iso);
+            segnalato = e.errori > 0 || e.classificazioni.fallite > 0;
+            if (e.cambiateNelFrattempo > esitoRif.cambiateNelFrattempo) etichetteSbagliate++;
+          } catch (x) {
+            segnalato = true;
+            if (String(x).includes("colonna della gara")) colonnaColpita++;
+          }
+          m.guastoLettura(null);
+          if (!segnalato) nonSegnalati.push(`lettura@${n}`);
+          // lo stesso comando con lo stesso diario, finché non è completo
+          for (let t = 0; t < 3; t++) {
+            try {
+              const e = await applicaPiani(m.client, diario.piani, misure(), iso);
+              if (e.errori === 0 && e.classificazioni.fallite === 0) break;
+            } catch {
+              // si rilancia
+            }
+          }
+          if (foto(m) !== fotoRif || doppie(m) > 0 || inAnticipo(m, es) > 0) diversi.push(`lettura@${n}`);
+        }
+        uguale(`H. popolamento (${nome}), ERRORE RESTITUITO a ogni lettura (${R}): sempre segnalato come errore, mai come «cambiata nel frattempo»; la lettura della colonna è tra quelle colpite`, [nonSegnalati, etichetteSbagliate, colonnaColpita > 0], [[], 0, true]);
+        uguale(`H. popolamento (${nome}) con errore in lettura: rilanciando lo stesso comando con lo stesso diario, stato giusto con la traccia, senza doppioni né tracce in anticipo`, diversi, []);
+      }
+      const sc = leggi("scripts/radar-riclassifica-settori.ts");
+      atteso("H. script: un popolamento con un'eccezione, con errori o con gare in «fallita» esce con codice 1 e «POPOLAMENTO INCOMPLETO: rilanciare lo stesso comando con lo stesso diario»", sc.includes('const INCOMPLETO = "POPOLAMENTO INCOMPLETO: rilanciare lo stesso comando con lo stesso diario"') && /if \(esitoApplica\.errori > 0 \|\| esitoApplica\.classificazioni\.fallite > 0\) \{\s*console\.error\(`\$\{INCOMPLETO\}[^`]*`\);\s*process\.exit\(1\);/.test(sc) && /const esitoApplica = await applicaPiani[\s\S]*\} catch \(e\) \{\s*console\.error\(`\$\{INCOMPLETO\} \(\$\{e instanceof Error \? e\.message : String\(e\)\}\)\.`\);\s*process\.exit\(1\);/.test(sc));
+    }
     const scriptAnnulla = leggi("scripts/radar-riclassifica-settori.ts");
     atteso("H. script: un annullamento con errori o interrotto da un'eccezione esce con un codice di errore e «ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando»", /if \(esitoAnnulla\.errori > 0\) \{\s*console\.error\(`\$\{INCOMPLETO\}[^`]*`\);\s*process\.exit\(1\);/.test(scriptAnnulla) && /console\.error\(`\$\{INCOMPLETO\} \(\$\{e instanceof Error \? e\.message : String\(e\)\}\)\.`\);\s*process\.exit\(1\);/.test(scriptAnnulla) && scriptAnnulla.includes('const INCOMPLETO = "ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando"'));
     const annLib = leggi("src/lib/radar/riclassificazione.ts").slice(leggi("src/lib/radar/riclassificazione.ts").indexOf("export async function annullaEsecuzione"));

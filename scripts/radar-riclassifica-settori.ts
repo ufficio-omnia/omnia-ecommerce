@@ -205,7 +205,19 @@ async function main() {
     process.exit(1);
   }
   console.log(`Esecuzione ${diario.esecuzione} (per l'annullamento: annulla ${diario.esecuzione} <massimo>).`);
-  console.log(JSON.stringify(await applicaPiani(db, diario.piani, misure, diario.adessoIso)));
+  // pacchetto 16, punto 5: con un'eccezione, con errori o con gare in «fallita» il popolamento è incompleto: codice 1 e messaggio chiaro
+  const INCOMPLETO = "POPOLAMENTO INCOMPLETO: rilanciare lo stesso comando con lo stesso diario";
+  try {
+    const esitoApplica = await applicaPiani(db, diario.piani, misure, diario.adessoIso);
+    console.log(JSON.stringify(esitoApplica));
+    if (esitoApplica.errori > 0 || esitoApplica.classificazioni.fallite > 0) {
+      console.error(`${INCOMPLETO} (${esitoApplica.errori} errori, ${esitoApplica.classificazioni.fallite} gare in «fallita»).`);
+      process.exit(1);
+    }
+  } catch (e) {
+    console.error(`${INCOMPLETO} (${e instanceof Error ? e.message : String(e)}).`);
+    process.exit(1);
+  }
 }
 
 if (process.argv[1] && /radar-riclassifica-settori\.ts$/.test(process.argv[1].replace(/\\/g, "/"))) {
