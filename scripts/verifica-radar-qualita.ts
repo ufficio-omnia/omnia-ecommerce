@@ -61,6 +61,10 @@
 // Controlli CAMBIATI con la versione «2026-11-18b» (segnalazione del coordinamento del 18/11, gestione degli stabulari TED 465af5a5):
 //   - versione delle regole «2026-11-18b». Nessun altro controllo cambiato; nuovi: «comprendente il servizio di … ed il servizio di
 //     pulizia» accessorio, «affidamento del servizio di pulizia … e del servizio di vigilanza» principale.
+// Controlli CAMBIATI con la versione «2026-11-18c» (sì del coordinamento del 18/11: motivo leggibile per acque e coste):
+//   - specchi acquei portuali (TED feb5aec8): prima «nessun settore» senza valutazione, ora nessun settore con la riga C «acque_e_coste»;
+//   - versione delle regole «2026-11-18c». Nuovi: motivo leggibile, spiagge senza CPV C, spiagge con il CPV della pulizia A (decide il CPV,
+//     come prima), le parole chiave non escludono più a monte le spiagge.
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -846,7 +850,13 @@ uguale("vigilanza all'ingresso di un polo dell'infanzia: resta vigilanza", livel
 uguale("noleggio, pulizia e manutenzione di bagni chimici (TED a4767661): B", livelli(gara2b("Accordo quadro per il servizio di noleggio, trasporto, installazione, pulizia, manutenzione e smaltimento di bagni chimici")), [["pulizia", "B", "bagni_chimici"]]);
 uguale("lavaggio dei dispositivi di protezione individuale (TED 3ca05686): C", livelli(gara2b("Accordo quadro per il servizio di lavaggio dei dispositivi di protezione individuale, comprendente ritiro, lavaggio, pulizia, igienizzazione e stiratura")), [["pulizia", "C", "lavanderia_e_indumenti"]]);
 uguale("noleggio e sanificazione di materassi antidecubito (TED 3a7346ec): C", livelli(gara2b("Affidamento del servizio di noleggio, sanificazione e assistenza full risk di materassi antidecubito")), [["pulizia", "C", "lavanderia_e_indumenti"]]);
-uguale("pulizia degli specchi acquei portuali (TED feb5aec8): nessun settore", gara2b("Servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e delle aree costiere").settori, []);
+// 18c: la pulizia di acque e coste è una regola C con il suo motivo (prima un'esclusione delle parole chiave, senza valutazione)
+const acque = gara2b("Servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e delle aree costiere", ["90733100"]);
+uguale("pulizia degli specchi acquei portuali (TED feb5aec8): nessun settore, C «acque_e_coste» con il suo motivo", [acque.settori, livelli(acque)], [[], [["pulizia", "C", "acque_e_coste"]]]);
+atteso("acque e coste: il motivo è leggibile", acque.valutazioni[0]?.motivo.includes("igiene ambientale del territorio") === true, acque.valutazioni[0]?.motivo ?? "");
+uguale("pulizia delle spiagge senza CPV: C «acque_e_coste»", livelli(gara2b("Servizio di pulizia delle spiagge e degli arenili comunali")), [["pulizia", "C", "acque_e_coste"]]);
+uguale("pulizia delle spiagge con il CPV della pulizia: decide il CPV, come prima", livelli(gara2b("Servizio di pulizia delle spiagge e degli arenili comunali", ["90910000"])), [["pulizia", "A", "cpv_principale"]]);
+uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
   "manutenzione IN global service delle strutture (TED 54bdd6eb): multiservizi A",
   livelli(gara2b("Procedura aperta per l'affidamento di servizi di manutenzione in global service sulle strutture gestite dalla società, impianti elettrici e idrico sanitari")),
@@ -1167,7 +1177,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18b");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18c");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
