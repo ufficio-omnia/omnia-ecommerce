@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -8,7 +9,18 @@ import { cercaGare, type RisultatoRicerca } from "@/lib/radar/ricerca";
 import { leggiFontiGare, leggiSalvataggi } from "@/lib/radar/gara";
 import { contaUtilizziRadar, registraUtilizzoRadar } from "@/lib/radar/utilizzi";
 import { inizioFinestra, limiteEffettivo, verificaLimite } from "@/lib/radar/diritto-calcoli";
-import { PROCEDURE_RICERCA, SCADENZE_RAPIDE, etichettaRicerca, filtriAttivi, filtriDaParametri, parametriDaFiltri, type FiltriRicerca } from "@/lib/radar/ricerca-calcoli";
+import {
+  PROCEDURE_RICERCA,
+  SCADENZE_RAPIDE,
+  etichettaRicerca,
+  etichettaStatoClassificazione,
+  fasciaRilevanza,
+  filtriAttivi,
+  filtriDaParametri,
+  parametriDaFiltri,
+  settoriDellaRiga,
+  type FiltriRicerca,
+} from "@/lib/radar/ricerca-calcoli";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { SETTORI_RADAR, nomeSettore } from "@/lib/radar/settori";
 import { REGIONI, nomeRegione } from "@/lib/radar/territorio";
@@ -24,6 +36,13 @@ import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 // rilevanza spiegata riga per riga. Nessuna chiamata a fonti esterne né a modelli. Lo stato dei filtri sta nell'indirizzo della pagina.
 
 const ORDINAMENTI_ETICHETTE = { rilevanza: "Rilevanza", recenti: "Più recenti", scadenza: "Scadenza più vicina", importo: "Importo più alto" } as const;
+
+// Fase B3: i titoletti delle fasce nell'ordinamento per rilevanza (solo con le classificazioni lette). Fascia 0 (pertinenti e non ancora
+// classificate) senza titoletto.
+const TITOLETTI_FASCIA: Record<number, { titolo: string; testo: string }> = {
+  1: { titolo: "Gare correlate", testo: "Appalti misti, concessioni o gestioni complesse che comprendono il servizio: da valutare per intero." },
+  2: { titolo: "Fuori dai settori monitorati", testo: "Compaiono perché corrispondono alla ricerca, ma non sono suggerite come opportunità dei settori." },
+};
 
 function FiltroRimovibile({ filtri, etichetta, senza }: { filtri: FiltriRicerca; etichetta: string; senza: Partial<FiltriRicerca> }) {
   return (
@@ -223,11 +242,19 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
             {risultato?.oltreTetto && <p className="omnia-opp-nota">Più di 500 gare: vedi le 500 pubblicate più di recente. Restringi i filtri per vederle tutte.</p>}
 
             <div className="omnia-opp-elenco">
-              {(risultato?.righe ?? []).map((r) => {
+              {(risultato?.righe ?? []).map((r, i, righe) => {
                 const s = salvataggi.get(r.id);
+                // fase B3, requisiti 2 e 3: ordinando per rilevanza, un titoletto prima delle correlate (B) e prima di quelle fuori dai settori (C)
+                const fascia = risultato?.classificazioni && filtri.ordina === "rilevanza" ? fasciaRilevanza(r, filtri) : 0;
+                const titoletto = fascia > 0 && (i === 0 || fasciaRilevanza(righe[i - 1], filtri) !== fascia) ? TITOLETTI_FASCIA[fascia] : null;
                 return (
+                  <Fragment key={r.id}>
+                  {titoletto && (
+                    <div className="omnia-opp-separatore" role="separator">
+                      <strong>{titoletto.titolo}</strong> {titoletto.testo}
+                    </div>
+                  )}
                   <RigaGara
-                    key={r.id}
                     adesso={adesso}
                     d={{
                       href: hrefGara(r.id),
@@ -248,12 +275,15 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
                       rettificata: r.rettificata,
                       motivi: r.punteggio.motivi,
                       rilevanza: etichettaRicerca(r, filtri),
+                      settoriDettaglio: settoriDellaRiga(r),
+                      statoClassificazione: etichettaStatoClassificazione(r),
                       fonte: etichettaFonti(fontiGare.get(r.id) ?? ["ted"]),
                       verificataIl: r.ultima_rilevazione_il,
                       salvata: !!s,
                       monitorata: !!s?.monitorata,
                     }}
                   />
+                  </Fragment>
                 );
               })}
             </div>

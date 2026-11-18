@@ -5597,6 +5597,23 @@ html.omnia-scorrimento-bloccato body {
   font-size: 13px;
   color: var(--testo-2);
 }
+/* Tender Intelligence, fase B3: settore correlato (B) nella riga e titoletto delle fasce nell'ordinamento per rilevanza */
+.omnia-opp-settore-correlato {
+  color: var(--fioco);
+  font-style: italic;
+}
+.omnia-opp-separatore {
+  margin: 14px 0 4px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--bordo);
+  font-size: 13px;
+  color: var(--testo-2);
+  line-height: 1.45;
+}
+.omnia-opp-separatore strong {
+  color: var(--testo);
+  margin-right: 6px;
+}
 .omnia-opp-riga-novita {
   font-size: 13px;
   color: var(--ambra);
