@@ -1,6 +1,9 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { PIANI, PIANI_ORDINE, type PianoSlug } from "@/lib/omnia-ai-plans";
+import { PIANI, PIANI_ORDINE, normalizzaPianoSlug, type PianoSlug } from "@/lib/omnia-ai-plans";
+import type { OmaggiCliente } from "@/lib/console/gare-omaggio";
+import { ETICHETTA_STATO_OMAGGIO, GARE_OMAGGIO_MAX, LIMITE_MOTIVO_OMAGGIO, testoGareOmaggio } from "@/lib/omnia-ai-gare-omaggio-calcoli";
+import { regalaGareOmaggio, revocaGareOmaggio } from "../azioni/gare-omaggio";
 import type { SchedaCliente } from "@/lib/console/utenti";
 import { eAnonimizzato, etichettaAccettazione, etichettaDocumento, type AccettazioneScheda, type StatoProva } from "@/lib/console/utenti-calcoli";
 import { anonimizzaUtente, eliminaUtente, impostaAbbonamentoManuale, rispondiAlCliente } from "../azioni/utenti";
@@ -127,6 +130,7 @@ export default function SchedaClienteVista({
   copertina,
   presenza,
   presenzaUfficioGare,
+  omaggi,
 }: {
   scheda: SchedaCliente;
   // id dell'admin che sta guardando: non può eliminare né anonimizzare sé stesso
@@ -142,6 +146,8 @@ export default function SchedaClienteVista({
   // presenza nell'area riservata (migrazione 0094): dell'utente, e dell'Ufficio Gare se questo cliente ne ha uno
   presenza: PresenzaUtente;
   presenzaUfficioGare: PresenzaUtente | null;
+  // gare in più rispetto al piano, per un periodo (migrazione 0131)
+  omaggi: OmaggiCliente;
 }) {
   const indietro = (
     <Link href="/utenti" className="cn-indietro">
@@ -173,10 +179,10 @@ export default function SchedaClienteVista({
     );
   }
 
-  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} copertina={copertina} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} />;
+  return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} copertina={copertina} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} omaggi={omaggi} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, copertina, presenza, presenzaUfficioGare }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; copertina: CopertinaCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente | null }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, copertina, presenza, presenzaUfficioGare, omaggi }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; copertina: CopertinaCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente | null; omaggi: OmaggiCliente }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -482,6 +488,137 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
               </p>
             </div>
           )}
+        </Pannello>
+      </div>
+
+      {/* ───── Gare in omaggio (migrazione 0131) ───── */}
+      <div className="cn-sezione">
+        <Pannello titolo="Gare in omaggio">
+          <div className="cn-pannello-corpo">
+            {eMembro ? (
+              <p className="cn-nota-inline">{MESSAGGIO_E_UN_UFFICIO_GARE}</p>
+            ) : !omaggi.disponibile ? (
+              <p className="cn-nota-inline">Le gare in omaggio non sono disponibili (migrazione 0131 non ancora eseguita).</p>
+            ) : (
+              <>
+                <p className="cn-nota-inline" style={{ marginTop: 0 }}>
+                  Gare in più rispetto al piano, per un periodo: nei giorni indicati (compresi) le gare incluse del mese diventano quelle del piano più quelle regalate. Finito il periodo si torna da sole alle gare del piano; le gare già avviate restano del cliente. Valgono solo con un abbonamento attivo.
+                </p>
+                {omaggi.errore && (
+                  <p className="cn-esito errore" role="alert">
+                    Lettura degli omaggi non riuscita: ricarica la pagina.
+                  </p>
+                )}
+                {(() => {
+                  const attivo = s.abbonamenti.find((a) => a.stato === "attivo");
+                  const slugAttivo = attivo ? normalizzaPianoSlug(attivo.piano) : null;
+                  const gareDelPiano = slugAttivo ? PIANI[slugAttivo].gareIncluse : undefined;
+                  return attivo ? (
+                    <p className="cn-nota-inline">
+                      Piano attuale: <strong>{nomePiano(attivo.piano)}</strong>
+                      {gareDelPiano !== undefined && <> ({gareDelPiano} gare al mese)</>}
+                      {omaggi.gareInCorso > 0 && (
+                        <>
+                          {" "}
+                          — oggi in omaggio: <strong>{testoGareOmaggio(omaggi.gareInCorso)}</strong>
+                        </>
+                      )}
+                      .
+                    </p>
+                  ) : (
+                    <p className="cn-nota-inline">
+                      <Badge tono="avviso">nessun abbonamento attivo</Badge> L&apos;omaggio si può registrare, ma conta solo nei giorni in cui il cliente ha un abbonamento attivo.
+                    </p>
+                  );
+                })()}
+                {anonimizzato ? (
+                  <p className="cn-nota-inline">Account anonimizzato: non si regalano gare.</p>
+                ) : s.utente.ruolo !== "cliente" ? (
+                  <p className="cn-nota-inline">Le gare in omaggio sono solo per i clienti.</p>
+                ) : (
+                  <ModuloAzione azione={regalaGareOmaggio} campi={{ userId: s.utente.id }} etichetta="Regala" etichettaInCorso="Registro…" messaggioOk="Omaggio registrato." variante="primario" svuota classe="cn-modulo-linea">
+                    <div>
+                      <label className="cn-etichetta" htmlFor="omaggio-gare">
+                        Gare in più
+                      </label>
+                      <input className="cn-input" id="omaggio-gare" name="gare" type="number" min={1} max={GARE_OMAGGIO_MAX} step={1} required defaultValue={1} style={{ maxWidth: 110 }} />
+                    </div>
+                    <div>
+                      <label className="cn-etichetta" htmlFor="omaggio-dal">
+                        Dal
+                      </label>
+                      <input className="cn-input" id="omaggio-dal" name="dal" type="date" min={omaggi.oggi} required defaultValue={omaggi.oggi} />
+                    </div>
+                    <div>
+                      <label className="cn-etichetta" htmlFor="omaggio-al">
+                        Al (compreso)
+                      </label>
+                      <input className="cn-input" id="omaggio-al" name="al" type="date" min={omaggi.oggi} required />
+                    </div>
+                    <div>
+                      <label className="cn-etichetta" htmlFor="omaggio-motivo">
+                        Motivo (facoltativo)
+                      </label>
+                      <input className="cn-input" id="omaggio-motivo" name="motivo" maxLength={LIMITE_MOTIVO_OMAGGIO} placeholder="es. gara urgente del cliente" />
+                    </div>
+                  </ModuloAzione>
+                )}
+                {omaggi.omaggi.length > 0 && (
+                  <div className="cn-scorri" style={{ marginTop: 12 }}>
+                    <table className="cn-tab">
+                      <thead>
+                        <tr>
+                          <th className="num">Gare</th>
+                          <th>Periodo</th>
+                          <th>Stato</th>
+                          <th>Motivo</th>
+                          <th>Registrato da</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {omaggi.omaggi.map((o) => (
+                          <tr key={o.id}>
+                            <td className="num">+{o.gare}</td>
+                            <td className="mono nowrap">
+                              {formattaData(o.dal)} → {formattaData(o.al)}
+                            </td>
+                            <td className="nowrap">
+                              <Badge tono={o.stato === "in_corso" ? "ok" : o.stato === "programmato" ? "accento" : o.stato === "revocato" ? "errore" : undefined}>{ETICHETTA_STATO_OMAGGIO[o.stato]}</Badge>
+                              {o.revocatoIl && (
+                                <div className="cn-nota-inline" style={{ marginTop: 4 }}>
+                                  il {formattaDataOra(o.revocatoIl)} da {o.revocatoDa ?? "—"}
+                                </div>
+                              )}
+                            </td>
+                            <td>{o.motivo ?? "—"}</td>
+                            <td>
+                              {o.creatoDa}
+                              <div className="cn-nota-inline" style={{ marginTop: 4 }}>
+                                {formattaDataOra(o.creatoIl)}
+                              </div>
+                            </td>
+                            <td>
+                              {(o.stato === "in_corso" || o.stato === "programmato") && (
+                                <PulsanteAzione
+                                  azione={revocaGareOmaggio}
+                                  campi={{ id: o.id }}
+                                  conferma={`Revocare l'omaggio di ${testoGareOmaggio(o.gare)} (${formattaData(o.dal)} → ${formattaData(o.al)})? Da subito non vale più; le gare già avviate restano del cliente.`}
+                                  etichetta="Revoca"
+                                  etichettaInCorso="Revoco…"
+                                  variante="pericolo"
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </Pannello>
       </div>
 
