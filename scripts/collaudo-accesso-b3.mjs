@@ -8,20 +8,25 @@
 //   1. porta delle autorizzazioni: TI_REGISTRO e controllaPorta (registro del coordinatore);
 //   2. guardia: file delle variabili FUORI dal repository; Supabase = SOLO lo staging (URL esatto, chiavi nel formato dello staging, nessun
 //      identificativo di produzione né chiave «live» in nessuna variabile); lanciatore dell'anteprima presente;
-//   3. collegamenti d'accesso generati LATO SERVER (generate_link, come il 17/11) per i SOLI utenti di prova dell'elenco, scritti in un file
-//      locale FUORI dal repository; non si stampano mai (si stampa solo dove sta il file);
-//   4. avvio del server come la Preview: scripts/avvia-anteprima-locale.mjs avvia <file> <porta> (ambiente pulito, guardia, next start);
-//   5. allo spegnimento del server il file dei collegamenti si CANCELLA (anche in caso di errore o di interruzione).
+//   3. collegamenti d'accesso generati LATO SERVER (generate_link, come il 17/11) per i SOLI utenti di prova dell'elenco, tenuti SOLO IN
+//      MEMORIA: nessun file, nulla a schermo, nulla nei log (condizione 7 dell'utente del 18/11);
+//   4. server di REINDIRIZZAMENTO solo su 127.0.0.1, porta dell'app + 1: /accesso/ti-admin, /accesso/ti-titolare, /accesso/ti-titolare2
+//      rispondono UNA volta con un 302 al collegamento vero, poi 410; ogni altro percorso 404. Così chi apre il collegamento nel browser naviga
+//      a http://127.0.0.1:<porta+1>/accesso/<utente> e il token non compare mai negli strumenti né nelle trascrizioni;
+//   5. avvio del server come la Preview: scripts/avvia-anteprima-locale.mjs avvia <file> <porta> (ambiente pulito, guardia, next start solo su
+//      127.0.0.1);
+//   6. allo spegnimento dell'app si chiude anche il reindirizzamento e i collegamenti si dimenticano (anche in caso di errore o interruzione).
 // Nessuna password, mai. Le prove di questo script sono solo a secco (verifica-radar-b3-interfaccia.ts), mai contro lo staging.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const NOME_SCRIPT = "collaudo-accesso-b3.mjs";
 export const STAGING_REF = "ryawdldqiumqsskrnyps";
 export const STAGING_URL = `https://${STAGING_REF}.supabase.co`;
+export const SOLO_LOCALE = "127.0.0.1";
 const PRODUZIONE_REF = "bihfrzspqxsrzlbqqvqa";
 
 // Gli unici utenti del collaudo (piano del resoconto 18, §11.1): amministratore per la console, titolari di due imprese DIVERSE.
@@ -66,11 +71,17 @@ export function dentro(file, cartella) {
   return f === c || f.startsWith(c + path.sep);
 }
 
+/** Il collegamento vero (solo in memoria): sempre http://127.0.0.1:<porta>, come il server dell'app. */
 export function collegamento(porta, zona, tokenHash) {
   const t = encodeURIComponent(tokenHash);
   return zona === "console"
-    ? `http://localhost:${porta}/auth/conferma?token_hash=${t}&__zone=console`
-    : `http://localhost:${porta}/attiva-account?type=email&next=/dashboard/omnia-ai/opportunita/cerca&token_hash=${t}&__zone=omnia-ai`;
+    ? `http://${SOLO_LOCALE}:${porta}/auth/conferma?token_hash=${t}&__zone=console`
+    : `http://${SOLO_LOCALE}:${porta}/attiva-account?type=email&next=/dashboard/omnia-ai/opportunita/cerca&token_hash=${t}&__zone=omnia-ai`;
+}
+
+/** Il percorso di reindirizzamento di un utente: /accesso/<parte prima della chiocciola>. */
+export function percorsoAccesso(email) {
+  return `/accesso/${email.split("@")[0]}`;
 }
 
 /** Un collegamento d'accesso per ogni utente dell'elenco (solo @prova.test), lato server con la chiave di servizio dello staging. */
@@ -87,12 +98,59 @@ export async function generaCollegamenti({ variabili, porta, utenti = UTENTI_COL
     const d = await risposta.json();
     const hash = d?.hashed_token ?? d?.properties?.hashed_token;
     if (!hash) throw new Fermo(`collegamento per ${u.email} non generato (risposta senza token)`);
-    out.push({ email: u.email, zona: u.zona, collegamento: collegamento(porta, u.zona, hash) });
+    out.push({ email: u.email, zona: u.zona, percorso: percorsoAccesso(u.email), collegamento: collegamento(porta, u.zona, hash) });
   }
   return out;
 }
 
-/** Il collaudo. Iniettabili per le prove a secco: controllaPorta, fetchFn, avvia (al posto del server), cartella del progetto, file di uscita. */
+/**
+ * Il server di reindirizzamento (non ancora in ascolto). Ogni percorso dell'elenco risponde UNA volta con 302 al collegamento vero, poi
+ * 410; gli altri percorsi 404; solo GET. Nessun registro, nessuna cache, nessun referer. I collegamenti restano solo in questa mappa e si
+ * cancellano appena serviti.
+ */
+export function serverReindirizzamento(collegamenti) {
+  const daServire = new Map(collegamenti.map((c) => [c.percorso, c.collegamento]));
+  const noti = new Set(daServire.keys());
+  const intestazioni = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff" };
+  const server = http.createServer((richiesta, risposta) => {
+    const percorso = (richiesta.url ?? "").split("?")[0];
+    if (richiesta.method !== "GET") {
+      risposta.writeHead(405, intestazioni);
+      risposta.end();
+      return;
+    }
+    const destinazione = daServire.get(percorso);
+    if (destinazione) {
+      daServire.delete(percorso);
+      risposta.writeHead(302, { ...intestazioni, Location: destinazione });
+      risposta.end();
+      return;
+    }
+    risposta.writeHead(noti.has(percorso) ? 410 : 404, { ...intestazioni, "Content-Type": "text/plain; charset=utf-8" });
+    risposta.end(noti.has(percorso) ? "Collegamento già usato: generane uno nuovo con una nuova autorizzazione." : "Non trovato.");
+  });
+  server.dimentica = () => daServire.clear();
+  return server;
+}
+
+/** In ascolto SOLO su 127.0.0.1. */
+export function ascoltaSoloLocale(server, porta) {
+  return new Promise((risolvi, rifiuta) => {
+    server.once("error", rifiuta);
+    server.listen(porta, SOLO_LOCALE, () => risolvi(server.address()));
+  });
+}
+
+export function chiudi(server) {
+  return new Promise((risolvi) => {
+    server.dimentica?.();
+    if (!server.listening) return risolvi();
+    server.close(() => risolvi());
+    server.closeAllConnections?.();
+  });
+}
+
+/** Il collaudo. Iniettabili per le prove a secco: controllaPorta, fetchFn, avvia (al posto del server dell'app), cartella, portaRinvio. */
 export async function collaudo(argv, env, opzioni = {}) {
   const cartella = opzioni.cartella ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const [fileVariabili, porta = "3110"] = argv;
@@ -119,17 +177,17 @@ export async function collaudo(argv, env, opzioni = {}) {
   if (errori.length) throw new Fermo(`ambiente non autorizzato: ${errori.join("; ")}`);
   const lanciatore = path.join(cartella, "scripts", "avvia-anteprima-locale.mjs");
   if (!opzioni.avvia && !fs.existsSync(lanciatore)) throw new Fermo("manca scripts/avvia-anteprima-locale.mjs (i commit d'anteprima vanno integrati prima)");
-  const fileCollegamenti = opzioni.fileCollegamenti ?? path.join(os.tmpdir(), "omnia-collaudo-b3", `collegamenti-${Date.now()}.json`);
-  if (dentro(fileCollegamenti, cartella)) throw new Fermo("il file dei collegamenti deve stare FUORI dal repository");
+  const portaRinvio = opzioni.portaRinvio ?? Number(porta) + 1;
 
-  // 3. collegamenti (scrittura sullo staging: token monouso)
+  // 3. collegamenti (scrittura sullo staging: token monouso), SOLO in memoria
   const collegamenti = await generaCollegamenti({ variabili, porta, fetchFn: opzioni.fetchFn ?? fetch });
-  fs.mkdirSync(path.dirname(fileCollegamenti), { recursive: true });
-  fs.writeFileSync(fileCollegamenti, JSON.stringify(collegamenti, null, 2), { mode: 0o600 });
-  console.log(`Collegamenti d'accesso per ${collegamenti.length} utenti di prova in ${fileCollegamenti} (non stampati; il file si cancella allo spegnimento).`);
 
-  // 4–5. server come la Preview; alla fine il file si cancella in ogni caso
+  // 4. reindirizzamento solo su 127.0.0.1; 5–6. server dell'app; alla fine si chiude tutto in ogni caso
+  const rinvio = serverReindirizzamento(collegamenti);
+  collegamenti.length = 0;
   try {
+    const indirizzo = await ascoltaSoloLocale(rinvio, portaRinvio);
+    console.log(`Accesso degli utenti di prova (una volta sola ciascuno): ${UTENTI_COLLAUDO.map((u) => `http://${SOLO_LOCALE}:${indirizzo.port}${percorsoAccesso(u.email)}`).join("  ")}`);
     const avvia =
       opzioni.avvia ??
       (() =>
@@ -138,10 +196,10 @@ export async function collaudo(argv, env, opzioni = {}) {
           for (const segnale of ["SIGINT", "SIGTERM"]) process.on(segnale, () => figlio.kill(segnale));
           figlio.on("exit", (codice) => risolvi(codice ?? 0));
         }));
-    return await avvia();
+    return await avvia({ portaRinvio: indirizzo.port });
   } finally {
-    fs.rmSync(fileCollegamenti, { force: true });
-    console.log("File dei collegamenti cancellato.");
+    await chiudi(rinvio);
+    console.log("Reindirizzamento chiuso, collegamenti dimenticati.");
   }
 }
 
