@@ -1,4 +1,4 @@
-// SOLO SUL RAMO anteprima/tender-intelligence-staging: «postbuild», dopo `next build`. Controlla il codice COMPILATO,
+// SOLO SUL RAMO anteprima/tender-intelligence-b3: «postbuild», dopo `next build`. Controlla il codice COMPILATO,
 // dove Next ha già inserito i valori delle variabili NEXT_PUBLIC_*:
 //   - nel codice che va al browser (.next/static): nessun identificativo del progetto di produzione, nessuna chiave Stripe
 //     «live», nessuna chiave secret di Supabase e, in particolare, mai il valore di SUPABASE_SERVICE_ROLE_KEY;

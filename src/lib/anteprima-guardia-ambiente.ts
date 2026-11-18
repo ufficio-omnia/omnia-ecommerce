@@ -1,4 +1,4 @@
-// SOLO SUL RAMO anteprima/tender-intelligence-staging: MAI da unire in master né in feature/tender-intelligence.
+// SOLO SUL RAMO anteprima/tender-intelligence-b3: MAI da unire in master né in feature/tender-intelligence.
 //
 // Guardia FAIL-CLOSED dell'ambiente per la Vercel Preview di Tender Intelligence (fase B1), collegata SOLO allo staging.
 // Legge soltanto le variabili d'ambiente: nessuna rete, nessun database. Restituisce i NOMI dei controlli non superati,
@@ -11,7 +11,7 @@
 // FINTO dichiarato qui sotto. Ogni variabile che il codice legge sta in uno dei gruppi qui sotto: la verifica
 // scripts/verifica-anteprima-guardia.ts si ferma se il codice ne legge una che non c'è.
 
-export const RAMO_ANTEPRIMA = "anteprima/tender-intelligence-staging";
+export const RAMO_ANTEPRIMA = "anteprima/tender-intelligence-b3";
 export const STAGING_REF = "ryawdldqiumqsskrnyps";
 export const STAGING_URL = `https://${STAGING_REF}.supabase.co`;
 const PRODUZIONE_REF = "bihfrzspqxsrzlbqqvqa";
@@ -63,6 +63,12 @@ export const INTERRUTTORI_SPENTI: Record<string, string[]> = {
   OMNIA_AI_PIANO_LAVORO_APERTO: ["", "0"],
   // PVL (fase B1-bis): i giri programmati partono solo con «attivo»; sull'anteprima mai.
   RADAR_PVL_CRON: ["", "0", "spento"],
+  // Sintel e SardegnaCAT (fase B2b): i giri programmati partono solo con «attivo»; sull'anteprima mai.
+  RADAR_REGIONALI_CRON: ["", "0", "spento"],
+  // Classificazioni della 0121 (fase B3): «attive» è AMMESSO sull'anteprima perché mostra soltanto A/B/C in Cerca, scheda e Monitorate
+  // e vale solo con il database di staging (classificazioniAttive in src/lib/radar/ambiente.ts). Sull'anteprima gli importatori non
+  // scrivono comunque (VERCEL_ENV=preview, guardia di B2 ad8baf2): con l'interruttore acceso non parte nessuna classificazione nuova.
+  RADAR_CLASSIFICAZIONI: ["", "0", "attive"],
 };
 
 // Segreti propri dell'anteprima (casuali, diversi da quelli di produzione). CRON_SECRET è obbligatorio: una rotta dei cron

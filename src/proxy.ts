@@ -16,7 +16,7 @@ import {
   type Zone,
 } from "@/lib/zone";
 
-// SOLO SUL RAMO anteprima/tender-intelligence-staging (mai in master): validità dell'ambiente calcolata una volta per
+// SOLO SUL RAMO anteprima/tender-intelligence-b3 (mai in master): validità dell'ambiente calcolata una volta per
 // processo (le variabili non cambiano a runtime).
 let ambienteValido: boolean | undefined;
 function anteprimaAutorizzata(): boolean {

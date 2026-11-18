@@ -5,7 +5,7 @@
   "//xlsx": "La voce 'xlsx' sotto è un tarball ufficiale SheetJS pinnato alla 0.20.3, non un pacchetto npm: la build 'xlsx' su npm si è fermata alla 0.18, le versioni successive sono distribuite solo da cdn.sheetjs.com (vedi https://docs.sheetjs.com/docs/getting-started/installation/nodejs).",
   "scripts": {
     "dev": "next dev",
-    "//anteprima": "SOLO SUL RAMO anteprima/tender-intelligence-staging: la guardia dell'anteprima è il primo comando di prebuild e di build, il controllo del codice compilato è il postbuild.",
+    "//anteprima": "SOLO SUL RAMO anteprima/tender-intelligence-b3: la guardia dell'anteprima è il primo comando di prebuild e di build, il controllo del codice compilato è il postbuild.",
     "prebuild": "tsx scripts/guardia-anteprima.ts && npm run verifica:livello1",
     "build": "tsx scripts/guardia-anteprima.ts && next build",
     "postbuild": "tsx scripts/verifica-bundle-anteprima.ts",

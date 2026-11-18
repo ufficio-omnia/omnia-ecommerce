@@ -1,4 +1,4 @@
-// SOLO SUL RAMO anteprima/tender-intelligence-staging: primo comando di prebuild e di build (e del lanciatore locale).
+// SOLO SUL RAMO anteprima/tender-intelligence-b3: primo comando di prebuild e di build (e del lanciatore locale).
 // Se l'ambiente non è lo staging autorizzato con i servizi finti, esce con errore PRIMA di qualsiasi altro passo.
 // Tre controlli, in quest'ordine:
 //   1. nessun file d'ambiente nella cartella del progetto (su Vercel non ce ne sono; in locale un .env.local copiato

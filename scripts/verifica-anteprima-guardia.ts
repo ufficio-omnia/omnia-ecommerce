@@ -1,4 +1,4 @@
-// SOLO SUL RAMO anteprima/tender-intelligence-staging. Verifica della guardia della Vercel Preview di Tender Intelligence:
+// SOLO SUL RAMO anteprima/tender-intelligence-b3. Verifica della guardia della Vercel Preview di Tender Intelligence:
 // src/lib/anteprima-guardia-ambiente.ts, scripts/guardia-anteprima.ts, scripts/verifica-bundle-anteprima.ts, e dei punti in
 // cui sono agganciate (next.config.ts, src/proxy.ts, package.json). Solo ambienti SINTETICI: nessun file d'ambiente vero,
 // nessuna chiave vera, nessuna rete (la rete è simulata).

@@ -99,7 +99,7 @@ export default function CookieConsent() {
     getZoneServerSnapshot,
   );
   if (zone === "omnia-ai" || zone === "console") return null;
-  // SOLO SUL RAMO anteprima/tender-intelligence-staging (mai in master): sulle anteprime niente banner, quindi nessun tag
+  // SOLO SUL RAMO anteprima/tender-intelligence-b3 (mai in master): sulle anteprime niente banner, quindi nessun tag
   // Google Ads o Analytics dell'e-commerce caricato nemmeno dopo «Accetta».
   if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") return null;
 

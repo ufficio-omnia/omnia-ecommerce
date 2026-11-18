@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import { erroriAmbienteAnteprima } from "./src/lib/anteprima-guardia-ambiente";
 
-// SOLO SUL RAMO anteprima/tender-intelligence-staging (mai in master): la configurazione si carica per prima in `next build`,
+// SOLO SUL RAMO anteprima/tender-intelligence-b3 (mai in master): la configurazione si carica per prima in `next build`,
 // `next start` e `next dev`. Se l'ambiente non è lo staging autorizzato con i servizi finti, si ferma qui: nessuna pagina
 // generata, nessun accesso a database o servizi. Copre anche un comando di build cambiato a mano in `next build`, che
 // salterebbe gli script npm (e quindi scripts/guardia-anteprima.ts).

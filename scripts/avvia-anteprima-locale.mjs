@@ -1,4 +1,4 @@
-// SOLO SUL RAMO anteprima/tender-intelligence-staging. Prova in LOCALE della Vercel Preview: stessa build e stesso
+// SOLO SUL RAMO anteprima/tender-intelligence-b3. Prova in LOCALE della Vercel Preview: stessa build e stesso
 // ambiente che avrà su Vercel (NODE_ENV=production, VERCEL=1, VERCEL_ENV=preview, ramo d'anteprima), con le variabili
 // lette da un file che sta FUORI da questa cartella (lo stesso da importare su Vercel).
 //
@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const RAMO = "anteprima/tender-intelligence-staging";
+const RAMO = "anteprima/tender-intelligence-b3";
 const cartella = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const [modo, fileVariabili, porta = "3110"] = process.argv.slice(2);
 
