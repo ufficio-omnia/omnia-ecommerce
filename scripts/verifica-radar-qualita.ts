@@ -65,6 +65,11 @@
 //   - specchi acquei portuali (TED feb5aec8): prima «nessun settore» senza valutazione, ora nessun settore con la riga C «acque_e_coste»;
 //   - versione delle regole «2026-11-18c». Nuovi: motivo leggibile, spiagge senza CPV C, spiagge con il CPV della pulizia A (decide il CPV,
 //     come prima), le parole chiave non escludono più a monte le spiagge.
+// Controlli CAMBIATI con la versione «2026-11-18d» (decisioni dell'utente del 18/11 sul pacchetto 16 aggiornato):
+//   - spiagge con il CPV della pulizia: da A «cpv_principale» a C «acque_e_coste» (D4: il CPV non prevale sull'oggetto);
+//   - versione delle regole «2026-11-18d».
+//   Nuovi: Reggio Calabria (TED 3b0902ca) C; uffici e spiagge resta pulizia; motivo di acque e coste; buoni pasto D2 (tre B, quattro C,
+//   una B per ACEA, una A, nessuna fornitura per analogia); D3 «per alcune parti di igiene ambientale» B.
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -855,7 +860,44 @@ const acque = gara2b("Servizio integrato di monitoraggio ambientale, pulizia e g
 uguale("pulizia degli specchi acquei portuali (TED feb5aec8): nessun settore, C «acque_e_coste» con il suo motivo", [acque.settori, livelli(acque)], [[], [["pulizia", "C", "acque_e_coste"]]]);
 atteso("acque e coste: il motivo è leggibile", acque.valutazioni[0]?.motivo.includes("igiene ambientale del territorio") === true, acque.valutazioni[0]?.motivo ?? "");
 uguale("pulizia delle spiagge senza CPV: C «acque_e_coste»", livelli(gara2b("Servizio di pulizia delle spiagge e degli arenili comunali")), [["pulizia", "C", "acque_e_coste"]]);
-uguale("pulizia delle spiagge con il CPV della pulizia: decide il CPV, come prima", livelli(gara2b("Servizio di pulizia delle spiagge e degli arenili comunali", ["90910000"])), [["pulizia", "A", "cpv_principale"]]);
+// 18d (decisione dell'utente D4): «un CPV discordante non deve prevalere automaticamente sull'effettivo oggetto contrattuale»
+uguale("pulizia delle spiagge con il CPV della pulizia: C, l'oggetto prevale sul CPV (D4)", livelli(gara2b("Servizio di pulizia delle spiagge e degli arenili comunali", ["90910000"])), [["pulizia", "C", "acque_e_coste"]]);
+uguale(
+  "pulizia e disinquinamento degli specchi acquei del porto con il CPV della pulizia (TED 3b0902ca): C",
+  livelli(gara2b("Procedura aperta per l'appalto del servizio quadriennale di pulizia e disinquinamento degli specchi acquei nel porto di Reggio Calabria", ["90900000"])),
+  [["pulizia", "C", "acque_e_coste"]],
+);
+uguale("pulizia degli uffici e delle spiagge con il CPV della pulizia: resta pulizia (edifici)", livelli(gara2b("Servizio di pulizia degli uffici comunali e delle spiagge", ["90910000"])), [["pulizia", "A", "cpv_principale"]]);
+atteso(
+  "acque e coste: il motivo distingue la pulizia di edifici, locali e strutture e dice che il CPV non prevale (D4)",
+  /distinta dalla pulizia di edifici, locali e strutture/.test(acque.valutazioni[0]?.motivo ?? "") && /CPV della gara non prevale/.test(acque.valutazioni[0]?.motivo ?? ""),
+  acque.valutazioni[0]?.motivo ?? "",
+);
+// 18d (decisione dell'utente D2): buoni pasto senza CPV del file. B se è affidato il servizio, C se solo materiali o badge, A con una mensa
+const buoni = (testo: string, cpv: string[] = []) => gara2b(testo, cpv).valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie, v.regola]);
+const bServizio = [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]];
+uguale("D2 B: erogazione di buoni pasto elettronici", buoni("Affidamento del servizio di erogazione di buoni pasto elettronici ai dipendenti"), bServizio);
+uguale("D2 B: «fornitura di buoni pasto» ai dipendenti è un servizio", buoni("Fornitura di buoni pasto per i dipendenti comunali"), bServizio);
+uguale("D2 B: anche con il solo CPV 30199770 (buoni pasto, non nel file)", buoni("Fornitura di buoni pasto per i dipendenti comunali", ["30199770"]), bServizio);
+const cBuoni = [["ristorazione", "C", [], "buoni_pasto_senza_servizio"]];
+uguale("D2 C: stampa di ticket per la mensa", buoni("Stampa di ticket per la mensa aziendale"), cBuoni);
+uguale("D2 C: fornitura di badge e tessere per i buoni pasto", buoni("Fornitura di badge e tessere per i buoni pasto dei dipendenti"), cBuoni);
+uguale("D2 C: fornitura di terminali per la lettura dei buoni pasto", buoni("Fornitura di terminali per la lettura dei buoni pasto elettronici"), cBuoni);
+uguale("D2 C: badge PER il servizio sostitutivo (il servizio non è affidato)", buoni("Fornitura di badge per il servizio sostitutivo di mensa"), cBuoni);
+uguale("D2 B: servizio sostitutivo affidato mediante badge (ACEA)", buoni("Affidamento in appalto del servizio sostitutivo di mensa mediante l'utilizzo di badges elettronici"), bServizio);
+uguale(
+  "D2 A: mensa interna più servizio sostitutivo, senza CPV del file",
+  buoni("Affidamento del servizio di mensa interno e del servizio sostitutivo di mensa mediante buoni pasto elettronici"),
+  [["ristorazione", "A", ["mense", "servizi_sostitutivi_mensa"], "parole_chiave"]],
+);
+uguale("D2: nessuna fornitura diventa ristorazione per analogia", gara2b("Fornitura di materiale di cancelleria e stampa di moduli per gli uffici").valutazioni, []);
+// 18d (decisione dell'utente D3): «e per alcune parti di igiene ambientale» è un affidamento parziale, accessorio (TED 85323614, avviso
+// TED 656512-2026: titolo e descrizione uguali all'oggetto, CPV 85144000 case di cura)
+uguale(
+  "D3: servizi sanitari, assistenziali e per alcune parti di igiene ambientale (TED 85323614): pulizia B",
+  livelli(gara2b("APPALTO A CORPO PER L'AFFIDAMENTO DEI SERVIZI SANITARI, ASSISTENZIALI E PER ALCUNE PARTI DI IGIENE AMBIENTALE", ["85144000"])),
+  [["pulizia", "B", "servizio_accessorio"]],
+);
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
   "manutenzione IN global service delle strutture (TED 54bdd6eb): multiservizi A",
@@ -1177,7 +1219,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18c");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18d");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
