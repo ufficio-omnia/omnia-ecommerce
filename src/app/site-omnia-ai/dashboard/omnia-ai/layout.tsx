@@ -40,7 +40,10 @@ function ProfiloAziendaAvviso() {
     <div className="omnia-avviso-profilo">
       Il tuo profilo azienda è vuoto: compilalo per permettere a OMNIA AI di scrivere l&apos;offerta
       tecnica con i dati reali della tua impresa.{" "}
-      <Link href="/dashboard/omnia-ai/profilo-azienda">Compila il profilo azienda →</Link>
+      {/* prefetch={false} sui collegamenti degli avvisi: sono in cima a ogni pagina, vedi sidebar-nav.tsx */}
+      <Link href="/dashboard/omnia-ai/profilo-azienda" prefetch={false}>
+        Compila il profilo azienda →
+      </Link>
     </div>
   );
 }
@@ -58,7 +61,9 @@ function FatturazioneAvviso() {
       Per poterti fatturare l&apos;abbonamento dobbiamo trasmettere la fattura allo SDI: completa il
       codice destinatario o la PEC nel profilo azienda. Finché mancano entrambi non potrai scaricare
       i documenti generati.{" "}
-      <Link href="/dashboard/omnia-ai/profilo-azienda">Completa i dati di fatturazione →</Link>
+      <Link href="/dashboard/omnia-ai/profilo-azienda" prefetch={false}>
+        Completa i dati di fatturazione →
+      </Link>
     </div>
   );
 }
@@ -78,7 +83,9 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
       sono già estinti con la cessazione. Se non riattivi l&apos;abbonamento, tutti i contenuti
       verranno cancellati in modo irreversibile il{" "}
       <strong>{dataCancellazione.toLocaleDateString("it-IT")}</strong>.{" "}
-      <Link href="/dashboard/omnia-ai/abbonamento">Riattiva abbonamento →</Link>
+      <Link href="/dashboard/omnia-ai/abbonamento" prefetch={false}>
+        Riattiva abbonamento →
+      </Link>
     </div>
   );
 }
@@ -91,7 +98,10 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
 function PilotAvviso({ promemoria, prezzoPieno, gareDopo }: { promemoria: PromemoriaPilot; prezzoPieno: number; gareDopo?: number }) {
   return (
     <div className="omnia-avviso-profilo">
-      {testoPromemoriaPilot(promemoria, prezzoPieno, gareDopo)} <Link href="/dashboard/omnia-ai/abbonamento">Vai all&apos;abbonamento →</Link>
+      {testoPromemoriaPilot(promemoria, prezzoPieno, gareDopo)}{" "}
+      <Link href="/dashboard/omnia-ai/abbonamento" prefetch={false}>
+        Vai all&apos;abbonamento →
+      </Link>
     </div>
   );
 }
@@ -101,7 +111,9 @@ function ProvaAvviso({ gare }: { gare: GareGratuite }) {
   return (
     <div className="omnia-avviso-profilo">
       {testo}{" "}
-      <Link href="/dashboard/omnia-ai/abbonamento">{esaurite ? "Scegli un abbonamento →" : "Scopri i piani →"}</Link>
+      <Link href="/dashboard/omnia-ai/abbonamento" prefetch={false}>
+        {esaurite ? "Scegli un abbonamento →" : "Scopri i piani →"}
+      </Link>
     </div>
   );
 }
