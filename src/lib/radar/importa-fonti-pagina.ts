@@ -322,7 +322,8 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       });
       s.classificazione = ci;
       if (cambiaColonna(s.riga, ci)) {
-        s.riga = { ...s.riga, settori: ci.settori, metodo_settore: ci.metodo ?? s.riga.metodo_settore, aggiornata_il: iso };
+        // un cambio dovuto solo alla classificazione non tocca «aggiornata_il» (pacchetto 16, punto 11)
+        s.riga = { ...s.riga, settori: ci.settori, metodo_settore: ci.metodo ?? s.riga.metodo_settore };
         s.cambiata = true;
       }
     }

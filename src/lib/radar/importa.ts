@@ -279,7 +279,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         prima: s.iniziale ? { dati: s.iniziale, lotti: prima, fonti: fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi) } : null,
       });
       classificazioni.set(s, ci);
-      if (cambiaColonna(s.riga as RigaProcedura, ci)) s.riga = { ...(s.riga as RigaProcedura), settori: ci.settori, metodo_settore: ci.metodo ?? (s.riga as RigaProcedura).metodo_settore, aggiornata_il: iso };
+      if (cambiaColonna(s.riga as RigaProcedura, ci)) s.riga = { ...(s.riga as RigaProcedura), settori: ci.settori, metodo_settore: ci.metodo ?? (s.riga as RigaProcedura).metodo_settore };
     }
   }
 

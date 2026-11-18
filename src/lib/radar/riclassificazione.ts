@@ -2,6 +2,8 @@
 // servizio; il calcolo sta in riclassifica-settori.ts (puro). Provato su database in memoria da scripts/verifica-radar-popolamento.ts.
 //
 //   - leggiArchivio: tutte le gare con i lotti, le classificazioni ATTIVE e lo stato, a pagine (sola lettura);
+//   - «aggiornata_il» della gara NON si tocca (decisione dell'utente sul pacchetto 16, punti 8 e 11): una gara vecchia riclassificata non
+//     deve sembrare nuova né aggiornata; l'orario del cambio sta nel registro (rilevato_il) e nelle righe della 0121 (valida_dal);
 //   - applicaPiani: per ogni gara, se la colonna «settori» cambia, scrittura CONDIZIONATA (solo se i settori sono ancora quelli letti) più la
 //     traccia nel registro (mai notificabile; se la traccia non si scrive la colonna torna com'era); poi righe e stato con
 //     scriviClassificazioni (disattivazioni condizionate, inserimenti, «classificata» o «fallita»). Nessuna cancellazione;
@@ -87,7 +89,7 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
     esito.gare++;
     if (p.cambiaSettori && p.registro) {
       const { prima, dopo } = p.ric;
-      const { data, error } = await stessaColonna(db.from("radar_procedure").update({ settori: dopo.settori, metodo_settore: dopo.metodo, aggiornata_il: adessoIso }).eq("id", p.proceduraId), prima).select("id");
+      const { data, error } = await stessaColonna(db.from("radar_procedure").update({ settori: dopo.settori, metodo_settore: dopo.metodo }).eq("id", p.proceduraId), prima).select("id");
       misure.richiesteDb++;
       if (error) {
         esito.errori++;
@@ -102,7 +104,7 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
       misure.richiesteDb++;
       if (e2) {
         // senza traccia la correzione non resta: la colonna torna com'era (stessa scrittura condizionata)
-        await stessaColonna(db.from("radar_procedure").update({ settori: prima.settori, metodo_settore: prima.metodo, aggiornata_il: adessoIso }).eq("id", p.proceduraId), dopo);
+        await stessaColonna(db.from("radar_procedure").update({ settori: prima.settori, metodo_settore: prima.metodo }).eq("id", p.proceduraId), dopo);
         misure.richiesteDb++;
         esito.errori++;
         continue;
@@ -173,7 +175,7 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
       esito.tracceIlleggibili++;
       continue;
     }
-    const { data, error } = await stessaColonna(db.from("radar_procedure").update({ settori: prima.settori, metodo_settore: prima.metodo, aggiornata_il: adessoIso }).eq("id", t.procedura_id), dopo).select("id");
+    const { data, error } = await stessaColonna(db.from("radar_procedure").update({ settori: prima.settori, metodo_settore: prima.metodo }).eq("id", t.procedura_id), dopo).select("id");
     misure.richiesteDb++;
     if (error) {
       esito.errori++;

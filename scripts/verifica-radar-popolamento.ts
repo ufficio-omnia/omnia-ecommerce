@@ -228,7 +228,10 @@ async function principale() {
     uguale("C. righe esatte: una scrittura della colonna e una traccia per gara che cambia; uno stato per gara", [r.righe.radar_procedure.aggiorna, r.righe.radar_aggiornamenti.inserisce, r.righe.radar_classificazioni_stato.inserisce], [3, 3, 7]);
     const righeAttese = piani.reduce((s, p) => s + p.calcolate.length, 0);
     uguale("C. righe esatte delle classificazioni = righe calcolate (nessuna attiva prima)", r.righe.radar_classificazioni.inserisce, righeAttese);
+    const date = () => JSON.stringify(mem.tabelle.radar_procedure.map((g) => [g.id, g.aggiornata_il, g.data_pubblicazione, g.prima_rilevazione_il, g.ultima_rilevazione_il]));
+    const datePrima = date();
     const e = await applicaPiani(mem.client, piani, misure(), ISO);
+    uguale("C. applicazione: date della gara INVARIATE (aggiornata_il, pubblicazione, rilevazioni): nessuna gara vecchia sembra nuova", date(), datePrima);
     uguale("C. applicazione: 3 colonne cambiate con la traccia, 7 gare classificate, nessuna fallita", [e.settoriCambiati, e.tracce, e.classificazioni.classificate, e.classificazioni.fallite, e.classificazioni.inserite], [3, 3, 7, 0, righeAttese]);
     uguale("C. G2 esclusa: colonna vuota (resta nell'archivio, con la riga C); G3 acquisisce la ristorazione; G7 metodo dai CPV", [garaDi(mem, "G2").settori, garaDi(mem, "G2").metodo_settore, attiveDi(mem, "G2"), garaDi(mem, "G3").settori, garaDi(mem, "G7").metodo_settore], [[], null, ["ristorazione=C"], ["ristorazione"], "cpv"]);
     uguale("C. colonna e righe COERENTI per ogni gara; nessuna riga attiva doppia", [incoerenti(mem), doppie(mem)], [[], 0]);
@@ -276,6 +279,7 @@ async function principale() {
     atteso("C. annullare non cancella nulla: le righe crescono soltanto (una copia in più), nessuna attiva doppia", mem.tabelle.radar_classificazioni.length === righePrima + 1 && doppie(mem) === 0);
     // ripristino dell'esecuzione di popolamento: colonna di prima, righe chiuse, stato in attesa
     const ann1 = await annullaEsecuzione(mem.client, es1, 10, misure(), "2026-11-17T16:00:00.000Z", nuovoId);
+    uguale("C. annullamento: date della gara ancora INVARIATE", date(), datePrima);
     uguale("C. annullamento del popolamento: colonne di prima (G2 di nuovo in ristorazione, G3 di nuovo vuota, G7 metodo di prima)", [garaDi(mem, "G2").settori, garaDi(mem, "G2").metodo_settore, garaDi(mem, "G3").settori, garaDi(mem, "G7").metodo_settore, ann1.colonnaRipristinata], [["ristorazione"], "cpv", [], "parole_chiave", 3]);
     uguale("C. dopo l'annullamento nessuna riga attiva dell'esecuzione, stati «in attesa» (mai «non pertinente»)", [mem.tabelle.radar_classificazioni.filter((x) => x.attiva && x.autore === `riclassificazione:${es1}`).length, ["G2", "G3", "G5"].map((g) => statoDi(mem, g)?.stato)], [0, ["in_attesa", "in_attesa", "in_attesa"]]);
     atteso("C. traccia del ripristino nel registro, mai notificabile", mem.tabelle.radar_aggiornamenti.filter((x) => x.campo === "settori_ripristinati").length === 3 && mem.tabelle.radar_aggiornamenti.filter((x) => x.campo === "settori_ripristinati").every((x) => x.notificabile === false));
@@ -403,7 +407,8 @@ async function principale() {
     atteso("E. libreria: scritture della colonna condizionate ai settori trovati (contiene E contenuto)", /contains\("settori"/.test(lib) && /containedBy\("settori"/.test(lib));
     atteso("E. script: tetto di gare, si ferma prima di scrivere", script.includes("più del massimo autorizzato") && script.includes("MASSIMO_ASSOLUTO = 2000"));
     atteso("E. registro mai notificabile (script, libreria, piano, importazioni)", [lib, leggi("src/lib/radar/riclassifica-settori.ts"), leggi("src/lib/radar/classificazioni-importazione.ts")].every((t) => t.includes("notificabile: false") && !t.includes("notificabile: true")));
-    atteso("E. libreria: cambia solo settori, metodo e data della gara", (lib.match(/from\("radar_procedure"\)\.update\(\{[^}]*\}/g) ?? []).every((u) => /\.update\(\{ settori: [^,]+, metodo_settore: [^,]+, aggiornata_il: adessoIso \}$/.test(u)) && (lib.match(/from\("radar_procedure"\)\.update/g) ?? []).length === 3);
+    atteso("E. libreria: cambia SOLO settori e metodo della gara (mai «aggiornata_il»: pacchetto 16, punti 8 e 11)", (lib.match(/from\("radar_procedure"\)\.update\(\{[^}]*\}/g) ?? []).every((u) => /\.update\(\{ settori: [^,]+, metodo_settore: [^,}]+ \}$/.test(u)) && (lib.match(/from\("radar_procedure"\)\.update/g) ?? []).length === 3);
+    atteso("E. importatori: un cambio dovuto solo alla classificazione non tocca «aggiornata_il»", ["src/lib/radar/importa.ts", "src/lib/radar/importa-fonti-pagina.ts"].every((f) => { const t = leggi(f); const i = t.indexOf("settori: ci.settori, metodo_settore: ci.metodo"); return i > 0 && !t.slice(i, i + 160).includes("aggiornata_il"); }));
     const finto = (metodo: string) => fetchSoloLettura(((() => Promise.resolve(new Response("[]"))) as unknown) as typeof fetch)("https://esempio.test/rest/v1/radar_procedure", { method: metodo });
     const esiti = await Promise.all(["GET", "HEAD", "POST", "PATCH", "DELETE"].map((m) => finto(m).then(() => "ok", () => "rifiutata")));
     uguale("E. client della prova: GET e HEAD sì; POST, PATCH, DELETE rifiutate prima di partire", esiti, ["ok", "ok", "rifiutata", "rifiutata", "rifiutata"]);
