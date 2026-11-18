@@ -884,7 +884,9 @@ uguale("D2 C: stampa di ticket per la mensa", buoni("Stampa di ticket per la men
 uguale("D2 C: fornitura di badge e tessere per i buoni pasto", buoni("Fornitura di badge e tessere per i buoni pasto dei dipendenti"), cBuoni);
 uguale("D2 C: fornitura di terminali per la lettura dei buoni pasto", buoni("Fornitura di terminali per la lettura dei buoni pasto elettronici"), cBuoni);
 uguale("D2 C: badge PER il servizio sostitutivo (il servizio non è affidato)", buoni("Fornitura di badge per il servizio sostitutivo di mensa"), cBuoni);
-uguale("D2 B: servizio sostitutivo affidato mediante badge (ACEA)", buoni("Affidamento in appalto del servizio sostitutivo di mensa mediante l'utilizzo di badges elettronici"), bServizio);
+uguale("D2 B: servizio affidato con la fornitura dei badge (il servizio è affidato)", buoni("Affidamento del servizio sostitutivo di mensa con fornitura di badge ai dipendenti"), bServizio);
+uguale("D2 B: fornitura di buoni pasto con le tessere (i buoni pasto sono il servizio)", buoni("Fornitura di buoni pasto elettronici e delle tessere per i dipendenti"), bServizio);
+uguale("D2 B: servizio sostitutivo affidato mediante badge (ACEA)",buoni("Affidamento in appalto del servizio sostitutivo di mensa mediante l'utilizzo di badges elettronici"), bServizio);
 uguale(
   "D2 A: mensa interna più servizio sostitutivo, senza CPV del file",
   buoni("Affidamento del servizio di mensa interno e del servizio sostitutivo di mensa mediante buoni pasto elettronici"),

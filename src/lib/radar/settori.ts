@@ -107,10 +107,9 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
     settore: "ristorazione",
     cerca: /\b(ristorazione|mensa|mense|refezione|pasti)\b/,
     // «rifiuti … di cucine e mense» (codice EER 20.01.08): caso reale di TED del 16/11/2026
+    // (i buoni pasto e il servizio sostitutivo di mensa non passano di qui: li riconosce BUONI_PASTO in classificaGara e li decidono le
+    // regole «servizio_sostitutivo_mensa» (B) e «buoni_pasto_senza_servizio» (C), decisioni dell'utente del 18/11)
     escludi: /\b(buon[oi] pasto|ticket\w*|attrezzatur\w*|arred\w*|derrat\w*|rifiut\w*)\b/,
-    // decisione dell'utente del 18/11 (ACEA Pinerolese, TED bf95cc0d): il servizio sostitutivo di mensa è un servizio, correlato alla
-    // ristorazione (B, CORRELAZIONI «servizio_sostitutivo_mensa»), anche con i buoni pasto o i badge
-    salvo: /\b(servizi?o? sostitutiv\w* (di |della |del )?mens[ae]|servizi?o? di (erogazione (dei |di )?)?buon[oi] pasto)\b/,
     esempio: "ristorazione, mensa, refezione",
   },
   {
