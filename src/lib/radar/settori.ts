@@ -203,7 +203,8 @@ const ALTRI = /^(altr[ie]|ulterior[ie]|vari[e]?|divers[ie])$/;
 const DI = /^(di|del|dello|della|dei|degli|delle|dell)$/;
 const MODALITA = /^(in|formula|regime|mediante|tramite|modalita)$/;
 const SERVIZIO_PURO = /^(pulizi\w*|sanificazion\w*|disinfe\w*|igiene|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|ristorazion\w*|catering|refezion\w*)$/;
-const TESTE_ACCESSORIE = /^(comprensiv\w*|compres\w*|inclus\w*|accessori\w*|con)$/;
+// «comprendente il servizio di …» (TED 465af5a5): come «comprensivo di»
+const TESTE_ACCESSORIE = /^(comprensiv\w*|comprendent\w*|compres\w*|inclus\w*|accessori\w*|con)$/;
 const COORDINAZIONE = /^(e|ed|nonche|oltre|o|,)$/;
 const PREPOSIZIONI = /^(di|del|dello|della|dei|degli|delle|dell|a|al|allo|alla|ai|agli|alle|all|da|dal|dallo|dalla|dai|dagli|dalle|dall|in|nel|nello|nella|nei|negli|nelle|nell|su|sul|sullo|sulla|sui|sugli|sulle|sull|per|presso|tra|fra)$/;
 const ARTICOLI = /^(il|lo|la|i|gli|le|l|un|uno|una)$/;
@@ -255,9 +256,17 @@ function conAccessorio(p: readonly string[], j: number, i: number): boolean {
 }
 
 // «con effettuazione del servizio di», «comprensivo del servizio di»: la testa è introdotta da una parola accessoria.
-function testaAccessoria(p: readonly string[], h: number): boolean {
+// Anche una testa coordinata a una testa accessoria è accessoria: «comprendente il servizio di mantenimento degli animali ED IL SERVIZIO DI
+// PULIZIA» (gestione degli stabulari, TED 465af5a5); «… nonché del servizio di portierato» dopo un affidamento principale resta principale.
+function testaAccessoria(p: readonly string[], h: number, profondita = 0): boolean {
   for (let j = h - 1, passi = 0; j >= 0 && passi < 4; j--, passi++) {
     if (TESTE_ACCESSORIE.test(p[j])) return true;
+    if (COORDINAZIONE.test(p[j]) && p[j] !== "," && profondita < 4) {
+      for (let x = j - 1, altri = 0; x >= 0 && altri < 12 && p[x] !== "|"; x--, altri++) {
+        if (TESTE_DI_AFFIDAMENTO.test(p[x])) return testaAccessoria(p, x, profondita + 1);
+      }
+      return false;
+    }
     if (!(ARTICOLI.test(p[j]) || PREPOSIZIONI.test(p[j]) || RACCORDI.test(p[j]))) return false;
   }
   return false;
@@ -1132,7 +1141,9 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // «2026-11-18a»: decisioni dell'utente sul pacchetto 16. Parola solo citata C; nessuna regola dell'elenco (l'ordine non decide); componente
 // di un servizio integrato senza CPV proprio B; CPV incoerente con l'oggetto C (non più B); servizio sostitutivo di mensa B con la sua
 // sottocategoria; lavaggio di indumenti e vigilanza amministrativa C; global service di ospitalità B.
-export const VERSIONE_REGOLE_SETTORI = "2026-11-18a";
+// «2026-11-18b»: «comprendente» introduce un servizio accessorio, e una testa coordinata a una testa accessoria è accessoria (gestione degli
+// stabulari, TED 465af5a5: pulizia da A a B; segnalato dal coordinamento il 18/11).
+export const VERSIONE_REGOLE_SETTORI = "2026-11-18b";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
