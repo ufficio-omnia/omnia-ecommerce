@@ -39,6 +39,25 @@
 //   - «navigazione internet nelle mense» (caso ARDSU): prima A, ora C con la regola «servizi_di_connettivita»;
 //   - versione delle regole «2026-11-17g».
 // Nessun controllo tolto. I controlli nuovi sono nella sezione «fase B2b».
+// Controlli CAMBIATI con la versione «2026-11-18a» (decisioni dell'utente del 18/11 sul pacchetto 16), uno per uno:
+//   - frasi di affidamento esplicito: non c'è più il grado «elenco» (l'ordine non decide). Diventano «principale»: servizi cimiteriali,
+//     servizio gestione/pulizia dei bagni, pulizia e di ristorazione, pulizie e guardiania, pulizia e gestione del bar, trasporto
+//     scolastico e assistenza mensa; «lavaggio, sanificazione e stiratura dei capi» (prima nessuno: ora la voce è retta dalla testa, e la
+//     gara è C per la regola nuova del lavaggio di indumenti). Diventano «integrato»: le due frasi di Monfalcone e «servizio integrato di
+//     accoglienza e pulizia». Diventa «accessorio»: «e altri servizi integrati» (aeroporti);
+//   - lavaggio di indumenti (TED 93a329b1): da B «parola_chiave_citata» a C «lavanderia_e_indumenti»;
+//   - servizi cimiteriali: da B «servizio_in_elenco» ad A;
+//   - servizio sostitutivo di mensa con badge (ACEA, TED bf95cc0d): da «nessun settore» a B «servizio_sostitutivo_mensa», con la
+//     sottocategoria «servizi_sostitutivi_mensa»;
+//   - pulizia, facchinaggio e disinfezione (TED 389bf9d2): facchinaggio da B «servizio_in_elenco» ad A;
+//   - Ferrovienord (TED bfc3639f): pulizia da B a C «cpv_non_confermato», con il CPV nel motivo; il metodo diventa «parole_chiave»;
+//   - sottocategorie della ristorazione: nove, con «servizi_sostitutivi_mensa»;
+//   - versione delle regole «2026-11-18a».
+// Nessun controllo tolto. I controlli nuovi riguardano: parola citata C, pulizie e guardiania A, RUNTS C, vigilanza ispettiva delle guardie,
+// Lido di Bolzano A, servizi sostitutivi di mensa (quattro casi), Monfalcone B, componente integrata senza CPV A, ex ENAM B, Donnas C,
+// pulizia e vigilanza entrambe affidate A, canile C, stabulario A, disinfestazione, vigilanza degli alunni C, bagni chimici B, DPI e
+// materassi C, specchi acquei, manutenzione in global service A, Autostrade, Latiano, facility management sanitario A, global service
+// socio-sanitario e casa anziani B, pulizia con lavanolo, biancheria C.
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -755,9 +774,9 @@ const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["pulizia", "Procedura aperta per l'affidamento triennale dei servizi di pulizia e sanificazione", "principale"],
   ["pulizia", "Servizio di ristorazione scolastica comprensivo del riordino e della pulizia dei refettori", "accessorio"],
   ["pulizia", "Concessione del bar e del parcheggio con effettuazione del servizio di pulizia e guardiania", "accessorio"],
-  ["pulizia", "Servizi cimiteriali, custodia, pulizia e manutenzione del verde", "elenco"],
-  ["pulizia", "Servizio gestione, pulizia, sanificazione e manutenzione dei bagni pubblici", "elenco"],
-  ["pulizia", "Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento", null],
+  ["pulizia", "Servizi cimiteriali, custodia, pulizia e manutenzione del verde", "principale"],
+  ["pulizia", "Servizio gestione, pulizia, sanificazione e manutenzione dei bagni pubblici", "principale"],
+  ["pulizia", "Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento", "principale"],
   ["ristorazione", "Servizi di pulizia, sanificazione e altri servizi accessori con applicazione dei CAM per il servizio ristorazione DSU", null],
   ["ristorazione", "Servizio di pulizia della mensa aziendale", null],
   ["ristorazione", "Affidamento dei lavori di adeguamento della mensa scolastica", null],
@@ -765,22 +784,32 @@ const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["ristorazione", "Software per la gestione delle mense scolastiche", null],
   ["ristorazione", "Lavori mensa scolastica", null],
   ["ristorazione", "Comune di Donnas - Refezione", "principale"],
-  ["ristorazione", "Servizi di pulizia e di ristorazione", "elenco"],
+  ["ristorazione", "Servizi di pulizia e di ristorazione", "principale"],
   ["vigilanza_portierato", "Servizio di pulizia degli immobili comunali nonché del servizio di receptionist/portierato", "principale"],
-  ["vigilanza_portierato", "Pulizie e guardiania edifici comunali", "elenco"],
+  ["vigilanza_portierato", "Pulizie e guardiania edifici comunali", "principale"],
   ["vigilanza_portierato", "Appalto relativo alle attività di vigilanza, custodia e accoglienza", "principale"],
   ["vigilanza_portierato", "PROCEDURA APERTA PER LAFFIDAMENTO DEL SERVIZIO DI VIGILANZA ARMATA", "principale"],
   ["vigilanza_portierato", "Affidamento del del servizio di vigilanza", "principale"],
   ["ausiliariato", "Servizi nidi d'infanzia e servizi ausiliari presso le scuole", "principale"],
   // teatro di Monfalcone (TED 219ed447): il bar dentro un elenco di servizi di accoglienza
-  ["ristorazione", "Servizio integrato di accoglienza pubblico/biglietteria/conduzione bar/pulizie locali", "elenco"],
-  ["ristorazione", "Servizio integrato di accoglienza pubblico / biglietteria / conduzione del bar / pulizie locali", "elenco"],
-  ["ristorazione", "Servizio di pulizia e gestione del bar", "elenco"],
-  ["ristorazione", "Servizio di trasporto scolastico, assistenza mensa", "elenco"],
+  ["ristorazione", "Servizio integrato di accoglienza pubblico/biglietteria/conduzione bar/pulizie locali", "integrato"],
+  ["ristorazione", "Servizio integrato di accoglienza pubblico / biglietteria / conduzione del bar / pulizie locali", "integrato"],
+  ["ristorazione", "Servizio di pulizia e gestione del bar", "principale"],
+  ["ristorazione", "Servizio di trasporto scolastico, assistenza mensa", "principale"],
   ["ristorazione", "Affidamento del servizio di gestione del bar", "principale"],
-  ["pulizia", "Servizio integrato di accoglienza e pulizia", "elenco"],
-  ["multiservizi", "Servizio di pulizia delle aree interne e altri servizi integrati presso gli aeroporti", "elenco"],
+  ["pulizia", "Servizio integrato di accoglienza e pulizia", "integrato"],
+  ["multiservizi", "Servizio di pulizia delle aree interne e altri servizi integrati presso gli aeroporti", "accessorio"],
   ["multiservizi", "Gestione con formula global service dei servizi di ospitalità", "principale"],
+  // regole del 18/11: una voce retta direttamente dalla testa è un servizio dell'elenco anche se non è tra i servizi noti; un luogo no
+  ["pulizia", "Servizi cimiteriali, operazioni tanatologiche, custodia, pulizia e manutenzione", "principale"],
+  ["pulizia", "Servizio di fornitura, pulizia e manutenzione di bagni a funzionamento chimico", "principale"],
+  ["ristorazione", "Servizio di vigilanza presso le scuole e mense comunali", null],
+  // casi che separano le strade del riconoscimento (prova di mutazione del 18/11)
+  ["vigilanza_portierato", "Servizio di pulizia con ridotto impatto ambientale delle sedi e vigilanza", "principale"],
+  ["pulizia", "Appalto relativo alla pulizia delle sedi", "principale"],
+  ["vigilanza_portierato", "Appalto relativo alla pulizia e alla vigilanza delle sedi", "principale"],
+  ["ristorazione", "Servizio di vigilanza presso le scuole, assistenza mensa", null],
+  ["ristorazione", "Servizi di accoglienza dei visitatori del museo e di bar", "principale"],
 ];
 for (const [s, testo, a] of AFFIDAMENTI) uguale(`affidamento esplicito (${s}): «${testo.slice(0, 70)}»`, affidamentoEsplicito(s, parole(s), testo), a);
 
@@ -788,8 +817,64 @@ for (const [s, testo, a] of AFFIDAMENTI) uguale(`affidamento esplicito (${s}): �
 const gara2b = (testo: string, cpv: string[] = []) => classificaGara({ cpvPrincipale: cpv[0] ?? null, cpvTutti: cpv, testo });
 const livelli = (c: ReturnType<typeof classificaGara>) => c.valutazioni.map((v) => [v.settore, v.livello, v.regola]);
 uguale("parola chiave affidata: A", livelli(gara2b("Affidamento del servizio di pulizia degli uffici")), [["pulizia", "A", "parole_chiave"]]);
-uguale("parola chiave solo citata (lavaggio di indumenti, TED 93a329b1): B", livelli(gara2b("Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento")), [["pulizia", "B", "parola_chiave_citata"]]);
-uguale("parola chiave in un elenco di servizi cimiteriali: B", livelli(gara2b("Servizi cimiteriali, custodia, pulizia e manutenzione del verde")), [["pulizia", "B", "servizio_in_elenco"]]);
+// decisioni del 18/11: lavaggio di indumenti C (non è pulizia ambientale); una parola solo citata C; l'ordine dell'elenco non decide (A)
+uguale("lavaggio e stiratura di indumenti (TED 93a329b1): C, non è pulizia ambientale", livelli(gara2b("Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento")), [["pulizia", "C", "lavanderia_e_indumenti"]]);
+uguale("pulizia e lavanderia: la pulizia resta A", livelli(gara2b("Affidamento dei servizi di pulizia e lavanderia della residenza per anziani")), [["pulizia", "A", "parole_chiave"]]);
+const citata = gara2b("Gara europea per l'appalto dell'attività di controllo della qualità e di monitoraggio del servizio di ristorazione scolastica");
+uguale("parola solo citata (controllo qualità della ristorazione, TED 4f484298): C, nessun settore", [citata.settori, livelli(citata)], [[], [["ristorazione", "C", "parola_chiave_citata"]]]);
+uguale("parola chiave in un elenco di servizi cimiteriali: A (l'ordine non decide)", livelli(gara2b("Servizi cimiteriali, custodia, pulizia e manutenzione del verde")), [["pulizia", "A", "parole_chiave"]]);
+uguale("pulizie e guardiania senza CPV: A per entrambi", livelli(gara2b("Pulizie e guardiania edifici comunali")), [["pulizia", "A", "parole_chiave"], ["vigilanza_portierato", "A", "parole_chiave"]]);
+const runts = gara2b("Servizio di supporto giuridico-legale all'Ufficio regionale del RUNTS per controlli successivi, vigilanza e monitoraggio sugli ETS");
+uguale("vigilanza amministrativa sul RUNTS (TED 36085627): C per vigilanza e portierato", [runts.settori, livelli(runts)], [[], [["vigilanza_portierato", "C", "vigilanza_amministrativa"]]]);
+uguale("«vigilanza ispettiva» delle guardie: resta vigilanza privata", livelli(gara2b("Servizio di vigilanza ispettiva notturna degli edifici comunali")), [["vigilanza_portierato", "A", "parole_chiave"]]);
+// regole del 18/11 emerse dalla prova a vuoto (casi reali di TED; testi abbreviati)
+uguale("canile, pulizia dei cani randagi (TED 8a89e9f9): C", livelli(gara2b("Canile sanitario e rifugio cui affidare il servizio di cattura, ricovero, pulizia, custodia e mantenimento dei cani randagi")), [["pulizia", "C", "cura_degli_animali"]]);
+uguale("animal care e pulizia dei locali dello stabulario (TED 2bc0e574): A", livelli(gara2b("Servizio di cura e mantenimento di animali da laboratorio e pulizia dei locali stabulario")), [["pulizia", "A", "parole_chiave"]]);
+uguale("disinfestazione da animali infestanti: resta pulizia", livelli(gara2b("Servizio di disinfestazione e derattizzazione dagli animali infestanti degli edifici scolastici")), [["pulizia", "A", "parole_chiave"]]);
+uguale(
+  "assistenza, vigilanza e accompagnamento degli alunni (TED 05dce2dd): C per vigilanza e portierato",
+  livelli(gara2b("Affidamento del servizio di assistenza, vigilanza, accoglienza e accompagnamento degli alunni e dei minori durante il trasporto scolastico")),
+  [["vigilanza_portierato", "C", "vigilanza_educativa"]],
+);
+uguale("vigilanza all'ingresso di un polo dell'infanzia: resta vigilanza", livelli(gara2b("Servizio di sorveglianza, assistenza, vigilanza all'ingresso presso il Polo 0-6 di via Giuria")), [["vigilanza_portierato", "A", "parole_chiave"]]);
+uguale("noleggio, pulizia e manutenzione di bagni chimici (TED a4767661): B", livelli(gara2b("Accordo quadro per il servizio di noleggio, trasporto, installazione, pulizia, manutenzione e smaltimento di bagni chimici")), [["pulizia", "B", "bagni_chimici"]]);
+uguale("lavaggio dei dispositivi di protezione individuale (TED 3ca05686): C", livelli(gara2b("Accordo quadro per il servizio di lavaggio dei dispositivi di protezione individuale, comprendente ritiro, lavaggio, pulizia, igienizzazione e stiratura")), [["pulizia", "C", "lavanderia_e_indumenti"]]);
+uguale("noleggio e sanificazione di materassi antidecubito (TED 3a7346ec): C", livelli(gara2b("Affidamento del servizio di noleggio, sanificazione e assistenza full risk di materassi antidecubito")), [["pulizia", "C", "lavanderia_e_indumenti"]]);
+uguale("pulizia degli specchi acquei portuali (TED feb5aec8): nessun settore", gara2b("Servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e delle aree costiere").settori, []);
+uguale(
+  "manutenzione IN global service delle strutture (TED 54bdd6eb): multiservizi A",
+  livelli(gara2b("Procedura aperta per l'affidamento di servizi di manutenzione in global service sulle strutture gestite dalla società, impianti elettrici e idrico sanitari")),
+  [["multiservizi", "A", "parole_chiave"]],
+);
+uguale(
+  "servizi integrati di … e di guardiania (Autostrade, TED 211c3189): guardiania A",
+  livelli(gara2b("Procedura aperta per affidamento di servizi integrati di assistenza operativa alle ispezioni, installazione e rimozione della segnaletica di cantiere e di guardiania per la gestione degli asset infrastrutturali")).filter((x) => x[0] === "vigilanza_portierato"),
+  [["vigilanza_portierato", "A", "parole_chiave"]],
+);
+uguale(
+  "servizi cimiteriali dopo un punto (Latiano, TED 7c78c6ca): pulizia A",
+  livelli(gara2b("Procedura aperta per l'affidamento della “Gestione e custodia dei servizi cimiteriali. Apertura, presidio, chiusura, pulizia e manutenzione ordinaria” del comune")).filter((x) => x[0] === "pulizia"),
+  [["pulizia", "A", "parole_chiave"]],
+);
+uguale("facility management sanitario (TED 1e649b29): resta facility management, A", livelli(gara2b("Servizio integrato di facility management sanitario e logistica intraospedaliera", ["79993000"])), [["multiservizi", "A", "cpv_principale"]]);
+uguale(
+  "global service dei servizi socio-sanitari (TED c65ba31d): multiservizi B",
+  livelli(gara2b("Affidamento in regime di global service dei servizi socio sanitari diurni e notturni del centro servizi anziani")).filter((x) => x[0] === "multiservizi"),
+  [["multiservizi", "B", "global_service_di_altri_servizi"]],
+);
+uguale("global service gestione casa anziani (TED edd7f211): multiservizi B", livelli(gara2b("Global service gestione casa anziani San Quirino")).filter((x) => x[0] === "multiservizi"), [["multiservizi", "B", "global_service_di_altri_servizi"]]);
+uguale(
+  "servizio di pulizia giornaliera e servizio di lavanolo della biancheria (TED 0f123974): la pulizia resta",
+  gara2b("Procedura aperta per l'affidamento del servizio di pulizia giornaliera e periodica, fornitura di materiale monouso e servizio di lavanolo della biancheria piana", ["90910000"]).settori,
+  ["pulizia"],
+);
+uguale(
+  "servizio di pulizia e sanificazione della biancheria (TED e90cef73, lotto 2): C",
+  livelli(gara2b("Servizio di pulizia e sanificazione della biancheria a ridotto impatto ambientale")),
+  [["pulizia", "C", "lavanderia_e_indumenti"]],
+);
+const lido = gara2b("LIDO PISCINA COPERTA DI BOLZANO SERVIZI DI APERTURA, SORVEGLIANZA E CUSTODIA, ASSISTENZA BAGNANTI, PULIZIA E CASSA, NONCHE' CONCESSIONE DEI TRE BAR, DELLA SAUNA, DEL CENTRO BENESSERE E DEGLI SPAZI PUBBLICITARI", ["92610000"]);
+uguale("Lido di Bolzano (TED 57483b3d): pulizia e bar A", livelli(lido), [["pulizia", "A", "parole_chiave"], ["ristorazione", "A", "parole_chiave"]]);
 uguale(
   "servizi accessori «in forma integrata con» (TED 722bf4ac): B",
   livelli(gara2b("Gestione dei servizi di assistenza culturale e di ospitalità per il pubblico, in forma integrata con i servizi di pulizia, vigilanza e biglietteria")),
@@ -797,11 +882,34 @@ uguale(
 );
 uguale("concessione del bar senza CPV, affidata: A", gara2b("Concessione del servizio bar presso l'ospedale civile").valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie]), [["ristorazione", "A", ["concessione_bar"]]]);
 uguale("bar solo citato senza CPV (lavori): nessun settore", gara2b("Lavori di ristrutturazione del bar comunale").settori, []);
+uguale("bar solo citato senza CPV: la concessione non è nemmeno considerata (nessuna riga C)", gara2b("Lavori di ristrutturazione del bar comunale").valutazioni, []);
 uguale("pulizia del bar senza CPV: pulizia, non ristorazione", gara2b("Servizio di pulizia del bar comunale").settori, ["pulizia"]);
+// decisione del 18/11 (ACEA Pinerolese): il servizio sostitutivo di mensa è B, con la sua sottocategoria; mai A né C in automatico
+const sottoLivelli = (c: ReturnType<typeof classificaGara>) => c.valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie, v.regola]);
 uguale(
-  "servizio sostitutivo di mensa con badge (buoni pasto elettronici, TED bf95cc0d): nessun settore",
-  gara2b("Affidamento in appalto del servizio sostitutivo di mensa a favore del personale dipendente mediante l'utilizzo di badges elettronici", ["79500000"]).settori,
-  [],
+  "servizio sostitutivo di mensa con badge (ACEA, TED bf95cc0d): B, sottocategoria dedicata",
+  sottoLivelli(gara2b("Affidamento in appalto del servizio sostitutivo di mensa a favore del personale dipendente mediante l'utilizzo di badges elettronici", ["79500000"])),
+  [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
+);
+uguale(
+  "servizio sostitutivo di mensa con buoni pasto e CPV della mensa: B, non A",
+  sottoLivelli(gara2b("Servizio sostitutivo di mensa mediante buoni pasto elettronici", ["55510000"])),
+  [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
+);
+uguale(
+  "servizio sostitutivo di mensa con buoni pasto senza CPV del file: B, non escluso dalle parole «buoni pasto»",
+  sottoLivelli(gara2b("Servizio sostitutivo di mensa mediante buoni pasto elettronici")),
+  [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
+);
+uguale(
+  "fornitura di buoni pasto con il CPV della mensa: B, non C (fornitura)",
+  sottoLivelli(gara2b("Fornitura di buoni pasto per i dipendenti", ["55510000"])),
+  [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
+);
+uguale(
+  "mensa interna e servizio sostitutivo (TED b6267a4a): A, con le due sottocategorie",
+  sottoLivelli(gara2b("Affidamento del servizio di mensa interno e del servizio sostitutivo di mensa mediante buoni pasto elettronici per i dipendenti", ["55512000"])),
+  [["ristorazione", "A", ["mense", "servizi_sostitutivi_mensa"], "cpv_principale"]],
 );
 uguale(
   "servizio di ristorazione sostitutivo della mensa (TED 9150d0f5): resta ristorazione",
@@ -831,19 +939,52 @@ const ercolano = gara2b(
 );
 uguale("Ercolano (TED 2cc42f92): pulizia per CPV, portierato affidato con la sua testa: A", livelli(ercolano), [["pulizia", "A", "cpv_principale"], ["vigilanza_portierato", "A", "parole_chiave"]]);
 uguale(
-  "pulizia, facchinaggio e disinfezione (TED 389bf9d2): facchinaggio in elenco, B",
+  "pulizia, facchinaggio e disinfezione (TED 389bf9d2): facchinaggio A, l'ordine non decide (18/11)",
   livelli(gara2b("Affidamento del servizio di pulizia, facchinaggio e disinfezione degli immobili comunali", ["90910000"])),
-  [["pulizia", "A", "cpv_principale"], ["facchinaggio", "B", "servizio_in_elenco"]],
+  [["pulizia", "A", "cpv_principale"], ["facchinaggio", "A", "parole_chiave"]],
 );
+const monfalcone = gara2b(
+  "Gara europea a procedura aperta per l'affidamento in appalto del servizio integrato di accoglienza pubblico / biglietteria / conduzione del bar / pulizie locali e supporto alla promozione del teatro comunale di Monfalcone",
+  ["92320000", "90911200"],
+);
+uguale(
+  "teatro di Monfalcone (TED 219ed447): la conduzione del bar è una componente del servizio integrato, senza CPV proprio: B",
+  livelli(monfalcone),
+  [["pulizia", "A", "oggetto"], ["ristorazione", "B", "componente_di_servizio_integrato"]],
+);
+uguale(
+  "servizio integrato senza CPV del file: la componente resta A (nessun CPV dice un'altra attività prevalente)",
+  livelli(gara2b("Servizio integrato di accoglienza, biglietteria e conduzione del bar presso la sede comunale")),
+  [["ristorazione", "A", "parole_chiave"]],
+);
+const enam = gara2b("Procedura aperta per affidamento della Gestione con formula Global Service dei servizi di ospitalita delle Case di soggiorno ex ENAM", ["55100000", "90911000"]);
+uguale("global service dell'ospitalità ex ENAM (TED 0baf7379): multiservizi B", livelli(enam).filter((x) => x[0] === "multiservizi"), [["multiservizi", "B", "global_service_di_altri_servizi"]]);
 uguale(
   "pulizia «per il servizio ristorazione» (TED 6ffe89d4): la ristorazione non si aggiunge",
   gara2b("Servizi di pulizia, sanificazione e altri servizi accessori con applicazione dei CAM per il servizio ristorazione DSU Toscana", ["90910000"]).settori,
   ["pulizia"],
 );
+// decisione del 18/11: CPV incoerente con l'oggetto, nessun B automatico: il settore del CPV è C e il CPV resta nel motivo
+const ferrovienord = gara2b("Servizio di vigilanza e portierato da svolgersi presso le località di servizio Ferrovienord", ["90910000"]);
 uguale(
-  "vigilanza con il CPV della pulizia (Ferrovienord, TED bfc3639f): vigilanza A, pulizia B «CPV non confermato»",
-  livelli(gara2b("Servizio di vigilanza e portierato da svolgersi presso le località di servizio Ferrovienord", ["90910000"])),
-  [["pulizia", "B", "cpv_non_confermato"], ["vigilanza_portierato", "A", "parole_chiave"]],
+  "vigilanza con il CPV della pulizia (Ferrovienord, TED bfc3639f): vigilanza A, pulizia C «CPV non confermato»",
+  [ferrovienord.settori, livelli(ferrovienord), ferrovienord.metodo],
+  [["vigilanza_portierato"], [["pulizia", "C", "cpv_non_confermato"], ["vigilanza_portierato", "A", "parole_chiave"]], "parole_chiave"],
+);
+atteso(
+  "CPV non confermato: il motivo conserva il CPV discordante",
+  ferrovienord.valutazioni[0].motivo.includes("90910000") && ferrovienord.valutazioni[0].motivo.includes("vigilanza"),
+  ferrovienord.valutazioni[0].motivo,
+);
+uguale(
+  "refezione con il CPV della pulizia (Donnas, TED c6f4ca41): ristorazione A, pulizia C",
+  livelli(gara2b("COMUNE DI DONNAS - REFEZIONE", ["90910000"])),
+  [["pulizia", "C", "cpv_non_confermato"], ["ristorazione", "A", "parole_chiave"]],
+);
+uguale(
+  "pulizia e vigilanza entrambe affidate con il solo CPV della pulizia: entrambe A, nessun «CPV non confermato»",
+  livelli(gara2b("Affidamento del servizio di pulizia e del servizio di vigilanza degli uffici", ["90910000"])),
+  [["pulizia", "A", "cpv_principale"], ["vigilanza_portierato", "A", "parole_chiave"]],
 );
 uguale(
   "servizi integrati presso l'INGV (TED dcf5c8e5): multiservizi A, la pulizia del CPV resta A",
@@ -930,9 +1071,9 @@ for (const s of SETTORI_RADAR) {
   atteso(`sottocategorie ${s.id}: almeno una, id unici, nomi leggibili`, sc.length > 0 && new Set(sc.map((x) => x.id)).size === sc.length && sc.every((x) => x.nome.length > 5));
 }
 uguale(
-  "ristorazione: le 7 sottocategorie decise dall'utente più quella dei distributori automatici (decisione del 17/11)",
+  "ristorazione: le 7 sottocategorie decise dall'utente, i distributori automatici (17/11) e i servizi sostitutivi di mensa (18/11)",
   SOTTOCATEGORIE.ristorazione.map((s) => s.id),
-  ["mense", "catering", "distribuzione_pasti", "concessione_bar", "concessione_ristorante", "concessione_punto_ristoro", "distributori_automatici", "appalti_multiservizi"],
+  ["mense", "catering", "distribuzione_pasti", "concessione_bar", "concessione_ristorante", "concessione_punto_ristoro", "distributori_automatici", "appalti_multiservizi", "servizi_sostitutivi_mensa"],
 );
 uguale("tre livelli", Object.keys(NOMI_LIVELLI), ["A", "B", "C"]);
 
@@ -1020,7 +1161,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-17g");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18a");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
