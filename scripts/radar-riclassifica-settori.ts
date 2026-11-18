@@ -149,14 +149,22 @@ async function main() {
   if (modo === "annulla") {
     const daAnnullare = argomenti[1] ?? "";
     console.log(`Annullamento dell'esecuzione ${daAnnullare}…`);
+    // pacchetto 16, punto 5: un annullamento con errori o interrotto da un'eccezione esce con un codice di errore e lo dice chiaramente
+    const INCOMPLETO = "ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando";
     try {
-      console.log(JSON.stringify(await annullaEsecuzione(db, daAnnullare, massimo, misure, adessoIso, randomUUID)));
+      const esitoAnnulla = await annullaEsecuzione(db, daAnnullare, massimo, misure, adessoIso, randomUUID);
+      console.log(JSON.stringify(esitoAnnulla));
+      if (esitoAnnulla.errori > 0) {
+        console.error(`${INCOMPLETO} (${esitoAnnulla.errori} errori).`);
+        process.exit(1);
+      }
     } catch (e) {
       if (e instanceof TroppeGare) {
         console.error(`STOP: ${e.message}`);
         process.exit(1);
       }
-      throw e;
+      console.error(`${INCOMPLETO} (${e instanceof Error ? e.message : String(e)}).`);
+      process.exit(1);
     }
     return;
   }

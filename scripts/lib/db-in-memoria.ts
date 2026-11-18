@@ -25,6 +25,9 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
   let guastoAlla: number | null = null;
   let modoGuasto: "prima" | "dopo" | "errore" = "prima";
   let fermo = false;
+  // pacchetto 16, punto 5: anche una LETTURA può tornare con un errore (la n-esima da adesso)
+  let richiesteLettura = 0;
+  let guastoLetturaAlla: number | null = null;
   const tabelle: Record<string, RigaMem[]> = Object.fromEntries(Object.entries(iniziali).map(([k, v]) => [k, v.map((r) => structuredClone(r))]));
   let contatore = 0;
   let richieste = 0;
@@ -80,7 +83,11 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
       let operazione: { tipo: "select" } | { tipo: "update"; valori: RigaMem } | { tipo: "upsert"; nuove: RigaMem[]; chiavi: string[]; ignora: boolean } | { tipo: "insert"; nuove: RigaMem[] } | { tipo: "delete" } = { tipo: "select" };
       const esegui = () => {
         if (fermo) throw new Error("processo fermo (guasto simulato)");
-        if (operazione.tipo === "select") return esegui0();
+        if (operazione.tipo === "select") {
+          richiesteLettura++;
+          if (guastoLetturaAlla !== null && richiesteLettura === guastoLetturaAlla) return { data: null, error: { message: `guasto simulato: lettura ${richiesteLettura} non riuscita (${nome})` } };
+          return esegui0();
+        }
         richiesteScrittura++;
         const guasto = guastoAlla !== null && richiesteScrittura === guastoAlla;
         if (guasto && modoGuasto === "errore") return { data: null, error: { message: `guasto simulato: scrittura ${richiesteScrittura} non riuscita (${nome})` } };
@@ -203,7 +210,10 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
         delete: () => ((operazione = { tipo: "delete" }), q),
         upsert: (nuove: RigaMem | RigaMem[], o: { onConflict: string; ignoreDuplicates?: boolean }) => ((operazione = { tipo: "upsert", nuove: Array.isArray(nuove) ? nuove : [nuove], chiavi: o.onConflict.split(","), ignora: !!o.ignoreDuplicates }), q),
         returns: () => q,
-        maybeSingle: () => Promise.resolve({ data: (esegui().data as RigaMem[] | null)?.[0] ?? null, error: null }),
+        maybeSingle: () => {
+          const r = esegui();
+          return Promise.resolve({ data: (r.data as RigaMem[] | null)?.[0] ?? null, error: r.error ?? null });
+        },
         then: (ok: (v: { data: unknown; error: { message: string; code?: string } | null }) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve(esegui()).then(ok, ko),
       };
       return q;
@@ -218,6 +228,11 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
     scritture: () => ({ ...scritture }),
     // richieste di scrittura fatte finora; guasto(n, modo): la n-esima richiesta di scrittura da adesso si interrompe (null = nessun guasto)
     richiesteScrittura: () => richiesteScrittura,
+    // letture fatte finora; guastoLettura(n): la n-esima lettura da adesso torna con un errore (null = nessun guasto)
+    richiesteLettura: () => richiesteLettura,
+    guastoLettura: (n: number | null) => {
+      guastoLetturaAlla = n === null ? null : richiesteLettura + n;
+    },
     guasto: (n: number | null, modo: "prima" | "dopo" | "errore" = "prima") => {
       guastoAlla = n === null ? null : richiesteScrittura + n;
       modoGuasto = modo;

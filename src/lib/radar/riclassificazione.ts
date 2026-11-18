@@ -231,34 +231,41 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
     }
     if ((data ?? []).length === 0) {
       // già rimessa da un annullamento interrotto (si completa la traccia, senza doppioni), oppure cambiata da altri (non si tocca)
-      const { data: ora } = await db.from("radar_procedure").select("settori, metodo_settore").eq("id", t.procedura_id).maybeSingle<{ settori: string[] | null; metodo_settore: string | null }>();
+      const { data: ora, error: eOra } = await db.from("radar_procedure").select("settori, metodo_settore").eq("id", t.procedura_id).maybeSingle<{ settori: string[] | null; metodo_settore: string | null }>();
       misure.richiesteDb++;
+      // pacchetto 16, punto 5: un errore di lettura ferma l'annullamento (si rilancia lo stesso comando, che è sicuro)
+      if (eOra) throw new Error(`colonna della gara ${t.procedura_id}: ${eOra.message}`);
       if (!ora || !stessiSettoriColonna(ora.settori, prima.settori) || (ora.metodo_settore ?? null) !== (prima.metodo ?? null)) {
         esito.colonnaGiaCambiata++;
         continue;
       }
     }
-    await db.from("radar_aggiornamenti").upsert(
+    const { error: eTraccia } = await db.from("radar_aggiornamenti").upsert(
       { procedura_id: t.procedura_id, tipo: "correzione_dati", campo: "settori_ripristinati", valore_precedente: t.valore_nuovo, valore_nuovo: t.valore_precedente, fonte: FONTE_REGISTRO, id_fonte: `annullato:${t.id_fonte}`.slice(0, 200), nota: "Correzione dei settori annullata: rimessi i settori di prima", notificabile: false },
       { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true },
     );
     misure.richiesteDb++;
+    // pacchetto 16, punto 5: senza la traccia l'annullamento è incompleto e va segnalato (rilanciandolo, la traccia si completa)
+    if (eTraccia) esito.errori++;
     esito.colonnaRipristinata++;
   }
 
   // 2) righe: si chiudono quelle dell'esecuzione; le righe che l'esecuzione aveva chiuso tornano come copie nuove
   const attiveOra = new Map<string, RigaClassificazione[]>();
   for (const b of blocchi(gare, 100)) {
-    const { data } = await db.from("radar_classificazioni").select("*").in("procedura_id", b).eq("attiva", true).returns<RigaClassificazione[]>();
+    const { data, error: eAttive } = await db.from("radar_classificazioni").select("*").in("procedura_id", b).eq("attiva", true).returns<RigaClassificazione[]>();
     misure.richiesteDb++;
+    if (eAttive) throw new Error(`classificazioni attive: ${eAttive.message}`);
     for (const r of data ?? []) attiveOra.set(r.procedura_id, [...(attiveOra.get(r.procedura_id) ?? []), r]);
   }
   // righe dell'esecuzione GIÀ chiuse (da un annullamento interrotto): la copia da riportare riusa l'id che avevano indicato
-  const { data: chiuseProprie } = await db.from("radar_classificazioni").select("id, procedura_id, settore, sostituita_da").eq("autore", autore).eq("attiva", false).returns<{ id: string; procedura_id: string; settore: string; sostituita_da: string | null }[]>();
+  const { data: chiuseProprie, error: eChiuse } = await db.from("radar_classificazioni").select("id, procedura_id, settore, sostituita_da").eq("autore", autore).eq("attiva", false).returns<{ id: string; procedura_id: string; settore: string; sostituita_da: string | null }[]>();
   misure.richiesteDb++;
+  if (eChiuse) throw new Error(`classificazioni già chiuse dall'esecuzione: ${eChiuse.message}`);
   // copie già riportate da QUESTO annullamento (la nota lo dice): non si riportano mai una seconda volta, anche se poi qualcuno le ha chiuse
-  const { data: copieFatte } = await db.from("radar_classificazioni").select("procedura_id, settore").like("nota", `%(annullata l'esecuzione ${esecuzione}).`).returns<{ procedura_id: string; settore: string }[]>();
+  const { data: copieFatte, error: eCopie } = await db.from("radar_classificazioni").select("procedura_id, settore").like("nota", `%(annullata l'esecuzione ${esecuzione}).`).returns<{ procedura_id: string; settore: string }[]>();
   misure.richiesteDb++;
+  if (eCopie) throw new Error(`copie già riportate: ${eCopie.message}`);
   const giaRiportate = new Set((copieFatte ?? []).map((r) => `${r.procedura_id}|${r.settore}`));
   // la copia conserva l'autore della riga di prima (così annullare anche quell'esecuzione la chiude); la nota dice che è un ripristino
   const copia = (r: RigaClassificazione, id?: string | null): RigaClassificazione => ({
@@ -308,8 +315,9 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
   //    pertinente». Ripetere (anche dopo un'interruzione) non scrive più nulla: lo stato non è più quello dell'esecuzione
   const daRimettere: string[] = [];
   for (const b of blocchi(gare, 100)) {
-    const { data } = await db.from("radar_classificazioni_stato").select("procedura_id, stato, classificata_il").in("procedura_id", b).returns<{ procedura_id: string; stato: string; classificata_il: string | null }[]>();
+    const { data, error: eStati } = await db.from("radar_classificazioni_stato").select("procedura_id, stato, classificata_il").in("procedura_id", b).returns<{ procedura_id: string; stato: string; classificata_il: string | null }[]>();
     misure.richiesteDb++;
+    if (eStati) throw new Error(`stato delle classificazioni: ${eStati.message}`);
     for (const s of data ?? []) if (s.stato === "classificata" && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(istante)) daRimettere.push(s.procedura_id);
   }
   for (const b of blocchi(daRimettere, 200)) {

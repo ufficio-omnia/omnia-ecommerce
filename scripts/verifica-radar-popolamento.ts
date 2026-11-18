@@ -629,6 +629,64 @@ async function principale() {
       uguale(`H. annullamento (${nome}) fermato a OGNI scrittura (${W}) e ripetuto: stesso stato, nessuna copia doppia, nessun riferimento appeso`, diversi, []);
     }
 
+    // pacchetto 16, punto 5: ERRORE RESTITUITO (rete giù: supabase-js torna con un errore, il processo continua) a ogni SCRITTURA e a ogni
+    // LETTURA di due annullamenti in catena. Ogni guasto va SEGNALATO (eccezione o «errori» > 0); rilanciare lo stesso comando arriva allo
+    // stato giusto; nessuna copia riportata due volte; nessuna gara «classificata» senza righe attive
+    {
+      const catena = [idEsecuzione(isoB), idEsecuzione(isoA)];
+      const comando = async (m: MemH, e: string) => {
+        try {
+          return (await annullaEsecuzione(m.client, e, 50, misure(), "2026-11-18T11:00:00.000Z", () => `c-${Math.random()}`)).errori > 0;
+        } catch {
+          return true;
+        }
+      };
+      const copieDoppie = (m: MemH) => {
+        const k = m.tabelle.radar_classificazioni.filter((r) => String(r.nota ?? "").includes("(annullata l'esecuzione")).map((r) => `${r.procedura_id}|${r.settore}|${String(r.nota)}`);
+        return k.length - new Set(k).size;
+      };
+      const classificateSenzaRighe = (m: MemH) => m.tabelle.radar_classificazioni_stato.filter((s) => s.stato === "classificata" && !m.tabelle.radar_classificazioni.some((r) => r.attiva && r.procedura_id === s.procedura_id)).length;
+      const rif = databaseInMemoria(archivio(), { fonti: "0121" });
+      await prepara(rif);
+      const w0 = rif.richiesteScrittura();
+      const r0 = rif.richiesteLettura();
+      for (const e of catena) await comando(rif, e);
+      const W = rif.richiesteScrittura() - w0;
+      const R = rif.richiesteLettura() - r0;
+      const fotoRif = fotoA(rif);
+      const casi: { tipo: "scrittura" | "lettura"; k: number }[] = [...Array.from({ length: W }, (_, i) => ({ tipo: "scrittura" as const, k: i + 1 })), ...Array.from({ length: R }, (_, i) => ({ tipo: "lettura" as const, k: i + 1 }))];
+      const nonSegnalati: string[] = [];
+      const diversi: string[] = [];
+      let rilanci = 0;
+      for (const c of casi) {
+        const m = databaseInMemoria(archivio(), { fonti: "0121" });
+        await prepara(m);
+        if (c.tipo === "scrittura") m.guasto(c.k, "errore");
+        else m.guastoLettura(c.k);
+        let segnalato = false;
+        for (const e of catena) {
+          // lo stesso comando si rilancia finché non è completo (al massimo 3 volte)
+          for (let tentativo = 0; tentativo < 3; tentativo++) {
+            const incompleto = await comando(m, e);
+            if (!incompleto) break;
+            segnalato = true;
+            rilanci++;
+            m.guasto(null);
+            m.guastoLettura(null);
+          }
+        }
+        if (!segnalato) nonSegnalati.push(`${c.tipo}@${c.k}`);
+        if (fotoA(m) !== fotoRif || doppie(m) > 0 || appese(m) > 0 || copieDoppie(m) > 0 || classificateSenzaRighe(m) > 0) diversi.push(`${c.tipo}@${c.k}`);
+      }
+      uguale(`H. annullamento, ERRORE RESTITUITO a ogni scrittura (${W}) e a ogni lettura (${R}) di due annullamenti in catena: ogni guasto è SEGNALATO (eccezione o errori > 0)`, nonSegnalati, []);
+      uguale(`H. annullamento con errore restituito: rilanciando lo stesso comando (${rilanci} rilanci) si arriva allo stato giusto; nessuna copia riportata due volte; nessuna gara «classificata» senza righe attive`, diversi, []);
+      uguale("H. riferimento: due annullamenti in catena senza guasti, nessuna copia doppia e nessuna gara «classificata» senza righe", [copieDoppie(rif), classificateSenzaRighe(rif)], [0, 0]);
+    }
+    const scriptAnnulla = leggi("scripts/radar-riclassifica-settori.ts");
+    atteso("H. script: un annullamento con errori o interrotto da un'eccezione esce con un codice di errore e «ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando»", /if \(esitoAnnulla\.errori > 0\) \{\s*console\.error\(`\$\{INCOMPLETO\}[^`]*`\);\s*process\.exit\(1\);/.test(scriptAnnulla) && /console\.error\(`\$\{INCOMPLETO\} \(\$\{e instanceof Error \? e\.message : String\(e\)\}\)\.`\);\s*process\.exit\(1\);/.test(scriptAnnulla) && scriptAnnulla.includes('const INCOMPLETO = "ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando"'));
+    const annLib = leggi("src/lib/radar/riclassificazione.ts").slice(leggi("src/lib/radar/riclassificazione.ts").indexOf("export async function annullaEsecuzione"));
+    atteso("H. annullamento: nessuna lettura con l'errore ignorato (ogni «.select(» controlla il suo errore) e l'errore della traccia si conta", (annLib.match(/\.select\(/g) ?? []).length === (annLib.match(/if \((e\w*|error)\) throw new/g) ?? []).length + (annLib.match(/\.update\([^)]*\)[^;]*\.select\("id"\)/g) ?? []).length && annLib.includes("if (eTraccia) esito.errori++;"));
+
     const s = leggi("scripts/radar-riclassifica-settori.ts");
     atteso("H. script: il diario è obbligatorio per «applica», si salva PRIMA di ogni scrittura (file temporaneo e rinomina) e la ripresa lo rilegge", s.includes('const fileDiario = opzione("--diario")') && s.indexOf("fs.renameSync(`${fileDiario}.tmp`, fileDiario)") > 0 && s.indexOf("fs.renameSync(`${fileDiario}.tmp`, fileDiario)") < s.indexOf("await applicaPiani(db, diario.piani") && s.includes("RIPRESA dell'esecuzione"));
   }
