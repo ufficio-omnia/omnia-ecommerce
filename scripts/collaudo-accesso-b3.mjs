@@ -1,39 +1,51 @@
 // Collaudo CON ACCESSO della fase B3 (interfaccia di Tender Intelligence) sullo STAGING. Scrive sullo staging (sessioni, presenza, utilizzi,
 // salvataggi di prova): parte SOLO con un'autorizzazione registrata del coordinatore (tipo «scrittura_prova», 1 uso), lanciato da
-// esegui-autorizzato.mjs dalla cartella dell'integrazione.
+// esegui-autorizzato.mjs dalla cartella dell'anteprima.
 //
-//   node scripts/collaudo-accesso-b3.mjs <file delle variabili> <porta>
+//   node scripts/collaudo-accesso-b3.mjs <file delle variabili> <porta>   → la finestra del collaudo (solo con autorizzazione registrata)
+//   node scripts/collaudo-accesso-b3.mjs --preliminare <porta>            → controllo PRELIMINARE: solo la pagina /pronto; nessuna
+//                                                                           autorizzazione, nessun file delle variabili, nessuna rete
 //
-// In ordine, e fermandosi al primo problema PRIMA di qualunque rete:
+// Finestra del collaudo, in ordine, fermandosi al primo problema PRIMA di qualunque rete:
 //   1. porta delle autorizzazioni: TI_REGISTRO e controllaPorta (registro del coordinatore);
 //   2. guardia: file delle variabili FUORI dal repository; Supabase = SOLO lo staging (URL esatto, chiavi nel formato dello staging, nessun
 //      identificativo di produzione né chiave «live» in nessuna variabile); lanciatore dell'anteprima presente;
-//   3. collegamenti d'accesso generati LATO SERVER (generate_link, come il 17/11) per i SOLI utenti di prova dell'elenco, tenuti SOLO IN
-//      MEMORIA: nessun file, nulla a schermo, nulla nei log (condizione 7 dell'utente del 18/11);
-//   4. server di REINDIRIZZAMENTO solo su 127.0.0.1, porta dell'app + 1: /accesso/ti-admin, /accesso/ti-titolare, /accesso/ti-titolare2
-//      rispondono UNA volta con un 302 al collegamento vero, poi 410; ogni altro percorso 404. Così chi apre il collegamento nel browser naviga
-//      a http://127.0.0.1:<porta+1>/accesso/<utente> e il token non compare mai negli strumenti né nelle trascrizioni;
-//   5. avvio del server come la Preview: scripts/avvia-anteprima-locale.mjs avvia <file> <porta> (ambiente pulito, guardia, next start solo su
-//      127.0.0.1);
-//   6. allo spegnimento dell'app si chiude anche il reindirizzamento e i collegamenti si dimenticano (anche in caso di errore o interruzione).
+//   3. server d'ACCESSO solo sul loopback, con il nome «localhost» (porta dell'app + 1), SENZA alcun collegamento: GET /pronto mostra lo
+//      stato e un pulsante per utente;
+//   4. avvio dell'app come la Preview: scripts/avvia-anteprima-locale.mjs avvia <file> <porta> (ambiente pulito, guardia, next start solo
+//      su «localhost»);
+//   5. SOLO quando chi collauda, nel browser visibile e già verificato su /pronto, preme «Entra come …»: POST /accesso/<utente> con il
+//      codice della pagina, l'origine e l'host giusti. Il server genera il collegamento di QUELL'utente (generate_link), lo verifica subito
+//      LATO SERVER con la stessa libreria dell'app (@supabase/ssr, verifyOtp) e risponde 303 verso l'app impostando il cookie di sessione
+//      per «localhost» (i cookie valgono per l'host su tutte le porte). Il token non compare mai in un indirizzo, quindi né nella
+//      cronologia del browser né nei Referer, e mai a schermo, nei log o su disco (condizione 7 dell'utente del 18/11). Un solo tentativo
+//      per utente (poi 410): un rifiuto del browser PRIMA del pulsante non consuma nulla;
+//   6. allo spegnimento dell'app si chiude anche il server d'accesso (anche in caso di errore o interruzione).
+//
+// Perché «localhost» e mai l'indirizzo numerico di loopback: con quello Next tratta come esterni i riscritti di zona del proxy e la console
+// va in ciclo di reindirizzamenti (diagnosi delle 118 richieste del 18/11; lanciatore dell'anteprima corretto di conseguenza).
 // Nessuna password, mai. Le prove di questo script sono solo a secco (verifica-radar-b3-interfaccia.ts), mai contro lo staging.
 import { spawn } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createServerClient } from "@supabase/ssr";
 
 export const NOME_SCRIPT = "collaudo-accesso-b3.mjs";
 export const STAGING_REF = "ryawdldqiumqsskrnyps";
 export const STAGING_URL = `https://${STAGING_REF}.supabase.co`;
-export const SOLO_LOCALE = "127.0.0.1";
+export const SOLO_LOCALE = "localhost";
+export const COOKIE_SESSIONE = `sb-${STAGING_REF}-auth-token`;
 const PRODUZIONE_REF = "bihfrzspqxsrzlbqqvqa";
+const INDIRIZZI_LOOPBACK = new Set(["::1", "127.0.0.1"]);
 
-// Gli unici utenti del collaudo (piano del resoconto 18, §11.1): amministratore per la console, titolari di due imprese DIVERSE.
+// Gli unici utenti del collaudo (documento 20, §2): amministratore per la console, titolari di due imprese DIVERSE.
 export const UTENTI_COLLAUDO = [
-  { email: "ti-admin@prova.test", zona: "console" },
-  { email: "ti-titolare@prova.test", zona: "omnia-ai" },
-  { email: "ti-titolare2@prova.test", zona: "omnia-ai" },
+  { email: "ti-admin@prova.test", zona: "console", arrivo: "/" },
+  { email: "ti-titolare@prova.test", zona: "omnia-ai", arrivo: "/dashboard/omnia-ai/opportunita/cerca" },
+  { email: "ti-titolare2@prova.test", zona: "omnia-ai", arrivo: "/dashboard/omnia-ai/opportunita/cerca" },
 ];
 
 export class Fermo extends Error {}
@@ -71,87 +83,217 @@ export function dentro(file, cartella) {
   return f === c || f.startsWith(c + path.sep);
 }
 
-/** Il collegamento vero (solo in memoria): sempre http://127.0.0.1:<porta>, come il server dell'app. */
-export function collegamento(porta, zona, tokenHash) {
-  const t = encodeURIComponent(tokenHash);
-  return zona === "console"
-    ? `http://${SOLO_LOCALE}:${porta}/auth/conferma?token_hash=${t}&__zone=console`
-    : `http://${SOLO_LOCALE}:${porta}/attiva-account?type=email&next=/dashboard/omnia-ai/opportunita/cerca&token_hash=${t}&__zone=omnia-ai`;
-}
+export const nomeUtente = (email) => email.split("@")[0];
 
-/** Il percorso di reindirizzamento di un utente: /accesso/<parte prima della chiocciola>. */
-export function percorsoAccesso(email) {
-  return `/accesso/${email.split("@")[0]}`;
-}
+/** Il percorso d'accesso di un utente: POST /accesso/<parte prima della chiocciola>. */
+export const percorsoAccesso = (email) => `/accesso/${nomeUtente(email)}`;
 
-/** Un collegamento d'accesso per ogni utente dell'elenco (solo @prova.test), lato server con la chiave di servizio dello staging. */
-export async function generaCollegamenti({ variabili, porta, utenti = UTENTI_COLLAUDO, fetchFn = fetch }) {
-  const out = [];
-  for (const u of utenti) {
-    if (!/@prova\.test$/.test(u.email)) throw new Fermo("solo utenti di prova @prova.test");
-    const risposta = await fetchFn(`${STAGING_URL}/auth/v1/admin/generate_link`, {
-      method: "POST",
-      headers: { apikey: variabili.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${variabili.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "magiclink", email: u.email }),
-    });
-    if (!risposta.ok) throw new Fermo(`collegamento per ${u.email} non generato (risposta ${risposta.status})`);
-    const d = await risposta.json();
-    const hash = d?.hashed_token ?? d?.properties?.hashed_token;
-    if (!hash) throw new Fermo(`collegamento per ${u.email} non generato (risposta senza token)`);
-    out.push({ email: u.email, zona: u.zona, percorso: percorsoAccesso(u.email), collegamento: collegamento(porta, u.zona, hash) });
-  }
-  return out;
+/** Dove arriva il browser dopo l'accesso: l'app su localhost, con la zona scelta da ?__zone. Nessun token. */
+export const indirizzoArrivo = (porta, utente) => `http://${SOLO_LOCALE}:${porta}${utente.arrivo}?__zone=${utente.zona}`;
+
+/** Collegamento d'accesso di UN utente di prova (generate_link, lato server, chiave dello staging). Solo l'hash del token, in memoria. */
+export async function generaCollegamento({ variabili, email, fetchFn = fetch }) {
+  if (!/@prova\.test$/.test(email)) throw new Fermo("solo utenti di prova @prova.test");
+  const risposta = await fetchFn(`${STAGING_URL}/auth/v1/admin/generate_link`, {
+    method: "POST",
+    headers: { apikey: variabili.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${variabili.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "magiclink", email }),
+  });
+  if (!risposta.ok) throw new Fermo(`collegamento per ${email} non generato (risposta ${risposta.status})`);
+  const d = await risposta.json();
+  const hash = d?.hashed_token ?? d?.properties?.hashed_token;
+  if (!hash) throw new Fermo(`collegamento per ${email} non generato (risposta senza token)`);
+  return hash;
 }
 
 /**
- * Il server di reindirizzamento (non ancora in ascolto). Ogni percorso dell'elenco risponde UNA volta con 302 al collegamento vero, poi
- * 410; gli altri percorsi 404; solo GET. Nessun registro, nessuna cache, nessun referer. I collegamenti restano solo in questa mappa e si
- * cancellano appena serviti.
+ * Verifica il token LATO SERVER con la stessa libreria e la stessa versione dell'app (@supabase/ssr, verifyOtp come la conferma della
+ * console) e restituisce i cookie di sessione che l'app leggerà: stesso nome, stessa codifica, stessa suddivisione in parti.
  */
-export function serverReindirizzamento(collegamenti) {
-  const daServire = new Map(collegamenti.map((c) => [c.percorso, c.collegamento]));
-  const noti = new Set(daServire.keys());
-  const intestazioni = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff" };
-  const server = http.createServer((richiesta, risposta) => {
-    const percorso = (richiesta.url ?? "").split("?")[0];
-    if (richiesta.method !== "GET") {
-      risposta.writeHead(405, intestazioni);
-      risposta.end();
-      return;
-    }
-    const destinazione = daServire.get(percorso);
-    if (destinazione) {
-      daServire.delete(percorso);
-      risposta.writeHead(302, { ...intestazioni, Location: destinazione });
-      risposta.end();
-      return;
-    }
-    risposta.writeHead(noti.has(percorso) ? 410 : 404, { ...intestazioni, "Content-Type": "text/plain; charset=utf-8" });
-    risposta.end(noti.has(percorso) ? "Collegamento già usato: generane uno nuovo con una nuova autorizzazione." : "Non trovato.");
+export async function cookieDiSessione({ variabili, tokenHash, fetchFn = fetch }) {
+  const impostati = [];
+  const supabase = createServerClient(STAGING_URL, variabili.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    cookies: { getAll: () => [], setAll: (lista) => void impostati.push(...lista) },
+    global: { fetch: fetchFn },
   });
-  server.dimentica = () => daServire.clear();
+  const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
+  if (error || !data?.session) throw new Fermo(`verifica dell'accesso non riuscita (${error?.code ?? error?.status ?? "nessuna sessione"})`);
+  const cookie = impostati.filter((c) => (c.name === COOKIE_SESSIONE || c.name.startsWith(`${COOKIE_SESSIONE}.`)) && c.value);
+  if (!cookie.length) throw new Fermo("verifica riuscita ma nessun cookie di sessione prodotto");
+  return cookie;
+}
+
+/** Set-Cookie per «localhost»: mai Domain (vale solo per l'host), Path, Max-Age e SameSite come li dà la libreria. Solo caratteri sicuri. */
+export function intestazioneCookie({ name, value, options = {} }) {
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || !/^[A-Za-z0-9._~-]*$/.test(value)) throw new Fermo("cookie di sessione in un formato inatteso");
+  const parti = [`${name}=${value}`, `Path=${options.path ?? "/"}`];
+  if (options.maxAge !== undefined) parti.push(`Max-Age=${Math.floor(options.maxAge)}`);
+  if (options.expires) parti.push(`Expires=${new Date(options.expires).toUTCString()}`);
+  const stesso = options.sameSite === true ? "strict" : options.sameSite;
+  if (stesso) parti.push(`SameSite=${String(stesso)[0].toUpperCase()}${String(stesso).slice(1).toLowerCase()}`);
+  if (options.httpOnly) parti.push("HttpOnly");
+  if (options.secure) parti.push("Secure");
+  return parti.join("; ");
+}
+
+const nomiCookie = (intestazione) =>
+  String(intestazione ?? "")
+    .split(";")
+    .map((p) => p.trim().split("=")[0])
+    .filter(Boolean);
+
+const uguali = (a, b) => {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+function leggiCorpo(richiesta, massimo) {
+  return new Promise((risolvi, rifiuta) => {
+    let corpo = "";
+    richiesta.setEncoding("utf8");
+    richiesta.on("data", (d) => {
+      corpo += d;
+      if (corpo.length > massimo) {
+        rifiuta(new Fermo("richiesta troppo grande"));
+        richiesta.destroy();
+      }
+    });
+    richiesta.on("end", () => risolvi(corpo));
+    richiesta.on("error", rifiuta);
+  });
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function paginaPronto({ portaApp, preliminare, codice, usati }) {
+  const app = `http://${SOLO_LOCALE}:${portaApp}`;
+  const righe = UTENTI_COLLAUDO.map((u) => {
+    const p = percorsoAccesso(u.email);
+    const usato = usati.has(p);
+    return `<li><form method="post" action="${p}"><input type="hidden" name="via" value="${escapeHtml(codice)}"><button type="submit"${preliminare || usato ? " disabled" : ""}>Entra come ${escapeHtml(nomeUtente(u.email))} (${u.zona === "console" ? "console" : "OMNIA AI"})</button> <span>${usato ? "già usato" : preliminare ? "bloccato" : "da usare, una volta"}</span></form></li>`;
+  }).join("");
+  const stato = preliminare
+    ? "MODALITÀ PRELIMINARE: nessun collegamento può essere generato e nessuna richiesta esce da questo computer."
+    : "Finestra aperta. Nessun collegamento è stato generato: ognuno nasce solo quando premi il pulsante del suo utente.";
+  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Collaudo B3 · pronto</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;background:#fff;color:#111}main{max-width:640px;margin:0 auto}h1{font-size:1.4rem}p.stato{padding:12px;border-radius:8px;background:${preliminare ? "#fff4d6" : "#e6f4ea"}}ul{list-style:none;padding:0}li{margin:12px 0}button{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid #444;background:#f4f4f4;cursor:pointer;max-width:100%}button[disabled]{opacity:.55;cursor:not-allowed}span{color:#555;font-size:.9rem}</style></head><body><main><h1>Collaudo B3 — pronto</h1><p class="stato">${stato}</p><p>App: <a href="${app}/login?__zone=omnia-ai">${app}</a> (solo su questo computer). Questa pagina non contiene token e non ne genera da sola.</p><ul>${righe}</ul></main></body></html>`;
+}
+
+/**
+ * Il server d'accesso (non ancora in ascolto). GET /pronto: la pagina senza token. POST /accesso/<utente> con codice della pagina, origine
+ * e host di questo server: accedi(utente) → cookie di sessione → 303 verso l'app. Ogni altro metodo 405, ogni altro percorso 404, host
+ * estranei 403. Nessun registro, nessuna cache, nessun referer.
+ */
+export function serverAccesso({ portaApp, preliminare = false, accedi }) {
+  const codice = randomBytes(24).toString("base64url");
+  const usati = new Set();
+  const utenti = new Map(UTENTI_COLLAUDO.map((u) => [percorsoAccesso(u.email), u]));
+  const base = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY" };
+  const server = http.createServer(async (richiesta, risposta) => {
+    const testo = (stato, messaggio, extra = {}) => {
+      risposta.writeHead(stato, { ...base, "Content-Type": "text/plain; charset=utf-8", ...extra });
+      risposta.end(messaggio);
+    };
+    const porta = server.address()?.port;
+    const proprio = `http://${SOLO_LOCALE}:${porta}`;
+    if (richiesta.headers.host !== `${SOLO_LOCALE}:${porta}`) return testo(403, `Host non ammesso: aprire questa pagina come ${proprio}`);
+    const percorso = (richiesta.url ?? "").split("?")[0];
+    if (percorso === "/pronto") {
+      if (richiesta.method !== "GET") return testo(405, "Solo GET.", { Allow: "GET" });
+      risposta.writeHead(200, {
+        ...base,
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' http://${SOLO_LOCALE}:${portaApp}; frame-ancestors 'none'; base-uri 'none'`,
+      });
+      risposta.end(paginaPronto({ portaApp, preliminare, codice, usati }));
+      return;
+    }
+    const utente = utenti.get(percorso);
+    if (!utente) return testo(404, "Non trovato.");
+    if (richiesta.method !== "POST") return testo(405, "Si entra solo con il pulsante della pagina /pronto.", { Allow: "POST" });
+    if (richiesta.headers.origin !== proprio) return testo(403, "Origine non ammessa.");
+    let via = "";
+    try {
+      via = new URLSearchParams(await leggiCorpo(richiesta, 2048)).get("via") ?? "";
+    } catch {
+      return testo(413, "Richiesta troppo grande.");
+    }
+    if (!uguali(via, codice)) return testo(403, "Codice della pagina non valido: riaprire /pronto.");
+    if (preliminare) return testo(409, "Modalità preliminare: nessun collegamento viene generato.");
+    if (usati.has(percorso)) return testo(410, "Accesso già usato per questo utente: ne serve uno nuovo con una nuova autorizzazione.");
+    usati.add(percorso);
+    try {
+      const cookie = await accedi(utente);
+      const nuovi = new Set(cookie.map((c) => c.name));
+      const vecchi = nomiCookie(richiesta.headers.cookie).filter((n) => (n === COOKIE_SESSIONE || n.startsWith(`${COOKIE_SESSIONE}.`)) && !nuovi.has(n));
+      risposta.writeHead(303, {
+        ...base,
+        Location: indirizzoArrivo(portaApp, utente),
+        "Set-Cookie": [...cookie.map(intestazioneCookie), ...vecchi.map((n) => `${n}=; Path=/; Max-Age=0; SameSite=Lax`)],
+      });
+      risposta.end();
+      console.log(`Accesso di ${nomeUtente(utente.email)}: sessione impostata nel browser (nessun collegamento in un indirizzo).`);
+    } catch (e) {
+      console.log(`Accesso di ${nomeUtente(utente.email)} NON riuscito: ${e instanceof Fermo ? e.message : "errore inatteso"}.`);
+      testo(502, `Accesso non riuscito per ${nomeUtente(utente.email)}: nessun altro tentativo per questo utente senza una nuova autorizzazione.`);
+    }
+  });
   return server;
 }
 
-/** In ascolto SOLO su 127.0.0.1. */
+/** In ascolto SOLO sul loopback, con il nome «localhost»; se l'indirizzo risolto non è di loopback si chiude e si ferma. */
 export function ascoltaSoloLocale(server, porta) {
   return new Promise((risolvi, rifiuta) => {
     server.once("error", rifiuta);
-    server.listen(porta, SOLO_LOCALE, () => risolvi(server.address()));
+    server.listen(porta, SOLO_LOCALE, () => {
+      const indirizzo = server.address();
+      if (!INDIRIZZI_LOOPBACK.has(indirizzo.address)) {
+        server.close();
+        rifiuta(new Fermo("«localhost» non risolve sul loopback: avvio annullato"));
+        return;
+      }
+      risolvi(indirizzo);
+    });
   });
 }
 
 export function chiudi(server) {
   return new Promise((risolvi) => {
-    server.dimentica?.();
     if (!server.listening) return risolvi();
     server.close(() => risolvi());
     server.closeAllConnections?.();
   });
 }
 
-/** Il collaudo. Iniettabili per le prove a secco: controllaPorta, fetchFn, avvia (al posto del server dell'app), cartella, portaRinvio. */
+/** Controllo preliminare: solo /pronto, con i pulsanti bloccati. Nessuna autorizzazione, nessun file, nessuna rete. */
+async function preliminare(argv, opzioni) {
+  const [porta = "3110"] = argv;
+  if (!/^\d{4,5}$/.test(porta)) throw new Fermo("porta non valida");
+  const server = serverAccesso({
+    portaApp: porta,
+    preliminare: true,
+    accedi: async () => {
+      throw new Fermo("modalità preliminare");
+    },
+  });
+  try {
+    const indirizzo = await ascoltaSoloLocale(server, opzioni.portaAccesso ?? Number(porta) + 1);
+    console.log(`Controllo PRELIMINARE: http://${SOLO_LOCALE}:${indirizzo.port}/pronto — nessuna autorizzazione, nessun file delle variabili, nessuna rete, nessun collegamento. Ctrl+C per chiudere.`);
+    await (opzioni.attendi
+      ? opzioni.attendi({ portaAccesso: indirizzo.port })
+      : new Promise((risolvi) => {
+          for (const segnale of ["SIGINT", "SIGTERM"]) process.once(segnale, risolvi);
+        }));
+    return 0;
+  } finally {
+    await chiudi(server);
+    console.log("Pagina d'accesso chiusa.");
+  }
+}
+
+/** Il collaudo. Iniettabili per le prove a secco: controllaPorta, fetchFn, avvia (al posto del server dell'app), attendi, cartella, portaAccesso. */
 export async function collaudo(argv, env, opzioni = {}) {
+  if (argv[0] === "--preliminare") return preliminare(argv.slice(1), opzioni);
   const cartella = opzioni.cartella ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const [fileVariabili, porta = "3110"] = argv;
 
@@ -177,17 +319,19 @@ export async function collaudo(argv, env, opzioni = {}) {
   if (errori.length) throw new Fermo(`ambiente non autorizzato: ${errori.join("; ")}`);
   const lanciatore = path.join(cartella, "scripts", "avvia-anteprima-locale.mjs");
   if (!opzioni.avvia && !fs.existsSync(lanciatore)) throw new Fermo("manca scripts/avvia-anteprima-locale.mjs (i commit d'anteprima vanno integrati prima)");
-  const portaRinvio = opzioni.portaRinvio ?? Number(porta) + 1;
+  const fetchFn = opzioni.fetchFn ?? fetch;
 
-  // 3. collegamenti (scrittura sullo staging: token monouso), SOLO in memoria
-  const collegamenti = await generaCollegamenti({ variabili, porta, fetchFn: opzioni.fetchFn ?? fetch });
+  // 3. server d'accesso SENZA collegamenti: ognuno nasce solo dal pulsante del suo utente (5.)
+  const accedi = async (utente) => {
+    const tokenHash = await generaCollegamento({ variabili, email: utente.email, fetchFn });
+    return cookieDiSessione({ variabili, tokenHash, fetchFn });
+  };
+  const server = serverAccesso({ portaApp: porta, accedi });
 
-  // 4. reindirizzamento solo su 127.0.0.1; 5–6. server dell'app; alla fine si chiude tutto in ogni caso
-  const rinvio = serverReindirizzamento(collegamenti);
-  collegamenti.length = 0;
+  // 4. server dell'app; 6. alla fine si chiude tutto in ogni caso
   try {
-    const indirizzo = await ascoltaSoloLocale(rinvio, portaRinvio);
-    console.log(`Accesso degli utenti di prova (una volta sola ciascuno): ${UTENTI_COLLAUDO.map((u) => `http://${SOLO_LOCALE}:${indirizzo.port}${percorsoAccesso(u.email)}`).join("  ")}`);
+    const indirizzo = await ascoltaSoloLocale(server, opzioni.portaAccesso ?? Number(porta) + 1);
+    console.log(`Pagina del collaudo: http://${SOLO_LOCALE}:${indirizzo.port}/pronto — nessun collegamento generato: ognuno nasce solo dal pulsante del suo utente, dopo aver verificato il browser.`);
     const avvia =
       opzioni.avvia ??
       (() =>
@@ -196,10 +340,10 @@ export async function collaudo(argv, env, opzioni = {}) {
           for (const segnale of ["SIGINT", "SIGTERM"]) process.on(segnale, () => figlio.kill(segnale));
           figlio.on("exit", (codice) => risolvi(codice ?? 0));
         }));
-    return await avvia({ portaRinvio: indirizzo.port });
+    return await avvia({ portaAccesso: indirizzo.port });
   } finally {
-    await chiudi(rinvio);
-    console.log("Reindirizzamento chiuso, collegamenti dimenticati.");
+    await chiudi(server);
+    console.log("Pagina d'accesso chiusa.");
   }
 }
 
