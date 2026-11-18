@@ -107,10 +107,9 @@ export const REGOLE_PAROLE: readonly RegolaParole[] = [
     settore: "ristorazione",
     cerca: /\b(ristorazione|mensa|mense|refezione|pasti)\b/,
     // «rifiuti … di cucine e mense» (codice EER 20.01.08): caso reale di TED del 16/11/2026
+    // (i buoni pasto e il servizio sostitutivo di mensa non passano di qui: li riconosce BUONI_PASTO in classificaGara e li decidono le
+    // regole «servizio_sostitutivo_mensa» (B) e «buoni_pasto_senza_servizio» (C), decisioni dell'utente del 18/11)
     escludi: /\b(buon[oi] pasto|ticket\w*|attrezzatur\w*|arred\w*|derrat\w*|rifiut\w*)\b/,
-    // decisione dell'utente del 18/11 (ACEA Pinerolese, TED bf95cc0d): il servizio sostitutivo di mensa è un servizio, correlato alla
-    // ristorazione (B, CORRELAZIONI «servizio_sostitutivo_mensa»), anche con i buoni pasto o i badge
-    salvo: /\b(servizi?o? sostitutiv\w* (di |della |del )?mens[ae]|servizi?o? di (erogazione (dei |di )?)?buon[oi] pasto)\b/,
     esempio: "ristorazione, mensa, refezione",
   },
   {
@@ -205,7 +204,8 @@ const DI = /^(di|del|dello|della|dei|degli|delle|dell)$/;
 const MODALITA = /^(in|formula|regime|mediante|tramite|modalita)$/;
 const SERVIZIO_PURO = /^(pulizi\w*|sanificazion\w*|disinfe\w*|igiene|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|ristorazion\w*|catering|refezion\w*)$/;
 // «comprendente il servizio di …» (TED 465af5a5): come «comprensivo di»
-const TESTE_ACCESSORIE = /^(comprensiv\w*|comprendent\w*|compres\w*|inclus\w*|accessori\w*|con)$/;
+// «… e per alcune parti di igiene ambientale» (TED 85323614, decisione dell'utente del 18/11, D3): un affidamento parziale, accessorio
+const TESTE_ACCESSORIE = /^(comprensiv\w*|comprendent\w*|compres\w*|inclus\w*|accessori\w*|con|parti|parte)$/;
 const COORDINAZIONE = /^(e|ed|nonche|oltre|o|,)$/;
 const PREPOSIZIONI = /^(di|del|dello|della|dei|degli|delle|dell|a|al|allo|alla|ai|agli|alle|all|da|dal|dallo|dalla|dai|dagli|dalle|dall|in|nel|nello|nella|nei|negli|nelle|nell|su|sul|sullo|sulla|sui|sugli|sulle|sull|per|presso|tra|fra)$/;
 const ARTICOLI = /^(il|lo|la|i|gli|le|l|un|uno|una)$/;
@@ -552,8 +552,9 @@ export type RegolaEsclusione = {
   casi: readonly string[];
   condizione?: (c: ContestoCpv) => boolean;
   ancheConNucleo?: boolean;
-  // vale solo se la gara non ha un CPV del file per il settore (trovata per parola chiave): come le esclusioni delle parole chiave
-  soloSenzaCpvDelSettore?: boolean;
+  // l'esclusione non vale se l'oggetto AFFIDA (come principale o accessorio, affidamentoEsplicito) ciò che questa espressione nomina:
+  // «fornitura di badge per il servizio sostitutivo di mensa» è C, «affidamento del servizio sostitutivo di mensa mediante badge» no
+  salvoSeAffidato?: RegExp;
   // se vale anche una correlazione (gestione di una struttura, evento, finanza di progetto…), il livello è B invece di C
   cedeAlleCorrelazioni?: boolean;
 };
@@ -793,18 +794,37 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     casi: ["Servizi di lavaggio, sanificazione e stiratura per i capi di abbigliamento del personale"],
   },
   {
-    // decisione del coordinamento del 18/11 («ogni gara con una motivazione comprensibile»): la pulizia di acque e coste è igiene ambientale
-    // del territorio, non pulizia degli edifici («servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi
-    // acquei portuali e delle aree costiere», TED feb5aec8, CPV 90733100). Prima era un'esclusione delle parole chiave, senza motivo; vale
-    // negli stessi casi, cioè senza un CPV della pulizia (una gara con il CPV della pulizia resta decisa dal CPV, come prima)
+    // decisioni dell'utente del 18/11 (D4): la pulizia di acque e coste è igiene ambientale del territorio, distinta dalla pulizia di
+    // edifici, locali e strutture («servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e
+    // delle aree costiere», TED feb5aec8). «Un CPV discordante non deve prevalere automaticamente sull'effettivo oggetto contrattuale»: vale
+    // anche con il CPV della pulizia («pulizia e disinquinamento degli specchi acquei nel porto», TED 3b0902ca, CPV 90900000). Resta pulizia
+    // se l'oggetto affida anche la pulizia di edifici, locali o strutture
     id: "acque_e_coste",
     settori: ["pulizia"],
     cerca: /\b(spiagg\w*|arenil\w*|alve\w*|specch\w* acque\w*|aree costier\w*|fondal\w*)\b/,
-    salvo: null,
+    salvo: /\b(pulizi\w*|sanificazion\w*) (dei |degli |delle |del |della |di |dell )?(locali|uffici|edifici|edificio|immobili|sedi|scuole|strutture|servizi igienici|bagni)\b/,
     ancheConNucleo: true,
-    soloSenzaCpvDelSettore: true,
-    motivo: "Pulizia di acque e coste (spiagge, arenili, alvei, specchi acquei): igiene ambientale del territorio, non pulizia degli edifici",
-    casi: ["Servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e delle aree costiere"],
+    motivo:
+      "Pulizia di acque e coste (spiagge, arenili, alvei, specchi acquei): igiene ambientale del territorio, distinta dalla pulizia di edifici, locali e strutture; il CPV della gara non prevale sull'oggetto del contratto",
+    casi: [
+      "Servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e delle aree costiere",
+      "Appalto del servizio quadriennale di pulizia e disinquinamento degli specchi acquei nel porto",
+    ],
+  },
+  {
+    // decisione dell'utente del 18/11 (D2): «C se riguarda soltanto materiali, stampa, dispositivi o badge senza il servizio sottostante».
+    // Non vale se l'oggetto affida il servizio di buoni pasto o il servizio sostitutivo di mensa (B), né per la «fornitura di buoni pasto»,
+    // che è il servizio stesso. Solo nel contesto dei buoni pasto: nessuna fornitura diventa C o ristorazione per analogia
+    id: "buoni_pasto_senza_servizio",
+    settori: ["ristorazione"],
+    cerca: new RegExp(
+      `^(?=.*${/\b(buon[oi] pasto|ticket\w*|sostitutiv\w* (di |della |del )?mens[ae])\b/.source})(?=.*${/\b(stamp\w*|tipografi\w*|(fornitur\w*|acquist\w*|noleggi\w*) (di |dei |delle |degli )?(badge\w*|tessere|card|carte|dispositiv\w*|terminal\w*|lettor\w*|pos|material\w*|blocchett\w*|carnet)|(badge\w*|tessere|terminal\w*|lettor\w*) (per|dei|delle|di))\b/.source})`,
+    ),
+    salvo: /\bfornitur\w* (dei |di |delle )?buon[oi] pasto\b/,
+    salvoSeAffidato: /\b(servizi?o? sostitutiv\w*|buon[oi] pasto|ticket restaurant)\b/,
+    ancheConNucleo: true,
+    motivo: "Solo materiali, stampa, dispositivi o badge per i buoni pasto, senza il servizio di buoni pasto o il servizio sostitutivo di mensa",
+    casi: ["Stampa di ticket per la mensa aziendale", "Fornitura di badge e terminali per il servizio sostitutivo di mensa"],
   },
   {
     // la pulizia dei cani randagi o delle gabbie non è pulizia degli ambienti (TED 8a89e9f9, canile); la pulizia dei locali dello stabulario sì
@@ -971,9 +991,11 @@ export const CORRELAZIONI: readonly RegolaCorrelazione[] = [
     // sostitutivo della mensa»: casi reali di TED)
     id: "servizio_sostitutivo_mensa",
     settori: ["ristorazione"],
-    cerca: /\b(servizi?o? sostitutiv\w* (di |della |del )?mens[ae]|buon[oi] pasto|ticket restaurant)\b/,
+    cerca: /\b(servizi?o? sostitutiv\w* (di |della |del )?mens[ae]|buon[oi] pasto|ticket (restaurant|mensa|pasto))\b/,
     salvo: /\b(servizi?o?|gestion\w*) (di |della |delle |dei |del )?(mens[ae]|ristorazion\w*|refezion\w*|bar)\b/,
-    motivo: "Servizio sostitutivo di mensa (buoni pasto): un servizio correlato alla ristorazione collettiva, non la gestione di una mensa",
+    // il CPV 30199770-8 (buoni pasto, usato anche da Consip) è un indizio, non è nel file approvato (decisione dell'utente del 18/11, D2)
+    motivo:
+      "Servizio sostitutivo di mensa o erogazione di buoni pasto (indizio anche il CPV 30199770-8, se indicato): un servizio correlato alla ristorazione collettiva, non la gestione di una mensa",
     casi: ["Procedura aperta per l'affidamento in appalto del servizio sostitutivo di mensa a favore del personale dipendente mediante l'utilizzo di badges elettronici"],
   },
   {
@@ -1054,9 +1076,9 @@ function regoleDiEsclusione(settore: SettoreRadar, t: string, contesto: Contesto
     (r) =>
       vale(r, settore) &&
       (r.ancheConNucleo || !haNucleo) &&
-      (!r.soloSenzaCpvDelSettore || contesto.delSettore.length === 0) &&
       r.cerca.test(t) &&
       !(r.salvo && r.salvo.test(t)) &&
+      !(r.salvoSeAffidato && affidamentoEsplicito(settore, r.salvoSeAffidato, t)) &&
       (!r.condizione || r.condizione(contesto)),
   );
 }
@@ -1168,7 +1190,10 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // stabulari, TED 465af5a5: pulizia da A a B; segnalato dal coordinamento il 18/11).
 // «2026-11-18c»: la pulizia di acque e coste (spiagge, arenili, alvei, specchi acquei) diventa una regola C con un motivo leggibile,
 // «acque_e_coste», invece di un'esclusione delle parole chiave senza motivo; stessi casi, stessi numeri.
-export const VERSIONE_REGOLE_SETTORI = "2026-11-18c";
+// «2026-11-18d»: decisioni dell'utente del 18/11 (pacchetto 16 aggiornato). D2: buoni pasto senza CPV del file valutati (B servizio, C
+// «buoni_pasto_senza_servizio» per soli materiali o badge, A con una mensa vera). D3: «per alcune parti di …» è accessorio. D4:
+// «acque_e_coste» vale anche con il CPV della pulizia, salvo la pulizia di edifici, locali e strutture.
+export const VERSIONE_REGOLE_SETTORI = "2026-11-18d";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
@@ -1226,6 +1251,8 @@ export function descriviCorrezioneSettori(quando: string | null, valorePrecedent
 // per parola, ma SOLO se l'oggetto le affida («concessione del servizio bar», «gestione del punto ristoro»), mai se le cita soltanto. Il
 // chiosco NO: per decisione dell'utente del 17/11 vale solo con uno dei 6 CPV di bar e ristoranti (regola del contesto).
 const PAROLE_DELLE_CONCESSIONI = /\b(bar|caffetteri\w*|ristorant\w*|punt\w* (di )?ristoro|distributor\w* automatic\w*|distribuzione automatica|vending)\b/;
+// buoni pasto e servizio sostitutivo di mensa (decisione dell'utente del 18/11, D2): la ristorazione si valuta anche senza CPV del file
+const BUONI_PASTO = /\b(buon[oi] pasto|ticket (restaurant|mensa|pasto)|ticket\w* (per (la |il )?)?mens[ae]|servizi?o? sostitutiv\w* (di |della |del )?mens[ae])\b/;
 function concessioneDiRistoro(t: string): boolean {
   return PAROLE_DELLE_CONCESSIONI.test(t);
 }
@@ -1339,6 +1366,9 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   if (!settoriParole.includes("ristorazione") && concessioneDiRistoro(t) && !(PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t)) && affidamentoEsplicito("ristorazione", paroleDelServizio("ristorazione"), dati.testo)) {
     settoriParole.push("ristorazione");
   }
+  // buoni pasto e servizio sostitutivo di mensa senza CPV del file (decisione dell'utente del 18/11, D2): la ristorazione si valuta, e
+  // decidono le regole: B se è affidato il servizio, C se solo materiali o badge, A se c'è anche una mensa vera
+  if (!settoriParole.includes("ristorazione") && BUONI_PASTO.test(t)) settoriParole.push("ristorazione");
   const affidamento = (s: SettoreRadar) => affidamentoEsplicito(s, paroleDelServizio(s), dati.testo);
   const contesto = (s: SettoreRadar): ContestoCpv => ({ principale, tutti, delSettore: voci.filter((v) => v.settore === s).map((v) => v.cpv) });
 

@@ -74,7 +74,9 @@ const casi: [string, string[]][] = [
   ["Servizio di pulizia caditoie stradali e spurgo pozzetti", []],
   ["Servizio di pulizia delle reti fognarie", []],
   ["Fornitura di prodotti per la pulizia", []],
-  ["Fornitura di buoni pasto per i dipendenti", []],
+  // decisione dell'utente del 18/11 (D2): la «fornitura di buoni pasto» è un servizio sostitutivo di mensa (B, regole di settori.ts); resta
+  // fuori dalle parole chiave e dai settori solo il caso C, materiali o stampa senza il servizio
+  ["Stampa di buoni pasto cartacei per i dipendenti", []],
   ["Fornitura di attrezzature per mense", []],
   ["Manutenzione impianti di videosorveglianza", []],
   ["Servizio di trasporto scolastico e vigilanza sullo scuolabus", []],
@@ -87,6 +89,7 @@ const casi: [string, string[]][] = [
   ["Custodia del canile comunale", []],
 ];
 for (const [testo, attesi] of casi) uguale(`parole: «${testo}»`, settoriDaParole(testo), attesi);
+uguale("buoni pasto senza il servizio (solo stampa): nessun settore anche nella classificazione (D2, caso C)", classificaGara({ testo: "Stampa di buoni pasto cartacei per i dipendenti" }).settori, []);
 
 // ───── 3. soglie UE e allegato XIV ─────
 uguale("vigilanza di edifici 98341140: NON allegato XIV", allegatoXIV("98341140-8"), "no");
