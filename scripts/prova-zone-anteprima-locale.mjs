@@ -6,6 +6,8 @@
 //                                                                 Supabase FINTO (qualche minuto)
 //   node scripts/prova-zone-anteprima-locale.mjs prova [host]   → la prova; host di default = quello del lanciatore. Esce con 1 se fallisce
 //   node scripts/prova-zone-anteprima-locale.mjs misura         → richieste a Supabase per pagina con una sessione FINTA, -H 127.0.0.1 e localhost
+//   node scripts/prova-zone-anteprima-locale.mjs servi          → server di prova acceso (Supabase finto, sessione finta su file) per
+//                                                                 misurare nel browser del pannello; registro delle chiamate su file
 //   node scripts/prova-zone-anteprima-locale.mjs pulisci        → rimuove la copia
 //
 // MAI lo staging né la produzione: la copia è compilata con NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399, un Supabase finto servito da
@@ -109,7 +111,7 @@ function copiaAggiornata() {
 
 // ───────────────────────────── Supabase finto ─────────────────────────────
 /** Risposte sintetiche: un titolare con abbonamento attivo e Radar abilitato, amministratore per la console; ogni altra lettura vuota. */
-function supabaseFinto() {
+function supabaseFinto(fileRegistro = null) {
   const registro = [];
   const UTENTE = { id: "00000000-0000-4000-8000-0000000000f1", aud: "authenticated", role: "authenticated", email: "finto@prova.test", app_metadata: { provider: "email" }, user_metadata: {}, created_at: "2026-11-18T00:00:00Z" };
   const sessione = (accesso, scadenza) => ({ access_token: accesso, token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + scadenza, refresh_token: `finto-rinnovo-${Date.now()}`, user: UTENTE });
@@ -125,11 +127,19 @@ function supabaseFinto() {
     const auth = req.headers.authorization ?? "";
     const credenziale = auth === "Bearer finto-valido" ? "sessione valida" : auth === "Bearer finto-rifiutato" ? "sessione rifiutata" : "chiave";
     registro.push({ metodo: req.method, percorso, credenziale });
+    if (fileRegistro) fs.appendFileSync(fileRegistro, `${new Date().toISOString()} ${req.method} ${percorso} ${credenziale.replace(" ", "_")}\n`);
+    // Il browser del pannello può chiamare il finto direttamente (client Supabase delle pagine): risposte con CORS aperto, solo locale.
+    const cors = { "Access-Control-Allow-Origin": req.headers.origin ?? "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, HEAD, POST, PATCH, DELETE, OPTIONS", "Access-Control-Expose-Headers": "Content-Range" };
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, cors);
+      res.end();
+      return;
+    }
     let corpo = "";
     req.on("data", (d) => (corpo += d));
     req.on("end", () => {
       const json = (stato, dati, extra = {}) => {
-        res.writeHead(stato, { "Content-Type": "application/json", ...extra });
+        res.writeHead(stato, { "Content-Type": "application/json", ...cors, ...extra });
         res.end(dati === undefined ? "" : JSON.stringify(dati));
       };
       if (percorso === "/auth/v1/user") return credenziale === "sessione valida" ? json(200, UTENTE) : json(403, { code: 403, error_code: "bad_jwt", msg: "token finto rifiutato" });
@@ -352,6 +362,32 @@ async function misura() {
   return 0;
 }
 
+// ───────────────────────────── servi ─────────────────────────────
+/** Server di prova acceso per le misure fatte con il browser del pannello (prefetch): registro delle chiamate al finto su file. */
+async function servi() {
+  const commit = copiaAggiornata();
+  const fileRegistro = path.join(os.tmpdir(), `omnia-prova-zone-supabase-${Date.now()}.log`);
+  fs.writeFileSync(fileRegistro, "");
+  const finto = supabaseFinto(fileRegistro);
+  await finto.avvia();
+  const host = hostDelLanciatore();
+  const server = await avviaServer(host);
+  const sessione = await cookieDiSessioneFinto("valido");
+  const fileSessione = path.join(os.tmpdir(), `omnia-prova-zone-sessione-finta-${Date.now()}.json`);
+  fs.writeFileSync(fileSessione, JSON.stringify([...sessione].map(([name, value]) => ({ name, value }))));
+  console.log(`Server di prova (copia di ${commit.slice(0, 7)}) su ${indirizzo(host)}, Supabase finto ${URL_FINTO}.`);
+  console.log(`Registro delle chiamate al finto: ${fileRegistro}`);
+  console.log(`Cookie della sessione FINTA (sintetica, solo per il browser del pannello): ${fileSessione}`);
+  console.log("Ctrl+C per fermare.");
+  await new Promise((ok) => {
+    for (const segnale of ["SIGINT", "SIGTERM"]) process.once(segnale, ok);
+  });
+  await server.ferma();
+  await finto.ferma();
+  fs.rmSync(fileSessione, { force: true });
+  return 0;
+}
+
 // ───────────────────────────── avvio ─────────────────────────────
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [comando, argomento] = process.argv.slice(2);
@@ -366,7 +402,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     }
     if (comando === "prova") return prova(argomento ?? hostDelLanciatore());
     if (comando === "misura") return misura();
-    throw new Fermo("comando: prepara | prova [host] | misura | pulisci");
+    if (comando === "servi") return servi();
+    throw new Fermo("comando: prepara | prova [host] | misura | servi | pulisci");
   };
   esegui()
     .then((codice) => process.exit(codice))
