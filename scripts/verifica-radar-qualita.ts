@@ -890,6 +890,11 @@ uguale(
   [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
 );
 uguale(
+  "servizio sostitutivo di mensa con buoni pasto senza CPV del file: B, non escluso dalle parole «buoni pasto»",
+  sottoLivelli(gara2b("Servizio sostitutivo di mensa mediante buoni pasto elettronici")),
+  [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
+);
+uguale(
   "fornitura di buoni pasto con il CPV della mensa: B, non C (fornitura)",
   sottoLivelli(gara2b("Fornitura di buoni pasto per i dipendenti", ["55510000"])),
   [["ristorazione", "B", ["servizi_sostitutivi_mensa"], "servizio_sostitutivo_mensa"]],
