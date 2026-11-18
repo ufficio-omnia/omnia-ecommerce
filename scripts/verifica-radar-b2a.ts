@@ -24,6 +24,9 @@ import { ATTRIBUZIONE_SINTEL } from "../src/lib/radar/fonti/sintel-calcoli";
 import { ISTANZE_AFLINK } from "../src/lib/radar/fonti/aflink-calcoli";
 import { PRECEDENZA_FONTI, unisciVersione } from "../src/lib/radar/unione-calcoli";
 import { scrittureRadarConsentite } from "../src/lib/radar/ambiente";
+import { eseguiImportazioneTed } from "../src/lib/radar/importa-ted";
+import { eseguiImportazionePvl } from "../src/lib/radar/importa-pvl";
+import { eseguiImportazioneRegionale } from "../src/lib/radar/importa-regionali";
 import { opportunitaDaTipoAvviso } from "../src/lib/radar/opportunita-calcoli";
 import { applicaPaginaBandi, applicaPaginaEsiti, gareCheRestano } from "../src/lib/radar/importa";
 import { eEsclusione, leggiBandoTed, leggiEsitoTed, type EsitoTed } from "../src/lib/radar/fonti/ted-calcoli";
@@ -486,6 +489,47 @@ async function principale() {
   // ═════ regole generali ═════
   uguale("precedenza provvisoria (S8): PVL, SardegnaCAT, Sintel, TED; tra TED e PVL come prima", [PRECEDENZA_FONTI.pvl > PRECEDENZA_FONTI.sardegnacat, PRECEDENZA_FONTI.sardegnacat > PRECEDENZA_FONTI.sintel, PRECEDENZA_FONTI.sintel > PRECEDENZA_FONTI.ted], [true, true, true]);
   uguale("scritture delle fonti regionali solo sullo staging", [scrittureRadarConsentite("sintel", { NEXT_PUBLIC_SUPABASE_URL: "https://ryawdldqiumqsskrnyps.supabase.co" }).ok, scrittureRadarConsentite("sardegnacat", { NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co", VERCEL_ENV: "production" }).ok], [true, false]);
+  // fase B3 (18/11): sulle anteprime di Vercel nessuna importazione, nemmeno sullo staging e con l'interruttore delle classificazioni acceso
+  {
+    const STAGING = "https://ryawdldqiumqsskrnyps.supabase.co";
+    const PROD = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
+    const fonti = ["ted", "pvl", "sintel", "sardegnacat"] as const;
+    uguale(
+      "B3. anteprima Vercel (VERCEL_ENV=preview) sullo staging: nessuna fonte scrive, anche con RADAR_CLASSIFICAZIONI, RADAR_PVL_CRON e RADAR_REGIONALI_CRON accesi",
+      fonti.map((f) => scrittureRadarConsentite(f, { NEXT_PUBLIC_SUPABASE_URL: STAGING, VERCEL_ENV: "preview", RADAR_CLASSIFICAZIONI: "attive", RADAR_PVL_CRON: "attivo", RADAR_REGIONALI_CRON: "attivo" }).ok),
+      [false, false, false, false],
+    );
+    uguale(
+      "B3. invariati: gli script locali sullo staging scrivono (VERCEL_ENV assente); TED in produzione solo dal deploy di produzione",
+      [...fonti.map((f) => scrittureRadarConsentite(f, { NEXT_PUBLIC_SUPABASE_URL: STAGING }).ok), scrittureRadarConsentite("ted", { NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "production" }).ok, scrittureRadarConsentite("ted", { NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "preview" }).ok],
+      [true, true, true, true, true, false],
+    );
+    // gli importatori si fermano PRIMA di qualunque accesso al database (un client che fallisce a ogni uso lo dimostra)
+    let accessi = 0;
+    const clientVietato = new Proxy({}, { get: () => { accessi++; throw new Error("accesso al database non atteso"); } }) as unknown as Parameters<typeof eseguiImportazioneTed>[0];
+    const envAnteprima = { NEXT_PUBLIC_SUPABASE_URL: STAGING, VERCEL_ENV: "preview" };
+    const esiti = [
+      await eseguiImportazioneTed(clientVietato, { tempoMassimoMs: 1_000, pagineMassime: 1, env: envAnteprima }),
+      await eseguiImportazionePvl(clientVietato, { modo: "incrementale", tempoMassimoMs: 1_000, env: envAnteprima }),
+      await eseguiImportazioneRegionale(clientVietato, "sintel", { tempoMassimoMs: 1_000, env: envAnteprima }),
+      await eseguiImportazioneRegionale(clientVietato, "sardegnacat", { tempoMassimoMs: 1_000, env: envAnteprima }),
+    ];
+    uguale(
+      "B3. anteprima: TED, PVL, Sintel e SardegnaCAT finiscono con «ambiente_non_consentito» senza toccare il database (cron e «Esegui un giro adesso» passano di qui)",
+      [esiti.map((e) => (e.eseguita ? "eseguita" : e.motivo)), accessi],
+      [["ambiente_non_consentito", "ambiente_non_consentito", "ambiente_non_consentito", "ambiente_non_consentito"], 0],
+    );
+    for (const [rotta, importatore] of [["radar-ted", "eseguiImportazioneTed("], ["radar-pvl", "eseguiImportazionePvl("], ["radar-regionali", "eseguiImportazioneRegionale("]] as const) {
+      const t = leggi(`src/app/api/cron/${rotta}/route.ts`);
+      atteso(`B3. cron ${rotta}: CRON_SECRET per primo, poi l'importatore (che ha la guardia dell'anteprima)`, t.indexOf("cronAutorizzato(") > 0 && t.indexOf("cronAutorizzato(") < t.indexOf(importatore));
+    }
+    for (const f of ["importa-ted.ts", "importa-pvl.ts", "importa-regionali.ts"]) {
+      const t = leggi(`src/lib/radar/${f}`);
+      atteso(`B3. ${f}: il permesso dell'ambiente viene prima di ogni accesso al database`, t.indexOf("const permesso = scrittureRadarConsentite(") > 0 && t.indexOf("const permesso = scrittureRadarConsentite(") < t.indexOf("admin.from("));
+    }
+    const vercel = JSON.parse(leggi("vercel.json")) as { crons?: { path: string }[] };
+    uguale("B3. vercel.json programma solo il cron di TED tra quelli del radar (PVL e regionali no)", (vercel.crons ?? []).map((c) => c.path).filter((p) => p.startsWith("/api/cron/radar")), ["/api/cron/radar-ted"]);
+  }
   uguale("tipo di opportunità di TED e PVL", ["cn-standard", "pin-cfc-standard", "qu-sy", "P2_16", "can-standard"].map((t) => opportunitaDaTipoAvviso(t)?.tipo ?? null), ["bando", "bando", "sistema_qualificazione", "bando", null]);
 
   const sql = leggi("supabase/migrations/0120_radar_multifonte.sql").replace(/--[^\n]*/g, "");
