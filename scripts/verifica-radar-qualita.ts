@@ -58,6 +58,9 @@
 // pulizia e vigilanza entrambe affidate A, canile C, stabulario A, disinfestazione, vigilanza degli alunni C, bagni chimici B, DPI e
 // materassi C, specchi acquei, manutenzione in global service A, Autostrade, Latiano, facility management sanitario A, global service
 // socio-sanitario e casa anziani B, pulizia con lavanolo, biancheria C.
+// Controlli CAMBIATI con la versione «2026-11-18b» (segnalazione del coordinamento del 18/11, gestione degli stabulari TED 465af5a5):
+//   - versione delle regole «2026-11-18b». Nessun altro controllo cambiato; nuovi: «comprendente il servizio di … ed il servizio di
+//     pulizia» accessorio, «affidamento del servizio di pulizia … e del servizio di vigilanza» principale.
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -810,6 +813,9 @@ const AFFIDAMENTI: [SettoreRadar, string, string | null][] = [
   ["vigilanza_portierato", "Appalto relativo alla pulizia e alla vigilanza delle sedi", "principale"],
   ["ristorazione", "Servizio di vigilanza presso le scuole, assistenza mensa", null],
   ["ristorazione", "Servizi di accoglienza dei visitatori del museo e di bar", "principale"],
+  // una testa coordinata a una testa accessoria è accessoria (gestione degli stabulari, TED 465af5a5; segnalato dal coordinamento il 18/11)
+  ["pulizia", "Servizio di gestione degli stabulari comprendente il servizio di mantenimento degli animali da laboratorio ed il servizio di pulizia", "accessorio"],
+  ["vigilanza_portierato", "Affidamento del servizio di pulizia degli immobili e del servizio di vigilanza", "principale"],
 ];
 for (const [s, testo, a] of AFFIDAMENTI) uguale(`affidamento esplicito (${s}): «${testo.slice(0, 70)}»`, affidamentoEsplicito(s, parole(s), testo), a);
 
@@ -1161,7 +1167,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18a");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18b");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
