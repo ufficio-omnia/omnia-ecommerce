@@ -246,7 +246,7 @@ function paginaPronto({ portaApp, preliminare, codice, usati }) {
  * e host di questo server: accedi(utente) → cookie di sessione → 303 verso l'app. Ogni altro metodo 405, ogni altro percorso 404, host
  * estranei 403. Nessun registro, nessuna cache, nessun referer.
  */
-export function serverAccesso({ portaApp, preliminare = false, accedi, dopoAccesso }) {
+export function serverAccesso({ portaApp, preliminare = false, accedi, dopoAccesso = null }) {
   const codice = randomBytes(24).toString("base64url");
   const usati = new Set();
   const utenti = new Map(UTENTI_COLLAUDO.map((u) => [percorsoAccesso(u.email), u]));
