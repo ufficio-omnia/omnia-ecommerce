@@ -23,6 +23,19 @@ import {
 import { daNotificare, gareDaRivalutare, opportunitaPerImpresa, type GaraPerRadar, type ProfiloRadar } from "../src/lib/radar/radar-personalizzato-contratto";
 import { nomeSottocategoria } from "../src/lib/radar/settori";
 
+// Nessuna rete verso l'esterno: ammessi solo i server locali delle prove del collaudo. Una richiesta a qualunque altro host (per esempio il
+// database configurato, quando la verifica gira nel prebuild di una build) viene bloccata e fa fallire la verifica (controllo N).
+const richiesteEsterne: string[] = [];
+const fetchVero = globalThis.fetch;
+globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  const host = new URL(url instanceof Request ? url.url : String(url)).hostname;
+  if (!["localhost", "127.0.0.1", "[::1]", "::1"].includes(host)) {
+    richiesteEsterne.push(host);
+    throw new Error(`verifica B3: richiesta di rete vietata verso ${host}`);
+  }
+  return fetchVero(url, init);
+}) as typeof fetch;
+
 const RADICE = path.resolve(__dirname, "..");
 const leggi = (p: string) => fs.readFileSync(path.join(RADICE, p), "utf8");
 const fallimenti: string[] = [];
@@ -169,9 +182,15 @@ function clienteFinto(chiamate: Chiamata[]): SupabaseClient {
     },
   } as unknown as SupabaseClient;
 }
+// Le fonti nascoste arrivano da una dipendenza finta: la prova non legge mai radar_fonti_stato del database configurato.
+let lettureFontiFinte = 0;
+const fontiNascosteFinte = async () => {
+  lettureFontiFinte++;
+  return ["sardegnacat"];
+};
 async function richiesteDellaRicerca(accese: boolean, parametri: Record<string, string> = {}): Promise<Chiamata[]> {
   const chiamate: Chiamata[] = [];
-  await cercaGare(clienteFinto(chiamate), filtriDaParametri(parametri), adesso, { classificazioni: accese });
+  await cercaGare(clienteFinto(chiamate), filtriDaParametri(parametri), adesso, { classificazioni: accese, fontiNascoste: fontiNascosteFinte });
   return chiamate;
 }
 async function provaComportamento() {
@@ -185,6 +204,7 @@ async function provaComportamento() {
     atteso(`C3. ${nome}, acceso: stato e righe incorporati e filtro sulle sole righe attive, nella stessa richiesta`, select(accese).includes("radar_classificazioni_stato") && select(accese).includes("radar_classificazioni(") && filtroRighe(accese));
     atteso(`C4. ${nome}: copie collegate escluse in entrambi i casi`, [spente, accese].every((c) => c[0]?.passi.some((p) => p.metodo === "is" && p.argomenti[0] === "unita_a" && p.argomenti[1] === null)));
   }
+  uguale("C5. le fonti nascoste della ricerca vengono dalla dipendenza finta (4 ricerche, 4 letture finte, nessun database)", lettureFontiFinte, 4);
 }
 
 // ───── script del collaudo con accesso: SOLO prove a secco (porta e fetch finti, nessuna rete esterna, nessuno staging) ─────
@@ -495,6 +515,7 @@ provaComportamento()
   .then(provaCollaudo)
   .catch((e) => atteso("C. prova di comportamento eseguita", false, e instanceof Error ? e.message : String(e)))
   .finally(() => {
+    atteso("N. nessuna richiesta di rete verso host esterni durante la verifica (database configurato compreso)", richiesteEsterne.length === 0, [...new Set(richiesteEsterne)].join(", "));
     if (fallimenti.length) {
       console.error(`\n${fallimenti.length} controlli della fase B3 (interfaccia) NON superati.`);
       process.exit(1);
