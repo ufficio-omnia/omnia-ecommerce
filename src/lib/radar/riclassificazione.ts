@@ -214,7 +214,6 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
   const gare = [...new Set([...(tracce ?? []).map((t) => t.procedura_id), ...(nuove ?? []).map((r) => r.procedura_id), ...(chiuse ?? []).map((r) => r.procedura_id), ...(classificateQui ?? []).map((r) => r.procedura_id)])];
   if (gare.length > massimo) throw new TroppeGare(`${gare.length} gare da ripristinare, più del massimo ${massimo}: nessuna scrittura.`);
   esito.gare = gare.length;
-  const toccate = new Set<string>();
 
   // 1) colonna «settori»: torna ai settori di prima solo se è ancora quella scritta dall'esecuzione
   for (const t of tracce ?? []) {
