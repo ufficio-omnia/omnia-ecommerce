@@ -232,6 +232,8 @@ export function etichettaStatoClassificazione(c: CandidatoRicerca): string | nul
 export function coerenteConFiltroSettori(c: CandidatoRicerca, filtri: Pick<FiltriRicerca, "settori">): boolean {
   if (!filtri.settori.length || c.rilevanza?.stato !== "classificata") return true;
   const livelli = c.rilevanza.perSettore;
+  // classificata ma senza righe: non è mai C (decisione D2), resta quello che dice il filtro del database
+  if (Object.keys(livelli).length === 0) return true;
   return filtri.settori.some((s) => livelli[s] === "A" || livelli[s] === "B");
 }
 
