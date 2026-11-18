@@ -74,19 +74,58 @@ function stessaColonna<Q extends Filtrabile<Q>>(q: Q, colonna: { settori: string
 
 export type EsitoApplica = {
   gare: number;
+  // gare già completate da questa stessa esecuzione (ripresa dopo un'interruzione): nessuna scrittura
+  giaCompletate: number;
   settoriCambiati: number;
+  // colonna già scritta da questa esecuzione prima dell'interruzione: si completa la traccia (senza doppioni)
+  colonneRiprese: number;
   tracce: number;
   cambiateNelFrattempo: number;
   errori: number;
   classificazioni: EsitoClassificazioni;
 };
 
+// ───── recupero sicuro (pacchetto 16, punto 11) ─────
+//
+// ORDINE DELLE SCRITTURE, gara per gara: 1) colonna «settori» e metodo, condizionata alla colonna letta; 2) traccia nel registro, con la
+// chiave che contiene l'esecuzione (ignoreDuplicates); poi, a blocchi di 100 gare: 3) chiusura delle righe vecchie (condizionata ad
+// «attiva»); 4) inserimento delle righe nuove (id decisi nel piano); 5) stato «classificata» con l'istante dell'esecuzione. Lo stato è
+// l'ULTIMA scrittura della gara: se c'è, con l'istante di questa esecuzione, la gara è completa.
+//
+// Il piano (colonna di prima, traccia, righe con i loro id, istante) si salva in un DIARIO prima di ogni scrittura. Se l'esecuzione si
+// interrompe (rete, timeout, arresto), la ripresa rilegge lo STESSO diario: le gare complete si saltano; una colonna già scritta da questa
+// esecuzione si riconosce (è già quella «dopo») e si completa la traccia; le righe uguali a quelle attive non si reinseriscono; nessun
+// registro scritto in anticipo (la traccia segue sempre la colonna), nessun doppione. Stato finale identico a un'esecuzione senza interruzioni.
+export type Diario = { formato: 1; esecuzione: string; adessoIso: string; versione: string; piani: PianoGara[] };
+
+export function diarioDaPiani(piani: readonly PianoGara[], esecuzione: string, adessoIso: string, versione: string): Diario {
+  return { formato: 1, esecuzione, adessoIso, versione, piani: piani.filter((p) => p.tipo === "da_scrivere") };
+}
+
+const stessiSettoriColonna = (a: readonly string[] | null, b: readonly string[]) => [...(a ?? [])].sort().join() === [...b].sort().join();
+
 export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara[], misure: Misure, adessoIso: string): Promise<EsitoApplica> {
-  const esito: EsitoApplica = { gare: 0, settoriCambiati: 0, tracce: 0, cambiateNelFrattempo: 0, errori: 0, classificazioni: { saltata: false, inserite: 0, disattivate: 0, invariate: 0, protette: 0, cambiateNelFrattempo: 0, classificate: 0, fallite: 0 } };
+  const esito: EsitoApplica = { gare: 0, giaCompletate: 0, settoriCambiati: 0, colonneRiprese: 0, tracce: 0, cambiateNelFrattempo: 0, errori: 0, classificazioni: { saltata: false, inserite: 0, disattivate: 0, invariate: 0, protette: 0, cambiateNelFrattempo: 0, classificate: 0, fallite: 0 } };
+  const daFare = piani.filter((p) => p.tipo === "da_scrivere" && !!p.ric);
+  // gare già completate da QUESTA esecuzione (stato classificato con lo stesso istante): ripresa dopo un'interruzione, nessuna scrittura
+  const complete = new Set<string>();
+  for (const b of blocchi(daFare.map((p) => p.proceduraId), 100)) {
+    const { data, error } = await db.from("radar_classificazioni_stato").select("procedura_id, stato, classificata_il").in("procedura_id", b).returns<{ procedura_id: string; stato: string; classificata_il: string | null }[]>();
+    misure.richiesteDb++;
+    if (error) {
+      if (schemaAssente(error)) break;
+      throw new Error(`stato delle classificazioni: ${error.message}`);
+    }
+    for (const s of data ?? []) if (s.stato === "classificata" && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(adessoIso)) complete.add(s.procedura_id);
+  }
   const consentite: PianoGara[] = [];
-  for (const p of piani) {
-    if (p.tipo !== "da_scrivere" || !p.ric) continue;
+  for (const p of daFare) {
+    if (!p.ric) continue;
     esito.gare++;
+    if (complete.has(p.proceduraId)) {
+      esito.giaCompletate++;
+      continue;
+    }
     if (p.cambiaSettori && p.registro) {
       const { prima, dopo } = p.ric;
       const { data, error } = await stessaColonna(db.from("radar_procedure").update({ settori: dopo.settori, metodo_settore: dopo.metodo }).eq("id", p.proceduraId), prima).select("id");
@@ -96,9 +135,15 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
         continue;
       }
       if ((data ?? []).length === 0) {
-        // la colonna è cambiata dopo la lettura: niente righe né stato, si rifà alla prossima esecuzione
-        esito.cambiateNelFrattempo++;
-        continue;
+        // nessuna riga con la colonna di prima: o l'ha già scritta questa esecuzione prima di interrompersi (si completa la traccia), o è
+        // cambiata dopo la lettura (niente righe né stato, si rifà alla prossima esecuzione)
+        const { data: ora } = await db.from("radar_procedure").select("settori, metodo_settore").eq("id", p.proceduraId).maybeSingle<{ settori: string[] | null; metodo_settore: string | null }>();
+        misure.richiesteDb++;
+        if (!ora || !stessiSettoriColonna(ora.settori, dopo.settori) || (ora.metodo_settore ?? null) !== (dopo.metodo ?? null)) {
+          esito.cambiateNelFrattempo++;
+          continue;
+        }
+        esito.colonneRiprese++;
       }
       const { error: e2 } = await db.from("radar_aggiornamenti").upsert(p.registro, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true });
       misure.richiesteDb++;
@@ -109,7 +154,7 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
         esito.errori++;
         continue;
       }
-      esito.settoriCambiati++;
+      if ((data ?? []).length > 0) esito.settoriCambiati++;
       esito.tracce++;
     }
     consentite.push(p);
@@ -162,7 +207,11 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
   const { data: chiuse, error: e3 } = await db.from("radar_classificazioni").select("*").eq("sostituita_il", istante).eq("attiva", false).returns<RigaClassificazione[]>();
   misure.richiesteDb++;
   if (e3) throw new Error(`classificazioni chiuse dall'esecuzione: ${e3.message}`);
-  const gare = [...new Set([...(tracce ?? []).map((t) => t.procedura_id), ...(nuove ?? []).map((r) => r.procedura_id), ...(chiuse ?? []).map((r) => r.procedura_id)])];
+  // gare ancora classificate da questa esecuzione (anche se le loro righe sono già state chiuse da un annullamento interrotto)
+  const { data: classificateQui, error: e4 } = await db.from("radar_classificazioni_stato").select("procedura_id").eq("stato", "classificata").eq("classificata_il", istante).returns<{ procedura_id: string }[]>();
+  misure.richiesteDb++;
+  if (e4) throw new Error(`stato delle classificazioni: ${e4.message}`);
+  const gare = [...new Set([...(tracce ?? []).map((t) => t.procedura_id), ...(nuove ?? []).map((r) => r.procedura_id), ...(chiuse ?? []).map((r) => r.procedura_id), ...(classificateQui ?? []).map((r) => r.procedura_id)])];
   if (gare.length > massimo) throw new TroppeGare(`${gare.length} gare da ripristinare, più del massimo ${massimo}: nessuna scrittura.`);
   esito.gare = gare.length;
   const toccate = new Set<string>();
@@ -182,8 +231,13 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
       continue;
     }
     if ((data ?? []).length === 0) {
-      esito.colonnaGiaCambiata++;
-      continue;
+      // già rimessa da un annullamento interrotto (si completa la traccia, senza doppioni), oppure cambiata da altri (non si tocca)
+      const { data: ora } = await db.from("radar_procedure").select("settori, metodo_settore").eq("id", t.procedura_id).maybeSingle<{ settori: string[] | null; metodo_settore: string | null }>();
+      misure.richiesteDb++;
+      if (!ora || !stessiSettoriColonna(ora.settori, prima.settori) || (ora.metodo_settore ?? null) !== (prima.metodo ?? null)) {
+        esito.colonnaGiaCambiata++;
+        continue;
+      }
     }
     await db.from("radar_aggiornamenti").upsert(
       { procedura_id: t.procedura_id, tipo: "correzione_dati", campo: "settori_ripristinati", valore_precedente: t.valore_nuovo, valore_nuovo: t.valore_precedente, fonte: FONTE_REGISTRO, id_fonte: `annullato:${t.id_fonte}`.slice(0, 200), nota: "Correzione dei settori annullata: rimessi i settori di prima", notificabile: false },
@@ -191,7 +245,6 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
     );
     misure.richiesteDb++;
     esito.colonnaRipristinata++;
-    toccate.add(t.procedura_id);
   }
 
   // 2) righe: si chiudono quelle dell'esecuzione; le righe che l'esecuzione aveva chiuso tornano come copie nuove
@@ -201,10 +254,17 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
     misure.richiesteDb++;
     for (const r of data ?? []) attiveOra.set(r.procedura_id, [...(attiveOra.get(r.procedura_id) ?? []), r]);
   }
+  // righe dell'esecuzione GIÀ chiuse (da un annullamento interrotto): la copia da riportare riusa l'id che avevano indicato
+  const { data: chiuseProprie } = await db.from("radar_classificazioni").select("id, procedura_id, settore, sostituita_da").eq("autore", autore).eq("attiva", false).returns<{ id: string; procedura_id: string; settore: string; sostituita_da: string | null }[]>();
+  misure.richiesteDb++;
+  // copie già riportate da QUESTO annullamento (la nota lo dice): non si riportano mai una seconda volta, anche se poi qualcuno le ha chiuse
+  const { data: copieFatte } = await db.from("radar_classificazioni").select("procedura_id, settore").like("nota", `%(annullata l'esecuzione ${esecuzione}).`).returns<{ procedura_id: string; settore: string }[]>();
+  misure.richiesteDb++;
+  const giaRiportate = new Set((copieFatte ?? []).map((r) => `${r.procedura_id}|${r.settore}`));
   // la copia conserva l'autore della riga di prima (così annullare anche quell'esecuzione la chiude); la nota dice che è un ripristino
-  const copia = (r: RigaClassificazione): RigaClassificazione => ({
+  const copia = (r: RigaClassificazione, id?: string | null): RigaClassificazione => ({
     ...r,
-    id: nuovoId(),
+    id: id ?? nuovoId(),
     origine: r.origine === "amministratore" ? "amministratore" : "riclassificazione",
     nota: r.origine === "amministratore" ? r.nota : `Ripristino della classificazione precedente (annullata l'esecuzione ${esecuzione}).`,
     autore: r.autore,
@@ -220,10 +280,13 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
     const settori = [...new Set([...proprie.map((r) => r.settore), ...chiuseQui.map((r) => r.settore)])];
     for (const s of settori) {
       const nuova = proprie.find((r) => r.settore === s) ?? null;
-      const vecchia = chiuseQui.find((r) => r.settore === s && (nuova ? r.sostituita_da === nuova.id : r.sostituita_da === null)) ?? null;
-      // un settore che l'esecuzione aveva solo chiuso: si riporta solo se nel frattempo nessuna riga è attiva (ripetere non duplica)
+      // la riga che l'esecuzione aveva chiuso per questo settore (una sola: una riga attiva per gara e settore)
+      const fatta = giaRiportate.has(`${id}|${s}`);
+      const vecchia = fatta ? null : (chiuseQui.find((r) => r.settore === s) ?? null);
+      // senza la riga dell'esecuzione attiva si riporta la vecchia solo se non è già stata riportata e nessuna riga è attiva per il settore
       if (!nuova && (!vecchia || attive.some((r) => r.settore === s))) continue;
-      const ripristinata = vecchia ? copia(vecchia) : null;
+      const giaIndicata = (chiuseProprie ?? []).find((r) => r.procedura_id === id && r.settore === s && r.sostituita_da)?.sostituita_da ?? null;
+      const ripristinata = vecchia ? copia(vecchia, nuova ? null : giaIndicata) : null;
       if (nuova) {
         const { data, error } = await db.from("radar_classificazioni").update({ attiva: false, sostituita_il: adessoIso, sostituita_da: ripristinata?.id ?? null }).eq("id", nuova.id).eq("attiva", true).select("id");
         misure.richiesteDb++;
@@ -232,22 +295,25 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
           continue;
         }
         esito.righeChiuse++;
-        toccate.add(id);
       }
       if (ripristinata) {
         const { error } = await db.from("radar_classificazioni").insert(ripristinata);
         misure.richiesteDb++;
         if (error) esito.errori++;
-        else {
-          esito.righeRipristinate++;
-          toccate.add(id);
-        }
+        else esito.righeRipristinate++;
       }
     }
   }
 
-  // 3) stato: «in attesa» (da classificare di nuovo) per le gare davvero toccate; mai «non pertinente»
-  for (const b of blocchi([...toccate], 200)) {
+  // 3) stato: «in attesa» (da classificare di nuovo) per le gare ancora classificate DA QUESTA esecuzione (stesso istante); mai «non
+  //    pertinente». Ripetere (anche dopo un'interruzione) non scrive più nulla: lo stato non è più quello dell'esecuzione
+  const daRimettere: string[] = [];
+  for (const b of blocchi(gare, 100)) {
+    const { data } = await db.from("radar_classificazioni_stato").select("procedura_id, stato, classificata_il").in("procedura_id", b).returns<{ procedura_id: string; stato: string; classificata_il: string | null }[]>();
+    misure.richiesteDb++;
+    for (const s of data ?? []) if (s.stato === "classificata" && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(istante)) daRimettere.push(s.procedura_id);
+  }
+  for (const b of blocchi(daRimettere, 200)) {
     const { error } = await db.from("radar_classificazioni_stato").upsert(b.map((procedura_id) => ({ procedura_id, stato: "in_attesa", errore: null, aggiornata_il: adessoIso })), { onConflict: "procedura_id" });
     misure.richiesteDb++;
     if (error) esito.errori++;

@@ -17,6 +17,14 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
   const regola = opzioni.fonti ?? "0120";
   let scrittureGare = 0;
   const scritture: Record<string, number> = {};
+  // guasto simulato (pacchetto 16, punto 11: recupero sicuro): la n-esima richiesta di scrittura da adesso si interrompe, PRIMA di essere
+  // applicata (rete giù) o DOPO (applicata ma la risposta si perde: timeout, arresto del processo)
+  // «prima» e «dopo» = il processo si ferma lì (da quel momento nessuna richiesta passa più, come un arresto o un timeout definitivo);
+  // «errore» = la sola richiesta torna con un errore (come fa supabase-js quando la rete cade) e il processo continua
+  let richiesteScrittura = 0;
+  let guastoAlla: number | null = null;
+  let modoGuasto: "prima" | "dopo" | "errore" = "prima";
+  let fermo = false;
   const tabelle: Record<string, RigaMem[]> = Object.fromEntries(Object.entries(iniziali).map(([k, v]) => [k, v.map((r) => structuredClone(r))]));
   let contatore = 0;
   let richieste = 0;
@@ -71,6 +79,23 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
       let intervallo: [number, number] | null = null;
       let operazione: { tipo: "select" } | { tipo: "update"; valori: RigaMem } | { tipo: "upsert"; nuove: RigaMem[]; chiavi: string[]; ignora: boolean } | { tipo: "insert"; nuove: RigaMem[] } | { tipo: "delete" } = { tipo: "select" };
       const esegui = () => {
+        if (fermo) throw new Error("processo fermo (guasto simulato)");
+        if (operazione.tipo === "select") return esegui0();
+        richiesteScrittura++;
+        const guasto = guastoAlla !== null && richiesteScrittura === guastoAlla;
+        if (guasto && modoGuasto === "errore") return { data: null, error: { message: `guasto simulato: scrittura ${richiesteScrittura} non riuscita (${nome})` } };
+        if (guasto && modoGuasto === "prima") {
+          fermo = true;
+          throw new Error(`guasto simulato prima della scrittura ${richiesteScrittura} (${nome})`);
+        }
+        const r = esegui0();
+        if (guasto) {
+          fermo = true;
+          throw new Error(`guasto simulato dopo la scrittura ${richiesteScrittura} (${nome})`);
+        }
+        return r;
+      };
+      const esegui0 = () => {
         richieste++;
         // righe davvero scritte (una scrittura condizionata che non trova nulla non scrive)
         const conta = (k: number) => {
@@ -185,5 +210,19 @@ export function databaseInMemoria(iniziali: Record<string, RigaMem[]>, opzioni: 
     },
   };
   // scritture sulle gare fatte dal trigger delle fonti (per provare che un upsert identico non scrive nulla)
-  return { tabelle, client: client as unknown as SupabaseClient, richieste: () => richieste, scrittureGareDelTrigger: () => scrittureGare, scritture: () => ({ ...scritture }) };
+  return {
+    tabelle,
+    client: client as unknown as SupabaseClient,
+    richieste: () => richieste,
+    scrittureGareDelTrigger: () => scrittureGare,
+    scritture: () => ({ ...scritture }),
+    // richieste di scrittura fatte finora; guasto(n, modo): la n-esima richiesta di scrittura da adesso si interrompe (null = nessun guasto)
+    richiesteScrittura: () => richiesteScrittura,
+    guasto: (n: number | null, modo: "prima" | "dopo" | "errore" = "prima") => {
+      guastoAlla = n === null ? null : richiesteScrittura + n;
+      modoGuasto = modo;
+      // null = si riparte (il processo nuovo della ripresa)
+      if (n === null) fermo = false;
+    },
+  };
 }

@@ -28,7 +28,7 @@ import {
   valoreRegistro,
   type GaraArchivio,
 } from "../src/lib/radar/riclassifica-settori";
-import { annullaEsecuzione, applicaPiani, leggiArchivio, pianiDaArchivio, TroppeGare } from "../src/lib/radar/riclassificazione";
+import { annullaEsecuzione, applicaPiani, diarioDaPiani, leggiArchivio, pianiDaArchivio, TroppeGare } from "../src/lib/radar/riclassificazione";
 import { classificaImportazione, lottiDopoScrittura, rigaRegistroImportazione } from "../src/lib/radar/classificazioni-importazione";
 import { classificazioniAttive } from "../src/lib/radar/ambiente";
 import { applicaPaginaBandi } from "../src/lib/radar/importa";
@@ -483,6 +483,154 @@ async function principale() {
     await annullaEsecuzione(memG.client, esG, 10, misure(), "2026-11-18T09:00:00.000Z", nuovoId);
     const annullata = situazioneDi("G2");
     uguale("G. archivio: dopo lo script la gara esclusa è «classificata» e fuori dai settori; dopo l'annullamento è «in attesa», non C", [dopo.tipo, dopo.tipo === "classificata" && dopo.fuoriDaiSettori, annullata.tipo], ["classificata", true, "in_attesa"]);
+  }
+
+  // ═════ H. recupero sicuro: interruzione dopo OGNI scrittura, ripresa dal diario (pacchetto 16, punto 11) ═════
+  {
+    type MemH = ReturnType<typeof databaseInMemoria>;
+    const ordina = (v: RigaMem[], campi: string[]) => v.map((r) => JSON.stringify(campi.map((c) => (Array.isArray(r[c]) ? [...(r[c] as string[])].sort() : (r[c] ?? null))))).sort();
+    const foto = (m: MemH, conTentativi = true) =>
+      JSON.stringify({
+        gare: ordina(m.tabelle.radar_procedure, ["id", "settori", "metodo_settore", "aggiornata_il", "fonti", "unita_a"]),
+        registro: ordina(m.tabelle.radar_aggiornamenti, ["procedura_id", "tipo", "campo", "valore_precedente", "valore_nuovo", "fonte", "id_fonte", "nota", "notificabile"]),
+        righe: ordina(m.tabelle.radar_classificazioni, ["id", "procedura_id", "settore", "rilevanza", "sottocategorie", "regole", "motivi", "versione_regole", "origine", "autore", "attiva", "valida_dal", "sostituita_il", "sostituita_da", "per_fonte", "ambigua"]),
+        stati: ordina(m.tabelle.radar_classificazioni_stato, ["procedura_id", "stato", "versione_regole", "classificata_il", ...(conTentativi ? ["tentativi"] : []), "tentativo_il", "errore"]),
+      });
+    // nessun registro «in anticipo»: ogni traccia di questa esecuzione corrisponde alla colonna che c'è davvero
+    const inAnticipo = (m: MemH, es: string) =>
+      m.tabelle.radar_aggiornamenti
+        .filter((a) => a.campo === "settori" && String(a.id_fonte).endsWith(`:${es}`))
+        .filter((a) => {
+          const g = garaDi(m, a.procedura_id as string);
+          const v = statoDaRegistro(a.valore_nuovo as string);
+          return !g || !v || [...(g.settori as string[])].sort().join() !== [...v.settori].sort().join();
+        }).length;
+    const prova = async (nome: string, prepara: (m: MemH) => Promise<void>) => {
+      const iso = "2026-11-18T10:00:00.000Z";
+      const es = idEsecuzione(iso);
+      const m0 = databaseInMemoria(archivio(), { fonti: "0121" });
+      await prepara(m0);
+      // il DIARIO: il piano calcolato una volta, prima di ogni scrittura (righe con i loro id, istante dell'esecuzione)
+      const diario = diarioDaPiani(pianiDaArchivio(await leggiArchivio(m0.client, misure()), es, iso, nuovoId), es, iso, VERSIONE_REGOLE_SETTORI);
+      const rif = databaseInMemoria(archivio(), { fonti: "0121" });
+      await prepara(rif);
+      const w0 = rif.richiesteScrittura();
+      await applicaPiani(rif.client, diario.piani, misure(), iso);
+      const W = rif.richiesteScrittura() - w0;
+      const fotoRif = foto(rif);
+      const s0 = rif.richiesteScrittura();
+      await applicaPiani(rif.client, diario.piani, misure(), iso);
+      const rilancio = rif.richiesteScrittura() - s0;
+      const diversi: string[] = [];
+      let anticipo = 0;
+      let interrotte = 0;
+      for (const modo of ["prima", "dopo"] as const) {
+        for (let k = 1; k <= W; k++) {
+          const m = databaseInMemoria(archivio(), { fonti: "0121" });
+          await prepara(m);
+          m.guasto(k, modo);
+          try {
+            await applicaPiani(m.client, diario.piani, misure(), iso);
+          } catch {
+            interrotte++;
+          }
+          m.guasto(null);
+          anticipo += inAnticipo(m, es);
+          await applicaPiani(m.client, diario.piani, misure(), iso);
+          if (foto(m) !== fotoRif || doppie(m) > 0) diversi.push(`${modo}@${k}`);
+        }
+      }
+      uguale(`H. ${nome}: processo fermato a OGNI scrittura (${W} scritture, prima e dopo di essere applicata: ${interrotte} interruzioni); la ripresa dal diario arriva allo STESSO stato finale, senza doppioni`, [diversi, interrotte], [[], 2 * W]);
+      uguale(`H. ${nome}: dopo un'interruzione nessuna traccia nel registro «in anticipo» (la traccia segue sempre la colonna)`, anticipo, 0);
+      // errore restituito da una sola richiesta (il processo continua): la gara resta com'era o va in «fallita» (mai «classificata» a metà);
+      // la ripresa la completa. Stesso stato finale; solo il contatore dei tentativi è più alto (è giusto: c'è stato un tentativo in più)
+      const diversiErrore: string[] = [];
+      let mezze = 0;
+      for (let k = 1; k <= W; k++) {
+        const m = databaseInMemoria(archivio(), { fonti: "0121" });
+        await prepara(m);
+        m.guasto(k, "errore");
+        try {
+          await applicaPiani(m.client, diario.piani, misure(), iso);
+        } catch {
+          // un errore nello stato ferma l'esecuzione: va bene, la ripresa la completa
+        }
+        m.guasto(null);
+        anticipo += inAnticipo(m, es);
+        // nessuna gara «classificata» con questa esecuzione senza tutte le sue righe calcolate attive
+        for (const p of diario.piani) {
+          const st = statoDi(m, p.proceduraId);
+          if (st?.stato === "classificata" && st.classificata_il === iso && !p.calcolate.every((r) => m.tabelle.radar_classificazioni.some((x) => x.attiva && x.procedura_id === r.procedura_id && x.settore === r.settore && x.rilevanza === r.rilevanza))) mezze++;
+        }
+        await applicaPiani(m.client, diario.piani, misure(), iso);
+        if (foto(m, false) !== foto(rif, false) || doppie(m) > 0) diversiErrore.push(`errore@${k}`);
+      }
+      uguale(`H. ${nome}: errore restituito a OGNI scrittura: mai una gara «classificata» a metà, nessuna traccia in anticipo, la ripresa arriva allo stesso stato (tentativi a parte)`, [diversiErrore, mezze, anticipo], [[], 0, 0]);
+      uguale(`H. ${nome}: rilanciare a esecuzione completa non scrive nulla`, rilancio, 0);
+    };
+    await prova("primo popolamento", async () => {});
+    await prova("regole cambiate (righe da chiudere e da sostituire)", async (m) => {
+      const isoP = "2026-11-18T09:00:00.000Z";
+      await applicaPiani(m.client, pianiDaArchivio(await leggiArchivio(m.client, misure()), idEsecuzione(isoP), isoP, (() => { let i = 0; return () => `p-${++i}`; })()), misure(), isoP);
+      for (const x of m.tabelle.radar_classificazioni) if (x.procedura_id === "G1" || x.procedura_id === "G4") x.versione_regole = "2026-11-17e";
+      for (const x of m.tabelle.radar_classificazioni_stato) if (x.procedura_id === "G1" || x.procedura_id === "G4") x.versione_regole = "2026-11-17e";
+      garaDi(m, "G3").settori = [];
+      for (const x of m.tabelle.radar_classificazioni_stato) if (x.procedura_id === "G3") x.stato = "in_attesa";
+    });
+    // l'ANNULLAMENTO interrotto a ogni scrittura e ripetuto: stesso stato di un annullamento senza interruzioni (id delle copie a parte),
+    // nessuna copia doppia, nessun riferimento a righe che non esistono
+    const isoA = "2026-11-18T09:00:00.000Z";
+    const isoB = "2026-11-18T10:00:00.000Z";
+    const prepara = async (m: MemH) => {
+      let i = 0;
+      const id = () => `q-${++i}`;
+      await applicaPiani(m.client, pianiDaArchivio(await leggiArchivio(m.client, misure()), idEsecuzione(isoA), isoA, id), misure(), isoA);
+      for (const x of [...m.tabelle.radar_classificazioni, ...m.tabelle.radar_classificazioni_stato]) if (x.procedura_id === "G1" || x.procedura_id === "G4") x.versione_regole = "2026-11-17e";
+      await applicaPiani(m.client, pianiDaArchivio(await leggiArchivio(m.client, misure()), idEsecuzione(isoB), isoB, id), misure(), isoB);
+    };
+    const fotoA = (m: MemH) =>
+      JSON.stringify({
+        gare: ordina(m.tabelle.radar_procedure, ["id", "settori", "metodo_settore", "aggiornata_il"]),
+        registro: ordina(m.tabelle.radar_aggiornamenti, ["procedura_id", "tipo", "campo", "valore_precedente", "valore_nuovo", "id_fonte", "notificabile"]),
+        righe: ordina(m.tabelle.radar_classificazioni, ["procedura_id", "settore", "rilevanza", "versione_regole", "autore", "nota", "attiva", "valida_dal", "sostituita_il"]),
+        stati: ordina(m.tabelle.radar_classificazioni_stato, ["procedura_id", "stato", "versione_regole", "classificata_il", "tentativi"]),
+      });
+    const appese = (m: MemH) => m.tabelle.radar_classificazioni.filter((r) => r.sostituita_da && !m.tabelle.radar_classificazioni.some((x) => x.id === r.sostituita_da)).length;
+    for (const [nome, esecuzioni] of [["regole cambiate", [idEsecuzione(isoB)]], ["regole cambiate e poi popolamento", [idEsecuzione(isoB), idEsecuzione(isoA)]]] as const) {
+      const annullaTutto = async (m: MemH) => {
+        for (const e of esecuzioni) await annullaEsecuzione(m.client, e, 50, misure(), "2026-11-18T11:00:00.000Z", (() => { let i = 0; return () => `a-${e}-${++i}-${Math.random()}`; })());
+      };
+      const rif = databaseInMemoria(archivio(), { fonti: "0121" });
+      await prepara(rif);
+      const w0 = rif.richiesteScrittura();
+      await annullaTutto(rif);
+      const W = rif.richiesteScrittura() - w0;
+      const diversi: string[] = [];
+      for (const modo of ["prima", "dopo"] as const) {
+        for (let k = 1; k <= W; k++) {
+          const m = databaseInMemoria(archivio(), { fonti: "0121" });
+          await prepara(m);
+          m.guasto(k, modo);
+          try {
+            await annullaTutto(m);
+          } catch {
+            // processo fermo
+          }
+          m.guasto(null);
+          await annullaTutto(m);
+          if (fotoA(m) !== fotoA(rif) || doppie(m) > 0 || appese(m) > 0) {
+            const a = JSON.parse(fotoA(m)) as Record<string, string[]>;
+            const b = JSON.parse(fotoA(rif)) as Record<string, string[]>;
+            const dove = Object.keys(a).filter((x) => JSON.stringify(a[x]) !== JSON.stringify(b[x])).map((x) => `${x}: +${a[x].filter((y) => !b[x].includes(y)).join(" ")} -${b[x].filter((y) => !a[x].includes(y)).join(" ")}`);
+            diversi.push(`${modo}@${k}${process.env.DETTAGLI_H ? ` ${dove.join(" | ")} doppie ${doppie(m)} appese ${appese(m)}` : ""}`);
+          }
+        }
+      }
+      uguale(`H. annullamento (${nome}) fermato a OGNI scrittura (${W}) e ripetuto: stesso stato, nessuna copia doppia, nessun riferimento appeso`, diversi, []);
+    }
+
+    const s = leggi("scripts/radar-riclassifica-settori.ts");
+    atteso("H. script: il diario è obbligatorio per «applica», si salva PRIMA di ogni scrittura (file temporaneo e rinomina) e la ripresa lo rilegge", s.includes('const fileDiario = opzione("--diario")') && s.indexOf("fs.renameSync(`${fileDiario}.tmp`, fileDiario)") > 0 && s.indexOf("fs.renameSync(`${fileDiario}.tmp`, fileDiario)") < s.indexOf("await applicaPiani(db, diario.piani") && s.includes("RIPRESA dell'esecuzione"));
   }
 
   console.log("");

@@ -12,9 +12,11 @@
 //       SOLA LETTURA (ogni richiesta che non sia una lettura viene rifiutata prima di partire): il piano completo, nessuna scrittura
 //   npx tsx scripts/radar-riclassifica-settori.ts prova --da-file <archivio.json> [--elenco <file.json>]
 //       lo stesso calcolo su un'esportazione dell'archivio fatta in una transazione di sola lettura (nessun accesso al database)
-//   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts applica <massimo>
+//   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts applica <massimo> --diario <file.json>
 //       scrive il piano; si ferma senza scrivere nulla se le gare da scrivere sono più di <massimo>. Solo con il lanciatore
-//       esegui-autorizzato.mjs e un'autorizzazione registrata del coordinatore (regola del 17/11/2026)
+//       esegui-autorizzato.mjs e un'autorizzazione registrata del coordinatore (regola del 17/11/2026). Il DIARIO (obbligatorio) si salva
+//       PRIMA di ogni scrittura; se il file c'è già, l'esecuzione RIPRENDE da lì dopo un'interruzione (stessa esecuzione, stessi id, nessun
+//       doppione, stato finale identico: vedi riclassificazione.ts, «recupero sicuro»)
 //   RADAR_STAGING_REF=<staging> npx tsx scripts/radar-riclassifica-settori.ts annulla <esecuzione> <massimo>
 //       ripristino controllato di un'esecuzione (colonna, righe, stato «in attesa»). Stesse condizioni di «applica»
 import fs from "node:fs";
@@ -23,7 +25,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PROGETTO_PRODUZIONE } from "../src/lib/radar/ambiente";
 import { VERSIONE_REGOLE_SETTORI } from "../src/lib/radar/settori";
 import { idEsecuzione, riepilogoPiani, rigaElenco, type GaraArchivio, type LottoDaRiclassificare, type PianoGara } from "../src/lib/radar/riclassifica-settori";
-import { annullaEsecuzione, applicaPiani, leggiArchivio, pianiDaArchivio, TroppeGare, type ArchivioLetto } from "../src/lib/radar/riclassificazione";
+import { annullaEsecuzione, applicaPiani, diarioDaPiani, leggiArchivio, pianiDaArchivio, TroppeGare, type ArchivioLetto, type Diario } from "../src/lib/radar/riclassificazione";
 import type { RigaClassificazione, RigaStato } from "../src/lib/radar/classificazioni-calcoli";
 
 const MASSIMO_ASSOLUTO = 2000;
@@ -107,7 +109,7 @@ async function main() {
     return i >= 0 ? argomenti[i + 1] : undefined;
   };
   if (modo !== "prova" && modo !== "applica" && modo !== "annulla") {
-    console.error("Uso: prova [--da-file <archivio.json>] [--elenco <file.json>] | applica <massimo> | annulla <esecuzione> <massimo>");
+    console.error("Uso: prova [--da-file <archivio.json>] [--elenco <file.json>] | applica <massimo> --diario <file.json> | annulla <esecuzione> <massimo>");
     process.exit(2);
   }
   const massimo = Number(modo === "annulla" ? argomenti[2] : argomenti[1]);
@@ -159,20 +161,43 @@ async function main() {
     return;
   }
 
-  const a = await leggiArchivio(db, misure);
-  if (!a.tabelle0121) {
-    console.error("STOP: le tabelle della 0121 non ci sono in questo database. Nessuna scrittura.");
+  const fileDiario = opzione("--diario");
+  if (!fileDiario) {
+    console.error("STOP: indicare il diario dell'esecuzione (--diario <file.json>): serve a riprendere senza doppioni dopo un'interruzione.");
+    process.exit(2);
+  }
+  let diario: Diario;
+  if (fs.existsSync(fileDiario)) {
+    // RIPRESA dopo un'interruzione: stesso piano, stessa esecuzione, stesso istante
+    diario = JSON.parse(fs.readFileSync(fileDiario, "utf8")) as Diario;
+    if (diario.formato !== 1 || diario.versione !== VERSIONE_REGOLE_SETTORI) {
+      console.error(`STOP: il diario è di un'altra versione delle regole (${diario.versione}, ora ${VERSIONE_REGOLE_SETTORI}). Nessuna scrittura.`);
+      process.exit(1);
+    }
+    console.log(`RIPRESA dell'esecuzione ${diario.esecuzione} dal diario (${diario.piani.length} gare).`);
+  } else {
+    const a = await leggiArchivio(db, misure);
+    if (!a.tabelle0121) {
+      console.error("STOP: le tabelle della 0121 non ci sono in questo database. Nessuna scrittura.");
+      process.exit(1);
+    }
+    const piani = pianiDaArchivio(a, esecuzione, adessoIso, randomUUID);
+    stampaPiano(a, piani, esecuzione);
+    diario = diarioDaPiani(piani, esecuzione, adessoIso, VERSIONE_REGOLE_SETTORI);
+    if (diario.piani.length > massimo) {
+      console.error(`STOP: ${diario.piani.length} gare da scrivere, più del massimo autorizzato ${massimo}. Nessuna scrittura.`);
+      process.exit(1);
+    }
+    // il diario si salva PRIMA di ogni scrittura (file temporaneo e poi rinomina: mai un diario a metà)
+    fs.writeFileSync(`${fileDiario}.tmp`, JSON.stringify(diario));
+    fs.renameSync(`${fileDiario}.tmp`, fileDiario);
+  }
+  if (diario.piani.length > massimo) {
+    console.error(`STOP: ${diario.piani.length} gare nel diario, più del massimo autorizzato ${massimo}. Nessuna scrittura.`);
     process.exit(1);
   }
-  const piani = pianiDaArchivio(a, esecuzione, adessoIso, randomUUID);
-  stampaPiano(a, piani, esecuzione);
-  const daScrivere = piani.filter((p) => p.tipo === "da_scrivere").length;
-  if (daScrivere > massimo) {
-    console.error(`STOP: ${daScrivere} gare da scrivere, più del massimo autorizzato ${massimo}. Nessuna scrittura.`);
-    process.exit(1);
-  }
-  console.log(`Esecuzione ${esecuzione} (per l'annullamento: annulla ${esecuzione} <massimo>).`);
-  console.log(JSON.stringify(await applicaPiani(db, piani, misure, adessoIso)));
+  console.log(`Esecuzione ${diario.esecuzione} (per l'annullamento: annulla ${diario.esecuzione} <massimo>).`);
+  console.log(JSON.stringify(await applicaPiani(db, diario.piani, misure, diario.adessoIso)));
 }
 
 if (process.argv[1] && /radar-riclassifica-settori\.ts$/.test(process.argv[1].replace(/\\/g, "/"))) {
