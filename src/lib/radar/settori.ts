@@ -204,8 +204,12 @@ const DI = /^(di|del|dello|della|dei|degli|delle|dell)$/;
 const MODALITA = /^(in|formula|regime|mediante|tramite|modalita)$/;
 const SERVIZIO_PURO = /^(pulizi\w*|sanificazion\w*|disinfe\w*|igiene|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|ristorazion\w*|catering|refezion\w*)$/;
 // «comprendente il servizio di …» (TED 465af5a5): come «comprensivo di»
-// «… e per alcune parti di igiene ambientale» (TED 85323614, decisione dell'utente del 18/11, D3): un affidamento parziale, accessorio
-const TESTE_ACCESSORIE = /^(comprensiv\w*|comprendent\w*|compres\w*|inclus\w*|accessori\w*|con|parti|parte)$/;
+const TESTE_ACCESSORIE = /^(comprensiv\w*|comprendent\w*|compres\w*|inclus\w*|accessori\w*|con)$/;
+// «… e per alcune parti di igiene ambientale» (TED 85323614, decisione dell'utente del 18/11, D3): un affidamento parziale, accessorio,
+// ma SOLO coordinato dopo un altro servizio affidato («e per alcune parti di», «e in parte di»). Da sole «parte/parti» sono parole comuni:
+// «affidamento di parte del servizio di pulizia», «per la parte relativa alla sede», «da parte di istituto», «parte prima» (controllo del
+// coordinamento, 18/11)
+const PARTI = /^(parte|parti)$/;
 const COORDINAZIONE = /^(e|ed|nonche|oltre|o|,)$/;
 const PREPOSIZIONI = /^(di|del|dello|della|dei|degli|delle|dell|a|al|allo|alla|ai|agli|alle|all|da|dal|dallo|dalla|dai|dagli|dalle|dall|in|nel|nello|nella|nei|negli|nelle|nell|su|sul|sullo|sulla|sui|sugli|sulle|sull|per|presso|tra|fra)$/;
 const ARTICOLI = /^(il|lo|la|i|gli|le|l|un|uno|una)$/;
@@ -247,7 +251,22 @@ function testaRetta(p: readonly string[], h: number): boolean {
   while (j >= 0 && (ARTICOLI.test(p[j]) || PREPOSIZIONI.test(p[j]) || p[j] === ",")) j--;
   // «… nonché del servizio di receptionist/portierato» (Comune di Ercolano, TED 2cc42f92): una seconda testa coordinata alla prima
   if (j < 0 || p[j] === "|" || COORDINAZIONE.test(p[j])) return true;
+  // «affidamento di parte del servizio di pulizia»: la testa è retta da «parte», a sua volta retta; non «utilizzo dei locali DA PARTE DEL
+  // servizio di ristorazione»
+  if (PARTI.test(p[j])) return testaRetta(p, j);
   return TESTE_DI_AFFIDAMENTO.test(p[j]) || TESTE_ACCESSORIE.test(p[j]) || RACCORDI.test(p[j]) || REGGONO_LA_TESTA.test(p[j]);
+}
+
+// «parte/parti» in posizione j introduce un servizio accessorio solo se è coordinata dopo un altro servizio affidato: «servizi sanitari,
+// assistenziali E PER ALCUNE PARTI di igiene ambientale» (TED 85323614), «… e in parte di pulizia». Non «in tutto o in parte».
+function parteCoordinata(p: readonly string[], j: number): boolean {
+  let x = j - 1;
+  while (x >= 0 && (ARTICOLI.test(p[x]) || PREPOSIZIONI.test(p[x]) || /^(alcun\w*|talun\w*)$/.test(p[x]))) x--;
+  if (x < 0 || !/^(e|ed|nonche)$/.test(p[x])) return false;
+  for (let y = x - 1, passi = 0; y >= 0 && passi < 12 && p[y] !== "|"; y--, passi++) {
+    if (TESTE_DI_AFFIDAMENTO.test(p[y]) && testaRetta(p, y)) return true;
+  }
+  return false;
 }
 
 // «con» introduce un servizio accessorio solo se tra «con» e il servizio ci sono raccordi («con effettuazione del servizio di pulizia», «con
@@ -261,7 +280,7 @@ function conAccessorio(p: readonly string[], j: number, i: number): boolean {
 // PULIZIA» (gestione degli stabulari, TED 465af5a5); «… nonché del servizio di portierato» dopo un affidamento principale resta principale.
 function testaAccessoria(p: readonly string[], h: number, profondita = 0): boolean {
   for (let j = h - 1, passi = 0; j >= 0 && passi < 4; j--, passi++) {
-    if (TESTE_ACCESSORIE.test(p[j])) return true;
+    if (TESTE_ACCESSORIE.test(p[j]) || (PARTI.test(p[j]) && parteCoordinata(p, j))) return true;
     if (COORDINAZIONE.test(p[j]) && p[j] !== "," && profondita < 4) {
       for (let x = j - 1, altri = 0; x >= 0 && altri < 12 && p[x] !== "|"; x--, altri++) {
         if (TESTE_DI_AFFIDAMENTO.test(p[x])) return testaAccessoria(p, x, profondita + 1);
@@ -328,7 +347,7 @@ function affidamentoInPosizione(p: readonly string[], i: number, profondita = 0)
   let tipo: "principale" | "accessorio" | "titolo" = "titolo";
   for (let j = i - 1, passi = 0; j >= 0 && passi < 25; j--, passi++) {
     if (p[j] === "|") break;
-    if (TESTE_ACCESSORIE.test(p[j]) && (p[j] !== "con" || conAccessorio(p, j, i))) {
+    if ((TESTE_ACCESSORIE.test(p[j]) && (p[j] !== "con" || conAccessorio(p, j, i))) || (PARTI.test(p[j]) && parteCoordinata(p, j))) {
       h = j;
       tipo = "accessorio";
       break;
@@ -798,11 +817,12 @@ export const ESCLUSIONI_OGGETTO: readonly RegolaEsclusione[] = [
     // edifici, locali e strutture («servizio integrato di monitoraggio ambientale, pulizia e gestione digitale degli specchi acquei portuali e
     // delle aree costiere», TED feb5aec8). «Un CPV discordante non deve prevalere automaticamente sull'effettivo oggetto contrattuale»: vale
     // anche con il CPV della pulizia («pulizia e disinquinamento degli specchi acquei nel porto», TED 3b0902ca, CPV 90900000). Resta pulizia
-    // se l'oggetto affida anche la pulizia di edifici, locali o strutture
+    // se l'oggetto affida anche la pulizia di edifici, locali o strutture, anche coordinata («pulizia delle spiagge E DEI SERVIZI IGIENICI
+    // degli stabilimenti», controllo del coordinamento del 18/11)
     id: "acque_e_coste",
     settori: ["pulizia"],
     cerca: /\b(spiagg\w*|arenil\w*|alve\w*|specch\w* acque\w*|aree costier\w*|fondal\w*)\b/,
-    salvo: /\b(pulizi\w*|sanificazion\w*) (dei |degli |delle |del |della |di |dell )?(locali|uffici|edifici|edificio|immobili|sedi|scuole|strutture|servizi igienici|bagni)\b/,
+    salvo: /\b(pulizi\w*|sanificazion\w*) ((\w+ ){1,4}(e|ed) )?(dei |degli |delle |del |della |di |dell )?(locali|uffici|edifici|edificio|immobili|sedi|scuole|strutture|servizi igienici|bagni)\b/,
     ancheConNucleo: true,
     motivo:
       "Pulizia di acque e coste (spiagge, arenili, alvei, specchi acquei): igiene ambientale del territorio, distinta dalla pulizia di edifici, locali e strutture; il CPV della gara non prevale sull'oggetto del contratto",
@@ -1193,7 +1213,10 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // «2026-11-18d»: decisioni dell'utente del 18/11 (pacchetto 16 aggiornato). D2: buoni pasto senza CPV del file valutati (B servizio, C
 // «buoni_pasto_senza_servizio» per soli materiali o badge, A con una mensa vera). D3: «per alcune parti di …» è accessorio. D4:
 // «acque_e_coste» vale anche con il CPV della pulizia, salvo la pulizia di edifici, locali e strutture.
-export const VERSIONE_REGOLE_SETTORI = "2026-11-18d";
+// «2026-11-18e»: controllo del coordinamento sulla 18d. «parte/parti» è accessorio solo coordinato dopo un altro servizio affidato («e per
+// alcune parti di»), non da solo («affidamento di parte del servizio di pulizia» resta A); il «salvo» di «acque_e_coste» vale anche per gli
+// edifici coordinati («pulizia delle spiagge e dei servizi igienici»). Nessuna gara dell'archivio cambia rispetto alla 18d.
+export const VERSIONE_REGOLE_SETTORI = "2026-11-18e";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
