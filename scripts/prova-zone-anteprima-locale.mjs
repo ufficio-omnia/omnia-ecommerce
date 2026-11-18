@@ -113,7 +113,8 @@ function copiaAggiornata() {
 /** Risposte sintetiche: un titolare con abbonamento attivo e Radar abilitato, amministratore per la console; ogni altra lettura vuota. */
 function supabaseFinto(fileRegistro = null) {
   const registro = [];
-  const UTENTE = { id: "00000000-0000-4000-8000-0000000000f1", aud: "authenticated", role: "authenticated", email: "finto@prova.test", app_metadata: { provider: "email" }, user_metadata: {}, created_at: "2026-11-18T00:00:00Z" };
+  // last_sign_in_at recente: la console accetta solo sessioni nate da meno di 12 ore (lib/console/accesso.ts)
+  const UTENTE = { id: "00000000-0000-4000-8000-0000000000f1", aud: "authenticated", role: "authenticated", email: "finto@prova.test", app_metadata: { provider: "email" }, user_metadata: {}, created_at: "2026-11-18T00:00:00Z", last_sign_in_at: new Date().toISOString() };
   const sessione = (accesso, scadenza) => ({ access_token: accesso, token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + scadenza, refresh_token: `finto-rinnovo-${Date.now()}`, user: UTENTE });
   const righe = (tabella, query) => {
     if (tabella === "users") return [{ id: UTENTE.id, role: "admin", email: UTENTE.email }];
