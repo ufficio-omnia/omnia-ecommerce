@@ -176,7 +176,7 @@ function paginaPronto({ portaApp, preliminare, codice, usati }) {
   const stato = preliminare
     ? "MODALITÀ PRELIMINARE: nessun collegamento può essere generato e nessuna richiesta esce da questo computer."
     : "Finestra aperta. Nessun collegamento è stato generato: ognuno nasce solo quando premi il pulsante del suo utente.";
-  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Collaudo B3 · pronto</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;background:#fff;color:#111}main{max-width:640px;margin:0 auto}h1{font-size:1.4rem}p.stato{padding:12px;border-radius:8px;background:${preliminare ? "#fff4d6" : "#e6f4ea"}}ul{list-style:none;padding:0}li{margin:12px 0}button{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid #444;background:#f4f4f4;cursor:pointer;max-width:100%}button[disabled]{opacity:.55;cursor:not-allowed}span{color:#555;font-size:.9rem}</style></head><body><main><h1>Collaudo B3 — pronto</h1><p class="stato">${stato}</p><p>App: <a href="${app}/login?__zone=omnia-ai">${app}</a> (solo su questo computer). Questa pagina non contiene token e non ne genera da sola.</p><ul>${righe}</ul></main></body></html>`;
+  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><title>Collaudo B3 · pronto</title><style>body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;background:#fff;color:#111}main{max-width:640px;margin:0 auto}h1{font-size:1.4rem}p.stato{padding:12px;border-radius:8px;background:${preliminare ? "#fff4d6" : "#e6f4ea"}}ul{list-style:none;padding:0}li{margin:12px 0}button{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid #444;background:#f4f4f4;cursor:pointer;max-width:100%}button[disabled]{opacity:.55;cursor:not-allowed}span{color:#555;font-size:.9rem}</style></head><body><main><h1>Collaudo B3 — pronto</h1><p class="stato">${stato}</p><p>App: <a href="${app}/login?__zone=omnia-ai">${app}</a> (solo su questo computer). Questa pagina non contiene token e non ne genera da sola.</p><ul>${righe}</ul></main></body></html>`;
 }
 
 /**
@@ -200,8 +200,12 @@ export function serverAccesso({ portaApp, preliminare = false, accedi }) {
     const percorso = (richiesta.url ?? "").split("?")[0];
     if (percorso === "/pronto") {
       if (richiesta.method !== "GET") return testo(405, "Solo GET.", { Allow: "GET" });
+      // Su /pronto «same-origin» e non «no-referrer»: con «no-referrer» il browser invia Origin: null nei POST dei pulsanti e il controllo
+      // dell'origine li respingerebbe (trovato nel controllo preliminare del 18/11). L'indirizzo di /pronto non contiene nulla di riservato e
+      // verso l'app (altra porta, quindi altra origine) non esce comunque alcun Referer.
       risposta.writeHead(200, {
         ...base,
+        "Referrer-Policy": "same-origin",
         "Content-Type": "text/html; charset=utf-8",
         "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' http://${SOLO_LOCALE}:${portaApp}; frame-ancestors 'none'; base-uri 'none'`,
       });
