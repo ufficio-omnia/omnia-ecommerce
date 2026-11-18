@@ -185,7 +185,12 @@ export type CandidatoRicerca = {
   rilevanza?: RilevanzaRicerca | null;
 };
 
-export type RilevanzaRicerca = { stato: "classificata" | "in_attesa" | "fallita"; perSettore: Partial<Record<string, "A" | "B" | "C">> };
+// Fase B3 (interfaccia): anche «non_classificata» (nessuno stato: mai C) e le sottocategorie leggibili dei settori A e B.
+export type RilevanzaRicerca = {
+  stato: "classificata" | "in_attesa" | "fallita" | "non_classificata";
+  perSettore: Partial<Record<string, "A" | "B" | "C">>;
+  sottocategorie?: Partial<Record<string, string[]>>;
+};
 
 // I livelli dei settori che contano per questa ricerca (quelli scelti nei filtri, o tutti). Solo per una gara CLASSIFICATA.
 function livelliCercati(c: CandidatoRicerca, filtri: Pick<FiltriRicerca, "settori">): ("A" | "B" | "C")[] | null {
@@ -206,6 +211,45 @@ export function etichettaRicerca(c: CandidatoRicerca, filtri: Pick<FiltriRicerca
   if (!l || l.length === 0 || l.includes("A")) return null;
   if (l.includes("B")) return "Correlata: appalto misto o servizio accessorio";
   return "Fuori dai settori monitorati";
+}
+
+/**
+ * Fase B3, requisito 4: lo stato della classificazione quando non è ancora definitivo, in un distintivo separato dalla rilevanza (mai «non
+ * pertinente»): «in attesa» e «non ancora classificata». La classificazione fallita la dice già etichettaRicerca.
+ */
+export function etichettaStatoClassificazione(c: CandidatoRicerca): string | null {
+  if (c.rilevanza?.stato === "in_attesa") return "Classificazione in corso";
+  if (c.rilevanza?.stato === "non_classificata") return "Non ancora classificata";
+  return null;
+}
+
+/**
+ * Fase B3, requisito 5: con un filtro per settore, una gara CLASSIFICATA compare solo se in almeno uno dei settori scelti è pertinente (A) o
+ * correlata (B). Il filtro del database si fa sulla colonna «settori», che gli importatori tengono coerente con le righe della 0121; questo
+ * controllo, sulle righe arrivate nella stessa richiesta, toglie l'eventuale gara che la colonna indicasse ancora in un settore dove ora è C.
+ * Le gare non ancora classificate, in attesa o con la classificazione fallita restano (non sono mai C).
+ */
+export function coerenteConFiltroSettori(c: CandidatoRicerca, filtri: Pick<FiltriRicerca, "settori">): boolean {
+  if (!filtri.settori.length || c.rilevanza?.stato !== "classificata") return true;
+  const livelli = c.rilevanza.perSettore;
+  return filtri.settori.some((s) => livelli[s] === "A" || livelli[s] === "B");
+}
+
+export type SettoreDellaRiga = { settore: string; livello: "A" | "B" | null; sottocategorie: string[] };
+
+/**
+ * Fase B3, requisiti 6 e 7: i settori da mostrare nella riga di un risultato. Gara classificata: prima i pertinenti (A), poi i correlati (B),
+ * ciascuno con le sue sottocategorie; i settori C non si mostrano (la gara li ha solo come non pertinenti). Senza classificazione: i settori
+ * della colonna, senza livello (come prima).
+ */
+export function settoriDellaRiga(c: CandidatoRicerca): SettoreDellaRiga[] {
+  const r = c.rilevanza;
+  if (!r || r.stato === "non_classificata" || Object.keys(r.perSettore).length === 0) return c.settori.map((settore) => ({ settore, livello: null, sottocategorie: [] }));
+  const ordine = (l: "A" | "B") => (l === "A" ? 0 : 1);
+  return Object.entries(r.perSettore)
+    .filter((e): e is [string, "A" | "B"] => e[1] === "A" || e[1] === "B")
+    .sort((a, b) => ordine(a[1]) - ordine(b[1]))
+    .map(([settore, livello]) => ({ settore, livello, sottocategorie: r.sottocategorie?.[settore] ?? [] }));
 }
 
 // Fascia per l'ordinamento «per rilevanza»: le gare correlate (B) e quelle fuori dai settori (C) vengono DOPO le pertinenti e quelle non
