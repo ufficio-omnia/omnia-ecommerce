@@ -11,6 +11,7 @@
 //     (change-reason-code «update-add», «cor-buy», «cancel»…); l'esito è un avviso «can-*» con lo stato del vincitore per lotto.
 import { classificaGara, normalizzaCpv, REGOLE_PAROLE, testoPerConfronto, type SettoreRadar } from "../settori";
 import { comuneEProvincia, regioneDaNuts, type IdRegione } from "../territorio";
+import { settoriDopoNatura } from "./natura-contratto";
 import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const URL_RICERCA_TED = "https://api.ted.europa.eu/v3/notices/search";
@@ -386,8 +387,10 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
   const classificazione = classificaGara({ cpvPrincipale, cpvTutti, testo: testoOggetto, lotti: idLotti.map((_, i) => ({ testo: titoliLotti[i], cpv: [cpvLotti[i]] })) });
   const natura = naturaTed(n["contract-nature-main-proc"]);
   if (classificazione.settori.length === 0) return { meta, motivo: "fuori_settore" };
-  // trovata solo per parola chiave: deve essere un servizio (o natura non dichiarata), per non prendere lavori e forniture che «puliscono»
-  if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi" && natura !== "misto") return { meta, motivo: "fuori_settore" };
+  // trovata solo per parola chiave: deve essere un servizio (o natura mista o non dichiarata), per non prendere lavori e forniture che
+  // «puliscono»; salvo il servizio sostitutivo di mensa anche se «fornitura» (D2). Una regola per tutte le fonti: fonti/natura-contratto.ts
+  const settoriTenuti = settoriDopoNatura(classificazione, natura);
+  if (settoriTenuti.length === 0) return { meta, motivo: "fuori_settore" };
 
   const valoreProcEur = String(n["estimated-value-cur-proc"] ?? "EUR").toUpperCase() === "EUR";
   const valoriLotti = perLotto(n["estimated-value-lot"], (x) => importoTed(x));
@@ -483,12 +486,12 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
     lotti,
     impronta: "",
   };
-  record.impronta = impronta({ ...record, impronta: null, settori: classificazione.settori });
+  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti });
 
   return {
     meta,
     record,
-    settori: classificazione.settori,
+    settori: settoriTenuti,
     metodoSettore: classificazione.metodo ?? "cpv",
     regioni,
     enteTipo: stringhe(n["buyer-legal-type"])[0] ?? null,

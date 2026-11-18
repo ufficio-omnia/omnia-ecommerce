@@ -5,7 +5,8 @@
 // coerente e le ambiguità si segnalano». Regole:
 //   - UN SOLO CALCOLO, quello degli importatori e della riclassificazione (classificaGara di settori.ts): CPV della gara e dei lotti, testo =
 //     oggetto della gara + oggetti dei lotti, in quest'ordine; una gara trovata solo per parola chiave deve essere un servizio (o natura
-//     mista o non indicata);
+//     mista o non indicata), salvo il servizio sostitutivo di mensa anche se «fornitura» (D2, fonti/natura-contratto.ts, la stessa regola
+//     dei connettori);
 //   - la colonna «settori» NON cambia comportamento: resta l'unione delle fonti (unione-calcoli.ts), così nessuna fonte toglie ciò che
 //     un'altra ha riconosciuto e nessuna gara cambia settore senza la riclassificazione autorizzata;
 //   - le AMBIGUITÀ si SEGNALANO, non si risolvono da sole. Quando una fonte si unisce a una gara che ha già un'altra fonte, si confrontano:
@@ -21,6 +22,7 @@
 import { classificaGara, nomeSettore, VERSIONE_REGOLE_SETTORI, type Livello, type SettoreRadar } from "./settori";
 import { CAMPO_CLASSIFICAZIONE_AMBIGUA, NOME_FONTE } from "./fonti-gara-calcoli";
 import type { FonteUnita } from "./unione-calcoli";
+import { settoriDopoNatura } from "./fonti/natura-contratto";
 
 export type DatiDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null; natura_contratto: string | null };
 export type LottoDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null };
@@ -50,8 +52,6 @@ export type ClassificazioneArchivio = {
   versione: string;
 };
 
-const NATURE_AMMESSE_PER_PAROLE = new Set(["servizi", "misto"]);
-
 // Lo stesso calcolo di riclassifica-settori.ts (la prova lo confronta su tutti i casi).
 export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly LottoDaClassificare[]): ClassificazioneArchivio {
   const c = classificaGara({
@@ -61,18 +61,22 @@ export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly Lot
     // come riclassifica-settori.ts: i lotti riconoscono un servizio AUTONOMO (lotto dedicato); cambiano il livello, mai i settori
     lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] })),
   });
-  const fuoriPerNatura = c.metodo === "parole_chiave" && !!g.natura_contratto && !NATURE_AMMESSE_PER_PAROLE.has(g.natura_contratto);
+  // la regola della natura del contratto, la stessa dei connettori di tutte le fonti (fonti/natura-contratto.ts, con l'eccezione D2 dei
+  // buoni pasto del 18/11)
+  const tenuti = settoriDopoNatura(c, g.natura_contratto);
   const versione = (c as { versione?: string }).versione ?? VERSIONE_REGOLE_SETTORI;
   const perSettore: Partial<Record<SettoreRadar, ValutazioneSettore>> = {};
   for (const v of c.valutazioni) if (!perSettore[v.settore]) perSettore[v.settore] = valutazioneSettore(v);
-  if (fuoriPerNatura) {
-    // fase B2b: la gara trovata SOLO per parola chiave che non è un servizio resta «considerata» ma non pertinente (C, con il motivo), invece
-    // di sparire senza righe: «una parola chiave da sola non rende pertinente una gara» (decisione dell'utente del 17/11)
+  if (tenuti.length < c.settori.length) {
+    // fase B2b: il settore trovato SOLO per parola chiave in un contratto che non è un servizio resta «considerato» ma non pertinente (C,
+    // con il motivo), invece di sparire senza righe: «una parola chiave da sola non rende pertinente una gara» (decisione dell'utente del
+    // 17/11). Restano solo i settori che la natura non esclude (D2: il servizio sostitutivo di mensa, anche se è una «fornitura»)
     for (const s of Object.keys(perSettore) as SettoreRadar[]) {
       const v = perSettore[s] as ValutazioneSettore;
-      if (v.livello !== "C") perSettore[s] = { ...v, livello: "C", sottocategoria: null, sottocategorie: [], regola: REGOLA_NATURA, regole: [REGOLA_NATURA], motivi: [MOTIVO_NATURA], cpv: [] };
+      if (v.livello !== "C" && !tenuti.includes(s)) perSettore[s] = { ...v, livello: "C", sottocategoria: null, sottocategorie: [], regola: REGOLA_NATURA, regole: [REGOLA_NATURA], motivi: [MOTIVO_NATURA], cpv: [] };
     }
-    return { settori: [], metodo: null, livello: Object.keys(perSettore).length ? "C" : null, perSettore, versione };
+    if (tenuti.length === 0) return { settori: [], metodo: null, livello: Object.keys(perSettore).length ? "C" : null, perSettore, versione };
+    return { settori: tenuti, metodo: c.metodo, livello: tenuti.some((s) => perSettore[s]?.livello === "A") ? "A" : "B", perSettore, versione };
   }
   return { settori: c.settori.length ? [...c.settori] : [], metodo: c.settori.length ? c.metodo : null, livello: c.livello, perSettore, versione };
 }

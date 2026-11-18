@@ -19,6 +19,7 @@ import { idPiattaforma } from "./piattaforme-calcoli";
 import { cigPvl, codiceFiscaleSa } from "./pvl-calcoli";
 import { confrontaScadenze, impronta, type ScadenzaTed } from "./ted-calcoli";
 import type { LimitiFonte } from "./sessione-fonte";
+import { settoriDopoNatura } from "./natura-contratto";
 import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const URL_DATI_SINTEL = "https://www.dati.lombardia.it/resource/8txy-zjw2.json";
@@ -274,8 +275,10 @@ export function leggiProceduraSintel(idProcedura: string, righe: readonly RigaSi
   const natura = naturaSintel(prima.ambito_merceologico);
   // esclusa dalle regole per oggetto (settori.ts, regole della PVL): si conta a parte, con le regole applicate
   if (classificazione.settori.length === 0) return classificazione.esclusioni.length > 0 ? { ...esclusione("esclusa_per_oggetto"), regole: [...new Set(classificazione.esclusioni.map((e) => e.regola))] } : esclusione("fuori_settore");
-  // stessa regola di TED e PVL: una gara trovata solo per parola chiave deve essere di servizi (o di natura non indicata)
-  if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi") return esclusione("fuori_settore");
+  // stessa regola di TED e PVL: una gara trovata solo per parola chiave deve essere di servizi (o di natura non indicata), salvo il servizio
+  // sostitutivo di mensa anche se «fornitura» (D2). Una regola per tutte le fonti: fonti/natura-contratto.ts
+  const settoriTenuti = settoriDopoNatura(classificazione, natura);
+  if (settoriTenuti.length === 0) return esclusione("fuori_settore");
 
   const documentiLotti = righeLotti.map((r) => collegamento(r.link_lotto) ?? collegamento(r.link_procedura));
   const urlProcedura = collegamento(prima.link_procedura);
@@ -337,7 +340,7 @@ export function leggiProceduraSintel(idProcedura: string, righe: readonly RigaSi
     lotti,
     impronta: "",
   };
-  record.impronta = impronta({ ...record, impronta: null, settori: classificazione.settori, stato, opportunita: opp.tipo });
+  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti, stato, opportunita: opp.tipo });
 
   return {
     tipo: "bando",
@@ -345,7 +348,7 @@ export function leggiProceduraSintel(idProcedura: string, righe: readonly RigaSi
     meta,
     record,
     opportunita: opp,
-    settori: classificazione.settori,
+    settori: settoriTenuti,
     metodoSettore: classificazione.metodo ?? "cpv",
     regioni: ["lombardia"],
     scadenzaFonte: scadenza?.fonte ?? null,

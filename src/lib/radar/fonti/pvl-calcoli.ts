@@ -18,6 +18,7 @@ import { classificaGara, normalizzaCpv, vociCpv, type SettoreRadar } from "../se
 import { maiuscoleIniziali, type IdRegione } from "../territorio";
 import { nomeDiConfronto, provinciaDaTesto } from "../province";
 import { confrontaScadenze, giornoDiRoma, impronta, type ScadenzaTed } from "./ted-calcoli";
+import { settoriDopoNatura } from "./natura-contratto";
 import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const URL_PVL = "https://pubblicitalegale.anticorruzione.it/api/v0";
@@ -384,7 +385,9 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
   const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto, lotti: lottiGrezzi.map((e, i) => ({ testo: testoPvl(e.descrizione), cpv: [cpvLotti[i]] })) });
   const natura = naturaPvl(lottiGrezzi[0]?.natura_principale);
   if (classificazione.settori.length === 0) return { tipo: "esclusione", meta, motivo: "fuori_settore" };
-  if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi") return { tipo: "esclusione", meta, motivo: "fuori_settore" };
+  // la regola della natura, una per tutte le fonti, con l'eccezione D2 dei buoni pasto (fonti/natura-contratto.ts)
+  const settoriTenuti = settoriDopoNatura(classificazione, natura);
+  if (settoriTenuti.length === 0) return { tipo: "esclusione", meta, motivo: "fuori_settore" };
 
   const lottiScadenze = lottiGrezzi.map((e) => scadenzaPvl(a.dataScadenza, e.termine_ricezione));
   const scadenzaProc = lottiScadenze.filter((s): s is ScadenzaTed => !!s).sort(confrontaScadenze)[0] ?? scadenzaPvl(a.dataScadenza, null);
@@ -455,13 +458,13 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
     lotti,
     impronta: "",
   };
-  record.impronta = impronta({ ...record, impronta: null, settori: classificazione.settori, attivo: meta.attivo, sostituitoDa: meta.sostituitoDa });
+  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti, attivo: meta.attivo, sostituitoDa: meta.sostituitoDa });
 
   return {
     tipo: "bando",
     meta,
     record,
-    settori: classificazione.settori,
+    settori: settoriTenuti,
     metodoSettore: classificazione.metodo ?? "cpv",
     regioni,
     scadenzaFonte: scadenzaProc?.fonte ?? null,

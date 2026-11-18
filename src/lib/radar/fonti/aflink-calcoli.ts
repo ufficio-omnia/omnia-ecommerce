@@ -22,6 +22,7 @@ import { idPiattaforma, type PiattaformaNota } from "./piattaforme-calcoli";
 import { cigSintel } from "./sintel-calcoli";
 import { giornoDiRoma, impronta, type ScadenzaTed } from "./ted-calcoli";
 import type { LimitiFonte } from "./sessione-fonte";
+import { settoriDopoNatura } from "./natura-contratto";
 import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const NAMESPACE_AFLINK = "http://www.aflink.it/XMLBANDI";
@@ -253,7 +254,9 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
   const natura = naturaAflink(e.Contratto);
   // esclusa dalle regole per oggetto (settori.ts, regole della PVL): si conta a parte, con le regole applicate
   if (classificazione.settori.length === 0) return classificazione.esclusioni.length > 0 ? { ...esclusione("esclusa_per_oggetto"), regole: [...new Set(classificazione.esclusioni.map((e) => e.regola))] } : esclusione("fuori_settore");
-  if (classificazione.metodo === "parole_chiave" && natura !== null && natura !== "servizi") return esclusione("fuori_settore");
+  // la regola della natura, una per tutte le fonti, con l'eccezione D2 dei buoni pasto (fonti/natura-contratto.ts)
+  const settoriTenuti = settoriDopoNatura(classificazione, natura);
+  if (settoriTenuti.length === 0) return esclusione("fuori_settore");
 
   const valoreBase = importoAflink(e.a_base_asta);
   if (valoreBase === null) mancanti.push("valore");
@@ -298,7 +301,7 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
     impronta: "",
   };
   // l'indirizzo della pagina contiene la scadenza (cambia con le proroghe): l'impronta lo esclude, la scadenza è già nei campi
-  record.impronta = impronta({ ...record, impronta: null, urlAvviso: null, urlDocumenti: null, settori: classificazione.settori, stato: meta.stato, opportunita: opp.tipo });
+  record.impronta = impronta({ ...record, impronta: null, urlAvviso: null, urlDocumenti: null, settori: settoriTenuti, stato: meta.stato, opportunita: opp.tipo });
 
   return {
     tipo: "bando",
@@ -307,7 +310,7 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
     record,
     opportunita: opp,
     rettificato: ogg.rettificato,
-    settori: classificazione.settori,
+    settori: settoriTenuti,
     metodoSettore: classificazione.metodo ?? "cpv",
     regioni: [desc.regione],
     scadenzaFonte: scadenza?.fonte ?? null,
