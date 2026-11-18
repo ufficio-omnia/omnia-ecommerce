@@ -14,6 +14,8 @@ import { descriviCorrezioneSettori, nomeSettore, voceCpv, type SettoreRadar } fr
 import { ATTRIBUZIONE_FONTE, NOME_FONTE, descriviAvvisoLetto, etichettaFonti, fontiDellaGara, fonteDelDato, riepilogoFonti } from "@/lib/radar/fonti-gara-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
+import ClassificazioneGara from "@/components/omnia-ai/opportunita/classificazione-gara";
+import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
 import { ETICHETTA_OPPORTUNITA } from "@/lib/radar/opportunita-calcoli";
 
@@ -80,7 +82,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
 
   const admin = createAdminClient();
   const supabase = await createClient();
-  const [dati, salvataggi] = await Promise.all([leggiGaraPubblica(admin, id), leggiSalvataggi(supabase, [id])]);
+  const [dati, salvataggi] = await Promise.all([leggiGaraPubblica(admin, id, { classificazioni: classificazioniAttive(process.env) }), leggiSalvataggi(supabase, [id])]);
   if (!dati) notFound();
   const { gara: g, lotti, provenienze, aggiornamenti, controlli, collegate, cigCollegati } = dati;
   // gara collegata a un'altra (stessa gara pubblicata due volte, 0117): si mostra quella che resta, che ne riporta fonti e CIG
@@ -236,6 +238,9 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           <p className="omnia-opp-nota">«Analizza requisiti» e «Crea offerta tecnica» arriveranno nelle prossime fasi.</p>
         </aside>
       </div>
+
+      {/* fase B3: rilevanza per settore con livello, sottocategorie e motivi (solo con le classificazioni accese) */}
+      {dati.classificazione && <ClassificazioneGara c={dati.classificazione} />}
 
       <section className="omnia-riquadro" aria-labelledby="panoramica">
         <span id="panoramica" className="omnia-eyebrow">

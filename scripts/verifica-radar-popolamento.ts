@@ -450,7 +450,10 @@ async function principale() {
     ], [null, "Correlata: appalto misto o servizio accessorio", "Fuori dai settori monitorati", "Classificazione da verificare", null, null]);
     uguale("F. con il filtro di un settore conta quel settore: A in pulizia ma B in vigilanza → «Correlata» se si cerca la vigilanza", [etichettaRicerca(gAB, { settori: ["pulizia"] }), etichettaRicerca(gAB, { settori: ["vigilanza_portierato"] })], [null, "Correlata: appalto misto o servizio accessorio"]);
     const ric = leggi("src/lib/radar/ricerca.ts");
-    atteso("F. la ricerca legge le classificazioni SOLO con l'interruttore acceso, e mai le copie collegate (.is(\"unita_a\", null))", /opzioni\.classificazioni \? await leggiRilevanze\(/.test(ric) && ric.includes('.is("unita_a", null)'));
+    // fase B3 (sessione B1, eccezione autorizzata dal coordinamento il 18/11): la ricerca legge le classificazioni nella STESSA richiesta
+    // dell'elenco (colonneElenco/COLONNA_RIGHE_ATTIVE) invece che con leggiRilevanze; stessa garanzia. Prova di comportamento con un client
+    // finto in verifica-radar-b3-interfaccia.ts.
+    atteso("F. la ricerca legge le classificazioni SOLO con l'interruttore acceso, e mai le copie collegate (.is(\"unita_a\", null))", ric.includes("colonneElenco(conClassificazioni)") && ric.includes("if (conClassificazioni) q = q.eq(COLONNA_RIGHE_ATTIVE, true)") && ric.includes("let classificazioni = opzioni.classificazioni === true") && ric.includes('.is("unita_a", null)') && !ric.includes("leggiRilevanze("));
     atteso("F. la pagina Cerca passa l'interruttore dall'ambiente e mostra l'etichetta", leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx").includes("classificazioni: classificazioniAttive(process.env)") && leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx").includes("rilevanza: etichettaRicerca(r, filtri)") && leggi("src/components/omnia-ai/opportunita/riga-gara.tsx").includes("{d.rilevanza && "));
     // gare unite: la copia collegata C e la gara che resta T, entrambe classificate A
     const righe = [{ procedura_id: "T", settore: "pulizia" as const, rilevanza: "A" as const, attiva: true }, { procedura_id: "C", settore: "pulizia" as const, rilevanza: "A" as const, attiva: true }, { procedura_id: "B", settore: "pulizia" as const, rilevanza: "B" as const, attiva: true }];
