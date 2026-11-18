@@ -187,6 +187,84 @@ async function provaComportamento() {
   }
 }
 
+// ───── script del collaudo con accesso: SOLO prove a secco (porta e fetch finti, nessuna rete, nessuno staging) ─────
+async function provaCollaudo() {
+  const ca = await import("./collaudo-accesso-b3.mjs");
+  const os = await import("node:os");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "b3-collaudo-"));
+  const progetto = path.join(tmp, "progetto");
+  fs.mkdirSync(path.join(progetto, "scripts"), { recursive: true });
+  const variabiliValide = ["NEXT_PUBLIC_SUPABASE_URL=https://ryawdldqiumqsskrnyps.supabase.co", "NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_SINTETICA", "SUPABASE_SERVICE_ROLE_KEY=sb_secret_SINTETICA_DA_NON_STAMPARE"].join("\n");
+  const fileFuori = path.join(tmp, "variabili.txt");
+  fs.writeFileSync(fileFuori, variabiliValide);
+  const fileDentro = path.join(progetto, "variabili.txt");
+  fs.writeFileSync(fileDentro, variabiliValide);
+  const fileProd = path.join(tmp, "variabili-prod.txt");
+  fs.writeFileSync(fileProd, variabiliValide.replace("ryawdldqiumqsskrnyps", "bihfrzspqxsrzlbqqvqa"));
+  const chiamate: { url: string; metodo: string; corpo: string }[] = [];
+  const fetchFinto = (async (url: string, init?: RequestInit) => {
+    chiamate.push({ url, metodo: init?.method ?? "GET", corpo: String(init?.body ?? "") });
+    return new Response(JSON.stringify({ hashed_token: `TOKEN_SINTETICO_${chiamate.length}` }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const portaOk = () => ({ id: "AUT-SINTETICA", uso: "U1" });
+  const fileCollegamenti = path.join(tmp, "fuori", "collegamenti.json");
+  const ferma = async (nome: string, argv: string[], env: Record<string, string>, opzioni: Record<string, unknown>) => {
+    const prima = chiamate.length;
+    let fermato = "";
+    try {
+      await ca.collaudo(argv, env, { cartella: progetto, fetchFn: fetchFinto, ...opzioni });
+    } catch (e) {
+      fermato = e instanceof ca.Fermo ? e.message : `errore inatteso: ${e}`;
+    }
+    atteso(nome, fermato !== "" && !fermato.startsWith("errore inatteso") && chiamate.length === prima && !/SINTETICA_DA_NON_STAMPARE|bihfrzspqxsrzlbqqvqa\.supabase/.test(fermato), fermato || "non si è fermato");
+  };
+  try {
+    await ferma("CA1. senza il lanciatore delle autorizzazioni (TI_REGISTRO assente) si ferma prima di qualunque rete", [fileFuori, "3110"], {}, {});
+    await ferma("CA2. porta che nega l'esecuzione → fermo, nessuna rete", [fileFuori, "3110"], {}, { controllaPorta: () => { throw new Error("autorizzazione inesistente"); } });
+    await ferma("CA3. file delle variabili dentro il progetto → fermo", [fileDentro, "3110"], {}, { controllaPorta: portaOk, avvia: async () => 0 });
+    await ferma("CA4. variabili di produzione → fermo, i messaggi non riportano valori", [fileProd, "3110"], {}, { controllaPorta: portaOk, avvia: async () => 0 });
+    await ferma("CA5. lanciatore dell'anteprima mancante → fermo prima di generare i collegamenti", [fileFuori, "3110"], {}, { controllaPorta: portaOk });
+    await ferma("CA6. file dei collegamenti dentro il progetto → fermo", [fileFuori, "3110"], {}, { controllaPorta: portaOk, avvia: async () => 0, fileCollegamenti: path.join(progetto, "collegamenti.json") });
+
+    const stampato: string[] = [];
+    const logOriginale = console.log;
+    console.log = (...a: unknown[]) => stampato.push(a.map(String).join(" "));
+    let duranteIlServer: { esiste: boolean; contenuto: { email: string; collegamento: string }[] } = { esiste: false, contenuto: [] };
+    let codice: number | null = null;
+    try {
+      codice = await ca.collaudo([fileFuori, "3110"], {}, {
+        cartella: progetto,
+        fetchFn: fetchFinto,
+        controllaPorta: portaOk,
+        fileCollegamenti,
+        avvia: async () => {
+          duranteIlServer = { esiste: fs.existsSync(fileCollegamenti), contenuto: JSON.parse(fs.readFileSync(fileCollegamenti, "utf8")) };
+          return 0;
+        },
+      });
+    } finally {
+      console.log = logOriginale;
+    }
+    const generate = chiamate.slice(-3);
+    uguale("CA7. collegamenti generati SOLO per i tre utenti di prova, con POST a generate_link dello staging", generate.map((c) => `${c.metodo} ${c.url.replace("https://ryawdldqiumqsskrnyps.supabase.co", "STAGING")} ${JSON.parse(c.corpo).email}`), ["POST STAGING/auth/v1/admin/generate_link ti-admin@prova.test", "POST STAGING/auth/v1/admin/generate_link ti-titolare@prova.test", "POST STAGING/auth/v1/admin/generate_link ti-titolare2@prova.test"]);
+    atteso("CA8. durante il server il file dei collegamenti esiste, fuori dal progetto, con un collegamento per utente (console e area clienti)", duranteIlServer.esiste && duranteIlServer.contenuto.length === 3 && duranteIlServer.contenuto[0].collegamento.includes("/auth/conferma?token_hash=") && duranteIlServer.contenuto[1].collegamento.includes("/attiva-account?type=email"));
+    atteso("CA9. allo spegnimento il file dei collegamenti è cancellato e il codice d'uscita è quello del server", !fs.existsSync(fileCollegamenti) && codice === 0);
+    atteso("CA10. nell'uscita nessun token né chiave (solo dove sta il file)", stampato.length > 0 && !stampato.some((r) => /TOKEN_SINTETICO|sb_secret_|token_hash=/.test(r)));
+    let cancellatoDopoErrore = false;
+    try {
+      await ca.collaudo([fileFuori, "3110"], {}, { cartella: progetto, fetchFn: fetchFinto, controllaPorta: portaOk, fileCollegamenti, avvia: async () => { throw new Error("server caduto"); } });
+    } catch {
+      cancellatoDopoErrore = !fs.existsSync(fileCollegamenti);
+    }
+    atteso("CA11. se il server cade, il file dei collegamenti si cancella lo stesso", cancellatoDopoErrore);
+    uguale("CA12. utenti del collaudo: solo amministratore e due titolari di imprese diverse, tutti @prova.test", ca.UTENTI_COLLAUDO.map((u: { email: string }) => u.email), ["ti-admin@prova.test", "ti-titolare@prova.test", "ti-titolare2@prova.test"]);
+    const codiceScript = leggi("scripts/collaudo-accesso-b3.mjs");
+    atteso("CA13. lo script controlla la porta (TI_REGISTRO, controllaPorta) prima della guardia e della rete", codiceScript.indexOf("controllaPorta({ script: NOME_SCRIPT })") < codiceScript.indexOf("erroriAmbiente(variabili)") && codiceScript.indexOf("erroriAmbiente(variabili)") < codiceScript.indexOf("await generaCollegamenti("));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 // ───── Radar personalizzato: SOLO il contratto (non collegato a nulla) ─────
 const profilo: ProfiloRadar = { impresaId: "I1", settori: ["pulizia", "ristorazione"], sottocategorie: {}, procedure: [], regioni: [], importoMin: null, importoMax: null, vedereCorrelate: false };
 const gr = (id: string, righe: GaraPerRadar["righe"], extra: Partial<GaraPerRadar> = {}): GaraPerRadar => ({ id, unitaA: null, statoClassificazione: "classificata", righe, tipoProcedura: "aperta", regioni: ["ITF2"], valore: 200000, aperta: true, ...extra });
@@ -215,6 +293,7 @@ uguale("RP5. da rivalutare dopo un giro: solo le gare cambiate, classificate, ap
 atteso("RP6. il contratto del Radar non è usato da nessuna pagina, azione o cron (solo predisposto)", !fs.readdirSync(path.join(RADICE, "src/app"), { recursive: true }).some((f) => /\.(tsx?)$/.test(String(f)) && leggi(path.join("src/app", String(f))).includes("radar-personalizzato-contratto")));
 
 provaComportamento()
+  .then(provaCollaudo)
   .catch((e) => atteso("C. prova di comportamento eseguita", false, e instanceof Error ? e.message : String(e)))
   .finally(() => {
     if (fallimenti.length) {
