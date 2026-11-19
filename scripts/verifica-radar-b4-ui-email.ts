@@ -378,13 +378,15 @@ for (const evento of TUTTI) {
 {
   const cartella = path.join(RADICE, "src/lib/radar/email-modelli");
   const file = fs.readdirSync(cartella).filter((f) => f.endsWith(".ts"));
-  atteso("E16 file dei modelli presenti", ["componi.ts", "contratto.ts", "formato.ts", "index.ts"].every((f) => file.includes(f)), file.join(", "));
+  atteso("E16 file dei modelli presenti, nessuna copia del contratto", ["componi.ts", "formato.ts", "index.ts"].every((f) => file.includes(f)) && !file.includes("contratto.ts"), file.join(", "));
+  const IMPORT_AMMESSI = ["@/lib/omnia-ai-email-eventi-calcoli", "@/lib/radar/notifiche/tipi"];
   for (const f of file) {
     const sorgente = fs.readFileSync(path.join(cartella, f), "utf8");
     const codice = sorgente.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     atteso(`E16 ${f}: nessun database, rete, server, invio, ambiente od orologio`, !/supabase|from "@\/lib\/email"|resend|server-only|next\/|node:|fetch\(|process\.env|Date\.now|new Date\(\)|Math\.random/i.test(codice));
     const importati = [...codice.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
-    atteso(`E16 ${f}: importa solo i modelli e l'escape condiviso`, importati.every((i) => i.startsWith("./") || i === "@/lib/omnia-ai-email-eventi-calcoli"), importati.join(", "));
+    atteso(`E16 ${f}: importa solo i modelli, l'escape condiviso e il contratto di B2`, importati.every((i) => i.startsWith("./") || IMPORT_AMMESSI.includes(i)), importati.join(", "));
+    atteso(`E16 ${f}: date solo col fuso Europe/Rome esplicito`, !/timeZone:\s*"(?!Europe\/Rome")/.test(codice) && !/timeZone:\s*[^"F\s]/.test(codice));
     atteso(`E16 ${f}: nessun «23:59»`, !codice.includes("23:59"));
     atteso(`E16 ${f}: righe LF, niente CRLF`, !sorgente.includes("\r\n"));
   }
@@ -413,6 +415,96 @@ for (const evento of TUTTI) {
 // ───── E19. Le anteprime per l'utente si compongono tutte ─────
 
 for (const a of ANTEPRIME) atteso(`E19 anteprima «${a.file}» composta`, errore(() => componiEmailRadar(a.evento, a.destinatario)) === "");
+
+// ───── E20. Deterministica: stessi ingressi = stessi byte, anche con un orologio e una casualità diversi ─────
+// Serve all'idempotenza verso Resend (Idempotency-Key per 24 ore: un contenuto diverso a parità di chiave dà 409). La prova composta
+// due volte di seguito non basta (due chiamate nello stesso millisecondo darebbero lo stesso Date.now()): si ricompone con un orologio
+// spostato di giorni e con Math.random fisso su valori diversi, e i byte devono restare identici.
+
+function conOrologioDiverso<T>(spostamentoMs: number, casuale: number, f: () => T): T {
+  const DataVera = globalThis.Date;
+  const casualeVero = Math.random;
+  class DataSpostata extends DataVera {
+    constructor(...a: [] | [string | number | Date]) {
+      if (a.length === 0) super(DataVera.now() + spostamentoMs);
+      else super(a[0]);
+    }
+    static now(): number {
+      return DataVera.now() + spostamentoMs;
+    }
+  }
+  globalThis.Date = DataSpostata as DateConstructor;
+  Math.random = () => casuale;
+  try {
+    return f();
+  } finally {
+    globalThis.Date = DataVera;
+    Math.random = casualeVero;
+  }
+}
+
+{
+  const sposta = conOrologioDiverso(1, 0.5, () => [Date.now() - Date.now(), new Date().getTime() > 0, Math.random()]);
+  atteso("E20 controllo dell'orologio finto attivo", sposta[2] === 0.5 && Date.now() > 0 && Math.random() !== 0.5);
+  let diverse = 0;
+  for (const evento of [...TUTTI, ...ANTEPRIME.map((a) => a.evento)]) {
+    for (const destinatario of [TITOLARE_ALFA, UFFICIO_GARE_ALFA]) {
+      const prima = JSON.stringify(componiEmailRadar(evento, destinatario));
+      const subito = JSON.stringify(componiEmailRadar(evento, destinatario));
+      const avanti = JSON.stringify(conOrologioDiverso(3 * 86_400_000 + 7 * 3_600_000, 0.987, () => componiEmailRadar(evento, destinatario)));
+      const indietro = JSON.stringify(conOrologioDiverso(-400 * 86_400_000, 0.001, () => componiEmailRadar(evento, destinatario)));
+      if (prima !== subito || prima !== avanti || prima !== indietro) diverse++;
+    }
+  }
+  atteso("E20 stesso evento e stesso destinatario: stessi byte (due chiamate di seguito, orologio +3 giorni, −400 giorni, casualità diversa)", diverse === 0, `${diverse} email diverse`);
+}
+
+// ───── E21. Avviso UFFICIALE di modifica senza campi cambiati (precisazione d194703 di B2; anche rettifiche PVL, 26C) ─────
+
+{
+  const casi: [string, EventoModifica][] = [
+    ["TED", RETTIFICA_SENZA_DETTAGLIO],
+    ["PVL", { ...RETTIFICA_SENZA_DETTAGLIO, gara: { ...RETTIFICA_SENZA_DETTAGLIO.gara, fonti: [{ fonte: "pvl", nome: "PVL ANAC" }] }, evidenza: { ...RETTIFICA_SENZA_DETTAGLIO.evidenza, fonte: "pvl", nomeFonte: "PVL ANAC", avvisoId: null, avvisoUrl: "https://piattaforma-gare.example/procedure/6/avviso" } }],
+    ["documenti", { ...DOCUMENTI, modifiche: [], evidenza: { ...DOCUMENTI.evidenza, affidabilita: "avviso_ufficiale" } }],
+  ];
+  for (const [nome, evento] of casi) {
+    const { html, testo, oggetto } = componiEmailRadar(evento, TITOLARE_ALFA);
+    const vis = visibile(html);
+    atteso(`E21 ${nome}: rimanda all'avviso ufficiale (testo e HTML)`, testo.includes(RIMANDO_AVVISO_UFFICIALE) && vis.includes(RIMANDO_AVVISO_UFFICIALE));
+    atteso(`E21 ${nome}: nessun cambiamento elencato o supposto`, !/Prima:|Ora:|CHE COSA È CAMBIATO|DOCUMENTI PUBBLICATI|Che cosa è cambiato|Documenti pubblicati/.test(testo + vis));
+    atteso(`E21 ${nome}: il collegamento all'avviso c'è`, collegamenti(html).includes(evento.evidenza.avvisoUrl ?? "-") && testo.includes(`Avviso: ${evento.evidenza.avvisoUrl}`));
+    atteso(`E21 ${nome}: oggetto del tipo, senza dettagli inventati`, oggetto.startsWith(evento.tipo === "documenti" ? "Nuovi documenti di gara:" : "Rettifica:"));
+  }
+}
+
+// ───── E22. Fonte mancante ed evidenza da confronto di versioni (Sintel, SardegnaCAT: 26B §6) ─────
+
+{
+  const senzaFonte: EventoModifica = {
+    ...RETTIFICA,
+    gara: { ...RETTIFICA.gara, fonti: [], urlFonteUfficiale: null },
+    evidenza: { fonte: "", nomeFonte: "", avvisoId: null, avvisoUrl: null, pubblicatoIl: null, rilevatoIl: "2026-11-19T05:10:00Z", affidabilita: "confronto_versioni", motivoFonte: null },
+  };
+  const { html, testo } = componiEmailRadar(senzaFonte, TITOLARE_ALFA);
+  const vis = visibile(html);
+  atteso("E22 senza fonte né avviso: «Fonte del cambiamento: avviso ufficiale.» senza buchi", testo.includes("Fonte del cambiamento: avviso ufficiale.\n") && !/su ,|su \.| ,|\(\)/.test(testo));
+  atteso("E22 confronto di versioni dichiarato", testo.includes("Cambiamento rilevato confrontando due versioni ufficiali della gara pubblicate dalla fonte.") && vis.includes("Cambiamento rilevato confrontando due versioni ufficiali"));
+  atteso("E22 nessun collegamento o riga di fonte inventati", !testo.includes("Fonte ufficiale:") && !testo.includes("Avviso: http") && !/\nFonte: /.test(testo) && !vis.includes("Oppure vai direttamente alla fonte ufficiale"));
+  atteso("E22 i cambiamenti restano elencati", testo.includes("- Importo a base di gara\n  Prima: 1.250.000,00 €\n  Ora: 1.310.000,00 €"));
+}
+
+// ───── E23. Mai «verificata» né valori grezzi (undefined, null, NaN) in nessuna email ─────
+
+{
+  let problemi = 0;
+  for (const evento of [...TUTTI, ...ANTEPRIME.map((a) => a.evento)]) {
+    const { html, testo, oggetto } = componiEmailRadar(evento, UFFICIO_GARE_ALFA);
+    const tutto = `${oggetto}\n${visibile(html)}\n${testo}`;
+    if (/verificat/i.test(tutto) || /\bundefined\b|\bnull\b|\bNaN\b|\[object/.test(tutto)) problemi++;
+  }
+  atteso("E23 nessuna email dice «verificata» o mostra valori grezzi", problemi === 0, `${problemi} email`);
+  atteso("E23 nel riepilogo: «ultimo aggiornamento rilevato dalla fonte il …»", componiEmailRadar(NUOVE_OPPORTUNITA_MOTORE, TITOLARE_ALFA).testo.includes("ultimo aggiornamento rilevato dalla fonte il 19/11/2026 alle 08:42"));
+}
 
 // i tipi dei casi di prova restano quelli del contratto (aiuta il controllo dei tipi a cogliere un contratto cambiato)
 const _controlloTipi: [EventoScadenza, EventoModifica] = [SCADENZA_10, RETTIFICA];

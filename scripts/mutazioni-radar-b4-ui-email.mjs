@@ -29,7 +29,7 @@ const MUTAZIONI = [
   { nome: "M12 preferenze tolte dal testo semplice", file: COMPONI, cerca: "preferenze ? `Preferenze delle notifiche: ${preferenze}` :", con: "false ? `${preferenze}` :" },
   { nome: "M13 Ufficio Gare chiamato titolare", file: COMPONI, cerca: 'if (destinatario.ruolo === "titolare") {', con: "if (true) {" },
   { nome: "M14 avvertenza tolta dal testo semplice", file: COMPONI, cerca: "    `AVVERTENZA. ${AVVERTENZA_EMAIL}`,", con: "    `AVVERTENZA.`," },
-  { nome: "M15 giorno della settimana nel fuso sbagliato", file: FORMATO, cerca: 'new Intl.DateTimeFormat("it-IT", { timeZone: "UTC", weekday: "long"', con: 'new Intl.DateTimeFormat("it-IT", { timeZone: "Pacific/Kiritimati", weekday: "long"' },
+  { nome: "M15 giorno della settimana nel fuso sbagliato", file: FORMATO, cerca: 'new Intl.DateTimeFormat("it-IT", { timeZone: FUSO, weekday: "long"', con: 'new Intl.DateTimeFormat("it-IT", { timeZone: "Pacific/Kiritimati", weekday: "long"' },
   { nome: "M16 «altre» del motore ignorate", file: COMPONI, cerca: "const fuori = Number.isInteger(evento.altreNonIncluse) && evento.altreNonIncluse > 0 ? evento.altreNonIncluse : 0;", con: "const fuori = 0;" },
   { nome: "M17 categoria non controllata", file: COMPONI, cerca: " || CATEGORIA_DEL_TIPO[evento.tipo] !== evento.categoria", con: "" },
   { nome: "M18 scadenza ripetuta tra gli altri cambiamenti", file: COMPONI, cerca: '? valide.filter((m) => m.campo !== "scadenza") : valide;', con: "? valide : valide;" },
@@ -39,6 +39,16 @@ const MUTAZIONI = [
   { nome: "M22 motivo della fonte tolto", file: COMPONI, cerca: 'riga(evidenza.motivoFonte) ? `Motivo indicato dalla fonte: ${riga(evidenza.motivoFonte)}.` : "",', con: '"",' },
   { nome: "M23 «ultima verifica» al posto dell'ultimo aggiornamento rilevato", file: COMPONI, cerca: 'return gara.aggiuntaAMano ? "Ultimo aggiornamento della gara aggiunta" : "Ultimo aggiornamento rilevato dalla fonte";', con: 'return "Ultima verifica sulla fonte";' },
   { nome: "M24 perché della pertinenza tolto dal testo", file: COMPONI, cerca: "if (motivo) righe.push(`   ${motivo}`);", con: "" },
+  // determinismo (richiesta del coordinamento, 19/11): queste DEVONO far fallire la prova dinamica E20, non solo la scansione del sorgente
+  {
+    nome: "M25 Date.now() nell'HTML",
+    file: COMPONI,
+    cerca: '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(t.introduzione)}</div>',
+    con: '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(t.introduzione)}<!-- ${Date.now()} --></div>',
+    richiede: "E20",
+  },
+  { nome: "M26 new Date() nel testo semplice", file: COMPONI, cerca: "    NON_RISPONDERE,\n  ];", con: "    NON_RISPONDERE,\n    new Date().toISOString(),\n  ];", richiede: "E20" },
+  { nome: "M27 Math.random() nell'oggetto", file: COMPONI, cerca: "const oggetto = breve(t.oggetto, 150);", con: 'const oggetto = breve(t.oggetto + (Math.random() > 0.5 ? " ·" : ""), 150);', richiede: "E20" },
 ];
 
 function impronta(testo) {
@@ -75,7 +85,10 @@ for (const m of MUTAZIONI) {
     fs.writeFileSync(path.join(RADICE, m.file), originale.replace(m.cerca, m.con), "utf8");
     const esito = spawnSync(process.execPath, [TSX, VERIFICA], { cwd: RADICE, encoding: "utf8" });
     const falliti = (esito.stdout ?? "").split("\n").filter((r) => r.startsWith("FALLITO"));
-    if (esito.status !== 0) {
+    if (esito.status !== 0 && m.richiede && !falliti.some((r) => r.startsWith(`FALLITO ${m.richiede} `))) {
+      sopravvissute.push(`${m.nome} (fallisce, ma non nella prova ${m.richiede})`);
+      console.log(`SOPRAVVISSUTA ${m.nome} — la prova ${m.richiede} non la coglie (falliscono: ${falliti.map((r) => r.slice(8, 40)).join(" | ")})`);
+    } else if (esito.status !== 0) {
       uccise++;
       console.log(`uccisa   ${m.nome} — ${falliti.length} controlli falliti (es. ${(falliti[0] ?? esito.stderr.split("\n")[0] ?? "").replace(/^FALLITO /, "").slice(0, 90)})`);
     } else {

@@ -1,109 +1,52 @@
-// Controllo di compatibilità tra la copia del contratto delle notifiche nei modelli di B1 (src/lib/radar/email-modelli/contratto.ts) e
-// l'originale di B2 (src/lib/radar/notifiche/tipi.ts), letto in SOLA LETTURA con «git show <ramo>:<file>». Nessuna scrittura nel repository:
-// i file di prova vanno in una cartella temporanea del sistema, cancellata alla fine.
-// Controlla: (1) ogni tipo esportato è assegnabile nei due sensi; (2) le costanti sono uguali; (3) la firma ComponiEmailRadar coincide.
+// Controllo del contratto delle notifiche nel ramo di B1. Il file src/lib/radar/notifiche/tipi.ts è di B2: entra nel ramo SOLO con un merge
+// dal ramo di B2 e qui non si modifica mai. Questo strumento, in SOLA LETTURA (git show, git diff), controlla che:
+//   1. la copia di lavoro del file sia identica a quella committata (nessuna modifica locale);
+//   2. il file del ramo sia identico, byte per byte, all'impronta verificata dal coordinamento;
+//   3. il file del ramo sia identico a quello in cima al ramo di B2 (altrimenti B2 ha pubblicato una versione nuova: si rifà il merge).
 // Uso: node scripts/verifica-contratto-email-b4.mjs [ramo di B2, di base feature/tender-intelligence-b4-db]
-// Dopo l'integrazione (quando tipi.ts è nel ramo corrente) si può passare HEAD.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RADICE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const RAMO = process.argv[2] || "feature/tender-intelligence-b4-db";
-const FILE_B2 = "src/lib/radar/notifiche/tipi.ts";
-const FILE_B1 = "src/lib/radar/email-modelli/contratto.ts";
-
-const TIPI = [
-  "CategoriaNotifica",
-  "TipoEvento",
-  "ScadenzaNota",
-  "FonteGara",
-  "LottoConScadenza",
-  "GaraEmail",
-  "ModificaRilevata",
-  "EvidenzaModifica",
-  "EventoScadenza",
-  "EventoModifica",
-  "GaraRiepilogo",
-  "EventoRiepilogo",
-  "EventoRadar",
-  "RuoloDestinatario",
-  "DestinatarioEmail",
-  "EmailComposta",
-  "ComponiEmailRadar",
-];
-const COSTANTI = ["VERSIONE_CONTRATTO_NOTIFICHE", "CATEGORIE_NOTIFICA", "TIPI_EVENTO", "CATEGORIA_DEL_TIPO", "GIORNI_PROMEMORIA", "MASSIMO_GARE_RIEPILOGO"];
+const RAMO_B2 = process.argv[2] || "feature/tender-intelligence-b4-db";
+const FILE = "src/lib/radar/notifiche/tipi.ts";
+// impronta del contratto DEFINITIVO, versione 1, commit 73ea702 di B2, verificata dal coordinamento il 19/11/2026
+const IMPRONTA_VERIFICATA = "4b36014c8b0589519f47605e3eed939453048f9d5dbd0927b2062a5fefe0472e";
 
 function git(...argomenti) {
   return spawnSync("git", ["-c", "core.autocrlf=false", ...argomenti], { cwd: RADICE, encoding: "utf8" });
 }
-
-const commit = git("rev-parse", "--short", RAMO);
-const originale = git("show", `${RAMO}:${FILE_B2}`);
-if (commit.status !== 0 || originale.status !== 0) {
-  console.error(`FERMO: ${FILE_B2} non leggibile nel ramo «${RAMO}» (${(originale.stderr || commit.stderr).trim()})`);
-  process.exit(2);
+function sha(testo) {
+  return createHash("sha256").update(testo).digest("hex");
 }
-const impronta = createHash("sha256").update(originale.stdout).digest("hex");
-console.log(`Contratto di B2: ${RAMO} @ ${commit.stdout.trim()}, ${FILE_B2}, sha256 ${impronta}`);
 
-const cartella = fs.mkdtempSync(path.join(os.tmpdir(), "contratto-email-b4-"));
-let esito = 0;
-try {
-  fs.writeFileSync(path.join(cartella, "b2.ts"), originale.stdout, "utf8");
-  fs.copyFileSync(path.join(RADICE, FILE_B1), path.join(cartella, "b1.ts"));
-  fs.writeFileSync(
-    path.join(cartella, "tipi-controllo.ts"),
-    [
-      'import type * as B1 from "./b1";',
-      'import type * as B2 from "./b2";',
-      "type Reciproci<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;",
-      ...TIPI.map((t) => `export const ${t}: Reciproci<B1.${t}, B2.${t}> = true;`),
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-  const tsc = spawnSync(
-    process.execPath,
-    [path.join(RADICE, "node_modules/typescript/bin/tsc"), "--noEmit", "--strict", "--skipLibCheck", "--target", "es2022", "--module", "esnext", "--moduleResolution", "bundler", path.join(cartella, "tipi-controllo.ts")],
-    { cwd: cartella, encoding: "utf8" },
-  );
-  if (tsc.status === 0) {
-    console.log(`ok     tipi identici nei due sensi: ${TIPI.length}/${TIPI.length}`);
+const fallimenti = [];
+function atteso(nome, ok, dettaglio = "") {
+  console.log(`${ok ? "ok    " : "FALLITO"} ${nome}${ok || !dettaglio ? "" : ` — ${dettaglio}`}`);
+  if (!ok) fallimenti.push(nome);
+}
+
+const nelRamo = git("show", `HEAD:${FILE}`);
+atteso(`${FILE} presente nel ramo`, nelRamo.status === 0, nelRamo.stderr.trim());
+if (nelRamo.status === 0) {
+  const locale = fs.readFileSync(path.join(RADICE, FILE), "utf8");
+  atteso("nessuna modifica locale al file di B2", locale === nelRamo.stdout && git("diff", "--quiet", "HEAD", "--", FILE).status === 0);
+  const impronta = sha(nelRamo.stdout);
+  atteso(`impronta verificata dal coordinamento (${IMPRONTA_VERIFICATA.slice(0, 12)}…)`, impronta === IMPRONTA_VERIFICATA, impronta);
+  const diB2 = git("show", `${RAMO_B2}:${FILE}`);
+  if (diB2.status !== 0) {
+    console.log(`(ramo di B2 «${RAMO_B2}» non leggibile in questo clone: controllo 3 saltato)`);
   } else {
-    esito = 1;
-    const diversi = [...new Set([...tsc.stdout.matchAll(/tipi-controllo\.ts\(\d+,\d+\): error TS\d+: [^\n]*/g)].map((m) => m[0]))];
-    console.log(`FALLITO tipi diversi o mancanti:\n${diversi.map((d) => `  ${d}`).join("\n") || tsc.stdout}`);
+    const cima = git("rev-parse", "--short", RAMO_B2).stdout.trim();
+    atteso(`identico al file in cima al ramo di B2 (${RAMO_B2} @ ${cima})`, sha(diB2.stdout) === impronta, `B2 ha ${sha(diB2.stdout)}: versione nuova, chiedere al coordinamento e rifare il merge`);
   }
-  fs.writeFileSync(
-    path.join(cartella, "costanti-controllo.ts"),
-    [
-      'import * as B1 from "./b1";',
-      'import * as B2 from "./b2";',
-      `const nomi = ${JSON.stringify(COSTANTI)};`,
-      "let diverse = 0;",
-      "for (const n of nomi) {",
-      "  const a = JSON.stringify((B1 as Record<string, unknown>)[n]);",
-      "  const b = JSON.stringify((B2 as Record<string, unknown>)[n]);",
-      '  if (a !== b || a === undefined) { diverse++; console.log(`FALLITO costante ${n}: B1 ${a} ≠ B2 ${b}`); }',
-      "}",
-      'if (!diverse) console.log(`ok     costanti uguali: ${nomi.length}/${nomi.length}`);',
-      "process.exit(diverse ? 1 : 0);",
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-  const costanti = spawnSync(process.execPath, [path.join(RADICE, "node_modules/tsx/dist/cli.mjs"), path.join(cartella, "costanti-controllo.ts")], { cwd: cartella, encoding: "utf8" });
-  process.stdout.write(costanti.stdout);
-  if (costanti.status !== 0) {
-    esito = 1;
-    if (costanti.stderr) console.log(costanti.stderr.split("\n").slice(0, 5).join("\n"));
-  }
-} finally {
-  fs.rmSync(cartella, { recursive: true, force: true });
+  const sorgenti = git("log", "--format=%H %s", "HEAD", "--", FILE).stdout.trim().split("\n").filter(Boolean);
+  const nonDiB2 = sorgenti.filter((r) => !/^\S+ Tender Intelligence B4: contratto/.test(r));
+  atteso("nel ramo il file è cambiato solo dai commit di B2 sul contratto", nonDiB2.length === 0, nonDiB2.join(" | "));
 }
-console.log(esito ? "\nIl contratto copiato nei modelli NON coincide con quello di B2." : "\nIl contratto copiato nei modelli coincide con quello di B2.");
-process.exit(esito);
+
+console.log(fallimenti.length ? `\n${fallimenti.length} controlli FALLITI sul contratto di B2.` : "\nIl contratto di B2 nel ramo è quello verificato e non è stato toccato.");
+process.exit(fallimenti.length ? 1 : 0);

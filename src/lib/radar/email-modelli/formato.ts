@@ -2,7 +2,7 @@
 // orologio: stessi dati, stessa stringa (il motore di B2 rinvia con una chiave di idempotenza che esige lo stesso contenuto).
 // La scadenza non si presume mai: senza un'ora indicata si scrive «ora non indicata dalla fonte» (o «…dall'impresa» per le gare aggiunte a mano).
 import { esc } from "@/lib/omnia-ai-email-eventi-calcoli";
-import type { ScadenzaNota } from "./contratto";
+import type { ScadenzaNota } from "@/lib/radar/notifiche/tipi";
 
 export { esc };
 
@@ -10,11 +10,16 @@ export const TESTO_ORA_NON_INDICATA = "ora non indicata dalla fonte";
 export const TESTO_ORA_NON_INDICATA_IMPRESA = "ora non indicata nella gara aggiunta";
 export const TESTO_SCADENZA_NON_INDICATA = "non indicata dalla fonte";
 
-const FORMATO_GIORNO = new Intl.DateTimeFormat("it-IT", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" });
-const FORMATO_DATA = new Intl.DateTimeFormat("it-IT", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" });
-const FORMATO_ISTANTE = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+// Tutte le date si formattano SOLO da campi dell'evento e con il fuso Europe/Rome esplicito (regola del coordinamento, 19/11).
+const FUSO = "Europe/Rome";
+const FORMATO_GIORNO = new Intl.DateTimeFormat("it-IT", { timeZone: FUSO, weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const FORMATO_DATA = new Intl.DateTimeFormat("it-IT", { timeZone: FUSO, day: "numeric", month: "long", year: "numeric" });
+const FORMATO_ISTANTE = new Intl.DateTimeFormat("it-IT", { timeZone: FUSO, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-/** Un giorno «AAAA-MM-GG» valido come data di calendario (senza fusi: è il giorno di Roma già calcolato dal motore). */
+/**
+ * Un giorno «AAAA-MM-GG» (già il giorno di calendario di Roma, calcolato dal motore) come istante alle 12:00 UTC: a Roma sono le 13:00 o
+ * le 14:00 dello STESSO giorno con l'ora solare e con quella legale, quindi formattarlo in Europe/Rome non sposta mai la data.
+ */
 function dataDelGiorno(giorno: string | null | undefined): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(giorno ?? ""));
   if (!m) return null;

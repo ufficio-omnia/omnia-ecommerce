@@ -1,4 +1,5 @@
-// Fase B4 — Modelli delle email delle notifiche di Tender Intelligence (decisione dell'utente del 19/11, §2–3; contratto di B2 versione 1).
+// Fase B4 — Modelli delle email delle notifiche di Tender Intelligence (decisione dell'utente del 19/11, §2–3). Contratto: il file di B2
+// src/lib/radar/notifiche/tipi.ts (versione 1, definitivo a 73ea702), portato nel ramo con un merge e mai modificato qui.
 // componiEmailRadar(evento, destinatario) → { oggetto, html, testo }: funzione PURA e DETERMINISTICA. Nessun database, nessuna rete, nessun
 // orologio, nessuno stato tra una chiamata e l'altra: stessi ingressi, stessa email byte per byte (il motore di B2 rinvia con una chiave di
 // idempotenza che esige lo stesso contenuto). Chi riceve, quando e se inviare lo decide il motore; qui solo che cosa si scrive.
@@ -13,6 +14,7 @@ import {
   CATEGORIA_DEL_TIPO,
   GIORNI_PROMEMORIA,
   MASSIMO_GARE_RIEPILOGO,
+  type ComponiEmailRadar,
   type DestinatarioEmail,
   type EmailComposta,
   type EventoModifica,
@@ -25,7 +27,7 @@ import {
   type ModificaRilevata,
   type ScadenzaNota,
   type TipoEvento,
-} from "./contratto";
+} from "@/lib/radar/notifiche/tipi";
 import { breve, esc, formattaData, formattaIstante, formattaScadenza, partiScadenza, riga, urlSicuro, TESTO_SCADENZA_NON_INDICATA } from "./formato";
 
 export const AVVERTENZA_EMAIL =
@@ -349,7 +351,7 @@ function schedaRiepilogo(gara: GaraRiepilogo): string {
     (dettagli ? `<div style="font-size:13px;line-height:19px;color:${GRIGIO};word-break:break-word;">${esc(dettagli)}</div>` : "") +
     `<div style="font-size:13px;line-height:19px;color:${TESTO};">Scadenza: ${scadenzaHtml(gara.scadenza, true)}</div>` +
     (motivo ? `<div style="font-size:13px;line-height:19px;color:#15803d;word-break:break-word;">${esc(motivo)}</div>` : "") +
-    `<div style="font-size:12px;line-height:18px;color:${GRIGIO};">${esc([fonte ? `Fonte: ${fonte}` : "", aggiornata ? `aggiornata il ${aggiornata}` : ""].filter(Boolean).join(" · "))}</div>` +
+    `<div style="font-size:12px;line-height:18px;color:${GRIGIO};">${esc([fonte ? `Fonte: ${fonte}` : "", aggiornata ? `ultimo aggiornamento rilevato dalla fonte il ${aggiornata}` : ""].filter(Boolean).join(" · "))}</div>` +
     `</td></tr>`
   );
 }
@@ -484,7 +486,7 @@ function corpoTesto(evento: EventoRadar): string[] {
       if (dettagli) righe.push(`   ${dettagli}`);
       righe.push(`   Scadenza: ${formattaScadenza(g.scadenza)}`);
       if (motivo) righe.push(`   ${motivo}`);
-      const coda = [fonte ? `Fonte: ${fonte}` : "", aggiornata ? `aggiornata il ${aggiornata}` : ""].filter(Boolean).join(" · ");
+      const coda = [fonte ? `Fonte: ${fonte}` : "", aggiornata ? `ultimo aggiornamento rilevato dalla fonte il ${aggiornata}` : ""].filter(Boolean).join(" · ");
       if (coda) righe.push(`   ${coda}`);
       const u = urlSicuro(g.urlScheda);
       if (u) righe.push(`   ${u}`);
@@ -550,10 +552,11 @@ function documentoTesto(evento: EventoRadar, destinatario: DestinatarioEmail, t:
 // ───── funzione pubblica ─────
 
 /**
- * Compone l'email di un evento per un destinatario. Pura e deterministica: stessi dati, stessa email. Lancia un errore (e quindi nessuna
- * email) se il destinatario non appartiene all'impresa dell'evento, o se tipo e categoria dell'evento non sono coerenti col contratto.
+ * Compone l'email di un evento per un destinatario. Pura e deterministica: stessi dati, stessa email, byte per byte. Lancia un errore (e
+ * quindi nessuna email) se il destinatario non appartiene all'impresa dell'evento, o se tipo e categoria dell'evento non sono coerenti col
+ * contratto. Il tipo ComponiEmailRadar del contratto di B2 fissa la firma: se il contratto cambia, il controllo dei tipi se ne accorge.
  */
-export function componiEmailRadar(evento: EventoRadar, destinatario: DestinatarioEmail): EmailComposta {
+export const componiEmailRadar: ComponiEmailRadar = function componiEmailRadar(evento: EventoRadar, destinatario: DestinatarioEmail): EmailComposta {
   if (!evento?.impresaId || !destinatario?.impresaId || destinatario.impresaId !== evento.impresaId) {
     throw new Error("componiEmailRadar: il destinatario non appartiene all'impresa dell'evento");
   }
@@ -563,4 +566,4 @@ export function componiEmailRadar(evento: EventoRadar, destinatario: Destinatari
   const t = testi(evento);
   const oggetto = breve(t.oggetto, 150);
   return { oggetto, html: documentoHtml(evento, destinatario, { ...t, oggetto }), testo: documentoTesto(evento, destinatario, t) };
-}
+};
