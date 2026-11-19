@@ -11,7 +11,7 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 export const STATI_PROBLEMA = ["fallita", "esito_incerto", "rimbalzata", "reclamo"] as const;
 export type StatoProblema = (typeof STATI_PROBLEMA)[number];
 
-export const STATI_CONSEGNA = ["in_coda", "in_invio", "inviata", "annullata", "scartata", "fallita", "esito_incerto", "rimbalzata", "reclamo"] as const;
+export const STATI_CONSEGNA = ["in_coda", "in_invio", "inviata", "inclusa", "annullata", "scartata", "fallita", "esito_incerto", "rimbalzata", "reclamo"] as const;
 export type StatoConsegna = (typeof STATI_CONSEGNA)[number];
 
 /** Colonne lette: nessun indirizzo, nessun testo; dall'evento solo tipo, categoria, gara e denominazione. */

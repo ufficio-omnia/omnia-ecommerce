@@ -86,7 +86,9 @@ export function gruppiScadenza(
     return { gruppi, lottiSenzaScadenza: senza };
   }
   const p = scadenzaNota(procedura, origine);
-  return { gruppi: p ? [{ scadenza: p, ambito: "procedura", lotti: [] }] : [], lottiSenzaScadenza: [] };
+  // nessuna scadenza nemmeno per la procedura: i lotti si elencano come «senza scadenza» (come scadenzeDistintePvl della PVL)
+  if (!p) return { gruppi: [], lottiSenzaScadenza: lotti.map(lotto).sort(perNumero) };
+  return { gruppi: [{ scadenza: p, ambito: "procedura", lotti: [] }], lottiSenzaScadenza: [] };
 }
 
 /** Ordine tra due scadenze: prima per giorno; nello stesso giorno, quella senza ora dopo quella con l'ora, poi per istante. */

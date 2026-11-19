@@ -133,7 +133,8 @@ const URL_PRODUZIONE = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
   controlla("staging senza variabile → localhost", loc.ok && loc.origine === ORIGINE_LOCALE);
   const ant = origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, VERCEL_ENV: "preview", RADAR_EMAIL_ORIGINE: "https://omnia-ecommerce-git-anteprima-prova-ufficio-omnia.vercel.app" });
   controlla("anteprima con la sua origine", ant.ok && ant.origine === "https://omnia-ecommerce-git-anteprima-prova-ufficio-omnia.vercel.app");
-  for (const vietata of ["https://omnia-ai.it", "https://www.omnia-ai.it", "https://app.omniaitalia.com", "https://console.omniaitalia.com", "https://OMNIA-AI.IT"]) {
+  controlla("un dominio che solo somiglia a quello di produzione è ammesso", origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, RADAR_EMAIL_ORIGINE: "https://notomnia-ai.it" }).ok);
+  for (const vietata of ["https://omnia-ai.it", "https://www.omnia-ai.it", "https://app.omniaitalia.com", "https://console.omniaitalia.com", "https://OMNIA-AI.IT", "https://qualunque.sottodominio.omniaitalia.com", "https://omnia-ai.it."]) {
     controlla(`staging con origine di produzione vietata (${vietata})`, !origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, RADAR_EMAIL_ORIGINE: vietata }).ok);
   }
   controlla("http fuori da localhost vietato", !origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, RADAR_EMAIL_ORIGINE: "http://esempio.vercel.app" }).ok);
@@ -255,6 +256,7 @@ controlla("scadenza con ora indicata: ora di Roma e istante normalizzato", (() =
   const c = gruppiScadenza(proc, [L("1", "AAAAAAAAAA", null), L("2", "BBBBBBBBBB", null)]);
   controlla("nessuna scadenza di lotto: un solo gruppo della procedura, senza lotti dichiarati", c.gruppi.length === 1 && c.gruppi[0].ambito === "procedura" && c.gruppi[0].lotti.length === 0 && c.lottiSenzaScadenza.length === 0);
   controlla("nessuna scadenza: nessun gruppo", gruppiScadenza(null, []).gruppi.length === 0);
+  controlla("nessuna scadenza né per i lotti né per la procedura: i lotti elencati come «senza scadenza» (come la PVL)", (() => { const x = gruppiScadenza(null, [L("2", "BBBBBBBBBB", null), L("1", "AAAAAAAAAA", null)]); return x.gruppi.length === 0 && x.lottiSenzaScadenza.map((l) => l.numero).join(",") === "1,2"; })());
   const d = gruppiScadenza(null, [L("1", null, "2026-12-01", "2026-12-01T09:00:00Z"), L("2", null, "2026-12-01")]);
   controlla("stesso giorno, uno con l'ora e uno senza: due scadenze distinte, prima quella con l'ora", d.gruppi.length === 2 && d.gruppi[0].scadenza.istante !== null && d.gruppi[1].scadenza.istante === null);
   // proroga di un solo lotto: la vecchia scadenza resta se un altro lotto l'ha ancora

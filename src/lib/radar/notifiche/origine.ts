@@ -14,7 +14,7 @@
 // tentativi d'invio, quindi viene dall'ambiente e non dall'host della richiesta.
 
 import { ambienteDb } from "../ambiente";
-import { CONSOLE_BASE_URL, ECOMMERCE_HOST, OMNIA_AI_BASE_URL } from "@/lib/zone";
+import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 
 /** Percorsi dell'area clienti (zona omnia-ai.it, senza il prefisso interno /site-omnia-ai). */
 export const PERCORSO_PREFERENZE = "/dashboard/omnia-ai/opportunita/notifiche";
@@ -22,7 +22,13 @@ export const PERCORSO_PER_TE = "/dashboard/omnia-ai/opportunita/per-te";
 export const PERCORSO_GARA = "/dashboard/omnia-ai/opportunita/gara";
 export const PERCORSO_GARA_AGGIUNTA = "/dashboard/omnia-ai/opportunita/aggiunta";
 
-const HOST_DI_PRODUZIONE = new Set(["omnia-ai.it", "www.omnia-ai.it", ECOMMERCE_HOST, new URL(CONSOLE_BASE_URL).hostname, "omniaitalia.com", "www.omniaitalia.com"]);
+// I domini di produzione e TUTTI i loro sottodomini (sito, e-commerce, area riservata e ogni altro): mai come origine fuori dal deploy di
+// produzione. Regola per dominio, così non serve elencare (né citare) i singoli host.
+const DOMINI_DI_PRODUZIONE = ["omnia-ai.it", "omniaitalia.com"];
+function dominioDiProduzione(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  return DOMINI_DI_PRODUZIONE.some((d) => h === d || h.endsWith(`.${d}`));
+}
 export const ORIGINE_LOCALE = "http://localhost:3000";
 
 export type OrigineAreaClienti = { ok: true; origine: string } | { ok: false; motivo: string };
@@ -44,7 +50,7 @@ export function origineAreaClienti(env: Record<string, string | undefined>): Ori
   if (u.protocol !== "https:" && !(u.protocol === "http:" && u.hostname === "localhost")) {
     return { ok: false, motivo: "RADAR_EMAIL_ORIGINE: solo https, oppure http su localhost." };
   }
-  if (HOST_DI_PRODUZIONE.has(u.hostname.toLowerCase())) {
+  if (dominioDiProduzione(u.hostname)) {
     return { ok: false, motivo: "RADAR_EMAIL_ORIGINE punta alla produzione: vietato fuori dal deploy di produzione." };
   }
   if (u.pathname !== "/" || u.search || u.hash || u.username || u.password) {
