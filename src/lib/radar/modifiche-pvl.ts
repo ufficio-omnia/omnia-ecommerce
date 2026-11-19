@@ -33,7 +33,8 @@ import { testoPerConfronto } from "./settori";
 
 export type ScadenzaFoto = { giorno: string | null; iso: string | null };
 
-export type LottoFoto = { cig: string | null; valore: number | null; scadenza: ScadenzaFoto | null };
+// «numero»: il lotto nell'avviso («LOT-0001», per posizione), utile quando manca il CIG
+export type LottoFoto = { numero: string; cig: string | null; valore: number | null; scadenza: ScadenzaFoto | null };
 
 // La fotografia di una versione PVL: solo i dati che servono al confronto, nessun dato di persone, serializzabile (si può conservare come
 // jsonb accanto alla provenienza dell'avviso, scelta di B2).
@@ -94,7 +95,7 @@ export function fotoDaBandoPvl(b: BandoPvl, grezzo?: unknown): FotoVersionePvl {
     scadenzaFonte: b.scadenzaFonte,
     lotti: r.lotti.map((l, i) => {
       const s = b.lottiScadenze[i] ?? null;
-      return { cig: l.cig, valore: l.valoreStimato, scadenza: s ? scadenzaFoto(s.giorno, s.iso, s.oraIndicata) : null };
+      return { numero: l.numero ?? `LOT-${String(i + 1).padStart(4, "0")}`, cig: l.cig, valore: l.valoreStimato, scadenza: s ? scadenzaFoto(s.giorno, s.iso, s.oraIndicata) : null };
     }),
     valore: r.valoreStimato,
     documenti: r.urlDocumenti,
@@ -153,11 +154,12 @@ export function fotoPvlValida(x: unknown): FotoVersionePvl | null {
   for (const l of f.lotti) {
     if (!l || typeof l !== "object") return null;
     const x = l as Record<string, unknown>;
+    const numero = typeof x.numero === "string" && x.numero.length >= 1 && x.numero.length <= 50 ? x.numero : undefined;
     const cig = x.cig === null ? null : typeof x.cig === "string" && /^[0-9A-Z]{10}$/.test(x.cig) ? x.cig : undefined;
     const v = numeroONullo(x.valore);
     const s = x.scadenza === null ? null : scadenzaValida(x.scadenza);
-    if (cig === undefined || v === undefined || (x.scadenza !== null && !s)) return null;
-    lotti.push({ cig, valore: v, scadenza: s });
+    if (numero === undefined || cig === undefined || v === undefined || (x.scadenza !== null && !s)) return null;
+    lotti.push({ numero, cig, valore: v, scadenza: s });
   }
   return {
     versioneFoto: 1,
@@ -268,6 +270,37 @@ function confrontaScadenza(prima: ScadenzaFoto | null, dopo: ScadenzaFoto | null
   return null;
 }
 
+export type LottoDiUnGruppo = { numero: string; cig: string | null };
+export type GruppoScadenza = { giorno: string; iso: string | null; lotti: LottoDiUnGruppo[] };
+
+// Le scadenze DISTINTE di una versione, con i lotti che le condividono (decisione 10 del 19/11: un promemoria per ogni scadenza realmente
+// conosciuta, lotti raggruppati con i loro CIG, mai una scadenza comune inesistente). Due lotti stanno nello stesso gruppo solo con lo stesso
+// giorno E la stessa ora (o entrambi senza ora): «14/12 ore 12:30» e «14/12, ora non indicata» restano due scadenze. I lotti senza una
+// scadenza leggibile stanno a parte. Ordine: giorno, poi le scadenze con l'ora prima di quella del solo giorno.
+export function scadenzeDistintePvl(f: FotoVersionePvl): { gruppi: GruppoScadenza[]; senzaScadenza: LottoDiUnGruppo[] } {
+  const perValore = new Map<string, GruppoScadenza>();
+  const senzaScadenza: LottoDiUnGruppo[] = [];
+  for (const l of f.lotti) {
+    const valore = valoreScadenzaFoto(l.scadenza);
+    if (!valore || !l.scadenza?.giorno) {
+      senzaScadenza.push({ numero: l.numero, cig: l.cig });
+      continue;
+    }
+    const g = perValore.get(valore) ?? { giorno: l.scadenza.giorno, iso: l.scadenza.iso ? valore : null, lotti: [] };
+    g.lotti.push({ numero: l.numero, cig: l.cig });
+    perValore.set(valore, g);
+  }
+  // un avviso senza lotti (mai visto sulla PVL): la sola scadenza dell'avviso
+  if (f.lotti.length === 0 && f.scadenza.giorno) {
+    const valore = valoreScadenzaFoto(f.scadenza) as string;
+    perValore.set(valore, { giorno: f.scadenza.giorno, iso: f.scadenza.iso ? valore : null, lotti: [] });
+  }
+  // confronto per codice di carattere (non localeCompare): «~» viene dopo ogni istante ISO
+  const chiave = (g: GruppoScadenza) => `${g.giorno}|${g.iso ?? "~"}`;
+  const gruppi = [...perValore.values()].sort((a, b) => (chiave(a) < chiave(b) ? -1 : chiave(a) > chiave(b) ? 1 : 0));
+  return { gruppi, senzaScadenza };
+}
+
 // Collegamento ai documenti senza le differenze di forma: protocollo, maiuscole dell'host (URL le toglie già), porta predefinita, barra
 // finale, frammento.
 export function collegamentoNormalizzato(u: string | null): string | null {
@@ -340,14 +373,16 @@ export function rilevaModifichePvl(primaGrezza: FotoVersionePvl | null, dopoGrez
     const cp = prima.lotti.map((l) => l.cig as string);
     const cd = dopo.lotti.map((l) => l.cig as string);
     if ([...cp].sort().join() !== [...cd].sort().join()) altro("lotti", [...cp].sort().join(", "), [...cd].sort().join(", "), "affidabile", "Lotti cambiati (CIG)");
-    // scadenza di un solo lotto: solo se diversa dal cambiamento della procedura (altrimenti è già detta)
+    // scadenze dei lotti (decisione 10 del 19/11: promemoria per ogni scadenza distinta). Le righe dei lotti si omettono SOLO se tutti i lotti
+    // comuni cambiano esattamente come la gara (la riga della gara le dice già); altrimenti ogni lotto cambiato ha la sua riga con il CIG,
+    // anche quello che coincide con la gara: con scadenze diverse la riga della gara non dice quale lotto è cambiato
     if (dopo.lotti.length > 1 || prima.lotti.length > 1) {
-      for (const ld of dopo.lotti) {
+      const righe = dopo.lotti.flatMap((ld) => {
         const lp = prima.lotti.find((l) => l.cig === ld.cig);
-        if (!lp) continue;
-        const m = confrontaScadenza(lp.scadenza, ld.scadenza, rettifica, "scadenza_lotto", ld.cig);
-        if (m && !(scadenza && scadenza.prima === m.prima && scadenza.dopo === m.dopo)) modifiche.push(m);
-      }
+        return lp ? [confrontaScadenza(lp.scadenza, ld.scadenza, rettifica, "scadenza_lotto", ld.cig)] : [];
+      });
+      const tutteComeLaGara = !!scadenza && righe.every((m) => !!m && m.prima === scadenza.prima && m.dopo === scadenza.dopo);
+      if (!tutteComeLaGara) for (const m of righe) if (m) modifiche.push(m);
     }
   } else if (prima.lotti.length !== dopo.lotti.length) {
     altro("n_lotti", String(prima.lotti.length), String(dopo.lotti.length), "parziale", "Numero di lotti cambiato (senza CIG su tutti i lotti)");

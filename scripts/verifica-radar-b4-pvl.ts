@@ -21,7 +21,7 @@ import {
   vociCatalogo,
   type CatalogoSottocategorie,
 } from "../src/lib/radar/settori-catalogo";
-import { collegamentoNormalizzato, fotoDaBandoPvl, fotoPvlValida, rilevaModifichePvl, valoreScadenzaFoto, type FotoVersionePvl, type ModificaPvl } from "../src/lib/radar/modifiche-pvl";
+import { collegamentoNormalizzato, fotoDaBandoPvl, fotoPvlValida, rilevaModifichePvl, scadenzeDistintePvl, valoreScadenzaFoto, type FotoVersionePvl, type ModificaPvl } from "../src/lib/radar/modifiche-pvl";
 
 const fallimenti: string[] = [];
 function atteso(nome: string, ok: boolean, dettaglio = "") {
@@ -268,6 +268,48 @@ atteso(
   solo(rUnLotto).some((m) => m.campo === "scadenza_lotto" && m.lotto === "BD920D7140" && m.tipo === "proroga" && m.dopo === "2026-12-21" && m.notificabile),
   JSON.stringify(sintesi(rUnLotto)),
 );
+
+// decisione 10 del 19/11: lotti con scadenze diverse. Se cambia solo il lotto più vicino, il suo cambio coincide con quello della gara: la
+// riga del lotto deve restare, con il CIG, perché la riga della gara non dice quale lotto è cambiato
+const scadenzeDiverse = (a: Avviso, primo: string) => {
+  const l = sezioneC(a);
+  l[1].termine_ricezione = "2026-12-21+01:00";
+  l[2].termine_ricezione = "2026-12-21+01:00";
+  l[0].termine_ricezione = primo;
+};
+const vecchiaDiversa = precedente((a) => scadenzeDiverse(a, "2026-11-30+01:00"));
+const nuovaDiversa = clona(reale);
+scadenzeDiverse(nuovaDiversa, "2026-12-14+01:00");
+const rDiverse = rilevaModifichePvl(foto(vecchiaDiversa), foto(nuovaDiversa));
+uguale(
+  "scadenze diverse, cambia solo il lotto più vicino: riga della gara e riga del lotto con il suo CIG, gli altri lotti no",
+  sintesi(rDiverse).filter((m) => m[1] === "scadenza"),
+  [
+    ["proroga", "scadenza", "scadenza", null, "2026-11-30T11:30:00.000Z", "2026-12-14T11:30:00.000Z", "affidabile", true],
+    ["proroga", "scadenza", "scadenza_lotto", "BD920D606D", "2026-11-30T11:30:00.000Z", "2026-12-14T11:30:00.000Z", "affidabile", true],
+  ],
+);
+uguale("fotografia: numero del lotto e CIG", fNuova.lotti.map((l) => [l.numero, l.cig]), [["LOT-0001", "BD920D606D"], ["LOT-0002", "BD920D7140"], ["LOT-0003", "BD920D8213"]]);
+uguale("scadenze distinte del caso reale: una sola, con i tre lotti e i loro CIG", scadenzeDistintePvl(fNuova), {
+  gruppi: [{ giorno: "2026-12-14", iso: "2026-12-14T11:30:00.000Z", lotti: [{ numero: "LOT-0001", cig: "BD920D606D" }, { numero: "LOT-0002", cig: "BD920D7140" }, { numero: "LOT-0003", cig: "BD920D8213" }] }],
+  senzaScadenza: [],
+});
+const primoPiuLontano = clona(reale);
+sezioneC(primoPiuLontano)[0].termine_ricezione = "2026-12-21+01:00";
+uguale("scadenze distinte: due gruppi in ordine di data, mai una scadenza comune", scadenzeDistintePvl(foto(primoPiuLontano)).gruppi.map((g) => [g.giorno, g.iso, g.lotti.map((l) => l.cig)]), [
+  ["2026-12-14", "2026-12-14T11:30:00.000Z", ["BD920D7140", "BD920D8213"]],
+  ["2026-12-21", null, ["BD920D606D"]],
+]);
+const oreDiverse = clona(reale);
+sezioneC(oreDiverse)[1].termine_ricezione = "2026-12-14T15:00:00+01:00";
+uguale("stesso giorno, ore diverse: due scadenze", scadenzeDistintePvl(foto(oreDiverse)).gruppi.map((g) => [g.iso, g.lotti.map((l) => l.numero)]), [["2026-12-14T11:30:00.000Z", ["LOT-0001", "LOT-0003"]], ["2026-12-14T14:00:00.000Z", ["LOT-0002"]]]);
+const conESenzaOra: FotoVersionePvl = { ...fNuova, lotti: [{ ...fNuova.lotti[0], scadenza: { giorno: "2026-12-14", iso: null } }, fNuova.lotti[1], { ...fNuova.lotti[2], cig: null, scadenza: null }] };
+uguale(
+  "stesso giorno con e senza ora: due scadenze (prima quella con l'ora); lotto senza scadenza a parte, col numero se manca il CIG",
+  scadenzeDistintePvl(conESenzaOra),
+  { gruppi: [{ giorno: "2026-12-14", iso: "2026-12-14T11:30:00.000Z", lotti: [{ numero: "LOT-0002", cig: "BD920D7140" }] }, { giorno: "2026-12-14", iso: null, lotti: [{ numero: "LOT-0001", cig: "BD920D606D" }] }], senzaScadenza: [{ numero: "LOT-0003", cig: null }] },
+);
+uguale("fotografia con un lotto senza numero: rifiutata", fotoPvlValida({ ...fNuova, lotti: [{ cig: "BD920D606D", valore: 1, scadenza: null }] }), null);
 
 // altri campi: notificabili solo dentro una rettifica dichiarata
 const altroValore = clona(reale);
