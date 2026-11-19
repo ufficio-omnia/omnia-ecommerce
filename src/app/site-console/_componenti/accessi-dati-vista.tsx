@@ -120,6 +120,10 @@ export default function AccessiDatiVista({ risultato, filtro }: { risultato: Ris
                   <input className="cn-input mono-campo" id="gara" name="gara" maxLength={36} autoComplete="off" spellCheck={false} />
                 </div>
               </div>
+              <label className="cn-etichetta-inline" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+                {/* MAI spuntata di partenza: l'invio al cliente lo decide ogni volta l'amministratore (regola dell'utente, 19/11/2026) */}
+                <input type="checkbox" name="invia_estratto" value="si" /> Invia al cliente l&apos;estratto aggiornato in PDF per email (solo per «Un cliente»)
+              </label>
             </ModuloAzione>
             <p className="cn-nota-inline" style={{ marginTop: 10 }}>
               L&apos;operatore è chi ha effettuato l&apos;accesso alla console, non si scrive a mano. Un accesso già avvenuto si registra entro {GIORNI_MASSIMI_RITARDO} giorni indicando giorno e ora.

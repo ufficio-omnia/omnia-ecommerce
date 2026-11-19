@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { ETICHETTA_CASO, LETTERA_CASO, frasePrincipaleEstratto, type RigaAccesso } from "@/lib/console/accessi-dati-calcoli";
+import { ETICHETTA_CASO, LETTERA_CASO, NOTA_ESTRATTO, SOTTOTITOLO_ESTRATTO, frasePrincipaleEstratto, type RigaAccesso } from "@/lib/console/accessi-dati-calcoli";
+import { inviaEstrattoAlCliente } from "../azioni/accessi-dati";
 import { Badge } from "./elementi";
+import ModuloAzione from "./modulo-azione";
 import { formattaData, formattaDataOra } from "./formati";
 import PulsanteStampa from "./pulsante-stampa";
 
@@ -27,7 +29,9 @@ export default function EstrattoAccessiVista({
 }) {
   const generali = righe.filter((r) => r.tuttiIClienti).length;
   const periodo = { da: dal ? formattaData(dal) : null, a: al ? formattaData(al) : null };
-  const percorsoCsv = `/accessi-dati/estratto/${cliente.id}/csv${dal || al ? `?${new URLSearchParams({ ...(dal ? { dal } : {}), ...(al ? { al } : {}) }).toString()}` : ""}`;
+  const parametriPeriodo = dal || al ? `?${new URLSearchParams({ ...(dal ? { dal } : {}), ...(al ? { al } : {}) }).toString()}` : "";
+  const percorsoCsv = `/accessi-dati/estratto/${cliente.id}/csv${parametriPeriodo}`;
+  const percorsoPdf = `/accessi-dati/estratto/${cliente.id}/pdf${parametriPeriodo}`;
 
   return (
     <>
@@ -40,13 +44,28 @@ export default function EstrattoAccessiVista({
       <div className="cn-testata">
         <div>
           <h1>Estratto del registro degli accessi</h1>
-          <p>OMNIA AI — Omnia Consulting SRLS · Registro previsto dall&apos;art. 10 delle condizioni di abbonamento e dall&apos;Allegato A (art. 4)</p>
+          <p>{SOTTOTITOLO_ESTRATTO}</p>
         </div>
         <div className="cn-nascondi-stampa cn-azioni-testata">
+          <a className="cn-btn" href={percorsoPdf} target="_blank" rel="noopener">
+            Scarica PDF
+          </a>
           <a className="cn-btn" href={percorsoCsv}>
             Scarica CSV
           </a>
           <PulsanteStampa />
+          {cliente.email && (
+            <ModuloAzione
+              azione={inviaEstrattoAlCliente}
+              campi={{ cliente: cliente.id, dal: dal ?? "", al: al ?? "" }}
+              etichetta={`Invia al cliente (${cliente.email})`}
+              etichettaInCorso="Invio…"
+              messaggioOk="Inviato."
+              variante="primario"
+            >
+              {null}
+            </ModuloAzione>
+          )}
         </div>
       </div>
 
@@ -123,9 +142,7 @@ export default function EstrattoAccessiVista({
         </section>
       )}
 
-      <p className="cn-nota">
-        Il registro riporta gli accessi eccezionali del personale autorizzato ai documenti e ai contenuti del cliente, nei soli casi ammessi dall&apos;Allegato A: assistenza tecnica richiesta dal cliente, revisione umana acquistata dal cliente, manutenzione o sicurezza non altrimenti risolvibili, obbligo di legge. Gli «accessi generali al database» sono interventi che, per la loro natura, possono aver riguardato i dati di tutti i clienti. Il registro non si modifica né si cancella.
-      </p>
+      <p className="cn-nota">{NOTA_ESTRATTO}</p>
     </>
   );
 }
