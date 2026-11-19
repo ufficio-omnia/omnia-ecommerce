@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { DatiTenderIntelligenceConsole } from "@/lib/console/tender-intelligence";
 import { AZIONI_RADAR, LIMITI_PREDEFINITI, PREFISSO_COSTO, PREFISSO_LIMITE, type AzioneRadar, type NomeLimite } from "@/lib/radar/diritto-calcoli";
 import type { StatoFonte } from "@/lib/radar/fonti/tipi";
@@ -475,7 +476,13 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
       <div className="cn-testata">
         <div>
           <h1>Tender Intelligence</h1>
-          <p>Scouting delle gare: fonti, archivio, imprese abilitate, costi e limiti. Il modulo si vede solo con l&apos;interruttore generale acceso e l&apos;impresa abilitata.</p>
+          <p>
+            Scouting delle gare: fonti, archivio, imprese abilitate, costi e limiti. Il modulo si vede solo con l&apos;interruttore generale acceso e l&apos;impresa abilitata.{" "}
+            {/* fase B4: pagina in sola lettura degli avvisi email non consegnati */}
+            <Link href="/tender-intelligence/email" prefetch={false}>
+              Email non consegnate
+            </Link>
+          </p>
         </div>
       </div>
 

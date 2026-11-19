@@ -25,3 +25,12 @@ export function ufficioGareRadarAttivo(env: Record<string, string | undefined>):
 export function preferenzeNotificheAttive(env: Record<string, string | undefined>): boolean {
   return interruttoreB4("RADAR_NOTIFICHE_PREFERENZE", env);
 }
+
+/**
+ * SOLO per l'avviso della pagina «Notifiche» («gli avvisi email non sono ancora attivi»): il motore degli invii è di B2 e la regola che conta è
+ * la sua. Qui la lettura più prudente (accesi solo con «attivo» sullo staging): nel dubbio la pagina dice che non sono attivi. Da allineare
+ * alla funzione del motore di B2 all'integrazione.
+ */
+export function invioEmailDichiaratoAcceso(env: Record<string, string | undefined>): boolean {
+  return env.RADAR_NOTIFICHE_EMAIL === "attivo" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";
+}

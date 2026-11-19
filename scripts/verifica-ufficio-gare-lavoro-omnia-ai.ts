@@ -56,13 +56,17 @@ async function main() {
     "gara-copertina.ts": ["acquistaCopertina"],
     "pacchetti-servizi.ts": ["acquistaPacchettoServizio"],
     "omnia-ai-ufficio-gare.ts": ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"],
-    // Tender Intelligence, fase B4: il profilo di ricerca lo modifica SOLO il titolare (decisione del 19/11)
+    // Tender Intelligence, fase B4: il profilo di ricerca lo modifica SOLO il titolare (decisione del 19/11); l'interruttore delle email
+    // dell'impresa lo cambia SOLO il titolare (grado 3)
     "radar-profilo.ts": ["salvaProfiloRadar"],
+    "radar-notifiche.ts": ["salvaEmailImpresa"],
   };
   // Tender Intelligence (fase B1 del solo titolare; fase B4, grado 2): guardia di Opportunità = guardia del titolare a interruttore SPENTO,
-  // guardia dell'account (titolare o Ufficio Gare attivo) SOLO con RADAR_UFFICIO_GARE acceso sullo staging (src/lib/radar/guardie-opportunita.ts)
+  // guardia dell'account (titolare o Ufficio Gare attivo) SOLO con RADAR_UFFICIO_GARE acceso sullo staging (src/lib/radar/guardie-opportunita.ts).
+  // Grado 3: le preferenze personali (l'Ufficio Gare solo le proprie e solo per spegnere, controllo nell'azione)
   const OPPORTUNITA: Record<string, string[]> = {
     "radar.ts": ["aggiornaSalvataggio", "aggiungiGaraAMano"],
+    "radar-notifiche.ts": ["salvaPreferenzeNotifiche"],
   };
   const LAVORO: Record<string, string[]> = {
     "gare.ts": ["createGara", "renameGara", "deleteGara", "uploadGaraDocumento", "removeGaraDocumento", "uploadGaraLogoCliente"],
@@ -203,6 +207,7 @@ async function main() {
       "/opportunita/cerca",
       "/opportunita/gara/[id]",
       "/opportunita/monitorate",
+      "/opportunita/notifiche",
       "/opportunita/per-te",
       "/opportunita/profilo",
       "/pagamenti",

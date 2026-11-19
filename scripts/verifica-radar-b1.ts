@@ -300,13 +300,14 @@ atteso("0114: senza ora l'istante si toglie, non se ne inventa uno", /set scaden
 
 const cartellaPagine = "src/app/site-omnia-ai/dashboard/omnia-ai/opportunita";
 const pagine = (fs.readdirSync(path.join(RADICE, cartellaPagine), { recursive: true }) as string[]).map(String).filter((p) => p.endsWith("page.tsx"));
-// fase B4: «Per te» e profilo di ricerca (grado 1); la guardia di Opportunità è quella del titolare finché RADAR_UFFICIO_GARE è spento
-uguale("pagine di Opportunità previste", pagine.map((p) => p.replace(/\\/g, "/")).sort(), ["aggiungi/page.tsx", "aggiunta/[id]/page.tsx", "cerca/page.tsx", "gara/[id]/page.tsx", "monitorate/page.tsx", "page.tsx", "per-te/page.tsx", "profilo/page.tsx"]);
+// fase B4: «Per te» e profilo di ricerca (grado 1), «Notifiche» (grado 3); la guardia di Opportunità è quella del titolare finché
+// RADAR_UFFICIO_GARE è spento
+uguale("pagine di Opportunità previste", pagine.map((p) => p.replace(/\\/g, "/")).sort(), ["aggiungi/page.tsx", "aggiunta/[id]/page.tsx", "cerca/page.tsx", "gara/[id]/page.tsx", "monitorate/page.tsx", "notifiche/page.tsx", "page.tsx", "per-te/page.tsx", "profilo/page.tsx"]);
 for (const p of pagine) {
   const s = leggi(`${cartellaPagine}/${p}`);
   const guardia = s.indexOf("await richiediOpportunitaPagina()");
   const diritto = s.indexOf("dirittoRadarOppure404(");
-  const primoDato = s.search(/\.from\(|cercaGare\(|leggiGaraPubblica\(|leggiProfiloRadar\(/);
+  const primoDato = s.search(/\.from\(|cercaGare\(|leggiGaraPubblica\(|leggiProfiloRadar\(|leggiNotifiche\(/);
   atteso(`${p}: guardia di Opportunità, poi diritto al modulo, poi i dati`, guardia >= 0 && diritto > guardia && (primoDato < 0 || primoDato > diritto) && !s.includes("auth.getUser") && !s.includes("richiediTitolarePagina"));
 }
 const azioniRadar = leggi("src/app/actions/radar.ts");
