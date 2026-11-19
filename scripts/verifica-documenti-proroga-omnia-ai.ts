@@ -2,7 +2,8 @@
 //   1. l'elenco dei documenti di una gara mostra la data di caricamento di ognuno ed è in ordine cronologico (anche per i documenti
 //      già caricati: la data c'è da sempre in gara_documenti.created_at, nessuna migrazione serve per questo);
 //   2. se i documenti contengono una PROROGA dei termini di presentazione, la scadenza della gara è quella della proroga; se la
-//      proroga c'è ma i documenti non riportano la nuova data, e SOLO allora, il cliente può cambiare la data a mano.
+//      proroga c'è ma i documenti non riportano la nuova data, il cliente può cambiare la data a mano;
+//   3. (19/11/2026, caso Pergola) se dopo l'analisi i documenti non riportano nessuna data di scadenza, il cliente può inserirla a mano.
 // Dati sintetici: nessun database, nessuna rete, nessun modello (la prova col modello vero è scripts/prova-proroga-modello.ts).
 import fs from "fs";
 import path from "path";
@@ -19,10 +20,12 @@ import {
   MESSAGGIO_MODIFICA_NON_CONSENTITA,
   PROPRIETA_SCADENZA_ESTRAZIONE,
   STATI_PROROGA,
+  TESTO_DATA_MANCANTE,
   TESTO_PROROGA_CON_DATA,
   TESTO_PROROGA_SENZA_DATA,
   dataValida,
   decidiScadenza,
+  motivoDataManuale,
   normalizzaProroga,
   oggiARoma,
   puoModificareScadenza,
@@ -121,7 +124,8 @@ function main() {
   const nonPiuProroga = decidiScadenza({ scadenza: "2026-11-10", proroga_termini: "nessuna" }, mano);
   atteso("data a mano + non si trova più nessuna proroga: vale la data dei documenti", nonPiuProroga.scadenza === "2026-11-10" && !nonPiuProroga.scadenza_manuale && nonPiuProroga.scadenza_originaria === null, JSON.stringify(nonPiuProroga));
   const nonPiuProrogaNeppureData = decidiScadenza({ proroga_termini: "nessuna" }, mano);
-  atteso("data a mano + nessuna proroga e nessuna data nei documenti: nessuna data (non si resuscita quella a mano)", nonPiuProrogaNeppureData.scadenza === null && !nonPiuProrogaNeppureData.scadenza_manuale);
+  // 19/11/2026 (caso Pergola): se i documenti non riportano nessuna data, la data scritta dal cliente si conserva (prima si perdeva)
+  atteso("data a mano + nessuna proroga e nessuna data nei documenti: la data a mano RESTA (data e ora)", nonPiuProrogaNeppureData.scadenza === "2026-11-20" && nonPiuProrogaNeppureData.scadenza_ora === "11:00" && nonPiuProrogaNeppureData.scadenza_manuale && nonPiuProrogaNeppureData.scadenza_ora_manuale && nonPiuProrogaNeppureData.proroga_stato === "nessuna", JSON.stringify(nonPiuProrogaNeppureData));
   const statoAssente = decidiScadenza({ scadenza: "2026-11-10" }, mano);
   atteso("data a mano + il modello non risponde sulla proroga: non si conserva a mano (non c'è la prova della proroga)", statoAssente.scadenza === "2026-11-10" && !statoAssente.scadenza_manuale && statoAssente.proroga_stato === null, JSON.stringify(statoAssente));
   const manualeInvalida = decidiScadenza({ scadenza: "2026-11-10", proroga_termini: "senza_nuova_data" }, { scadenza: "boh", scadenza_ora: null, scadenza_manuale: true });
@@ -151,7 +155,36 @@ function main() {
   console.log("\n--- La data si cambia a mano SOLO con una proroga senza nuova data ---");
   atteso("senza_nuova_data: si può", puoModificareScadenza("senza_nuova_data"));
   atteso("nessuna, con_nuova_data, vuoto, sconosciuto: NON si può", ["nessuna", "con_nuova_data", null, undefined, "", "boh", true].every((v) => !puoModificareScadenza(v)));
-  atteso("il messaggio di rifiuto spiega la regola", /solo quando i documenti indicano una proroga/.test(MESSAGGIO_MODIFICA_NON_CONSENTITA));
+  atteso("il messaggio di rifiuto spiega la regola", /solo quando i documenti analizzati non la riportano/.test(MESSAGGIO_MODIFICA_NON_CONSENTITA) && /proroga dei termini senza la nuova data/.test(MESSAGGIO_MODIFICA_NON_CONSENTITA));
+
+  // ───── 4-bis. Data MANCANTE nei documenti (19/11/2026, caso Bonocunto, gara del Comune di Pergola) ─────
+  console.log("\n--- La data si scrive a mano anche quando i documenti non la riportano (caso Pergola) ---");
+  const md = (scadenza: string | null, manuale: boolean, proroga: unknown, estrazione: string | null) => motivoDataManuale({ scadenza, scadenza_manuale: manuale, proroga_stato: proroga, estrazione_stato: estrazione });
+  atteso("Pergola: analisi conclusa, nessuna proroga, nessuna data → si può inserire («data_mancante»)", md(null, false, "nessuna", "completata") === "data_mancante");
+  atteso("analisi conclusa senza risposta sulla proroga (gara vecchia) e senza data → si può inserire", md(null, false, null, "completata") === "data_mancante");
+  atteso("data scritta dal cliente perché mancava → si può correggere", md("2026-12-01", true, "nessuna", "completata") === "data_mancante");
+  atteso("data scritta nei documenti (bando o proroga con data) → NON si cambia a mano", md("2026-12-01", false, "nessuna", "completata") === null && md("2026-12-01", false, "con_nuova_data", "completata") === null && md("2026-12-01", false, null, "completata") === null);
+  atteso("analisi non ancora fatta, in corso o finita in errore → nessun modulo per la data mancante", [null, "in_corso", "errore", "", "boh"].every((e) => md(null, false, "nessuna", e) === null));
+  atteso("proroga senza nuova data → il caso di prima («proroga_senza_data»), con o senza data, anche a mano", md("2026-11-10", false, "senza_nuova_data", "completata") === "proroga_senza_data" && md(null, false, "senza_nuova_data", "completata") === "proroga_senza_data" && md("2026-11-24", true, "senza_nuova_data", "completata") === "proroga_senza_data");
+  atteso("una data illeggibile nel database vale come mancante", md("boh", false, "nessuna", "completata") === "data_mancante");
+  atteso("il testo della scheda per la data mancante non presume nulla e invita a inserirla", /non c'è la data di scadenza/.test(TESTO_DATA_MANCANTE) && /non la presume/.test(TESTO_DATA_MANCANTE) && /inseriscila tu/.test(TESTO_DATA_MANCANTE));
+
+  console.log("\n--- Il giro completo della data mancante (analisi senza data → data a mano → rianalisi → documento con la data) ---");
+  let giro = decidiScadenza({ proroga_termini: "nessuna" }, { scadenza: null, scadenza_ora: null, scadenza_manuale: false });
+  atteso("1. analisi: nessuna data nei documenti → scadenza vuota, modulo della data", giro.scadenza === null && !giro.scadenza_manuale && md(giro.scadenza, giro.scadenza_manuale, giro.proroga_stato, "completata") === "data_mancante");
+  const scritta = validaScadenzaManuale({ data: "2026-12-04", ora: "" }, new Date("2026-11-19T10:00:00Z"));
+  atteso("2. il cliente scrive il 04/12 senza ora (l'ora resta non indicata, nessuna presunzione)", scritta.ok && scritta.scadenza === "2026-12-04" && scritta.ora === null);
+  if (scritta.ok) giro = { ...giro, scadenza: scritta.scadenza, scadenza_ora: scritta.ora, scadenza_manuale: true, scadenza_ora_manuale: false };
+  atteso("… la data a mano si può ancora correggere (stesso modulo)", md(giro.scadenza, giro.scadenza_manuale, giro.proroga_stato, "completata") === "data_mancante");
+  giro = decidiScadenza({ proroga_termini: "nessuna", scadenza_ora: "12:00" }, { scadenza: giro.scadenza, scadenza_ora: giro.scadenza_ora, scadenza_manuale: giro.scadenza_manuale, scadenza_ora_manuale: giro.scadenza_ora_manuale });
+  atteso("3. rianalisi, ancora nessuna data nei documenti: la data a mano resta, e un'ora dei documenti senza data NON si attacca alla data a mano", giro.scadenza === "2026-12-04" && giro.scadenza_manuale && giro.scadenza_ora === null && !giro.scadenza_ora_manuale, JSON.stringify(giro));
+  giro = { ...giro, scadenza_ora: "10:00", scadenza_ora_manuale: true };
+  giro = decidiScadenza({ proroga_termini: "nessuna" }, { scadenza: giro.scadenza, scadenza_ora: giro.scadenza_ora, scadenza_manuale: giro.scadenza_manuale, scadenza_ora_manuale: giro.scadenza_ora_manuale });
+  atteso("4. con l'ora scritta dal cliente, una rianalisi senza data conserva data E ora", giro.scadenza === "2026-12-04" && giro.scadenza_ora === "10:00" && giro.scadenza_manuale && giro.scadenza_ora_manuale, JSON.stringify(giro));
+  giro = decidiScadenza({ scadenza: "2026-12-05", scadenza_ora: "13:00", proroga_termini: "nessuna" }, { scadenza: giro.scadenza, scadenza_ora: giro.scadenza_ora, scadenza_manuale: giro.scadenza_manuale, scadenza_ora_manuale: giro.scadenza_ora_manuale });
+  atteso("5. caricato un documento con la data: vale quella dei documenti (05/12 ore 13:00), niente più «a mano», il modulo sparisce", giro.scadenza === "2026-12-05" && giro.scadenza_ora === "13:00" && !giro.scadenza_manuale && !giro.scadenza_ora_manuale && md(giro.scadenza, giro.scadenza_manuale, giro.proroga_stato, "completata") === null, JSON.stringify(giro));
+  const docSenzaOra = decidiScadenza({ scadenza: "2026-12-04", proroga_termini: "nessuna" }, { scadenza: "2026-12-04", scadenza_ora: "10:00", scadenza_manuale: true, scadenza_ora_manuale: true });
+  atteso("un documento con la STESSA data ma senza ora: data dai documenti, l'ora scritta dal cliente per quella data resta", docSenzaOra.scadenza === "2026-12-04" && !docSenzaOra.scadenza_manuale && docSenzaOra.scadenza_ora === "10:00" && docSenzaOra.scadenza_ora_manuale, JSON.stringify(docSenzaOra));
 
   const adesso = new Date("2026-10-29T10:00:00Z"); // 29/10/2026 11:00 a Roma
   atteso("oggiARoma dà il giorno di Roma", oggiARoma(adesso) === "2026-10-29");
@@ -202,8 +235,8 @@ function main() {
   atteso("impostaScadenzaGara esiste", azione.length > 200);
   atteso("impostaScadenzaGara parte dalla guardia dell'account e dal controllo dell'accesso", azione.indexOf("await richiediAccountAzione()") > 0 && azione.indexOf("accessoNegatoPerAccount(") > azione.indexOf("richiediAccountAzione"));
   atteso("impostaScadenzaGara non legge la sessione per conto suo", !azione.includes("auth.getUser()"));
-  atteso("lo stato della proroga si legge dal DATABASE, mai dal modulo (il cliente non può dichiararlo)", /\.select\("id, proroga_stato"\)/.test(azione) && !/formData\.get\("proroga/.test(azione));
-  atteso("il rifiuto per «non c'è la proroga senza data» viene PRIMA di ogni scrittura", azione.indexOf("puoModificareScadenza(gara.proroga_stato)") > 0 && azione.indexOf("puoModificareScadenza(gara.proroga_stato)") < azione.indexOf(".update("));
+  atteso("data, «a mano», proroga e stato dell'analisi si leggono dal DATABASE, mai dal modulo (il cliente non può dichiararli)", /\.select\("id, scadenza, scadenza_manuale, proroga_stato, estrazione_stato"\)/.test(azione) && !/formData\.get\("(proroga|estrazione|scadenza_manuale)/.test(azione));
+  atteso("il rifiuto (né proroga senza data né data mancante) viene PRIMA di ogni scrittura", azione.indexOf("if (!motivoDataManuale(gara)) return { error: MESSAGGIO_MODIFICA_NON_CONSENTITA }") > 0 && azione.indexOf("motivoDataManuale(gara)") < azione.indexOf(".update("));
   atteso("la validazione della data viene PRIMA di ogni scrittura", azione.indexOf("validaScadenzaManuale(") > 0 && azione.indexOf("validaScadenzaManuale(") < azione.indexOf(".update("));
   atteso("la scrittura segna la scadenza come inserita a mano", /\.update\(\{ scadenza: esito\.scadenza, scadenza_manuale: true \}\)/.test(azione));
   const inizioRevalida = estrazione.indexOf("function revalidaPaginePerScadenza(");
@@ -212,7 +245,8 @@ function main() {
   atteso("la scrittura passa dal client con le regole di accesso (non dal service role)", !azione.includes("createAdminClient"));
 
   const sezione = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/extraction-section.tsx");
-  atteso("il modulo della data compare SOLO se puoModificareScadenza(proroga_stato)", /\{puoModificareScadenza\(proroga\?\.proroga_stato\) && \(\s*<ScadenzaProrogaForm/.test(sezione));
+  atteso("il modulo della data compare SOLO se motivoDataManuale lo consente, con il motivo giusto", /\{motivoData && \(\s*<ScadenzaProrogaForm/.test(sezione) && /motivo=\{motivoData\}/.test(sezione) && /const motivoData = motivoDataManuale\(\{[\s\S]{0,300}estrazione_stato: estrazione\.estrazione_stato,/.test(sezione));
+  atteso("la scheda dice «inserita da te» per ogni data scritta dal cliente (non solo con la proroga)", /\{motivoData && proroga\?\.scadenza_manuale && estrazione\.scadenza && \(/.test(sezione));
   atteso("la scheda dice «prorogata» e la scadenza originaria solo con la nuova data", /normalizzaProroga\(proroga\?\.proroga_stato\) === "con_nuova_data"[\s\S]{0,400}prorogata/.test(sezione));
 
   const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/page.tsx");
@@ -225,6 +259,7 @@ function main() {
 
   const modulo = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/gare/[id]/scadenza-proroga-form.tsx");
   atteso("il modulo ha data obbligatoria e ora facoltativa", /name="scadenza" required/.test(modulo) && /name="ora"/.test(modulo) && !/name="ora"[^>]*required/.test(modulo));
+  atteso("il modulo ha il testo della data mancante e, per la proroga, quello di prima", /TESTO_DATA_MANCANTE/.test(modulo) && /TESTO_PROROGA_SENZA_DATA/.test(modulo) && /motivo = "proroga_senza_data"/.test(modulo));
 
   const migrazione = leggi("supabase/migrations/0095_gare_proroga_scadenza.sql");
   atteso("migrazione 0095: tre colonne, tutte «if not exists» (si può rieseguire)", /add column if not exists proroga_stato text/.test(migrazione) && /add column if not exists scadenza_originaria date/.test(migrazione) && /add column if not exists scadenza_manuale boolean not null default false/.test(migrazione));

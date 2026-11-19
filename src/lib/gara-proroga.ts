@@ -8,7 +8,10 @@ import { normalizzaOraScadenza } from "@/lib/omnia-ai-revisione-calcoli";
 //   1. se nei documenti c'è una proroga dei termini di presentazione, la scadenza della gara è quella della proroga;
 //   2. se la proroga c'è ma i documenti non riportano la nuova data (per esempio rimandano al portale), e SOLO allora, il cliente
 //      può cambiare a mano la data di scadenza.
-// La data inserita a mano resta finché una nuova analisi non trova la data nei documenti (o non trova più la proroga).
+//   3. (19/11/2026) se dopo l'analisi i documenti non riportano NESSUNA data di scadenza, il cliente può inserirla a mano
+//      (motivoDataManuale «data_mancante»).
+// La data inserita a mano resta finché una nuova analisi non trova la data nei documenti (o, nel caso 2, non trova più la proroga
+// e i documenti riportano una data).
 
 export const STATI_PROROGA = ["nessuna", "con_nuova_data", "senza_nuova_data"] as const;
 export type StatoProroga = (typeof STATI_PROROGA)[number];
@@ -82,14 +85,19 @@ export type DecisioneScadenza = {
 export function decidiScadenza(risultato: RisultatoScadenza, esistente: ScadenzaEsistente | null): DecisioneScadenza {
   const stato = normalizzaProroga(risultato.proroga_termini);
 
-  if (stato === "senza_nuova_data" && esistente?.scadenza_manuale && dataValida(esistente.scadenza)) {
+  // La data a mano si conserva anche quando i documenti NON riportano nessuna data di scadenza (caso Pergola, 19/11/2026: il
+  // cliente l'ha scritta proprio perché mancava). Appena un documento la riporta, vale quella dei documenti (ramo sotto).
+  const dataManuale = esistente?.scadenza_manuale ? dataValida(String(esistente.scadenza ?? "").slice(0, 10)) : null;
+  const mantieniManuale = dataManuale !== null && (stato === "senza_nuova_data" || !dataValida(risultato.scadenza));
+
+  if (mantieniManuale && esistente) {
     // data e ora a mano insieme (il modulo della proroga senza data): se l'ora c'è, l'ha scritta il cliente
     const oraManuale = normalizzaOraScadenza(esistente.scadenza_ora);
     return {
-      scadenza: dataValida(esistente.scadenza),
+      scadenza: dataManuale,
       scadenza_ora: oraManuale,
       proroga_stato: stato,
-      scadenza_originaria: originaria(risultato, stato, dataValida(esistente.scadenza)),
+      scadenza_originaria: originaria(risultato, stato, dataManuale),
       scadenza_manuale: true,
       scadenza_ora_manuale: oraManuale !== null,
     };
@@ -121,8 +129,29 @@ export function puoModificareScadenza(statoProroga: unknown): boolean {
   return normalizzaProroga(statoProroga) === "senza_nuova_data";
 }
 
+// Richiesta dell'utente (19/11/2026, caso Bonocunto, gara del Comune di Pergola): se dopo l'analisi i documenti NON riportano la data
+// di scadenza, il cliente può inserirla a mano, come per la proroga senza nuova data. Perché il cliente può scrivere la data:
+//   «proroga_senza_data»: i documenti indicano una proroga dei termini senza la nuova data (regola del 29/10);
+//   «data_mancante»: l'analisi è conclusa e i documenti non riportano nessuna data di scadenza, oppure la data che si vede l'ha già
+//                    scritta il cliente per questo motivo (correzione);
+//   null: la data è quella scritta nei documenti (non si cambia a mano) o l'analisi non è ancora conclusa.
+export type MotivoDataManuale = "proroga_senza_data" | "data_mancante";
+
+export function motivoDataManuale(i: {
+  scadenza: string | null | undefined;
+  scadenza_manuale?: boolean | null;
+  proroga_stato: unknown;
+  estrazione_stato: string | null | undefined;
+}): MotivoDataManuale | null {
+  if (puoModificareScadenza(i.proroga_stato)) return "proroga_senza_data";
+  if (i.estrazione_stato !== "completata") return null;
+  const data = dataValida(String(i.scadenza ?? "").slice(0, 10));
+  if (!data) return "data_mancante";
+  return i.scadenza_manuale ? "data_mancante" : null;
+}
+
 export const MESSAGGIO_MODIFICA_NON_CONSENTITA =
-  "La scadenza si può cambiare a mano solo quando i documenti indicano una proroga dei termini senza riportare la nuova data.";
+  "La scadenza si può inserire a mano solo quando i documenti analizzati non la riportano, o indicano una proroga dei termini senza la nuova data.";
 
 export const GIORNI_PASSATO_AMMESSI = 30;
 export const GIORNI_FUTURO_AMMESSI = 730;
@@ -162,6 +191,9 @@ export function validaScadenzaManuale(input: { data: unknown; ora: unknown }, ad
 export const TESTO_PROROGA_CON_DATA = "I documenti indicano una proroga dei termini: la scadenza mostrata è quella della proroga.";
 export const TESTO_PROROGA_SENZA_DATA =
   "I documenti indicano una proroga dei termini di presentazione ma non riportano la nuova data (per esempio rimandano al portale della stazione appaltante). Se conosci la nuova scadenza, inseriscila tu.";
+export const TESTO_DATA_MANCANTE =
+  "Nei documenti analizzati non c'è la data di scadenza per la presentazione dell'offerta. OMNIA AI non la presume: se la conosci (per esempio dal portale della stazione appaltante), inseriscila tu.";
+export const TESTO_DATA_INSERITA_DAL_CLIENTE = "inserita da te";
 
 // ───── L'ORA della scadenza: mai presunta, se i documenti non la scrivono la inserisce il cliente ─────
 
@@ -177,8 +209,17 @@ export function statoOraScadenza(i: { scadenza: string | null | undefined; scade
 
 // L'ora si può scrivere a mano solo se i documenti non la riportano (mancante) o se l'ha già scritta il cliente (manuale), e solo
 // con una data di scadenza. Nel caso «proroga senza nuova data» l'ora si scrive insieme alla data con l'altro modulo (puoModificareScadenza).
-export function puoInserireOra(i: { scadenza: string | null | undefined; scadenza_ora: string | null | undefined; scadenza_ora_manuale?: boolean | null; proroga_stato: unknown }): boolean {
+// Se la DATA l'ha scritta il cliente (scadenza_manuale), nella scheda l'ora si scrive insieme alla data con il modulo della data: il modulo
+// «solo ora» non compare (resta ammesso dal server, perché la pagina della revisione lo usa quando manca l'ora).
+export function puoInserireOra(i: {
+  scadenza: string | null | undefined;
+  scadenza_ora: string | null | undefined;
+  scadenza_ora_manuale?: boolean | null;
+  scadenza_manuale?: boolean | null;
+  proroga_stato: unknown;
+}): boolean {
   if (puoModificareScadenza(i.proroga_stato)) return false;
+  if (i.scadenza_manuale) return false;
   const stato = statoOraScadenza(i);
   return stato === "mancante" || stato === "manuale";
 }

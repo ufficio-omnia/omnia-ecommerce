@@ -11,10 +11,12 @@ import QuotaEsauritaConfronto from "./quota-esaurita-confronto";
 import ScadenzaProrogaForm from "./scadenza-proroga-form";
 import ScadenzaOraForm from "./scadenza-ora-form";
 import {
+  TESTO_DATA_INSERITA_DAL_CLIENTE,
   TESTO_ORA_INSERITA_DAL_CLIENTE,
   TESTO_ORA_NON_INDICATA,
   TESTO_PROROGA_CON_DATA,
   contestoOra,
+  motivoDataManuale,
   normalizzaProroga,
   puoInserireOra,
   puoModificareScadenza,
@@ -82,7 +84,14 @@ export default function ExtractionSection({
   // L'ora della scadenza: mai presunta. Se i documenti non la riportano (del bando o della proroga) il cliente può scriverla.
   const datiOra = { scadenza: estrazione.scadenza, scadenza_ora: estrazione.scadenza_ora ?? null, scadenza_ora_manuale: estrazione.scadenza_ora_manuale ?? false };
   const statoOra = statoOraScadenza(datiOra);
-  const inserisciOra = puoInserireOra({ ...datiOra, proroga_stato: proroga?.proroga_stato ?? null });
+  const inserisciOra = puoInserireOra({ ...datiOra, scadenza_manuale: proroga?.scadenza_manuale ?? false, proroga_stato: proroga?.proroga_stato ?? null });
+  // La data si scrive a mano con una proroga senza nuova data, o se dopo l'analisi i documenti non la riportano (19/11/2026).
+  const motivoData = motivoDataManuale({
+    scadenza: estrazione.scadenza,
+    scadenza_manuale: proroga?.scadenza_manuale ?? false,
+    proroga_stato: proroga?.proroga_stato ?? null,
+    estrazione_stato: estrazione.estrazione_stato,
+  });
 
   return (
     <section className="omnia-riquadro" style={{ marginTop: 24 }}>
@@ -137,7 +146,7 @@ export default function ExtractionSection({
                   {TESTO_ORA_NON_INDICATA}
                 </div>
               )}
-              {statoOra === "manuale" && (
+              {statoOra === "manuale" && !(motivoData && proroga?.scadenza_manuale) && (
                 <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
                   {TESTO_ORA_INSERITA_DAL_CLIENTE}
                 </div>
@@ -152,9 +161,14 @@ export default function ExtractionSection({
                   prorogata{proroga?.scadenza_originaria ? ` (scadenza originaria ${new Date(proroga.scadenza_originaria).toLocaleDateString("it-IT")})` : ""}
                 </div>
               )}
-              {puoModificareScadenza(proroga?.proroga_stato) && proroga?.scadenza_manuale && (
+              {motivoData && proroga?.scadenza_manuale && estrazione.scadenza && (
                 <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
-                  inserita da te
+                  {statoOra === "manuale" ? "data e ora inserite da te" : TESTO_DATA_INSERITA_DAL_CLIENTE}
+                </div>
+              )}
+              {motivoData === "data_mancante" && !estrazione.scadenza && (
+                <div className="omnia-riquadro-nota" style={{ margin: "4px 0 0" }}>
+                  non indicata nei documenti: puoi inserirla tu
                 </div>
               )}
             </div>
@@ -197,8 +211,14 @@ export default function ExtractionSection({
             </p>
           )}
 
-          {puoModificareScadenza(proroga?.proroga_stato) && (
-            <ScadenzaProrogaForm garaId={garaId} scadenza={estrazione.scadenza} ora={estrazione.scadenza_ora ?? null} manuale={Boolean(proroga?.scadenza_manuale)} />
+          {motivoData && (
+            <ScadenzaProrogaForm
+              garaId={garaId}
+              scadenza={estrazione.scadenza}
+              ora={estrazione.scadenza_ora ?? null}
+              manuale={Boolean(proroga?.scadenza_manuale)}
+              motivo={motivoData}
+            />
           )}
 
           {inserisciOra && (

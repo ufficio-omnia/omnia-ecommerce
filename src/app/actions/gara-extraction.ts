@@ -30,7 +30,7 @@ import {
   MESSAGGIO_MODIFICA_NON_CONSENTITA,
   PROPRIETA_SCADENZA_ESTRAZIONE,
   decidiScadenza,
-  puoModificareScadenza,
+  motivoDataManuale,
   valutaInserimentoOra,
   validaScadenzaManuale,
   type ScadenzaEsistente,
@@ -563,7 +563,8 @@ export async function extractGaraData(
 export type ScadenzaState = { error?: string; ok?: boolean };
 
 // Il cliente cambia a mano la scadenza della gara. SOLO quando i documenti indicano una proroga dei termini senza riportare la
-// nuova data (puoModificareScadenza): lo stato si rilegge dal database, non lo dice il browser. Vale per il titolare e per
+// nuova data, o quando l'analisi è conclusa e i documenti non riportano nessuna data (motivoDataManuale, 19/11/2026): lo stato si
+// rilegge dal database, non lo dice il browser. Vale per il titolare e per
 // l'Ufficio Gare (è lavoro di gara). La data resta finché una nuova analisi non trova la data nei documenti.
 export async function impostaScadenzaGara(
   _prevState: ScadenzaState,
@@ -583,16 +584,17 @@ export async function impostaScadenzaGara(
   // La RLS ("gare_all_own") garantisce che questa select restituisca la gara solo se è dell'account.
   const { data: gara, error: erroreLettura } = await supabase
     .from("gare")
-    .select("id, proroga_stato")
+    .select("id, scadenza, scadenza_manuale, proroga_stato, estrazione_stato")
     .eq("id", garaId)
-    .maybeSingle<{ id: string; proroga_stato: string | null }>();
+    .maybeSingle<{ id: string; scadenza: string | null; scadenza_manuale: boolean | null; proroga_stato: string | null; estrazione_stato: string | null }>();
   if (erroreLettura) {
     if (schemaAssente(erroreLettura)) return { error: "Questa funzione non è ancora attiva. Riprova più tardi." };
     console.error("Errore lettura della gara per la scadenza:", erroreLettura.message);
     return { error: "Non sono riuscito a leggere la gara. Riprova." };
   }
   if (!gara) return { error: "Gara non trovata." };
-  if (!puoModificareScadenza(gara.proroga_stato)) return { error: MESSAGGIO_MODIFICA_NON_CONSENTITA };
+  // proroga senza nuova data, oppure analisi conclusa e nessuna data nei documenti (o già scritta a mano): regole in motivoDataManuale
+  if (!motivoDataManuale(gara)) return { error: MESSAGGIO_MODIFICA_NON_CONSENTITA };
 
   const esito = validaScadenzaManuale({ data: formData.get("scadenza"), ora: formData.get("ora") }, new Date());
   if (!esito.ok) return { error: esito.errore };
