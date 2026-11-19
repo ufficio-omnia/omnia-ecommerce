@@ -634,28 +634,43 @@ async function prove() {
     atteso("CB60. tentativi di scrittura innocui per costruzione: a con «posizione=eq.0» (fuori dal vincolo 1–5), b con l'id tutto zeri, c con posizione 9; tutti sul solo profilo", t.length === 3 && t[0].url.endsWith("&posizione=eq.0") && t[1].url.endsWith("?id=eq.00000000-0000-0000-0000-000000000000") && t[2].corpo?.posizione === 9 && t.every((x) => x.url.startsWith(`${STAGING}/rest/v1/omnia_ai_radar_profili`)));
 
     // ───── nel browser: letturaElenco (controlli 2 e 3) ─────
-    const elemento = (v: { sep: true } | { href: string }) =>
-      "sep" in v ? { classList: { contains: (c: string) => c === "omnia-opp-separatore" }, getAttribute: () => null } : { classList: { contains: () => false }, getAttribute: (n: string) => (n === "href" ? v.href : null) };
-    const documento = (voci: ({ sep: true } | { href: string })[]) => ({ querySelectorAll: () => voci.map(elemento) });
+    type Voce = { sep: string } | { href: string };
+    const elemento = (v: Voce) =>
+      "sep" in v
+        ? { classList: { contains: (c: string) => c === "omnia-opp-separatore" }, getAttribute: () => null, querySelector: (s: string) => (s === "strong" ? { textContent: v.sep } : null), textContent: `${v.sep} spiegazione` }
+        : { classList: { contains: () => false }, getAttribute: (n: string) => (n === "href" ? v.href : null) };
+    const documento = (voci: Voce[]) => ({ querySelectorAll: () => voci.map(elemento) });
     const G = "/dashboard/omnia-ai/opportunita/gara/";
+    const CORR = "Gare correlate";
+    const FUORI = "Fuori dai settori monitorati";
     // la funzione deve funzionare da sola nel browser: la si ricostruisce dal suo testo, senza nulla del modulo
-    const nelBrowser = new Function(`return (${ca.letturaElenco.toString()})`)() as (d: unknown) => { righe: number; uniche: number; doppie: string[]; pertinenti: number; correlate: number; separatori: number; esito: string };
-    const pulito = nelBrowser(documento([{ href: `${G}a` }, { href: `${G}b?da=per-te` }, { sep: true }, { href: `${G}c` }]));
+    const nelBrowser = new Function(`return (${ca.letturaElenco.toString()})`)() as (d: unknown) => { righe: number; uniche: number; doppie: string[]; pertinenti: number; correlate: number; sezioni: string[]; esito: string };
+    const pulito = nelBrowser(documento([{ href: `${G}a` }, { href: `${G}b?da=per-te` }, { sep: CORR }, { href: `${G}c` }]));
     const doppio = nelBrowser(documento([{ href: `${G}a` }, { href: `${G}b` }, { href: `${G}a?pagina=2` }]));
     const fuori = nelBrowser(documento([{ href: `${G}a` }, { href: "/dashboard/omnia-ai/impostazioni" }]));
-    const dueSep = nelBrowser(documento([{ href: `${G}a` }, { sep: true }, { href: `${G}b` }, { sep: true }, { href: `${G}c` }]));
+    const cerca = nelBrowser(documento([{ href: `${G}a` }, { href: `${G}b` }, { sep: CORR }, { href: `${G}c` }, { sep: FUORI }, { href: `${G}d` }]));
+    const ripetuta = nelBrowser(documento([{ href: `${G}a` }, { sep: CORR }, { href: `${G}b` }, { sep: CORR }, { href: `${G}c` }]));
     const monitorate = nelBrowser(documento([{ href: `${G}a` }, { href: "/dashboard/omnia-ai/opportunita/aggiunta/x1" }]));
     uguale(
-      "CB61. letturaElenco (eseguibile da sola nel browser): chiavi uniche → ok con pertinenti e correlate dopo il separatore; una gara due volte (anche con parametri diversi) → DOPPIE; chiave fuori schema, due separatori, elenco vuoto segnalati; le aggiunte di Monitorate valgono",
+      "CB61. letturaElenco (eseguibile da sola nel browser): chiavi uniche → ok con le sezioni dei titoletti; correlate = righe della sola sezione «Gare correlate» (in Cerca c'è anche «Fuori dai settori monitorati»); una gara due volte (anche con parametri diversi) → DOPPIE; chiave fuori schema, sezione ripetuta, elenco vuoto segnalati; le aggiunte di Monitorate valgono",
       [
-        [pulito.esito, pulito.righe, pulito.uniche, pulito.pertinenti, pulito.correlate],
+        [pulito.esito, pulito.righe, pulito.uniche, pulito.pertinenti, pulito.correlate, pulito.sezioni],
+        [cerca.esito, cerca.pertinenti, cerca.correlate, cerca.sezioni],
         [doppio.esito, doppio.doppie],
         fuori.esito,
-        dueSep.esito,
+        ripetuta.esito,
         nelBrowser(documento([])).esito,
         monitorate.esito,
       ],
-      [["ok", 3, 3, 2, 1], ["DOPPIE", [`${G}a`]], "CHIAVI FUORI SCHEMA", "PIÙ SEPARATORI", "elenco vuoto", "ok"],
+      [
+        ["ok", 3, 3, 2, 1, ["(prima): 2", "Gare correlate: 1"]],
+        ["ok", 2, 1, ["(prima): 2", "Gare correlate: 1", "Fuori dai settori monitorati: 1"]],
+        ["DOPPIE", [`${G}a`]],
+        "CHIAVI FUORI SCHEMA",
+        "SEZIONE RIPETUTA",
+        "elenco vuoto",
+        "ok",
+      ],
     );
 
     // ───── controllo 10: misure dal registro dell'osservatore ─────

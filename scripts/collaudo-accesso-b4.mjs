@@ -527,21 +527,22 @@ export function resocontoControlli(voci) {
 
 /**
  * Da eseguire NEL BROWSER sulla pagina aperta (strumento javascript del pannello) come `(${letturaElenco})(document)`: autosufficiente, non
- * usa nulla fuori di sé. Chiavi delle righe di gara (percorso del collegamento, senza parametri), doppie, e posizione del separatore
- * «Gare correlate»: le correlate vengono SOLO dopo il separatore, che compare al massimo una volta. Nessun dato di persone.
+ * usa nulla fuori di sé. Chiavi delle righe di gara (percorso del collegamento, senza parametri), doppie, e le SEZIONI dell'elenco con il
+ * titolo del loro titoletto: in «Per te» solo «Gare correlate» (dopo le pertinenti); in Cerca anche «Fuori dai settori monitorati» (trovato
+ * nel controllo preliminare del 19/11: i titoletti di Cerca sono più d'uno per costruzione). Nessun dato di persone.
  */
 export function letturaElenco(documento) {
   const voci = Array.from(documento.querySelectorAll("a.omnia-opp-riga, .omnia-opp-separatore"));
   const chiavi = [];
-  let separatori = 0;
-  let primaCorrelata = -1;
+  const sezioni = [{ titolo: "", righe: 0 }];
   for (const v of voci) {
     if (v.classList.contains("omnia-opp-separatore")) {
-      separatori += 1;
-      if (primaCorrelata < 0) primaCorrelata = chiavi.length;
+      const forte = typeof v.querySelector === "function" ? v.querySelector("strong") : null;
+      sezioni.push({ titolo: String((forte && forte.textContent) || v.textContent || "").trim(), righe: 0 });
       continue;
     }
     chiavi.push(String(v.getAttribute("href") || "").split(/[?#]/)[0]);
+    sezioni[sezioni.length - 1].righe += 1;
   }
   const viste = new Set();
   const doppie = [];
@@ -550,19 +551,21 @@ export function letturaElenco(documento) {
     else viste.add(c);
   }
   const fuoriSchema = chiavi.filter((c) => !/\/opportunita\/(gara|aggiunta)\/[^/]+$/.test(c));
+  const titoli = sezioni.slice(1).map((s) => s.titolo);
   let esito = "ok";
   if (doppie.length) esito = "DOPPIE";
   else if (fuoriSchema.length) esito = "CHIAVI FUORI SCHEMA";
-  else if (separatori > 1) esito = "PIÙ SEPARATORI";
+  else if (titoli.some((t, i) => titoli.indexOf(t) !== i)) esito = "SEZIONE RIPETUTA";
   else if (!chiavi.length) esito = "elenco vuoto";
+  const correlate = sezioni.find((s) => s.titolo === "Gare correlate");
   return {
     righe: chiavi.length,
     uniche: viste.size,
     doppie: Array.from(new Set(doppie)),
     fuoriSchema: fuoriSchema.length,
-    pertinenti: primaCorrelata < 0 ? chiavi.length : primaCorrelata,
-    correlate: primaCorrelata < 0 ? 0 : chiavi.length - primaCorrelata,
-    separatori,
+    pertinenti: sezioni[0].righe,
+    correlate: correlate ? correlate.righe : 0,
+    sezioni: sezioni.map((s, i) => `${i === 0 ? "(prima)" : s.titolo}: ${s.righe}`),
     esito,
   };
 }
