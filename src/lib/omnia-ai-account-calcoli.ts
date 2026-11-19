@@ -41,6 +41,10 @@ export function vociMenuPer(ruolo: RuoloAccount): VoceMenu[] {
 // Le sole sezioni (sotto la radice dell'area) aperte all'Ufficio Gare. Tutto il resto è del titolare.
 export const SEZIONI_UFFICIO_GARE = ["gare", "assistenza"] as const;
 
+// Fase B4 (Tender Intelligence, grado 2): «opportunita» si apre all'Ufficio Gare SOLO con RADAR_UFFICIO_GARE acceso (solo staging; la guardia
+// vera è src/lib/radar/guardie-opportunita.ts). Spento, resta chiusa come oggi.
+export const SEZIONI_UFFICIO_GARE_CON_RADAR = [...SEZIONI_UFFICIO_GARE, "opportunita"] as const;
+
 function sottoPercorso(percorso: string, base: string): boolean {
   return percorso === base || percorso.startsWith(`${base}/`);
 }
@@ -48,7 +52,7 @@ function sottoPercorso(percorso: string, base: string): boolean {
 // Il percorso (senza dominio né parametri) è aperto a questo ruolo? Il titolare vede tutto; l'Ufficio Gare
 // solo la radice dell'area (la dashboard), le gare e il supporto: ogni altro percorso, anche fuori
 // dall'area, per lui è «no» (la funzione si usa solo per le pagine dell'area riservata).
-export function percorsoConsentito(ruolo: RuoloAccount, percorso: string): boolean {
+export function percorsoConsentito(ruolo: RuoloAccount, percorso: string, opzioni: { opportunita?: boolean } = {}): boolean {
   if (ruolo !== RUOLO_UFFICIO_GARE) return true;
   const pulito = percorso.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
   // Un percorso con «..», «.» o segmenti vuoti (anche codificati) non si interpreta: per l'Ufficio Gare è chiuso.
@@ -62,7 +66,8 @@ export function percorsoConsentito(ruolo: RuoloAccount, percorso: string): boole
   if (pulito === RADICE_AREA) return true;
   // La richiesta di revisione umana (pagamento) è del titolare: l'Ufficio Gare ha il solo pulsante che lo avvisa, dentro la gara.
   if (decodificato.split("/").slice(1).slice(3).includes("revisione")) return false;
-  return SEZIONI_UFFICIO_GARE.some((sezione) => sottoPercorso(pulito, `${RADICE_AREA}/${sezione}`));
+  const sezioni: readonly string[] = opzioni.opportunita === true ? SEZIONI_UFFICIO_GARE_CON_RADAR : SEZIONI_UFFICIO_GARE;
+  return sezioni.some((sezione) => sottoPercorso(pulito, `${RADICE_AREA}/${sezione}`));
 }
 
 // ───── invito ─────

@@ -12,6 +12,11 @@
 export const AZIONI_RADAR = ["ricerca", "sintesi", "analisi_requisiti", "intelligence", "crea_offerta", "aggiungi_manuale", "monitora"] as const;
 export type AzioneRadar = (typeof AZIONI_RADAR)[number];
 
+// Fase B4: azioni registrate SOLO come statistica, senza costo né parametro in console e fuori dal conteggio delle ricerche (decisione del
+// 19/11: «Per te» non conta nelle ricerche commerciali). Il valore entra nel vincolo della tabella con la 0122 di B2.
+export const AZIONI_SOLO_STATISTICA = ["per_te"] as const;
+export type AzioneStatistica = (typeof AZIONI_SOLO_STATISTICA)[number];
+
 export const CHIAVE_RADAR_ATTIVO = "radar_attivo";
 export const PREFISSO_COSTO = "radar_costo_";
 export const PREFISSO_LIMITE = "radar_limite_";

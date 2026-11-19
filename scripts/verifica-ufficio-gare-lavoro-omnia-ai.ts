@@ -56,7 +56,12 @@ async function main() {
     "gara-copertina.ts": ["acquistaCopertina"],
     "pacchetti-servizi.ts": ["acquistaPacchettoServizio"],
     "omnia-ai-ufficio-gare.ts": ["creaUfficioGare", "rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"],
-    // Tender Intelligence, fase B1: del solo titolare
+    // Tender Intelligence, fase B4: il profilo di ricerca lo modifica SOLO il titolare (decisione del 19/11)
+    "radar-profilo.ts": ["salvaProfiloRadar"],
+  };
+  // Tender Intelligence (fase B1 del solo titolare; fase B4, grado 2): guardia di Opportunità = guardia del titolare a interruttore SPENTO,
+  // guardia dell'account (titolare o Ufficio Gare attivo) SOLO con RADAR_UFFICIO_GARE acceso sullo staging (src/lib/radar/guardie-opportunita.ts)
+  const OPPORTUNITA: Record<string, string[]> = {
     "radar.ts": ["aggiornaSalvataggio", "aggiungiGaraAMano"],
   };
   const LAVORO: Record<string, string[]> = {
@@ -92,12 +97,29 @@ async function main() {
       atteso(`${nomeFile}: fuori dalla regola (${ESTERNE_FILE[nomeFile]})`, true);
       continue;
     }
-    const classificate = [...(TITOLARE[nomeFile] ?? []), ...(LAVORO[nomeFile] ?? []), ...(nomeFile === "download.ts" ? ESTERNE_FUNZIONI : [])];
+    const classificate = [...(TITOLARE[nomeFile] ?? []), ...(LAVORO[nomeFile] ?? []), ...(OPPORTUNITA[nomeFile] ?? []), ...(nomeFile === "download.ts" ? ESTERNE_FUNZIONI : [])];
     const nonClassificate = funzioni.filter((f) => !classificate.includes(f));
     const inesistenti = classificate.filter((f) => !funzioni.includes(f));
     atteso(`${nomeFile}: ogni azione esportata è classificata (titolare, lavoro di gara o e-commerce)`, nonClassificate.length === 0 && inesistenti.length === 0, `non classificate: ${nonClassificate.join(", ")} | classificate ma assenti: ${inesistenti.join(", ")}`);
   }
-  atteso("ogni file di azioni è nella classificazione", fileAzioni.every((r) => { const n = path.basename(r); return !!(TITOLARE[n] || LAVORO[n] || ESTERNE_FILE[n]); }), fileAzioni.filter((r) => { const n = path.basename(r); return !(TITOLARE[n] || LAVORO[n] || ESTERNE_FILE[n]); }).join(", "));
+  atteso("ogni file di azioni è nella classificazione", fileAzioni.every((r) => { const n = path.basename(r); return !!(TITOLARE[n] || LAVORO[n] || OPPORTUNITA[n] || ESTERNE_FILE[n]); }), fileAzioni.filter((r) => { const n = path.basename(r); return !(TITOLARE[n] || LAVORO[n] || OPPORTUNITA[n] || ESTERNE_FILE[n]); }).join(", "));
+
+  // la guardia di Opportunità: a interruttore spento è esattamente quella del titolare (nessun cambiamento in produzione)
+  const guardieOpp = leggi("src/lib/radar/guardie-opportunita.ts");
+  atteso(
+    "guardie di Opportunità: titolare a interruttore spento, account (titolare o Ufficio Gare attivo) solo con RADAR_UFFICIO_GARE",
+    guardieOpp.includes("return ufficioGareRadarAttivo(process.env) ? richiediAccountPagina() : richiediTitolarePagina();") &&
+      guardieOpp.includes("return ufficioGareRadarAttivo(process.env) ? richiediAccountAzione() : richiediTitolareAzione();"),
+  );
+  for (const [nomeFile, nomi] of Object.entries(OPPORTUNITA)) {
+    const funzioni = funzioniEsportate(leggi(`src/app/actions/${nomeFile}`));
+    for (const nome of nomi) {
+      const corpo = funzioni.find((f) => f.nome === nome)?.corpo ?? "";
+      atteso(`${nomeFile} › ${nome}: parte dalla guardia di Opportunità`, corpo.includes("await richiediOpportunitaAzione()"));
+      atteso(`${nomeFile} › ${nome}: non legge la sessione per conto suo`, !corpo.includes("auth.getUser()"));
+      atteso(`${nomeFile} › ${nome}: i dati sono dell'impresa, mai dell'utente loggato`, !/\buser\.id\b/.test(corpo) && corpo.includes("contesto.accountId"));
+    }
+  }
 
   for (const [nomeFile, nomi] of Object.entries(TITOLARE)) {
     const funzioni = funzioniEsportate(leggi(`src/app/actions/${nomeFile}`));
@@ -174,13 +196,15 @@ async function main() {
       "/gare/[id]",
       "/gare/[id]/revisione",
       "/impostazioni",
-      // Tender Intelligence, fase B1: pagine del solo titolare (l'Ufficio Gare si aggiungerà con le sue prove)
+      // Tender Intelligence: guardia di Opportunità (titolare; con RADAR_UFFICIO_GARE acceso anche l'Ufficio Gare attivo). B4: Per te e profilo
       "/opportunita",
       "/opportunita/aggiungi",
       "/opportunita/aggiunta/[id]",
       "/opportunita/cerca",
       "/opportunita/gara/[id]",
       "/opportunita/monitorate",
+      "/opportunita/per-te",
+      "/opportunita/profilo",
       "/pagamenti",
       "/pagamenti/fattura/[fonte]/[id]",
       "/profilo-azienda",
@@ -193,7 +217,11 @@ async function main() {
     const sorgente = leggi(file);
     const aperta = percorsoConsentito("ufficio_gare", route);
     const eRoute = file.endsWith("route.ts");
-    if (aperta) {
+    if (route === `${RADICE_AREA}/opportunita` || route.startsWith(`${RADICE_AREA}/opportunita/`)) {
+      atteso(`${route}: Opportunità, parte dalla guardia di Opportunità`, sorgente.includes("await richiediOpportunitaPagina()") && !sorgente.includes("auth.getUser()") && !sorgente.includes("richiediTitolarePagina"));
+      atteso(`${route}: i dati sono dell'impresa, mai dell'utente loggato`, !/\buser\.id\b/.test(sorgente), (sorgente.match(/^.*\buser\.id\b.*$/gm) ?? []).join(" | "));
+      atteso(`${route}: chiusa all'Ufficio Gare a interruttore spento, aperta solo con il grado 2`, !aperta && percorsoConsentito("ufficio_gare", route, { opportunita: true }));
+    } else if (aperta) {
       atteso(`${route}: aperta all'Ufficio Gare, parte dalla guardia dell'account`, sorgente.includes("await richiediAccountPagina()") && !sorgente.includes("auth.getUser()"));
       atteso(`${route}: i dati sono dell'account effettivo, mai dell'utente loggato`, !/\buser\.id\b/.test(sorgente), (sorgente.match(/^.*\buser\.id\b.*$/gm) ?? []).join(" | "));
     } else {
@@ -209,7 +237,12 @@ async function main() {
   atteso("il layout manda l'Ufficio Gare alla sua vista, prima di qualunque lettura da titolare", layout.indexOf('contesto.ruolo === "ufficio_gare"') !== -1 && layout.indexOf('contesto.ruolo === "ufficio_gare"') < layout.indexOf("getOmniaAiAccessState(user.id, supabase)"));
   atteso("vista Ufficio Gare: sospeso e cessato fermano con il perché, l'abbonamento si legge sul titolare", vista.includes("if (contesto.sospeso)") && vista.includes('stato.stato === "cessato"') && vista.includes("getOmniaAiAccessState(contesto.accountId, admin)") && vista.includes("MESSAGGIO_UFFICIO_GARE_SOSPESO"));
   atteso("vista Ufficio Gare: nessun avviso amministrativo (profilo, fatturazione, pilot, link all'abbonamento)", !/ProfiloAziendaAvviso|FatturazioneAvviso|PilotAvviso|ActivateSubscriptionForm|leggiPilot|\/abbonamento|profilo-azienda/.test(vista));
-  atteso("vista Ufficio Gare: menu ridotto, senza campanella né menu del profilo", vista.includes("voci={VOCI_MENU_UFFICIO_GARE}") && vista.includes("ufficioGare"));
+  atteso(
+    "vista Ufficio Gare: menu ridotto, senza campanella né menu del profilo; «Opportunità» solo con RADAR_UFFICIO_GARE e il Radar dell'impresa",
+    vista.includes("voci={conOpportunita ? vociConOpportunita(VOCI_MENU_UFFICIO_GARE) : VOCI_MENU_UFFICIO_GARE}") &&
+      vista.includes("ufficioGareRadarAttivo(process.env) ? radarNelMenu(contesto.accountId) : Promise.resolve(false)") &&
+      vista.includes("ufficioGare"),
+  );
   atteso("vista Ufficio Gare: al titolare parte l'email quando l'abbonamento è cessato", vista.includes('motivo: "abbonamento_non_attivo"') && vista.indexOf("avvisaTitolareDopoLaRisposta") < vista.indexOf("SchermataFermo email={email} titolo=\"Abbonamento non attivo\""));
   atteso("sola lettura e prova: avviso senza link né prezzi, con la data di cancellazione", vista.includes("MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO") && vista.includes("dataCancellazioneContenuti") && vista.includes("MESSAGGIO_UFFICIO_GARE_GARE_FINITE"));
   const topbar = leggi("src/components/omnia-ai/topbar.tsx");

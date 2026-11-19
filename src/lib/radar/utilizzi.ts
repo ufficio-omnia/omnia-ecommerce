@@ -3,12 +3,12 @@
 // Come logAiUsage: un errore di registrazione non interrompe mai l'azione già riuscita.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { AzioneRadar } from "./diritto-calcoli";
+import type { AzioneRadar, AzioneStatistica } from "./diritto-calcoli";
 
 export async function registraUtilizzoRadar(params: {
   accountId: string;
   membroId: string;
-  azione: AzioneRadar;
+  azione: AzioneRadar | AzioneStatistica;
   proceduraId?: string | null;
   garaId?: string | null;
   crediti?: number;
@@ -31,7 +31,7 @@ export async function registraUtilizzoRadar(params: {
 }
 
 // Quante volte l'account ha fatto l'azione dalla data indicata. null = conteggio non riuscito: chi chiama NON deve concedere.
-export async function contaUtilizziRadar(admin: SupabaseClient, accountId: string, azione: AzioneRadar, dal: Date): Promise<number | null> {
+export async function contaUtilizziRadar(admin: SupabaseClient, accountId: string, azione: AzioneRadar | AzioneStatistica, dal: Date): Promise<number | null> {
   const { count, error } = await admin
     .from("omnia_ai_radar_utilizzi")
     .select("id", { count: "exact", head: true })

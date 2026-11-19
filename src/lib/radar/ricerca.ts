@@ -21,6 +21,8 @@ import { aggiungiGiorni, giornoIso } from "./importa-ted-calcoli";
 import type { StatoProcedura } from "./importa-calcoli";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "./fonti-nascoste";
 import { CLASSIFICAZIONI_ELENCO, COLONNA_RIGHE_ATTIVE, classificazioneDaRiga, rilevanzaPerRicerca, type ConClassificazioni } from "./classificazioni-lettura";
+import { opportunitaPerImpresa, type OpportunitaRadar, type ProfiloRadar } from "./radar-personalizzato-contratto";
+import { condizioneRegioniOSenzaLuogo, garaPerRadarDaRiga, pertinentiPrima, soloSettori } from "./profilo-calcoli";
 
 export const COLONNE_RISULTATO =
   "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale, unita_a";
@@ -62,21 +64,26 @@ export type RisultatoRicerca = {
   // fase B3: se le classificazioni sono state lette davvero (accese e tabelle disponibili), e quante gare il controllo di coerenza ha tolto
   classificazioni: boolean;
   scartatePerCoerenza: number;
+  // fase B4, «Per te»: le opportunità del profilo per id di gara (pertinente o correlata, con i settori); null fuori da «Per te»
+  perTe: Record<string, OpportunitaRadar> | null;
 };
 
 // Fase B2b (pacchetto 16, punto 7): con le classificazioni accese (ambiente.ts, SPENTE di base) punteggio, ordinamento ed etichette
 // distinguono le gare pertinenti (A) dalle correlate (B); spente, la ricerca è quella di prima.
 // `fontiNascoste`: chi legge le fonti non mostrabili ai clienti. Le pagine non lo passano (vale la lettura vera, con la cache); le verifiche
 // passano una versione finta, così la prova non interroga mai il database configurato (nemmeno durante la build).
+// Fase B4, `perTe` (il profilo dell'impresa): la STESSA richiesta, con le regioni «del profilo oppure luogo non indicato» (decisione del 19/11),
+// poi in memoria le regole del contratto (opportunitaPerImpresa: solo A, B se il profilo lo chiede, mai C), prima di ordinamento e paginazione.
+// Senza classificazioni lette «Per te» non propone nulla (mai gare non classificate come opportunità).
 export async function cercaGare(
   admin: SupabaseClient,
   filtri: FiltriRicerca,
   adesso: Date,
-  opzioni: { classificazioni?: boolean; fontiNascoste?: () => Promise<string[]> } = {},
+  opzioni: { classificazioni?: boolean; fontiNascoste?: () => Promise<string[]>; perTe?: ProfiloRadar } = {},
 ): Promise<RisultatoRicerca> {
   const inizio = Date.now();
   const domanda = analizzaDomanda(filtri.q);
-  const vuoto = (errore: boolean): RisultatoRicerca => ({ righe: [], candidati: 0, oltreTetto: false, domanda, pagine: 0, ms: Date.now() - inizio, errore, classificazioni: false, scartatePerCoerenza: 0 });
+  const vuoto = (errore: boolean): RisultatoRicerca => ({ righe: [], candidati: 0, oltreTetto: false, domanda, pagine: 0, ms: Date.now() - inizio, errore, classificazioni: false, scartatePerCoerenza: 0, perTe: opzioni.perTe ? {} : null });
   const iso = adesso.toISOString();
 
   let idDaCig: string[] | null = null;
@@ -104,7 +111,7 @@ export async function cercaGare(
     if (filtri.stato === "aperte") q = q.eq("stato", "aperta").or(condizioneAperte(oggi, iso));
     else if (filtri.stato === "storico") q = q.or(condizioneStorico(oggi, iso));
     if (filtri.settori.length) q = q.overlaps("settori", filtri.settori);
-    if (filtri.regioni.length) q = q.overlaps("luogo_regioni", filtri.regioni);
+    if (filtri.regioni.length) q = opzioni.perTe ? q.or(condizioneRegioniOSenzaLuogo(filtri.regioni)) : q.overlaps("luogo_regioni", filtri.regioni);
     if (filtri.importoMin !== null) q = q.gte("valore_stimato", filtri.importoMin);
     if (filtri.importoMax !== null) q = q.lte("valore_stimato", filtri.importoMax);
     if (filtri.scadenzaEntroGiorni !== null) q = q.gte("scadenza_giorno", oggi).lte("scadenza_giorno", aggiungiGiorni(oggi, filtri.scadenzaEntroGiorni));
@@ -125,17 +132,25 @@ export async function cercaGare(
     console.error("Tender Intelligence: ricerca non riuscita", error.message);
     return vuoto(true);
   }
+  // «Per te»: le opportunità si calcolano sulle righe GREZZE (servono le sottocategorie per identificativo), prima che conRilevanza le tolga
+  let opportunita: Map<string, OpportunitaRadar> | null = null;
+  if (opzioni.perTe) {
+    const grezze = classificazioni ? (data ?? []).slice(0, CANDIDATI_MASSIMI) : [];
+    opportunita = new Map(opportunitaPerImpresa(grezze.map(garaPerRadarDaRiga), soloSettori(opzioni.perTe)).map((o) => [o.proceduraId, o]));
+  }
   const righe = (data ?? []).map((r) => {
     const conValore = { ...r, valore_stimato: r.valore_stimato === null ? null : Number(r.valore_stimato) };
     return classificazioni ? conRilevanza(conValore) : conValore;
   });
   const oltreTetto = righe.length > CANDIDATI_MASSIMI;
   const letti = righe.slice(0, CANDIDATI_MASSIMI);
-  const primi = classificazioni ? letti.filter((r) => coerenteConFiltroSettori(r, filtri)) : letti;
-  const scartatePerCoerenza = letti.length - primi.length;
+  const coerenti = classificazioni ? letti.filter((r) => coerenteConFiltroSettori(r, filtri)) : letti;
+  const scartatePerCoerenza = letti.length - coerenti.length;
   if (scartatePerCoerenza > 0) console.error(`Tender Intelligence: ${scartatePerCoerenza} gare con la colonna «settori» non coerente con le classificazioni`);
+  const primi = opportunita ? coerenti.filter((r) => opportunita.has(r.id)) : coerenti;
   const candidati = primi.map((c) => ({ ...c, punteggio: punteggioRilevanza(c, domanda, filtri, adesso) }));
-  const ordinati = ordinaCandidati(candidati, filtri.ordina, filtri);
+  const ordinatiTutti = ordinaCandidati(candidati, filtri.ordina, filtri);
+  const ordinati = opportunita ? pertinentiPrima(ordinatiTutti, opportunita) : ordinatiTutti;
   const pagine = Math.max(1, Math.ceil(ordinati.length / RISULTATI_PER_PAGINA));
   const pagina = Math.min(filtri.pagina, pagine);
   return {
@@ -148,5 +163,6 @@ export async function cercaGare(
     errore: false,
     classificazioni,
     scartatePerCoerenza,
+    perTe: opportunita ? Object.fromEntries(opportunita) : null,
   };
 }

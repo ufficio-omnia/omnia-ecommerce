@@ -25,6 +25,7 @@ import {
 } from "@/lib/omnia-ai-account-calcoli";
 import { radarNelMenu } from "@/lib/radar/visibilita";
 import { vociConOpportunita } from "@/lib/radar/area-cliente";
+import { ufficioGareRadarAttivo } from "@/lib/radar/interruttori-b4";
 import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
 import { surplusSeInVendita } from "@/lib/piano-lavoro-offerta";
 import type { User } from "@supabase/supabase-js";
@@ -152,7 +153,12 @@ async function VistaUfficioGare({ user, contesto, children }: { user: User; cont
     return <SchermataFermo email={email} titolo="Abbonamento non attivo" testo={MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO} />;
   }
 
-  const { data: company } = await admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>();
+  // Fase B4 (grado 2): con RADAR_UFFICIO_GARE acceso (solo staging) e il Radar visibile per l'impresa, anche la voce «Opportunità». A
+  // interruttore spento nessuna lettura in più; acceso, radarNelMenu passa dalla cache dei dati (come per il titolare).
+  const [{ data: company }, conOpportunita] = await Promise.all([
+    admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>(),
+    ufficioGareRadarAttivo(process.env) ? radarNelMenu(contesto.accountId) : Promise.resolve(false),
+  ]);
 
   const avviso =
     stato.stato === "sola_lettura"
@@ -168,7 +174,7 @@ async function VistaUfficioGare({ user, contesto, children }: { user: User; cont
       nomeSaluto={email}
       email={email}
       nomeAzienda={company?.ragione_sociale ?? null}
-      voci={VOCI_MENU_UFFICIO_GARE}
+      voci={conOpportunita ? vociConOpportunita(VOCI_MENU_UFFICIO_GARE) : VOCI_MENU_UFFICIO_GARE}
       ufficioGare
       avvisi={avviso ? <div className="omnia-avviso-profilo">{avviso}</div> : undefined}
     >

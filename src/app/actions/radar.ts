@@ -4,15 +4,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
+import { richiediOpportunitaAzione } from "@/lib/radar/guardie-opportunita";
 import { leggiDirittoRadar } from "@/lib/radar/impostazioni";
 import { registraUtilizzoRadar } from "@/lib/radar/utilizzi";
 import { validaGaraAggiunta } from "@/lib/radar/aggiunte-calcoli";
 import { MESSAGGIO_RADAR_NON_DISPONIBILE, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 
-// Azioni di Tender Intelligence nell'area riservata (fase B1, solo titolare): salvare e monitorare una gara, aggiungere una gara a mano.
-// Ogni azione parte dalla guardia del titolare e dal diritto al modulo, ricalcolati qui (il pulsante nella pagina non è una garanzia).
+// Azioni di Tender Intelligence nell'area riservata: salvare e monitorare una gara, aggiungere una gara a mano. Fase B1: solo titolare; fase B4
+// (grado 2): anche l'Ufficio Gare attivo dell'impresa, SOLO con RADAR_UFFICIO_GARE acceso (guardie-opportunita.ts). Dati sempre dell'impresa.
+// Ogni azione parte dalla guardia di Opportunità e dal diritto al modulo, ricalcolati qui (il pulsante nella pagina non è una garanzia).
 // Le tabelle riservate si scrivono con la sessione dell'utente (regole di accesso del titolare effettivo, migrazione 0112); l'archivio
 // pubblico si legge con la chiave di servizio solo per controllare che la gara esista.
 
@@ -20,8 +21,8 @@ export type StatoAzioneRadar = { errore?: string; ok?: boolean; messaggio?: stri
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Dopo la guardia del titolare (chiamata da ogni azione): il diritto al modulo per il suo account.
-async function conDiritto(guardia: Awaited<ReturnType<typeof richiediTitolareAzione>>) {
+// Dopo la guardia di Opportunità (chiamata da ogni azione): il diritto al modulo per l'account dell'impresa.
+async function conDiritto(guardia: Awaited<ReturnType<typeof richiediOpportunitaAzione>>) {
   if (!guardia.ok) return { ok: false as const, errore: guardia.errore };
   const diritto = await leggiDirittoRadar(guardia.contesto.accountId);
   if (!diritto.visibile) return { ok: false as const, errore: MESSAGGIO_RADAR_NON_DISPONIBILE };
@@ -36,7 +37,7 @@ function ricarica(proceduraId?: string | null, aggiuntaId?: string | null) {
 
 // azione: «salva», «monitora» (salva e monitora), «non_monitorare» (resta salvata), «rimuovi».
 export async function aggiornaSalvataggio(_stato: StatoAzioneRadar, formData: FormData): Promise<StatoAzioneRadar> {
-  const g = await conDiritto(await richiediTitolareAzione());
+  const g = await conDiritto(await richiediOpportunitaAzione());
   if (!g.ok) return { errore: g.errore };
   const azione = String(formData.get("azione") ?? "");
   const proceduraId = String(formData.get("proceduraId") ?? "") || null;
@@ -86,7 +87,7 @@ export async function aggiornaSalvataggio(_stato: StatoAzioneRadar, formData: Fo
 // «Aggiungi a mano»: CIG o collegamento + dati facoltativi. Se il CIG è già nell'archivio pubblico, si apre quella gara (e si salva): nessun
 // doppione. Altrimenti nasce una gara riservata dell'impresa, salvata e monitorata, che si collegherà da sola quando il CIG comparirà in una fonte.
 export async function aggiungiGaraAMano(_stato: StatoAzioneRadar, formData: FormData): Promise<StatoAzioneRadar> {
-  const g = await conDiritto(await richiediTitolareAzione());
+  const g = await conDiritto(await richiediOpportunitaAzione());
   if (!g.ok) return { errore: g.errore };
   if (!g.diritto.operativo) return { errore: g.diritto.messaggioSolaLettura ?? MESSAGGIO_RADAR_NON_DISPONIBILE };
 
