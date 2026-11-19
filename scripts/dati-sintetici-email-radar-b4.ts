@@ -180,6 +180,7 @@ export const PROROGA = modifica(7, "proroga", {
 export const MODIFICA_SCADENZA = modifica(11, "modifica_scadenza", {
   gara: gara(11, {
     denominazione: "Servizio di trasporto disabili",
+    fonti: [{ fonte: "sintel", nome: "Sintel (ARIA Lombardia)" }],
     cig: ["A0SINT0111"],
     scadenza: scadenza("2026-11-27", null),
     tipoAvviso: "Avviso di rettifica",
@@ -200,7 +201,7 @@ export const DOCUMENTI = modifica(8, "documenti", {
 });
 
 export const ANNULLAMENTO = modifica(12, "annullamento", {
-  gara: gara(12, { denominazione: "Servizio di gestione del centro estivo comunale", cig: ["A0SINT0121"], tipoAvviso: "Avviso di annullamento" }),
+  gara: gara(12, { denominazione: "Servizio di gestione del centro estivo comunale", cig: ["A0SINT0121"], tipoAvviso: "Avviso di annullamento", fonti: [{ fonte: "ted", nome: "TED (Gazzetta UE)" }] }),
   modifiche: [],
   evidenza: evidenza({ avvisoId: "000012-2026", avvisoUrl: "https://ted.example/avvisi/000012-2026", motivoFonte: "Procedura annullata in autotutela" }),
   scadenzaPrecedente: null,
