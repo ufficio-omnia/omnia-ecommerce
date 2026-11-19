@@ -29,6 +29,8 @@ const STATI: Record<StatoConsegna, { etichetta: string; tono: Tono }> = {
   in_coda: { etichetta: "In coda", tono: "neutro" },
   in_invio: { etichetta: "In invio", tono: "neutro" },
   inviata: { etichetta: "Inviata", tono: "ok" },
+  // contratto v2: consegna confluita nell'email raggruppata degli avvisi urgenti (non parte più da sola)
+  inclusa: { etichetta: "Inclusa negli urgenti", tono: "neutro" },
   annullata: { etichetta: "Annullata", tono: "neutro" },
   scartata: { etichetta: "Scartata", tono: "neutro" },
   fallita: { etichetta: "Fallita", tono: "errore" },
