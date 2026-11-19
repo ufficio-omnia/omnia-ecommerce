@@ -124,7 +124,8 @@ const IMPRESA: StatoImpresaNotifiche = { impresaId: ALFA, radarAttivo: true, ema
   atteso("V2 nessun indirizzo email nella vista", !JSON.stringify(vista).includes("@") && vista.every((p) => !("email" in p)));
   atteso("V3 «riceve» dalla regola di B2: titolare riceve scadenze, non le nuove opportunità spente", vista[0].riceve.scadenze.riceve && !vista[0].riceve.nuove_opportunita.riceve);
   const u = vista[1];
-  atteso("V3 indirizzo da verificare: stato e motivo", u.stato === "da_verificare" && u.statoTesto === TESTO_STATO_INDIRIZZO.da_verificare && !u.riceve.scadenze.riceve && (u.riceve.scadenze.riceve ? "" : u.riceve.scadenze.motivo) === "email_da_verificare");
+  atteso("V3 indirizzo da verificare: stato e motivo", u.stato === "da_verificare" && u.statoTesto === "Indirizzo da verificare" && !u.riceve.scadenze.riceve && (u.riceve.scadenze.riceve ? "" : u.riceve.scadenze.motivo) === "email_da_verificare");
+  uguale("V3 testi dello stato dell'indirizzo", TESTO_STATO_INDIRIZZO, { verificato: "Indirizzo verificato", da_verificare: "Indirizzo da verificare", bloccato: "Indirizzo non raggiungibile", utente_disattivato: "Utente disattivato" });
   const spente = personeVisibili({ persone: PERSONE, preferenze: PREFERENZE, impresa: { ...IMPRESA, emailAttive: false }, chiGuarda: TITOLARE });
   atteso("V4 email dell'impresa spente: nessuno riceve, con il motivo «spenti dal titolare dell'impresa»", spente.every((p) => !p.riceve.scadenze.riceve && (p.riceve.scadenze.riceve ? "" : p.riceve.scadenze.testo) === "Avvisi email spenti dal titolare dell'impresa"));
   const ufficio = personeVisibili({ persone: PERSONE, preferenze: PREFERENZE, impresa: IMPRESA, chiGuarda: UFFICIO });
@@ -174,7 +175,10 @@ atteso("S4 destinatari chiesti per la SOLA impresa della sessione e filtrati di 
 atteso("S4 preferenze lette con la sessione (RLS), scritte solo con il client di servizio", /sessione\.from\(TABELLA_NOTIFICHE_PERSONE\)/.test(server) && !/sessione\.from\([^)]*\)\.(insert|update|upsert|delete)/.test(server) && /admin\.from\(TABELLA_NOTIFICHE_PERSONE\)\.upsert/.test(server));
 const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx");
 atteso("S5 pagina: guardia di Opportunità, diritto, 404 a interruttore spento, poi le letture", inOrdine(pagina, ["await richiediOpportunitaPagina()", "dirittoRadarOppure404(contesto.accountId)", "if (!preferenzeNotificheAttive(process.env)) notFound();", "leggiNotifiche("]));
-atteso("S5 destinatari dell'impresa solo per il titolare; interruttore dell'impresa modificabile solo dal titolare", pagina.includes("{titolare && (") && pagina.includes("modificabile={titolare && "));
+atteso(
+  "S5 destinatari dell'impresa solo per il titolare; interruttore dell'impresa modificabile solo dal titolare",
+  /\{titolare && \(\s*<section[^>]*aria-labelledby="notifiche-destinatari"/.test(pagina) && pagina.includes("modificabile={titolare && "),
+);
 atteso("S5 la pagina non mostra indirizzi email", !/\.email\b/.test(pagina));
 const moduli = leggi("src/components/omnia-ai/opportunita/notifiche-form.tsx");
 atteso("S6 moduli nel browser: solo React e le azioni, nessuna lettura", /^"use client";/.test(moduli) && [...moduli.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).every((i) => i === "react" || i === "@/app/actions/radar-notifiche"));
