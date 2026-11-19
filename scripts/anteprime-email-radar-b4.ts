@@ -1,7 +1,7 @@
 // Genera le anteprime delle email di Tender Intelligence (fase B4) con DATI SINTETICI, per far vedere la grafica all'utente.
 // Uso: npx tsx scripts/anteprime-email-radar-b4.ts <cartella di destinazione>
 // Scrive, per ogni caso: <nome>.html (l'email com'è), <nome>.txt (versione di solo testo) e un indice.html con la vista da computer
-// (600 px) e da telefono (375 px) affiancate. Nessuna rete, nessun database, nessun invio.
+// (640 px) e da telefono (375 px) affiancate, autosufficiente (le email sono incorporate con srcdoc). Nessuna rete, nessun database, nessun invio.
 import fs from "node:fs";
 import path from "node:path";
 import { componiEmailRadar } from "../src/lib/radar/email-modelli";
@@ -25,8 +25,8 @@ for (const a of ANTEPRIME) {
 <h2>${esc(a.titolo)}</h2>
 <p class="meta"><strong>Oggetto:</strong> ${esc(email.oggetto)} · <strong>Destinatario:</strong> ${esc(chi)} · <a href="${esc(a.file)}.html">apri l'email</a> · <a href="${esc(a.file)}.txt">versione di solo testo</a></p>
 <div class="viste">
-<figure><figcaption>Computer</figcaption><iframe src="${esc(a.file)}.html" width="640" height="900" title="${esc(a.titolo)} — computer" loading="lazy"></iframe></figure>
-<figure><figcaption>Telefono</figcaption><iframe src="${esc(a.file)}.html" width="375" height="900" title="${esc(a.titolo)} — telefono" loading="lazy"></iframe></figure>
+<figure><figcaption>Computer</figcaption><iframe srcdoc="${esc(email.html)}" width="640" height="900" title="${esc(a.titolo)} — computer" loading="lazy"></iframe></figure>
+<figure><figcaption>Telefono</figcaption><iframe srcdoc="${esc(email.html)}" width="375" height="900" title="${esc(a.titolo)} — telefono" loading="lazy"></iframe></figure>
 </div>
 </section>`);
 }
