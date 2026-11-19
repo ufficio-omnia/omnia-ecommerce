@@ -410,7 +410,8 @@ async function principale() {
   atteso("nessun cron nuovo in vercel.json", !vercel.crons.some((c) => /sintel|sardegna|aflink|radar-fonti/.test(c.path)));
   // B2-0 non porta migrazioni: dopo la 0117 (della PVL, approvata il 17/11) possono esserci solo la 0120 di B2a e la 0121 di B2 (PROGETTO
   // mai applicato, decisione dell'utente del 17/11; i suoi controlli sono in verifica-radar-0121.ts)
-  atteso("nessuna migrazione di B2-0 (oltre la 0117 solo la 0120 di B2a e il progetto 0121)", fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01(1[89]|[2-9]\d)_/.test(f)).every((f) => /^0120_|^0121_radar_classificazioni\.sql$/.test(f)));
+  // fase B4 (19/11): nel ramo B2 ci sono anche le BOZZE 0122–0125 del 26B (mai applicate), esattamente queste
+  atteso("nessuna migrazione di B2-0 (oltre la 0117 solo la 0120 di B2a, il progetto 0121 e le bozze B4 0122–0125)", fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01(1[89]|[2-9]\d)_/.test(f)).every((f) => /^0120_|^0121_radar_classificazioni\.sql$|^0122_radar_profili_per_te\.sql$|^0123_radar_aggiornamenti_evidenza\.sql$|^0124_radar_avvisi_preferenze\.sql$|^0125_radar_avvisi_eventi_coda\.sql$/.test(f)));
 
   console.log(fallimenti.length === 0 ? "\nVerifica B2-0 (Sintel e SardegnaCAT): tutto a posto." : `\nVerifica B2-0: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
   process.exit(fallimenti.length === 0 ? 0 : 1);
