@@ -17,7 +17,7 @@ export const IMPRESA_ALFA = { impresaId: "00000000-0000-4000-a000-00000000a1fa",
 export const IMPRESA_BETA = { impresaId: "00000000-0000-4000-a000-00000000be7a", nomeImpresa: "Beta Costruzioni Sintetiche S.p.A." };
 
 const APP = "https://omnia-ai.it/dashboard/omnia-ai";
-export const URL_PREFERENZE = `${APP}/impostazioni/notifiche`;
+export const URL_PREFERENZE = `${APP}/opportunita/notifiche`;
 export const URL_PER_TE = `${APP}/opportunita/per-te`;
 
 export const TITOLARE_ALFA: DestinatarioEmail = {
