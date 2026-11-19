@@ -30,7 +30,9 @@ const MUTAZIONI = [
   { nome: "M4 azioni di Opportunità aperte all'Ufficio Gare a interruttore spento", file: F.guardie, cerca: "? richiediAccountAzione() : richiediTitolareAzione();", con: "? richiediAccountAzione() : richiediAccountAzione();" },
   { nome: "M5 gare senza luogo escluse da «Per te»", file: F.profilo, cerca: "},luogo_regioni.eq.{}`;", con: "}`;" },
   { nome: "M6 regioni rifiltrate in memoria (perde le gare senza luogo)", file: F.profilo, cerca: "return { ...p, regioni: [], procedure: [], importoMin: null, importoMax: null };", con: "return { ...p, procedure: [], importoMin: null, importoMax: null };" },
-  { nome: "M7 regole del contratto non applicate", file: F.ricerca, cerca: "const primi = opportunita ? coerenti.filter((r) => opportunita.has(r.id)) : coerenti;", con: "const primi = coerenti;" },
+  // (il filtro «primi» e pertinentiPrima tolgono entrambi le righe fuori profilo: togliere uno solo dei due è una mutazione equivalente,
+  // quindi qui si spegne il calcolo delle opportunità per intero)
+  { nome: "M7 regole del contratto non applicate", file: F.ricerca, cerca: "  if (opzioni.perTe) {\n    const grezze", con: "  if (false) {\n    const grezze" },
   { nome: "M8 correlate mescolate alle pertinenti", file: F.ricerca, cerca: "const ordinati = opportunita ? pertinentiPrima(ordinatiTutti, opportunita) : ordinatiTutti;", con: "const ordinati = ordinatiTutti;" },
   { nome: "M9 settore fuori catalogo accettato", file: F.profilo, cerca: 'if (settoriTesto.some((s) => !eSettore(s))) return { ok: false, errore: "Settore non valido." };', con: "" },
   { nome: "M10 sottocategoria fuori catalogo tollerata", file: F.profilo, cerca: 'if (scartate.some((s) => s.motivo !== "settore_non_scelto")) return { ok: false, errore: "Sottocategoria non valida." };', con: "" },
