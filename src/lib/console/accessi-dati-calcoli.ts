@@ -176,7 +176,24 @@ export function frasePrincipaleEstratto(quanti: number, daGenerali: number, peri
   return `Nel registro degli accessi risult${quanti === 1 ? "a 1 accesso" : `ano ${quanti} accessi`} del personale ai documenti e ai contenuti del cliente ${intervallo}${generali}.`;
 }
 
-const INTESTAZIONI_CSV = ["Data e ora accesso (Roma)", "Registrato il (Roma)", "Operatore", "Caso", "Riguarda", "Motivo", "Cosa è stato guardato", "Gara"];
+// La nota in fondo all'estratto: la stessa nella pagina della console e nel PDF mandato al cliente.
+export const NOTA_ESTRATTO =
+  "Il registro riporta gli accessi eccezionali del personale autorizzato ai documenti e ai contenuti del cliente, nei soli casi ammessi dall'Allegato A: assistenza tecnica richiesta dal cliente, revisione umana acquistata dal cliente, manutenzione o sicurezza non altrimenti risolvibili, obbligo di legge. Gli «accessi generali al database» sono interventi che, per la loro natura, possono aver riguardato i dati di tutti i clienti. Il registro non si modifica né si cancella.";
+
+export const SOTTOTITOLO_ESTRATTO =
+  "OMNIA AI — Omnia Consulting SRLS · Registro previsto dall'art. 10 delle condizioni di abbonamento e dall'Allegato A (art. 4)";
+
+export function testoCaso(caso: CasoAccesso): string {
+  return `${LETTERA_CASO[caso]}) ${ETICHETTA_CASO[caso]}`;
+}
+
+// Nome del file PDF: «estratto-accessi-OMNIA-AI-2026-11-19.pdf» (giorno di Roma dell'emissione).
+export function nomeFilePdfEstratto(emessoIl: Date): string {
+  const giorno = emessoIl.toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  return `estratto-accessi-OMNIA-AI-${giorno}.pdf`;
+}
+
+const INTESTAZIONI_CSV =["Data e ora accesso (Roma)", "Registrato il (Roma)", "Operatore", "Caso", "Riguarda", "Motivo", "Cosa è stato guardato", "Gara"];
 
 function dataOraCsv(iso: string): string {
   return new Date(iso).toLocaleString("it-IT", {
