@@ -298,6 +298,11 @@ atteso(
 const rAnnullamento = rilevaModifichePvl(foto(precedente((a) => { a.tipoNuovoAvviso = "annullamento"; })), foto(nuovaSenzaTipo));
 atteso("annullamento dichiarato: registrato, parziale, NON notificabile; nessuna rettifica", solo(rAnnullamento).some((m) => m.tipo === "annullamento" && !m.notificabile && m.affidabilita === "parziale") && rAnnullamento.confrontabili && !rAnnullamento.rettificaDichiarata);
 
+// mai un'ora presunta: un istante senza «ora indicata» non entra nella fotografia (né della gara né dei lotti)
+const bSenzaOra = bando(reale);
+const fSenzaOra = fotoDaBandoPvl({ ...bSenzaOra, record: { ...bSenzaOra.record, scadenzaOraIndicata: false }, lottiScadenze: bSenzaOra.lottiScadenze.map((s) => (s ? { ...s, oraIndicata: false } : s)) }, reale);
+uguale("ora non indicata: nella fotografia resta solo il giorno, anche se un istante c'è", [fSenzaOra.scadenza, fSenzaOra.lotti[0].scadenza], [{ giorno: "2026-12-14", iso: null }, { giorno: "2026-12-14", iso: null }]);
+
 // riclassificazione interna: settori, metodo, livelli non entrano nella fotografia
 const b1 = bando(reale);
 const b2: BandoPvl = { ...b1, settori: ["ristorazione"], metodoSettore: "parole_chiave", record: { ...b1.record, impronta: "diversa" } };

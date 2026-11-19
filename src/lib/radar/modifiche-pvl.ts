@@ -268,13 +268,14 @@ function confrontaScadenza(prima: ScadenzaFoto | null, dopo: ScadenzaFoto | null
   return null;
 }
 
-// Collegamento ai documenti senza le differenze di forma: protocollo, maiuscole dell'host, porta predefinita, barra finale, frammento.
+// Collegamento ai documenti senza le differenze di forma: protocollo, maiuscole dell'host (URL le toglie già), porta predefinita, barra
+// finale, frammento.
 export function collegamentoNormalizzato(u: string | null): string | null {
   if (!u) return null;
   try {
     const x = new URL(u.trim());
     const percorso = x.pathname.replace(/\/+$/, "");
-    return `${x.hostname.toLowerCase()}${x.port && x.port !== "80" && x.port !== "443" ? `:${x.port}` : ""}${percorso}${x.search}`;
+    return `${x.hostname}${x.port && x.port !== "80" && x.port !== "443" ? `:${x.port}` : ""}${percorso}${x.search}`;
   } catch {
     return u.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
   }
