@@ -194,7 +194,15 @@ const versioneUguale = precedente((a) => {
   a.nuovoAvviso = null;
 });
 uguale("solo formattazione (maiuscole, spazi, punto finale, http/https, maiuscole dell'host, barra finale): nessuna modifica", sintesi(rilevaModifichePvl(foto(versioneUguale), foto(formattata))), []);
-uguale("collegamento normalizzato", [collegamentoNormalizzato("https://Host.it/a/"), collegamentoNormalizzato("http://host.it/a"), collegamentoNormalizzato("https://host.it:443/a#x")], ["host.it/a", "host.it/a", "host.it/a"]);
+// la versione precedente con gli stessi dati della nuova (per le prove di un solo campo)
+function fVecchiaUguale(): FotoVersionePvl {
+  return foto(versioneUguale);
+}
+uguale("istante della scadenza normalizzato nel registro (stesso istante, formati diversi)", [valoreScadenzaFoto({ giorno: "2026-12-14", iso: "2026-12-14T12:30:00+01:00" }), valoreScadenzaFoto({ giorno: "2026-12-14", iso: null }), valoreScadenzaFoto(null)], ["2026-12-14T11:30:00.000Z", "2026-12-14", null]);
+uguale("importo con un rumore sotto il mezzo centesimo: nessuna modifica", solo(rilevaModifichePvl({ ...fVecchiaUguale(), valore: (fNuova.valore as number) + 0.001 }, fNuova)).filter((m) => m.campo === "valore_stimato"), []);
+uguale("stessi CIG in un altro ordine: nessuna modifica dei lotti", solo(rilevaModifichePvl({ ...fVecchiaUguale(), lotti: [...fNuova.lotti].reverse() }, fNuova)).filter((m) => m.campo === "lotti"), []);
+uguale("dichiarazione dal solo «tipo» della versione nuova (la vecchia non è stata riletta)", rilevaModifichePvl({ ...fVecchiaUguale(), sostituitoDa: null, tipoSostituzione: null, attivo: true }, fNuova).rettificaDichiarata, true);
+uguale("collegamento normalizzato",[collegamentoNormalizzato("https://Host.it/a/"), collegamentoNormalizzato("http://host.it/a"), collegamentoNormalizzato("https://host.it:443/a#x")], ["host.it/a", "host.it/a", "host.it/a"]);
 const istanteDiverso = clona(reale);
 istanteDiverso.dataScadenza = "2026-12-14T12:30:00+01:00";
 uguale("stesso istante scritto in un altro formato: nessuna modifica", sintesi(rilevaModifichePvl(foto(versioneUguale), foto(istanteDiverso))).filter((m) => m[1] === "scadenza"), []);
