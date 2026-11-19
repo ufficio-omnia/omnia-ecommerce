@@ -150,13 +150,18 @@ type Chiamata = { metodo: string; argomenti: unknown[] };
 function clienteFinto(risposte: { dati?: unknown; errore?: { code?: string; message: string } | null }) {
   const chiamate: Chiamata[] = [];
   const costruttore: Record<string, unknown> = {};
-  for (const m of ["from", "select", "in", "order", "limit", "or", "eq", "rpc"]) {
+  for (const m of ["from", "select", "in", "order", "limit", "or", "eq"]) {
     costruttore[m] = (...argomenti: unknown[]) => {
       chiamate.push({ metodo: m, argomenti });
       return costruttore;
     };
   }
   costruttore.returns = () => Promise.resolve({ data: risposte.dati ?? null, error: risposte.errore ?? null });
+  // la funzione del database si attende direttamente (come supabase-js: la chiamata è già una promessa)
+  costruttore.rpc = (...argomenti: unknown[]) => {
+    chiamate.push({ metodo: "rpc", argomenti });
+    return Promise.resolve({ data: risposte.dati ?? null, error: risposte.errore ?? null });
+  };
   for (const vietato of ["insert", "update", "upsert", "delete"]) {
     costruttore[vietato] = () => {
       throw new Error(`SCRITTURA VIETATA: ${vietato}`);

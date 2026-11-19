@@ -88,10 +88,14 @@ export type ConteggiStati = { disponibile: true; dal: string; perStato: Record<S
 /** Conteggi per stato delle consegne create dal `dal` (di solito gli ultimi 7 giorni): UNA richiesta alla funzione radar_email_conteggi. */
 export async function contaConsegnePerStato(admin: SupabaseClient, dal: Date): Promise<ConteggiStati> {
   const dalIso = dal.toISOString();
-  const { data, error } = await admin.rpc("radar_email_conteggi", { p_dal: dalIso }).returns<{ stato: string; n: number | string }[]>();
+  const { data, error } = await admin.rpc("radar_email_conteggi", { p_dal: dalIso });
   if (error) return { disponibile: false, motivo: schemaAssente(error) || error.code === "PGRST202" ? "tabelle_assenti" : `errore: ${error.message}` };
   const perStato = Object.fromEntries(STATI_CONSEGNA.map((s) => [s, 0])) as Record<StatoConsegna, number>;
-  for (const r of data ?? []) if ((STATI_CONSEGNA as readonly string[]).includes(r.stato)) perStato[r.stato as StatoConsegna] = Number(r.n) || 0;
+  const righe: unknown[] = Array.isArray(data) ? data : [];
+  for (const r of righe) {
+    const x = r as { stato?: unknown; n?: unknown };
+    if (typeof x.stato === "string" && (STATI_CONSEGNA as readonly string[]).includes(x.stato)) perStato[x.stato as StatoConsegna] = Number(x.n) || 0;
+  }
   return { disponibile: true, dal: dalIso, perStato };
 }
 
