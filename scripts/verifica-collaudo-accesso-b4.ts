@@ -470,8 +470,14 @@ async function prove() {
           const da = sv.chiamate.length;
           esitiV.dopo = [(await invia("/accesso/ti-titolare2")).status, (await invia("/verifiche-finali")).status, sv.chiamate.length - da];
           esitiV.pronto = await (await fetch(`${base}/pronto`)).text();
-          // l'app vera viene spenta dal segnale: qui si attende che scatti
-          await new Promise<void>((risolvi) => (segnale.aborted ? risolvi() : segnale.addEventListener("abort", () => risolvi(), { once: true })));
+          // l'app vera viene spenta dal segnale: qui si attende che scatti, ma al massimo 5 s (una mutazione non deve bloccare la prova)
+          const inizioAttesa = Date.now();
+          esitiV.spento = await new Promise<boolean>((risolvi) => {
+            if (segnale.aborted) return risolvi(true);
+            const limite = setTimeout(() => risolvi(false), 5000);
+            segnale.addEventListener("abort", () => (clearTimeout(limite), risolvi(true)), { once: true });
+          });
+          esitiV.attesaMs = Date.now() - inizioAttesa;
           return 0;
         },
       }),
@@ -483,6 +489,7 @@ async function prove() {
       JSON.stringify({ ...v3, html: v3.html.slice(0, 200) }),
     );
     uguale("CB29. dopo il fermo ogni pulsante riceve 423 senza alcuna chiamata, verifiche finali comprese; /pronto mostra «COLLAUDO FERMATO» con tutti i pulsanti disattivati", [esitiV.dopo, (esitiV.pronto as string).includes("COLLAUDO FERMATO"), ((esitiV.pronto as string).match(/disabled>Passo/g) ?? []).length, /disabled>Verifiche finali/.test(esitiV.pronto as string)], [[423, 423, 0], true, 5, true]);
+    atteso("CB69. dopo una VIOLAZIONE l'app viene spenta: il segnale di fermo scatta entro 5 s e il collaudo si chiude", esitiV.spento === true && (esitiV.attesaMs as number) < 5000 && violato.valore !== null, JSON.stringify({ spento: esitiV.spento, attesaMs: esitiV.attesaMs }));
     const resocontoV = violato.righe.slice(violato.righe.findIndex((r) => r.startsWith("Resoconto dei 10 controlli")));
     atteso(
       "CB30. il collaudo esce con codice 3, stampa la VIOLAZIONE sul profilo e il resoconto con il controllo 7 in VIOLAZIONE; nessun token nell'uscita",
@@ -571,7 +578,7 @@ async function prove() {
 
     // ───── controllo preliminare ─────
     const sp = stagingFinto();
-    let pre2: { html: string; post: number; finali: number; portaAccesso: number } = { html: "", post: 0, finali: 0, portaAccesso: 0 };
+    let pre2: { html: string; post: number; finali: number; testi: string[]; portaAccesso: number } = { html: "", post: 0, finali: 0, testi: [], portaAccesso: 0 };
     const preliminare = await cattura(() =>
       ca.collaudo(["--preliminare", "3110"], {}, {
         fetchFn: sp.fetchFinto,
@@ -581,13 +588,17 @@ async function prove() {
           const html = await (await fetch(`${base}/pronto`)).text();
           const via = (html.match(/name="via" value="([^"]+)"/) ?? [])[1] ?? "";
           const invia = (p: string) => fetch(`${base}${p}`, { method: "POST", redirect: "manual", headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: base }, body: new URLSearchParams({ via }).toString() });
-          pre2 = { html, post: (await invia("/accesso/ti-admin")).status, finali: (await invia("/verifiche-finali")).status, portaAccesso };
+          const post = await invia("/accesso/ti-admin");
+          const finali = await invia("/verifiche-finali");
+          pre2 = { html, post: post.status, finali: finali.status, testi: [await post.text(), await finali.text()], portaAccesso };
         },
       }),
     );
     atteso(
-      "CB55. --preliminare: senza autorizzazione né variabili, /pronto in modalità preliminare con i 5 pulsanti e le verifiche finali bloccati, POST validi → 409, nessuna chiamata; poi si chiude",
-      preliminare.valore === 0 && pre2.html.includes("MODALITÀ PRELIMINARE") && (pre2.html.match(/disabled>Passo/g) ?? []).length === 5 && /disabled>Verifiche finali/.test(pre2.html) && pre2.post === 409 && pre2.finali === 409 && sp.chiamate.length === 0 && (await chiuso(pre2.portaAccesso)),
+      "CB55. --preliminare: senza autorizzazione né variabili, /pronto in modalità preliminare con i 5 pulsanti e le verifiche finali bloccati, POST validi → 409 «Modalità preliminare» (prima di qualunque altro controllo), nessuna chiamata; poi si chiude",
+      preliminare.valore === 0 && pre2.html.includes("MODALITÀ PRELIMINARE") && (pre2.html.match(/disabled>Passo/g) ?? []).length === 5 && /disabled>Verifiche finali/.test(pre2.html) && pre2.post === 409 && pre2.finali === 409 &&
+        pre2.testi.every((t) => t === "Modalità preliminare: nessun collegamento viene generato.") && sp.chiamate.length === 0 && (await chiuso(pre2.portaAccesso)),
+      JSON.stringify(pre2.testi),
     );
     const server = ca.serverAccesso({ portaApp: "3110", accedi: async () => ({ cookie: [], accessToken: "" }) });
     const indirizzo = await ca.ascoltaSoloLocale(server, 0);
@@ -708,6 +719,15 @@ async function prove() {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
+
+// Limite di sicurezza: se qualcosa resta in attesa (per esempio un segnale di fermo che non scatta), la verifica FALLISCE con un controllo
+// che ha un nome, invece di restare ferma.
+const LIMITE_VERIFICA_MS = 90_000;
+setTimeout(() => {
+  atteso(`CB0. la verifica si chiude entro ${LIMITE_VERIFICA_MS / 1000} s`, false, "qualcosa è rimasto in attesa");
+  console.error(`\n${fallimenti.length} controlli dello script di collaudo B4 NON superati (verifica interrotta dal limite di tempo).`);
+  process.exit(1);
+}, LIMITE_VERIFICA_MS).unref();
 
 prove()
   .catch((e) => atteso("CB. prove eseguite", false, e instanceof Error ? `${e.message}\n${e.stack}` : String(e)))

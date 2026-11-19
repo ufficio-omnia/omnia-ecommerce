@@ -20,7 +20,7 @@ const MUTAZIONI = [
   { nome: "MC6 preliminare che apre i pulsanti", file: S, cerca: "if (preliminare) return testo(409, \"Modalità preliminare", con: "if (false) return testo(409, \"Modalità preliminare", richiede: "CB55." },
   // fermo
   { nome: "MC7 browser nell'app anche con una VIOLAZIONE", file: S, cerca: "if (!registra(esito.voci)) return html(423,", con: "if (!registra(esito.voci) && false) return html(423,", richiede: "CB28." },
-  { nome: "MC8 la VIOLAZIONE non spegne l'app", file: S, cerca: "    alFermo(motivo);\n", con: "", richiede: "CB28." },
+  { nome: "MC8 la VIOLAZIONE non spegne l'app", file: S, cerca: "    alFermo(motivo);\n", con: "", richiede: "CB69." },
   { nome: "MC9 dopo il fermo i pulsanti funzionano ancora", file: S, cerca: "if (stato.fermo) return testo(423,", con: "if (false) return testo(423,", richiede: "CB29." },
   { nome: "MC10 un ERRORE di verifica non ferma", file: S, cerca: 'export const ESITI_FERMO = new Set(["VIOLAZIONE", "ERRORE"]);', con: 'export const ESITI_FERMO = new Set(["VIOLAZIONE"]);', richiede: "CB52." },
   { nome: "MC11 resoconto «ok» anche con violazioni", file: S, cerca: '  for (const e of ["VIOLAZIONE", "ERRORE"]) if (voci.some((v) => v.esito === e)) return e;\n', con: "", richiede: "CB30." },
