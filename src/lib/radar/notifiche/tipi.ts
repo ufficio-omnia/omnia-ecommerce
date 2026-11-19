@@ -113,7 +113,11 @@ export type GaraEmail = {
   /** collegamento alla fonte ufficiale (avviso o documenti); null se non c'è */
   urlFonteUfficiale: string | null;
   fonti: FonteGara[];
-  /** ultima verifica disponibile dalla fonte (ISO 8601): l'ultima volta che OMNIA AI ha letto la gara dalla fonte */
+  /**
+   * data dell'ultima verifica DISPONIBILE (ISO 8601): l'ultimo aggiornamento di questa gara rilevato dalla fonte
+   * (radar_procedure.ultima_rilevazione_il). Le letture senza cambiamenti non si registrano gara per gara: il modello scrive «ultimo
+   * aggiornamento rilevato dalla fonte il …», non «verificata il …».
+   */
   ultimaVerificaIl: string;
   /** la gara è stata aggiunta a mano dall'impresa (dati inseriti dall'impresa, non da una fonte ufficiale) */
   aggiuntaAMano: boolean;
