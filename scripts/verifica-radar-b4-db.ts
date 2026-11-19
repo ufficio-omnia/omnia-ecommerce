@@ -30,7 +30,9 @@ import {
   leggiUltimiGiri,
   STATI_PROBLEMA,
 } from "../src/lib/radar/notifiche/console-lettura";
-import { CATEGORIA_DEL_TIPO, CATEGORIE_NOTIFICA, TIPI_EVENTO, versioneScadenza } from "../src/lib/radar/notifiche/tipi";
+import { CATEGORIA_DEL_TIPO, CATEGORIE_NOTIFICA, MASSIMO_EMAIL_SINGOLE_PER_PASSAGGIO, TIPI_EVENTO, TIPI_URGENTI, urgente, VERSIONE_CONTRATTO_NOTIFICHE, versioneScadenza } from "../src/lib/radar/notifiche/tipi";
+import { aggiungiGiorni, giornoRoma, giorniDiCalendario, gruppiScadenza, oraRoma, promemoriaDovuti, scadenzaNota, versioniDaAnnullare, type LottoArchivio } from "../src/lib/radar/notifiche/calendario";
+import { chiaveRaggruppamento, pianoInvio, PRIORITA_DEL_TIPO, type ConsegnaInCoda } from "../src/lib/radar/notifiche/coda-calcoli";
 
 // rete bloccata: qualunque fetch fa fallire la verifica
 globalThis.fetch = (async () => {
@@ -131,7 +133,8 @@ const URL_PRODUZIONE = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
   controlla("staging senza variabile → localhost", loc.ok && loc.origine === ORIGINE_LOCALE);
   const ant = origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, VERCEL_ENV: "preview", RADAR_EMAIL_ORIGINE: "https://omnia-ecommerce-git-anteprima-prova-ufficio-omnia.vercel.app" });
   controlla("anteprima con la sua origine", ant.ok && ant.origine === "https://omnia-ecommerce-git-anteprima-prova-ufficio-omnia.vercel.app");
-  for (const vietata of ["https://omnia-ai.it", "https://www.omnia-ai.it", "https://app.omniaitalia.com", "https://console.omniaitalia.com", "https://OMNIA-AI.IT"]) {
+  controlla("un dominio che solo somiglia a quello di produzione è ammesso", origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, RADAR_EMAIL_ORIGINE: "https://notomnia-ai.it" }).ok);
+  for (const vietata of ["https://omnia-ai.it", "https://www.omnia-ai.it", "https://app.omniaitalia.com", "https://console.omniaitalia.com", "https://OMNIA-AI.IT", "https://qualunque.sottodominio.omniaitalia.com", "https://omnia-ai.it."]) {
     controlla(`staging con origine di produzione vietata (${vietata})`, !origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, RADAR_EMAIL_ORIGINE: vietata }).ok);
   }
   controlla("http fuori da localhost vietato", !origineAreaClienti({ NEXT_PUBLIC_SUPABASE_URL: URL_STAGING, RADAR_EMAIL_ORIGINE: "http://esempio.vercel.app" }).ok);
@@ -222,6 +225,103 @@ controlla("ogni tipo ha la sua categoria", TIPI_EVENTO.every((t) => CATEGORIE_NO
 controlla("scadenze = tipi scadenza_*", TIPI_EVENTO.every((t) => (CATEGORIA_DEL_TIPO[t] === "scadenze") === t.startsWith("scadenza")));
 controlla("versione della scadenza: Z e +01:00 dello stesso istante coincidono", versioneScadenza({ giorno: "2026-12-14", istante: "2026-12-14T11:30:00Z" }) === versioneScadenza({ giorno: "2026-12-14", istante: "2026-12-14T12:30:00+01:00" }));
 controlla("versione della scadenza: solo giorno", versioneScadenza({ giorno: "2026-12-14", istante: null }) === "2026-12-14");
+
+controlla("contratto alla versione 2", VERSIONE_CONTRATTO_NOTIFICHE === 2);
+controlla("urgenti: scadenza a 1 giorno, ravvicinata, proroga, modifica della scadenza, annullamento, rettifica, documenti", ["scadenza_1", "scadenza_ravvicinata", "proroga", "modifica_scadenza", "annullamento", "rettifica", "documenti"].every((t) => urgente(t as never)) && !urgente("scadenza_10") && !urgente("scadenza_5") && !urgente("riepilogo_opportunita"));
+controlla("tetto per persona = 15", MASSIMO_EMAIL_SINGOLE_PER_PASSAGGIO === 15);
+
+// ---------- 7-bis. calendario (Europe/Rome, cambi d'ora) ----------
+controlla("giorni di calendario attraverso il passaggio all'ora legale 2026", giorniDiCalendario("2026-03-28", "2026-03-30") === 2 && giorniDiCalendario("2026-03-29", "2026-03-30") === 1);
+controlla("giorni di calendario attraverso il ritorno all'ora solare 2026", giorniDiCalendario("2026-10-24", "2026-10-26") === 2 && giorniDiCalendario("2026-10-25", "2026-10-26") === 1);
+controlla("giorni di calendario attraverso il passaggio all'ora legale 2027", giorniDiCalendario("2027-03-27", "2027-03-29") === 2);
+controlla("giorni negativi e zero", giorniDiCalendario("2026-12-10", "2026-12-09") === -1 && giorniDiCalendario("2026-12-10", "2026-12-10") === 0);
+controlla("giorno di Roma: 23:30 UTC del 28/03 è già il 29/03", giornoRoma("2026-03-28T23:30:00Z") === "2026-03-29");
+controlla("giorno di Roma: 22:30 UTC del 24/10 (ora legale) è già il 25/10", giornoRoma("2026-10-24T22:30:00Z") === "2026-10-25");
+controlla("giorno di Roma: 23:30 UTC del 25/10 (ora solare) è il 26/10", giornoRoma("2026-10-25T23:30:00Z") === "2026-10-26");
+controlla("giorno di Roma: 21:58 UTC di luglio è ancora lo stesso giorno", giornoRoma("2026-07-01T21:58:00Z") === "2026-07-01");
+controlla("ora di Roma d'inverno e d'estate", oraRoma("2026-12-14T11:30:00Z") === "12:30" && oraRoma("2026-07-14T10:30:00Z") === "12:30");
+controlla("aggiungiGiorni attraverso il cambio d'ora", aggiungiGiorni("2026-10-20", 10) === "2026-10-30" && aggiungiGiorni("2026-04-05", -10) === "2026-03-26");
+controlla("scadenza senza ora indicata: niente ora né istante, anche se l'archivio avesse un istante", (() => { const s = scadenzaNota({ giorno: "2026-12-14", istante: "2026-12-14T11:00:00Z", oraIndicata: false }); return !!s && s.ora === null && s.istante === null; })());
+controlla("scadenza con ora indicata: ora di Roma e istante normalizzato", (() => { const s = scadenzaNota({ giorno: "2026-12-14", istante: "2026-12-14T12:30:00+01:00", oraIndicata: true }); return !!s && s.ora === "12:30" && s.istante === "2026-12-14T11:30:00.000Z"; })());
+
+// ---------- 7-ter. gruppi di scadenza per lotto (modifica 2) ----------
+{
+  const L = (numero: string, cig: string | null, giorno: string | null, istante: string | null = null): LottoArchivio => ({ numero, titolo: null, cig, scadenza: giorno ? { giorno, istante, oraIndicata: !!istante } : null });
+  const proc = { giorno: "2026-12-01", istante: "2026-12-01T11:00:00Z", oraIndicata: true };
+  const a = gruppiScadenza(proc, [L("1", "AAAAAAAAAA", "2026-12-01", "2026-12-01T11:00:00Z"), L("2", "BBBBBBBBBB", "2026-12-15", "2026-12-15T11:00:00Z"), L("3", "CCCCCCCCCC", "2026-12-01", "2026-12-01T12:00:00+01:00")]);
+  controlla("lotti: due scadenze distinte = due gruppi, il più vicino prima", a.gruppi.length === 2 && a.gruppi[0].scadenza.giorno === "2026-12-01" && a.gruppi[1].scadenza.giorno === "2026-12-15");
+  controlla("lotti: stessa scadenza (anche scritta Z/+01:00) = stesso gruppo, con i CIG", a.gruppi[0].ambito === "lotti" && a.gruppi[0].lotti.map((l) => l.cig).join(",") === "AAAAAAAAAA,CCCCCCCCCC");
+  const b = gruppiScadenza(proc, [L("1", "AAAAAAAAAA", "2026-12-01", "2026-12-01T11:00:00Z"), L("2", "BBBBBBBBBB", null), L("3", null, null)]);
+  controlla("lotti senza scadenza: elencati a parte, MAI con la scadenza della procedura o di altri lotti", b.gruppi.length === 1 && b.gruppi[0].lotti.length === 1 && b.lottiSenzaScadenza.length === 2 && !b.gruppi.some((g) => g.lotti.some((l) => l.cig === "BBBBBBBBBB")));
+  const c = gruppiScadenza(proc, [L("1", "AAAAAAAAAA", null), L("2", "BBBBBBBBBB", null)]);
+  controlla("nessuna scadenza di lotto: un solo gruppo della procedura, senza lotti dichiarati", c.gruppi.length === 1 && c.gruppi[0].ambito === "procedura" && c.gruppi[0].lotti.length === 0 && c.lottiSenzaScadenza.length === 0);
+  controlla("nessuna scadenza: nessun gruppo", gruppiScadenza(null, []).gruppi.length === 0);
+  controlla("nessuna scadenza né per i lotti né per la procedura: i lotti elencati come «senza scadenza» (come la PVL)", (() => { const x = gruppiScadenza(null, [L("2", "BBBBBBBBBB", null), L("1", "AAAAAAAAAA", null)]); return x.gruppi.length === 0 && x.lottiSenzaScadenza.map((l) => l.numero).join(",") === "1,2"; })());
+  const d = gruppiScadenza(null, [L("1", null, "2026-12-01", "2026-12-01T09:00:00Z"), L("2", null, "2026-12-01")]);
+  controlla("stesso giorno, uno con l'ora e uno senza: due scadenze distinte, prima quella con l'ora", d.gruppi.length === 2 && d.gruppi[0].scadenza.istante !== null && d.gruppi[1].scadenza.istante === null);
+  // proroga di un solo lotto: la vecchia scadenza resta se un altro lotto l'ha ancora
+  const prima = gruppiScadenza(null, [L("1", "AAAAAAAAAA", "2026-12-01"), L("2", "BBBBBBBBBB", "2026-12-01")]);
+  const dopoUno = gruppiScadenza(null, [L("1", "AAAAAAAAAA", "2026-12-20"), L("2", "BBBBBBBBBB", "2026-12-01")]);
+  const dopoTutti = gruppiScadenza(null, [L("1", "AAAAAAAAAA", "2026-12-20"), L("2", "BBBBBBBBBB", "2026-12-20")]);
+  const vecchia = versioneScadenza(prima.gruppi[0].scadenza);
+  controlla("proroga di un solo lotto: la vecchia versione NON si annulla (un altro lotto l'ha ancora)", versioniDaAnnullare([vecchia], dopoUno.gruppi).length === 0);
+  controlla("proroga di tutti i lotti: la vecchia versione si annulla", JSON.stringify(versioniDaAnnullare([vecchia], dopoTutti.gruppi)) === JSON.stringify([vecchia]));
+
+  // promemoria per gruppo
+  const due = gruppiScadenza(null, [L("1", "AAAAAAAAAA", "2026-12-11"), L("2", "BBBBBBBBBB", "2026-12-06")]);
+  const p = promemoriaDovuti({ oggi: "2026-12-01", gruppi: due.gruppi, entrataInListaIl: "2026-11-20T10:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: true });
+  controlla("promemoria per OGNI scadenza distinta: 10 giorni per un lotto, 5 per l'altro", p.length === 2 && p.some((x) => x.tipo === "scadenza_10" && x.gruppo.lotti[0].cig === "AAAAAAAAAA") && p.some((x) => x.tipo === "scadenza_5" && x.gruppo.lotti[0].cig === "BBBBBBBBBB"));
+  controlla("versione del promemoria = versione della scadenza del gruppo", p.every((x) => x.versione === versioneScadenza(x.gruppo.scadenza)));
+  controlla("gara entrata in lista oggi: nessun promemoria (niente recupero)", promemoriaDovuti({ oggi: "2026-12-01", gruppi: due.gruppi, entrataInListaIl: "2026-12-01T06:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: true }).length === 0);
+  controlla("gara non aperta: nessun promemoria", promemoriaDovuti({ oggi: "2026-12-01", gruppi: due.gruppi, entrataInListaIl: "2026-11-20T10:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: false }).length === 0);
+  const s1 = gruppiScadenza(null, [L("1", null, "2026-12-02")]);
+  controlla("scadenza a 1 giorno", promemoriaDovuti({ oggi: "2026-12-01", gruppi: s1.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: true })[0]?.tipo === "scadenza_1");
+  controlla("scadenza oggi: nessun promemoria", promemoriaDovuti({ oggi: "2026-12-02", gruppi: s1.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-12-01", aperta: true }).length === 0);
+  controlla("scadenza oggi con il giro di ieri saltato: il promemoria a 1 giorno NON si recupera", promemoriaDovuti({ oggi: "2026-12-02", gruppi: s1.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: true }).length === 0);
+  // giro saltato
+  const s4 = gruppiScadenza(null, [L("1", null, "2026-12-05")]);
+  const rec = promemoriaDovuti({ oggi: "2026-12-01", gruppi: s4.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-29", aperta: true });
+  controlla("giro di ieri saltato: si recupera il promemoria a 5 giorni (caduto ieri), segnato come recupero", rec.length === 1 && rec[0].tipo === "scadenza_5" && rec[0].recupero && rec[0].giorniMancanti === 4);
+  controlla("giri saltati da più di 2 giorni: nessun recupero", promemoriaDovuti({ oggi: "2026-12-01", gruppi: s4.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-27", aperta: true }).length === 0);
+  controlla("giro saltato ma gara entrata in lista dopo la soglia: nessun recupero", promemoriaDovuti({ oggi: "2026-12-01", gruppi: s4.gruppi, entrataInListaIl: "2026-11-30T10:00:00Z", ultimoGiroRiuscito: "2026-11-29", aperta: true }).length === 0);
+  controlla("nessun giro riuscito in passato: nessun recupero", promemoriaDovuti({ oggi: "2026-12-01", gruppi: s4.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: null, aperta: true }).length === 0);
+  controlla("promemoria a cavallo del cambio d'ora (25/10): 10 giorni prima del 03/11", promemoriaDovuti({ oggi: "2026-10-24", gruppi: gruppiScadenza(null, [L("1", null, "2026-11-03")]).gruppi, entrataInListaIl: "2026-10-01T10:00:00Z", ultimoGiroRiuscito: "2026-10-23", aperta: true })[0]?.tipo === "scadenza_10");
+}
+
+// ---------- 7-quater. piano d'invio per persona (modifica 1) ----------
+{
+  let n = 0;
+  const C = (tipo: ConsegnaInCoda["tipo"], giornoEvento = "2026-12-01"): ConsegnaInCoda => ({ id: `c${String(++n).padStart(3, "0")}`, tipo, creataIl: `2026-12-01T06:${String(n % 60).padStart(2, "0")}:00Z`, giornoEvento });
+  const venti = Array.from({ length: 20 }, () => C("scadenza_1"));
+  const p1 = pianoInvio(venti, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null });
+  controlla("20 urgenti: 15 singole e 5 RAGGRUPPATE subito, nessuna rinviata", p1.singole.length === 15 && p1.raggruppate.length === 5 && p1.rinviate.length === 0);
+  const misti = [...Array.from({ length: 10 }, () => C("scadenza_10")), ...Array.from({ length: 10 }, () => C("rettifica"))];
+  const p2 = pianoInvio(misti, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null });
+  controlla("10 rettifiche + 10 promemoria a 10 giorni: tutte le rettifiche singole, 5 promemoria singoli, 5 rinviati", p2.singole.filter((id) => misti.find((c) => c.id === id)?.tipo === "rettifica").length === 10 && p2.singole.length === 15 && p2.rinviate.length === 5 && p2.raggruppate.length === 0);
+  const p3 = pianoInvio(misti, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: true, quotaResidua: null });
+  controlla("ultimo passaggio del giorno: i non urgenti oltre il tetto si raggruppano, nessuno rinviato", p3.rinviate.length === 0 && p3.raggruppate.length === 5);
+  const ieri = Array.from({ length: 17 }, () => C("scadenza_5", "2026-11-30"));
+  const p4 = pianoInvio(ieri, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null });
+  controlla("non urgenti di ieri: non aspettano oltre (raggruppati)", p4.raggruppate.length === 2 && p4.rinviate.length === 0);
+  const conRiepilogo = [C("riepilogo_opportunita"), ...Array.from({ length: 15 }, () => C("scadenza_10")), C("scadenza_1")];
+  const p5 = pianoInvio(conRiepilogo, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null });
+  controlla("la scadenza a 1 giorno passa per prima, il riepilogo per ultimo (rinviato)", p5.singole[0] === conRiepilogo[16].id && p5.rinviate.includes(conRiepilogo[0].id) && !p5.rinviate.includes(conRiepilogo[16].id));
+  const p6 = pianoInvio(venti, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: 3 });
+  controlla("quota residua 3: 2 singole + 1 raggruppata con tutti gli altri urgenti (3 email)", p6.singole.length === 2 && p6.raggruppate.length === 18 && p6.rinviate.length === 0);
+  const p7 = pianoInvio(venti, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: 0 });
+  controlla("quota esaurita: nulla parte, nulla si perde (tutto in coda)", p7.singole.length === 0 && p7.raggruppate.length === 0 && p7.rinviate.length === 20);
+  const sedici = Array.from({ length: 16 }, () => C("proroga"));
+  const p8 = pianoInvio(sedici, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null });
+  controlla("16 urgenti: mai più di 15 singole (la sedicesima va raggruppata)", p8.singole.length === 15 && p8.raggruppate.length === 1);
+  const pochi = [C("scadenza_10"), C("rettifica")];
+  controlla("sotto il tetto: tutte singole, in ordine di priorità", JSON.stringify(pianoInvio(pochi, { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null }).singole) === JSON.stringify([pochi[1].id, pochi[0].id]));
+  controlla("consegne doppie nella coda contate una volta", pianoInvio([pochi[0], pochi[0]], { oggi: "2026-12-01", ultimoPassaggioDelGiorno: false, quotaResidua: null }).singole.length === 1);
+  controlla("ogni consegna esce in UN solo elenco", [p1, p2, p3, p4, p5, p6, p7, p8].every((p) => new Set([...p.singole, ...p.raggruppate, ...p.rinviate]).size === p.singole.length + p.raggruppate.length + p.rinviate.length));
+  controlla("gli urgenti non sono mai rinviati quando c'è quota", [p1, p2, p3, p4, p5, p6, p8].every((p) => p.rinviate.every((id) => { const c = [...venti, ...misti, ...ieri, ...conRiepilogo, ...sedici].find((x) => x.id === id); return !!c && !TIPI_URGENTI.includes(c.tipo); })));
+  const imp = (s: string) => `#${s.length}:${s}`;
+  controlla("chiave del raggruppamento: stessa insieme = stessa chiave, in qualunque ordine", chiaveRaggruppamento("u1", ["b", "a", "a"], imp) === chiaveRaggruppamento("u1", ["a", "b"], imp));
+  controlla("priorità: urgenti prima di 5 e 10 giorni e del riepilogo", TIPI_URGENTI.every((t) => PRIORITA_DEL_TIPO[t] < PRIORITA_DEL_TIPO.scadenza_5) && PRIORITA_DEL_TIPO.riepilogo_opportunita === Math.max(...Object.values(PRIORITA_DEL_TIPO)));
+}
 
 // ---------- 8. testo dei file delle notifiche ----------
 {

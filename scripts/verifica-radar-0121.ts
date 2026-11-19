@@ -179,7 +179,8 @@ async function principale() {
     atteso("A. lo STESSO trigger della 0120 aggiornato sul posto (create or replace) con un evento in più, la cancellazione", /create or replace trigger radar_procedure_fonti_aggiunge_fonte\s+after insert or update of procedura_id, fonte or delete on public\.radar_procedure_fonti\s+for each row execute function public\.radar_aggiungi_fonte_alla_gara\(\);/.test(codice) && (codice.match(/create (or replace )?trigger/gi) ?? []).length === 1);
     atteso("A. migrazione NON distruttiva: nessun DROP di alcun tipo, nessuna cancellazione o troncamento di dati", !/\bdrop\b/i.test(codice) && !/\bdelete from\b|\btruncate\b/i.test(codice));
     const migrazioni = fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01[2-9]\d_/.test(f));
-    uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo)", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql"]);
+    // fase B4 (19/11): dopo la 0121 solo le BOZZE 0122–0125 del 26B (mai applicate), esattamente queste
+    uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo), poi le sole bozze B4 0122–0125", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql", "0122_radar_profili_per_te.sql", "0123_radar_aggiornamenti_evidenza.sql", "0124_radar_avvisi_preferenze.sql", "0125_radar_avvisi_eventi_coda.sql"]);
   }
 
   // ═════ A bis. strumenti della prova su un Postgres isolato (si eseguono solo dopo l'approvazione dell'utente) ═════

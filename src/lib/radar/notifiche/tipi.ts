@@ -18,7 +18,9 @@
 //     collegamento alle preferenze;
 //   - l'email è per UN destinatario di UNA impresa: nessun dato di altre imprese.
 
-export const VERSIONE_CONTRATTO_NOTIFICHE = 1;
+// v2 (19/11/2026, approvazione definitiva dell'utente): scadenze per GRUPPO di lotti con la stessa scadenza (mai una scadenza comune
+// inesistente attribuita a tutti i lotti), modifiche per lotto, email RAGGRUPPATA degli avvisi urgenti oltre il tetto per persona.
+export const VERSIONE_CONTRATTO_NOTIFICHE = 2;
 
 /** Le tre categorie che il titolare e ogni destinatario possono accendere o spegnere separatamente. */
 export const CATEGORIE_NOTIFICA = ["nuove_opportunita", "scadenze", "rettifiche"] as const;
@@ -67,6 +69,15 @@ export const GIORNI_PROMEMORIA = { scadenza_10: 10, scadenza_5: 5, scadenza_1: 1
 /** Tetto del riepilogo delle nuove opportunità (decisione del 19/11): vale SOLO per il riepilogo, mai per scadenze e rettifiche. */
 export const MASSIMO_GARE_RIEPILOGO = 20;
 
+/** Email singole al più per destinatario e per passaggio (decisione 6, confermata il 19/11). */
+export const MASSIMO_EMAIL_SINGOLE_PER_PASSAGGIO = 15;
+
+/**
+ * Avvisi URGENTI (modifica 1 del 19/11): non arrivano mai fuori tempo utile. Oltre il tetto per persona NON si rinviano: partono subito,
+ * RAGGRUPPATI in una sola email (EventoRaggruppato). Si rinviano al passaggio successivo solo i promemoria a 10 e 5 giorni e il riepilogo.
+ */
+export const TIPI_URGENTI: readonly TipoEvento[] = ["scadenza_1", "scadenza_ravvicinata", "proroga", "modifica_scadenza", "annullamento", "rettifica", "documenti"];
+
 /**
  * Una scadenza come è NOTA. `giorno` è sempre il giorno di calendario a Roma. `ora` e `istante` ci sono SOLO se la fonte indica l'ora
  * (radar_procedure.scadenza_ora_indicata, regola 0102/0114): altrimenti sono null e l'email dice «ora non indicata dalla fonte».
@@ -85,8 +96,17 @@ export type ScadenzaNota = {
 /** Fonte di una gara, con il nome da mostrare (per esempio { fonte: "ted", nome: "TED (Gazzetta UE)" }). */
 export type FonteGara = { fonte: string; nome: string };
 
-/** Un lotto con una scadenza diversa da quella della gara (si elencano nell'email, senza promemoria separati nella prima versione). */
-export type LottoConScadenza = { numero: string; titolo: string | null; cig: string | null; scadenza: ScadenzaNota };
+/** Un lotto come si mostra nell'email: numero, titolo e CIG quando la fonte li indica. */
+export type LottoEmail = { numero: string | null; titolo: string | null; cig: string | null };
+
+/**
+ * Una scadenza DISTINTA realmente conosciuta e i lotti che la condividono (modifica 2 del 19/11).
+ *   - ambito "lotti": i lotti elencati hanno QUESTA scadenza indicata dalla fonte (ognuno la sua; qui raggruppati perché uguali);
+ *   - ambito "procedura": la fonte indica la scadenza per la procedura, senza scadenze per lotto; `lotti` è vuoto.
+ * Una gara con lotti a scadenze diverse ha più gruppi: ogni gruppo ha i suoi promemoria a 10, 5 e 1 giorno. Mai una scadenza comune
+ * inesistente attribuita a tutti i lotti; i lotti senza una scadenza indicata NON entrano in nessun gruppo.
+ */
+export type GruppoScadenza = { scadenza: ScadenzaNota; ambito: "lotti" | "procedura"; lotti: LottoEmail[] };
 
 /** I dati di una gara per l'email, già letti e formattati dal motore. */
 export type GaraEmail = {
@@ -102,10 +122,13 @@ export type GaraEmail = {
   cig: string[];
   /** tipo dell'avviso, già in parole (es. «Bando di gara», «Avviso di rettifica»); null se non noto */
   tipoAvviso: string | null;
-  /** scadenza per le offerte; null se la fonte non la indica (allora niente promemoria di scadenza) */
-  scadenza: ScadenzaNota | null;
-  /** lotti con scadenze diverse da quella della gara; vuoto nel caso normale */
-  lottiConScadenzeDiverse: LottoConScadenza[];
+  /**
+   * TUTTE le scadenze distinte conosciute, dalla più vicina (v2: sostituisce «scadenza» e «lottiConScadenzeDiverse» della v1).
+   * Vuoto se la fonte non indica scadenze (allora niente promemoria). Un solo gruppo nel caso normale.
+   */
+  scadenze: GruppoScadenza[];
+  /** lotti senza una scadenza indicata dalla fonte, quando altri lotti ce l'hanno: si elencano, MAI con una scadenza attribuita */
+  lottiSenzaScadenza: LottoEmail[];
   /** luogo di esecuzione in parole (regioni); null se non indicato */
   luogo: string | null;
   /** collegamento ASSOLUTO alla scheda OMNIA AI della gara */
@@ -130,6 +153,8 @@ export type ModificaRilevata = {
   etichetta: string;
   prima: string | null;
   dopo: string | null;
+  /** v2: i lotti a cui si riferisce la modifica (per esempio la proroga di un solo lotto); vuoto = tutta la gara */
+  lotti: LottoEmail[];
 };
 
 /** Da dove viene la modifica: l'avviso della fonte che l'ha pubblicata e quando OMNIA AI l'ha rilevata. */
@@ -173,7 +198,12 @@ type EventoBase = {
 export type EventoScadenza = EventoBase & {
   categoria: "scadenze";
   tipo: "scadenza_10" | "scadenza_5" | "scadenza_1" | "scadenza_ravvicinata";
-  gara: GaraEmail & { scadenza: ScadenzaNota };
+  gara: GaraEmail;
+  /**
+   * v2: la scadenza DI QUESTO avviso e i lotti che la condividono (uno dei gruppi di gara.scadenze). `versione` = versioneScadenza di
+   * questa scadenza: una gara con due scadenze distinte ha due serie di promemoria, ognuna con i suoi lotti e i suoi CIG.
+   */
+  gruppo: GruppoScadenza;
   /** giorni di calendario mancanti a Roma il giorno dell'evento (10, 5, 1; per la ravvicinata 0, 1 o 2) */
   giorniMancanti: number;
 };
@@ -189,8 +219,11 @@ export type EventoModifica = EventoBase & {
    */
   modifiche: ModificaRilevata[];
   evidenza: EvidenzaModifica;
-  /** per proroga e modifica_scadenza: la scadenza precedente (la nuova è in gara.scadenza) */
-  scadenzaPrecedente: ScadenzaNota | null;
+  /**
+   * v2, per proroga e modifica_scadenza: la scadenza precedente e quella nuova dei lotti coinvolti (in `lotti`, vuoto = tutta la gara o
+   * la procedura). `versione` dell'evento = "scadenza:" + versioneScadenza della NUOVA scadenza. Null per gli altri tipi.
+   */
+  cambioScadenza: { precedente: ScadenzaNota | null; nuova: ScadenzaNota; lotti: LottoEmail[] } | null;
 };
 
 /** Una gara del riepilogo, con il perché è pertinente per il profilo dell'impresa. */
@@ -212,6 +245,26 @@ export type EventoRiepilogo = EventoBase & {
 };
 
 export type EventoRadar = EventoScadenza | EventoModifica | EventoRiepilogo;
+
+/**
+ * v2, modifica 1 del 19/11: gli avvisi URGENTI di UNA persona che nello stesso passaggio superano MASSIMO_EMAIL_SINGOLE_PER_PASSAGGIO
+ * partono SUBITO in UNA sola email, invece di essere rinviati. Ogni evento incluso resta quello originale (stessi dati congelati, stessa
+ * impresa, stesso destinatario): le sue consegne singole vengono segnate «incluse» e non partono più da sole. Niente doppioni, niente
+ * perdite. `versione` = impronta dell'insieme delle consegne incluse.
+ */
+export type EventoRaggruppato = {
+  tipo: "raggruppamento_urgenti";
+  id: string;
+  impresaId: string;
+  nomeImpresa: string | null;
+  versione: string;
+  creatoIl: string;
+  /** gli avvisi inclusi, i più urgenti prima (scadenza a 1 giorno e ravvicinate, poi proroghe, annullamenti e rettifiche) */
+  eventi: (EventoScadenza | EventoModifica)[];
+};
+
+/** Quello che un'email porta: un evento singolo oppure un raggruppamento di avvisi urgenti. */
+export type ContenutoEmail = EventoRadar | EventoRaggruppato;
 
 /** Il ruolo del destinatario NELL'IMPRESA. Gli amministratori della console OMNIA AI non ricevono nulla in quanto tali. */
 export type RuoloDestinatario = "titolare" | "ufficio_gare";
@@ -235,8 +288,13 @@ export type DestinatarioEmail = {
 /** Quello che restituisce il modello di B1. */
 export type EmailComposta = { oggetto: string; html: string; testo: string };
 
-/** La firma della funzione di B1 (src/lib/radar/email-modelli/**): pura e deterministica. */
-export type ComponiEmailRadar = (evento: EventoRadar, destinatario: DestinatarioEmail) => EmailComposta;
+/** La firma della funzione di B1 (src/lib/radar/email-modelli/**): pura e deterministica. v2: accetta anche il raggruppamento. */
+export type ComponiEmailRadar = (contenuto: ContenutoEmail, destinatario: DestinatarioEmail) => EmailComposta;
+
+/** Un tipo è urgente (non si rinvia mai dietro il tetto per persona)? */
+export function urgente(tipo: TipoEvento): boolean {
+  return TIPI_URGENTI.includes(tipo);
+}
 
 /** Categoria di un tipo di evento. */
 export function categoriaDelTipo(tipo: TipoEvento): CategoriaNotifica {
