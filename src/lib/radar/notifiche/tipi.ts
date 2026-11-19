@@ -178,7 +178,11 @@ export type EventoModifica = EventoBase & {
   categoria: "rettifiche";
   tipo: "rettifica" | "proroga" | "modifica_scadenza" | "documenti" | "annullamento";
   gara: GaraEmail;
-  /** almeno una modifica; vuoto solo per «annullamento» */
+  /**
+   * le modifiche rilevate. Vuoto in due soli casi: «annullamento», oppure un avviso UFFICIALE di modifica (evidenza.affidabilita =
+   * "avviso_ufficiale") in cui i campi confrontati da OMNIA AI non sono cambiati: il modello scrive che la fonte ha pubblicato un avviso di
+   * modifica e che i dettagli vanno letti nell'avviso ufficiale, senza elencare o supporre cambiamenti.
+   */
   modifiche: ModificaRilevata[];
   evidenza: EvidenzaModifica;
   /** per proroga e modifica_scadenza: la scadenza precedente (la nuova è in gara.scadenza) */
