@@ -204,7 +204,8 @@ for (const evento of TUTTI) {
   atteso("E11 rettifica: ogni cambiamento con prima e dopo (testo)", testo.includes("- Importo a base di gara\n  Prima: 1.250.000,00 €\n  Ora: 1.310.000,00 €"));
   atteso("E11 rettifica: l'avviso ufficiale da cui viene, con data e collegamento", vis.includes("Avviso di rettifica n. 2026/S 000-000005, pubblicato il 18 novembre 2026") && collegamenti(html).includes("https://ted.example/avvisi/000005-2026"));
   const senza = componiEmailRadar(RETTIFICA_SENZA_DETTAGLIO, TITOLARE_ALFA);
-  atteso("E11 rettifica senza dettaglio: lo dice, non inventa cambiamenti", senza.testo.includes("non ne riporta il dettaglio") && !/Prima:|Ora:/.test(senza.testo) && !/Prima:|Ora:/.test(visibile(senza.html)));
+  atteso("E11 rettifica senza dettaglio: lo dice nel testo, non inventa cambiamenti", senza.testo.includes("non ne riporta il dettaglio") && !/Prima:|Ora:/.test(senza.testo));
+  atteso("E11 rettifica senza dettaglio: lo dice nell'HTML, non inventa cambiamenti", visibile(senza.html).includes("non ne riporta il dettaglio") && !/Prima:|Ora:/.test(visibile(senza.html)));
   const valoriAssenti = componiEmailRadar({ ...RETTIFICA, modifiche: [{ campo: "Luogo di esecuzione", prima: null, dopo: "Veneto" }] }, TITOLARE_ALFA).testo;
   atteso("E11 valore precedente assente: «non indicato», niente di inventato", valoriAssenti.includes("Prima: non indicato\n  Ora: Veneto"));
   const p = componiEmailRadar(PROROGA, TITOLARE_ALFA);
@@ -218,8 +219,8 @@ for (const evento of TUTTI) {
   atteso("E11 cambia solo l'ora: «modificata» (non «prorogata»)", soloOra.oggetto.startsWith("Scadenza modificata:"));
   const d = componiEmailRadar(DOCUMENTI, TITOLARE_ALFA);
   atteso("E11 documenti: nome, natura e collegamento", d.testo.includes("- Capitolato speciale d'appalto — versione 2 (sostituisce un documento precedente)") && collegamenti(d.html).includes("https://piattaforma-gare.example/procedure/8/capitolato-v2.pdf"));
-  const nessunDoc = componiEmailRadar({ ...DOCUMENTI, documenti: [] }, TITOLARE_ALFA).testo;
-  atteso("E11 documenti senza elenco: lo dice", nessunDoc.includes("non ne riporta l'elenco"));
+  const nessunDoc = componiEmailRadar({ ...DOCUMENTI, documenti: [] }, TITOLARE_ALFA);
+  atteso("E11 documenti senza elenco: lo dice (testo e HTML)", nessunDoc.testo.includes("non ne riporta l'elenco") && visibile(nessunDoc.html).includes("non ne riporta l'elenco"));
 }
 
 // ───── E12. Riepilogo delle nuove opportunità: al massimo 20 gare elencate ─────
