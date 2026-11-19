@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { richiediOpportunitaPagina } from "@/lib/radar/guardie-opportunita";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { leggiGaraPubblica, leggiSalvataggi, type AggiornamentoGara } from "@/lib/radar/gara";
 import { ETICHETTA_STATO, statoMostrato } from "@/lib/radar/importa-calcoli";
@@ -72,7 +72,7 @@ function Dato({ etichetta, valore, nota }: { etichetta: string; valore: React.Re
 }
 
 export default async function SchedaGaraPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const sessione = await richiediTitolarePagina();
+  const sessione = await richiediOpportunitaPagina();
   if (!sessione) return null;
   const { contesto } = sessione;
   const { diritto } = await dirittoRadarOppure404(contesto.accountId);

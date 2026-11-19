@@ -1,4 +1,4 @@
-import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { richiediOpportunitaPagina } from "@/lib/radar/guardie-opportunita";
 import { dirittoRadarOppure404 } from "@/lib/radar/area-cliente";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AggiungiForm from "@/components/omnia-ai/opportunita/aggiungi-form";
@@ -6,7 +6,7 @@ import AggiungiForm from "@/components/omnia-ai/opportunita/aggiungi-form";
 // «Aggiungi a mano» (04, §5): se il CIG è già nell'archivio pubblico si apre quella gara; altrimenti nasce una gara riservata dell'impresa,
 // che si collegherà da sola quando il CIG comparirà in una fonte. Il collegamento non viene mai aperto da OMNIA.
 export default async function AggiungiOpportunitaPage() {
-  const sessione = await richiediTitolarePagina();
+  const sessione = await richiediOpportunitaPagina();
   if (!sessione) return null;
   const { diritto } = await dirittoRadarOppure404(sessione.contesto.accountId);
   return (

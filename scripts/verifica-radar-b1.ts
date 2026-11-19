@@ -300,17 +300,19 @@ atteso("0114: senza ora l'istante si toglie, non se ne inventa uno", /set scaden
 
 const cartellaPagine = "src/app/site-omnia-ai/dashboard/omnia-ai/opportunita";
 const pagine = (fs.readdirSync(path.join(RADICE, cartellaPagine), { recursive: true }) as string[]).map(String).filter((p) => p.endsWith("page.tsx"));
-uguale("pagine di Opportunità previste", pagine.map((p) => p.replace(/\\/g, "/")).sort(), ["aggiungi/page.tsx", "aggiunta/[id]/page.tsx", "cerca/page.tsx", "gara/[id]/page.tsx", "monitorate/page.tsx", "page.tsx"]);
+// fase B4: «Per te» e profilo di ricerca (grado 1), «Notifiche» (grado 3); la guardia di Opportunità è quella del titolare finché
+// RADAR_UFFICIO_GARE è spento
+uguale("pagine di Opportunità previste", pagine.map((p) => p.replace(/\\/g, "/")).sort(), ["aggiungi/page.tsx", "aggiunta/[id]/page.tsx", "cerca/page.tsx", "gara/[id]/page.tsx", "monitorate/page.tsx", "notifiche/page.tsx", "page.tsx", "per-te/page.tsx", "profilo/page.tsx"]);
 for (const p of pagine) {
   const s = leggi(`${cartellaPagine}/${p}`);
-  const guardia = s.indexOf("await richiediTitolarePagina()");
+  const guardia = s.indexOf("await richiediOpportunitaPagina()");
   const diritto = s.indexOf("dirittoRadarOppure404(");
-  const primoDato = s.search(/\.from\(|cercaGare\(|leggiGaraPubblica\(/);
-  atteso(`${p}: guardia del titolare, poi diritto al modulo, poi i dati`, guardia >= 0 && diritto > guardia && (primoDato < 0 || primoDato > diritto) && !s.includes("auth.getUser"));
+  const primoDato = s.search(/\.from\(|cercaGare\(|leggiGaraPubblica\(|leggiProfiloRadar\(|leggiNotifiche\(/);
+  atteso(`${p}: guardia di Opportunità, poi diritto al modulo, poi i dati`, guardia >= 0 && diritto > guardia && (primoDato < 0 || primoDato > diritto) && !s.includes("auth.getUser") && !s.includes("richiediTitolarePagina"));
 }
 const azioniRadar = leggi("src/app/actions/radar.ts");
 for (const m of azioniRadar.matchAll(/export async function (\w+)\(([\s\S]*?)\n\}/g)) {
-  atteso(`azione ${m[1]}: guardia del titolare e diritto al modulo come prima cosa`, /^[^\n]*\{\n\s*const g = await conDiritto\(await richiediTitolareAzione\(\)\);/.test(m[2].slice(m[2].indexOf(")"))));
+  atteso(`azione ${m[1]}: guardia di Opportunità e diritto al modulo come prima cosa`, /^[^\n]*\{\n\s*const g = await conDiritto\(await richiediOpportunitaAzione\(\)\);/.test(m[2].slice(m[2].indexOf(")"))));
 }
 const azioniConsole = leggi("src/app/site-console/azioni/tender-intelligence.ts");
 for (const m of azioniConsole.matchAll(/export async function (\w+)\(([\s\S]*?)\n\}/g)) {

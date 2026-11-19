@@ -3,7 +3,7 @@ import Link from "next/link";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { richiediOpportunitaPagina } from "@/lib/radar/guardie-opportunita";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { cercaGare, type RisultatoRicerca } from "@/lib/radar/ricerca";
 import { leggiFontiGare, leggiSalvataggi } from "@/lib/radar/gara";
@@ -66,7 +66,7 @@ function filtriAttiviRimovibili(f: FiltriRicerca) {
 }
 
 export default async function CercaOpportunitaPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const sessione = await richiediTitolarePagina();
+  const sessione = await richiediOpportunitaPagina();
   if (!sessione) return null;
   const { contesto } = sessione;
   const { diritto, parametri, cliente } = await dirittoRadarOppure404(contesto.accountId);

@@ -20,6 +20,8 @@ const MENU: [string, number][] = [
   ["src/components/omnia-ai/opportunita/testata-opportunita.tsx", 2],
   ["src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx", 5],
   ["src/app/site-console/_componenti/barra-laterale-vista.tsx", 1],
+  // fase B4 (grado 1): la pagina «Per te» (profilo, ordinamento, pagine), anche se non è un menu: nessun precaricamento
+  ["src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/per-te/page.tsx", 5],
 ];
 
 /** I tag di apertura <Link …> di un sorgente, fino al «>» che chiude il tag (ignorando quelli dentro {…} e stringhe). */

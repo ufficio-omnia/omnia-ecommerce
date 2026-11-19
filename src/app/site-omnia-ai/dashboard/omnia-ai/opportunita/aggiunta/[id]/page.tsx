@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { richiediOpportunitaPagina } from "@/lib/radar/guardie-opportunita";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { distanzaScadenza, euro, scadenzaLeggibile, giorniAllaScadenza } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
@@ -17,7 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Aggiunta = { id: string; cig: string | null; url: string | null; oggetto: string | null; ente: string | null; scadenza_giorno: string | null; scadenza_offerte: string | null; scadenza_ora_indicata: boolean; importo: number | string | null; procedura_id: string | null; collegata_il: string | null; creata_il: string };
 
 export default async function GaraAggiuntaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const sessione = await richiediTitolarePagina();
+  const sessione = await richiediOpportunitaPagina();
   if (!sessione) return null;
   const { diritto } = await dirittoRadarOppure404(sessione.contesto.accountId);
   const { id } = await params;

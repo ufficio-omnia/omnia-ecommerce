@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
+import { richiediOpportunitaPagina } from "@/lib/radar/guardie-opportunita";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { colonneElenco, conRilevanza, type RigaRisultato } from "@/lib/radar/ricerca";
 import { COLONNA_RIGHE_ATTIVE, type ConClassificazioni } from "@/lib/radar/classificazioni-lettura";
@@ -16,12 +16,14 @@ import RigaGara, { hrefGara, type DatiRigaGara } from "@/components/omnia-ai/opp
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
 import { unoPerGaraMostrata } from "@/lib/radar/collegamenti-calcoli";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "@/lib/radar/fonti-nascoste";
+import { ufficioGareRadarAttivo } from "@/lib/radar/interruttori-b4";
+import { chiHaSalvato } from "@/lib/radar/salvate-calcoli";
 
 // «Salvate e monitorate» (fase B1): le gare che l'impresa segue, pubbliche e aggiunte a mano, raggruppate per scadenza, con le novità
 // rilevate dall'ultima apertura della scheda (rettifiche, proroghe, annullamenti, esiti). Tutto letto al caricamento della pagina:
 // nessun controllo periodico nel browser. Le notifiche nella campanella e i promemoria arrivano in B2.
 
-type Salvata = { id: string; procedura_id: string | null; aggiunta_id: string | null; monitorata: boolean; ultimo_aggiornamento_visto_il: string | null; creata_il: string };
+type Salvata = { id: string; procedura_id: string | null; aggiunta_id: string | null; monitorata: boolean; ultimo_aggiornamento_visto_il: string | null; creata_il: string; salvata_da: string | null };
 type Aggiunta = { id: string; cig: string | null; url: string | null; oggetto: string | null; ente: string | null; scadenza_giorno: string | null; scadenza_offerte: string | null; scadenza_ora_indicata: boolean; importo: number | string | null; procedura_id: string | null };
 type Novita = { procedura_id: string; tipo: string; campo: string | null; valore_nuovo: string | null; id_fonte: string | null; rilevato_il: string };
 
@@ -34,7 +36,7 @@ function testoNovita(n: Novita): string {
 }
 
 export default async function MonitoratePage() {
-  const sessione = await richiediTitolarePagina();
+  const sessione = await richiediOpportunitaPagina();
   if (!sessione) return null;
   const { contesto } = sessione;
   const { diritto } = await dirittoRadarOppure404(contesto.accountId);
@@ -44,11 +46,17 @@ export default async function MonitoratePage() {
 
   const { data: salvateRaw } = await supabase
     .from("omnia_ai_radar_salvate")
-    .select("id, procedura_id, aggiunta_id, monitorata, ultimo_aggiornamento_visto_il, creata_il")
+    .select("id, procedura_id, aggiunta_id, monitorata, ultimo_aggiornamento_visto_il, creata_il, salvata_da")
     .order("creata_il", { ascending: false })
     .limit(500)
     .returns<Salvata[]>();
   const salvate = salvateRaw ?? [];
+  // fase B4 (grado 2): con l'Ufficio Gare sulle Opportunità, chi ha salvato la gara (il ruolo, mai il nome o l'email dell'altro)
+  const conChi = ufficioGareRadarAttivo(process.env);
+  const chi = (s: Salvata): string[] => {
+    const testo = conChi ? chiHaSalvato(s.salvata_da, contesto.accountId, contesto.userId) : null;
+    return testo ? [testo] : [];
+  };
   const idAggiunte = salvate.map((s) => s.aggiunta_id).filter((x): x is string => !!x);
   const { data: aggiunteRaw } = idAggiunte.length
     ? await supabase.from("omnia_ai_radar_gare_aggiunte").select("id, cig, url, oggetto, ente, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, importo, procedura_id").in("id", idAggiunte).returns<Aggiunta[]>()
@@ -118,7 +126,7 @@ export default async function MonitoratePage() {
         tipoProcedura: p.tipo_procedura,
         stato: p.stato,
         rettificata: p.rettificata,
-        motivi: aggiunta ? ["aggiunta da te, poi trovata nelle fonti"] : [],
+        motivi: [...(aggiunta ? ["aggiunta da te, poi trovata nelle fonti"] : []), ...chi(s)],
         // fase B3: rilevanza (correlata o fuori dai settori), settori con livello e sottocategorie, stato della classificazione
         rilevanza: etichettaRicerca(p, { settori: [] }),
         settoriDettaglio: settoriDellaRiga(p),
@@ -147,7 +155,7 @@ export default async function MonitoratePage() {
         tipoProcedura: null,
         stato: "aperta" as StatoProcedura,
         rettificata: false,
-        motivi: [],
+        motivi: chi(s),
         fonte: "Aggiunta a mano",
         verificataIl: null,
         salvata: true,
