@@ -387,6 +387,12 @@ const RIGA_CIG = (t: string) => t.split("\n").find((r) => /^CIG( dei lotti inter
     "L5 in un avviso di modifica le scadenze della gara sono per gruppo, ognuna con i SUOI lotti",
     ret.includes("Scadenze per le offerte:\n  - mercoledì 25 novembre 2026, ore 12:00 — lotto 1 — Zona nord (CIG A0SINT1601) · lotto 2 — Zona sud (CIG A0SINT1602)\n  - mercoledì 2 dicembre 2026 · ora non indicata dalla fonte — lotto 3 — Zona montana (CIG A0SINT1603) · lotto 4 — Isole (CIG A0SINT1604)"),
   );
+  const retHtml = visibile(componiEmailRadar({ ...RETTIFICA, gara: DUE_GRUPPI.gara }, TITOLARE_ALFA).html);
+  atteso(
+    "L5 (HTML) scadenze per gruppo, ognuna con i SUOI lotti",
+    retHtml.includes("Scadenze per le offerte mercoledì 25 novembre 2026, ore 12:00 — lotto 1 — Zona nord (CIG A0SINT1601) · lotto 2 — Zona sud (CIG A0SINT1602)") &&
+      retHtml.includes("mercoledì 2 dicembre 2026 · ora non indicata dalla fonte — lotto 3 — Zona montana (CIG A0SINT1603) · lotto 4 — Isole (CIG A0SINT1604)"),
+  );
   const pl = componiEmailRadar(PROROGA_LOTTO, TITOLARE_ALFA);
   atteso("L6 proroga di un lotto: nuova scadenza per il SOLO lotto 2, con la precedente", pl.testo.includes("NUOVA SCADENZA PER LE OFFERTE: venerdì 11 dicembre 2026, ore 12:00\nPer: lotto 2 — Sedi periferiche (CIG A0SINT1902)\nScadenza precedente: venerdì 27 novembre 2026, ore 12:00"));
   atteso("L6 proroga di un lotto: il lotto 1 conserva la sua scadenza, elencata a parte", pl.testo.includes("LE ALTRE SCADENZE DELLA GARA\n- venerdì 27 novembre 2026, ore 12:00 — lotto 1 — Campus centrale (CIG A0SINT1901)"));
