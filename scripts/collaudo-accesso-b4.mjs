@@ -170,8 +170,19 @@ export const nomeUtente = (email) => email.split("@")[0];
 /** Il percorso d'accesso di un utente: POST /accesso/<parte prima della chiocciola>. */
 export const percorsoAccesso = (email) => `/accesso/${nomeUtente(email)}`;
 
-/** Dove arriva il browser dopo l'accesso: l'app su localhost, con la zona scelta da ?__zone. Nessun token. */
-export const indirizzoArrivo = (porta, utente) => `http://${SOLO_LOCALE}:${porta}${utente.arrivo}?__zone=${utente.zona}`;
+/**
+ * Dove arriva il browser dopo l'accesso: l'app su localhost, SENZA ?__zone e senza token. La zona la sceglie il cookie di sviluppo
+ * impostato insieme alla sessione (COOKIE_ZONA_SVILUPPO): con ?__zone nell'indirizzo il proxy riscrive quel cookie a ogni richiesta, le
+ * azioni periodiche dell'area clienti risultano «con cookie modificati» e Next ridisegna tutta la pagina, registrando di nuovo gli utilizzi
+ * di «Per te» e di Cerca (trovato nel controllo preliminare del 19/11).
+ */
+export const indirizzoArrivo = (porta, utente) => `http://${SOLO_LOCALE}:${porta}${utente.arrivo}`;
+export const COOKIE_ZONA_SVILUPPO = "__omnia_dev_zone";
+/** Il cookie di sviluppo della zona dell'utente (omnia-ai o console), solo per «localhost», come i cookie di sessione. */
+export const cookieZona = (utente) => {
+  if (!["omnia-ai", "console"].includes(utente.zona)) throw new Fermo("zona dell'utente inattesa");
+  return `${COOKIE_ZONA_SVILUPPO}=${utente.zona}; Path=/; SameSite=Lax`;
+};
 
 /** Collegamento d'accesso di UN utente di prova (generate_link, lato server, chiave dello staging). Solo l'hash del token, in memoria. */
 export async function generaCollegamento({ variabili, email, fetchFn = fetch }) {
@@ -604,10 +615,15 @@ export function categoria(r) {
   return "altro";
 }
 
+/** Richieste di Opportunità (Tender Intelligence): tabelle dell'archivio radar_* e dell'impresa omnia_ai_radar_*, utilizzi compresi. */
+export const PERCORSO_OPPORTUNITA = /^\/rest\/v1\/(rpc\/)?(radar_|omnia_ai_radar_)/;
+
 /**
  * Richieste dell'app per finestra di tempo. finestre: [{ nome, da, a, ferma?, massimi? }]. «ferma» (almeno 60 s fermi sulla pagina): 0
- * richieste della pagina; ammesse solo quelle del segnale di presenza (1 RPC e al più 2 getUser per segnale) e i rinnovi della sessione,
- * contati a parte. «massimi»: { "METODO /percorso": n } da non superare (per esempio una sola lettura di radar_procedure per «Per te»).
+ * richieste di Opportunità (PERCORSO_OPPORTUNITA: nessuna rilettura delle gare, del profilo o delle salvate, nessun utilizzo registrato).
+ * L'area clienti ha due segnali periodici PREESISTENTI, fuori dalla B4 e contati a parte: la presenza (~45 s) e lo stato della dashboard
+ * (30 s, 6 s con una gara in elaborazione; controllo preliminare del 19/11). «massimi»: { "METODO /percorso": n } da non superare (per
+ * esempio una sola lettura di radar_procedure per «Per te»).
  * escludiPid: il processo del collaudo stesso (stampato all'avvio), le cui verifiche non sono richieste dell'app.
  * @param {string} testo
  * @param {{ finestre: { nome: string; da: string; a: string; ferma?: boolean; massimi?: Record<string, number> }[]; escludiPid?: number[] }} opzioni
@@ -639,11 +655,11 @@ export function misura(testo, { finestre, escludiPid = [] }) {
     if (f.ferma) {
       const durata = Math.round((a - da) / 1000);
       const presenze = per.presenza ?? 0;
-      const pagina = staging - presenze - (per.utente ?? 0) - (per.rinnovo ?? 0);
+      const opportunita = dentroFinestra.filter((r) => !["locale", "FUORI"].includes(categoria(r)) && PERCORSO_OPPORTUNITA.test(r.percorso)).length;
+      const altre = staging - opportunita - presenze;
       if (durata < 60) problemi.push(`finestra troppo corta (${durata} s, servono 60)`);
-      if (pagina > 0) problemi.push(`${pagina} richieste della pagina durante l'attesa`);
-      if ((per.utente ?? 0) > 2 * presenze) problemi.push(`${per.utente} getUser per ${presenze} segnali di presenza`);
-      nota = ` · ferma ${durata} s: richieste della pagina ${Math.max(pagina, 0)}, segnale di presenza ${presenze} volte`;
+      if (opportunita > 0) problemi.push(`${opportunita} richieste di Opportunità durante l'attesa`);
+      nota = ` · ferma ${durata} s: richieste di Opportunità ${opportunita}; area clienti (preesistenti, fuori dalla B4): segnale di presenza ${presenze}, altre ${altre} (stato della dashboard e sessione)`;
     }
     for (const [chiave, massimo] of Object.entries(f.massimi ?? {})) {
       if ((perPercorso[chiave] ?? 0) > massimo) problemi.push(`${chiave}: ${perPercorso[chiave]} (al massimo ${massimo})`);
@@ -861,7 +877,7 @@ export function serverAccesso({ portaApp, preliminare = false, prerequisiti = as
       risposta.writeHead(303, {
         ...base,
         Location: indirizzoArrivo(portaApp, utente),
-        "Set-Cookie": [...sessione.cookie.map(intestazioneCookie), ...vecchi.map((n) => `${n}=; Path=/; Max-Age=0; SameSite=Lax`)],
+        "Set-Cookie": [...sessione.cookie.map(intestazioneCookie), cookieZona(utente), ...vecchi.map((n) => `${n}=; Path=/; Max-Age=0; SameSite=Lax`)],
       });
       risposta.end();
       stato.riusciti.add(percorso);

@@ -49,7 +49,10 @@ const MUTAZIONI = [
   { nome: "MC30 notifiche accese tollerate", file: S, cerca: 'if (!["", "0"].includes(v[k] ?? "")) e.push(', con: "if (false) e.push(", richiede: "CB6." },
   { nome: "MC31 collegamento stampato a schermo", file: S, cerca: "const tokenHash = await generaCollegamento({ variabili, email: utente.email, fetchFn });", con: "const tokenHash = await generaCollegamento({ variabili, email: utente.email, fetchFn });\n      console.log(`collegamento ${tokenHash}`);", richiede: "CB27." },
   // misure (controllo 10) e lettura degli elenchi (controlli 2 e 3)
-  { nome: "MC32 segnale di presenza contato come richiesta della pagina", file: S, cerca: "const pagina = staging - presenze - (per.utente ?? 0) - (per.rinnovo ?? 0);", con: "const pagina = staging;", richiede: "CB62." },
+  { nome: "MC32 richieste di Opportunità durante l'attesa tollerate", file: S, cerca: "if (opportunita > 0) problemi.push(", con: "if (false) problemi.push(", richiede: "CB63." },
+  { nome: "MC36 tabelle dell'impresa (omnia_ai_radar_*, utilizzi) fuori dalla misura", file: S, cerca: "(radar_|omnia_ai_radar_)/;", con: "(radar_)/;", richiede: "CB64." },
+  { nome: "MC37 arrivo di nuovo con ?__zone nell'indirizzo", file: S, cerca: "export const indirizzoArrivo = (porta, utente) => `http://${SOLO_LOCALE}:${porta}${utente.arrivo}`;", con: "export const indirizzoArrivo = (porta, utente) => `http://${SOLO_LOCALE}:${porta}${utente.arrivo}?__zone=${utente.zona}`;", richiede: "CB70." },
+  { nome: "MC38 cookie della zona non impostato all'accesso", file: S, cerca: "cookieZona(utente), ", con: "", richiede: "CB70." },
   { nome: "MC33 finestra ferma sotto i 60 s accettata", file: S, cerca: "if (durata < 60) problemi.push(", con: "if (durata < 0) problemi.push(", richiede: "CB63." },
   { nome: "MC34 pid del collaudo non escluso", file: S, cerca: ".filter((r) => !escludiPid.includes(r.pid));", con: ";", richiede: "CB62." },
   { nome: "MC35 gare doppie non viste", file: S, cerca: "    if (viste.has(c)) doppie.push(c);", con: "    if (false) doppie.push(c);", richiede: "CB61." },

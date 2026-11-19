@@ -300,7 +300,7 @@ async function prove() {
           // D3: ti-admin (console)
           let da = s.chiamate.length;
           const admin = await invia("/accesso/ti-admin");
-          esiti.admin = { stato: admin.status, location: admin.headers.get("location") ?? "", chiamate: chiamateDa(da) };
+          esiti.admin = { stato: admin.status, location: admin.headers.get("location") ?? "", chiamate: chiamateDa(da), cookie: admin.headers.getSetCookie() };
           // passo 1 PRIMA che la D3 sia fatta nel browser: prerequisito mancante, nessun collegamento, pulsante ancora da usare
           da = s.chiamate.length;
           const senzaD3 = await invia("/accesso/titolare-benchmark");
@@ -350,7 +350,7 @@ async function prove() {
     const adm = esiti.admin as { stato: number; location: string; chiamate: Chiamata[] };
     atteso(
       "CB11. D3: pulsante di ti-admin → collegamento generato e verificato lato server, identità controllata, 303 alla console su localhost; nessuna lettura di dati",
-      adm.stato === 303 && adm.location === "http://localhost:3110/?__zone=console" && adm.chiamate.map((c) => new URL(c.url).pathname).join(",") === "/auth/v1/admin/generate_link,/auth/v1/verify,/auth/v1/user",
+      adm.stato === 303 && adm.location === "http://localhost:3110/" && adm.chiamate.map((c) => new URL(c.url).pathname).join(",") === "/auth/v1/admin/generate_link,/auth/v1/verify,/auth/v1/user",
       JSON.stringify({ stato: adm.stato, location: adm.location, chiamate: adm.chiamate.map((c) => c.url) }),
     );
     const sd3 = esiti.senzaD3 as { stato: number; testo: string; chiamate: Chiamata[] };
@@ -362,12 +362,19 @@ async function prove() {
     const p1 = esiti.p1 as { stato: number; location: string; cache: string; referrer: string; cookie: string[]; chiamate: Chiamata[] };
     atteso(
       "CB13. passo 1 dopo la D3: 303 al profilo di ricerca su localhost, senza token nell'indirizzo; le verifiche lato server avvengono PRIMA del 303 (stessa richiesta)",
-      p1.stato === 303 && p1.location === "http://localhost:3110/dashboard/omnia-ai/opportunita/profilo?__zone=omnia-ai" && p1.cache === "no-store" && p1.referrer === "no-referrer" && !/TOKEN|ACCESSO/.test(p1.location) &&
+      p1.stato === 303 && p1.location === "http://localhost:3110/dashboard/omnia-ai/opportunita/profilo" && p1.cache === "no-store" && p1.referrer === "no-referrer" && !/TOKEN|ACCESSO/.test(p1.location) &&
         p1.chiamate.some((c) => c.url.includes("/auth/v1/user")) && p1.chiamate.some((c) => c.metodo === "PATCH"),
     );
     const impostati = p1.cookie.filter((c) => !/Max-Age=0/.test(c)).map((c) => c.split(";")[0]);
     const scaduti = p1.cookie.filter((c) => /Max-Age=0/.test(c)).map((c) => c.split("=")[0]);
-    atteso("CB14. cookie di sessione per «localhost»: diviso in .0 e .1, Path=/, SameSite=Lax, mai Domain; il vecchio cookie non diviso scade, gli altri restano", impostati.map((c) => c.split("=")[0]).join(",") === `${COOKIE}.0,${COOKIE}.1` && p1.cookie.every((c) => /; Path=\//.test(c) && /SameSite=Lax/.test(c) && !/Domain=/i.test(c)) && scaduti.join(",") === COOKIE);
+    atteso("CB14. cookie di sessione per «localhost»: diviso in .0 e .1, Path=/, SameSite=Lax, mai Domain; il vecchio cookie non diviso scade, gli altri restano", impostati.map((c) => c.split("=")[0]).join(",") === `${COOKIE}.0,${COOKIE}.1,__omnia_dev_zone` && p1.cookie.every((c) => /; Path=\//.test(c) && /SameSite=Lax/.test(c) && !/Domain=/i.test(c)) && scaduti.join(",") === COOKIE);
+    const admCookie = (esiti.admin as { cookie: string[] }).cookie;
+    atteso(
+      "CB70. arrivo SENZA ?__zone (con il parametro le azioni periodiche dell'area clienti ridisegnano la pagina e registrano di nuovo gli utilizzi): la zona arriva con il cookie di sviluppo dell'utente, omnia-ai o console, solo per «localhost»",
+      ca.UTENTI_COLLAUDO.every((u: { zona: string }) => !ca.indirizzoArrivo("3110", u).includes("?")) &&
+        p1.cookie.includes("__omnia_dev_zone=omnia-ai; Path=/; SameSite=Lax") && admCookie.includes("__omnia_dev_zone=console; Path=/; SameSite=Lax") && [...p1.cookie, ...admCookie].every((c) => !/Domain=/i.test(c)),
+      JSON.stringify(admCookie.map((c) => c.split(";")[0].split("=")[0])),
+    );
     const letti = impostati.map((c) => ({ name: c.slice(0, c.indexOf("=")), value: c.slice(c.indexOf("=") + 1) }));
     const lettoreApp = createServerClient(STAGING, PUBBLICA, { cookies: { getAll: () => letti, setAll: () => {} }, global: { fetch: s.fetchFinto } });
     const primaLettura = s.chiamate.length;
@@ -686,6 +693,10 @@ async function prove() {
       `2026-11-20T10:10:30.000Z 4242 GET ${S}/auth/v1/user`,
       `2026-11-20T10:10:30.050Z 4242 GET ${S}/auth/v1/user`,
       `2026-11-20T10:10:30.100Z 4242 POST ${S}/rest/v1/rpc/omnia_ai_presenza_segnale`,
+      // stato della dashboard (azione periodica preesistente dell'area clienti): getUser e conteggi, nessuna lettura di Opportunità
+      `2026-11-20T10:10:50.000Z 4242 GET ${S}/auth/v1/user`,
+      `2026-11-20T10:10:50.010Z 4242 HEAD ${S}/rest/v1/gare`,
+      `2026-11-20T10:10:50.020Z 4242 HEAD ${S}/rest/v1/omnia_ai_notifiche`,
       `2026-11-20T10:10:40.000Z 777 GET ${S}/rest/v1/omnia_ai_radar_salvate`,
       // fermi 60 s con una richiesta della pagina
       `2026-11-20T10:12:30.000Z 4242 GET ${S}/rest/v1/radar_procedure`,
@@ -699,8 +710,8 @@ async function prove() {
     ];
     const m1 = ca.misura(registro, { finestre, escludiPid: [777] });
     atteso(
-      "CB62. misure: vista contata per categoria (getUser, letture, scritture) escludendo il pid del collaudo; 60 s fermi con il solo segnale di presenza → ok (0 richieste della pagina, presenza 1 volta)",
-      m1.ok && m1.righe[0] === "Per te · titolare · caricamento: 4 richieste allo staging (lettura 2, scrittura 1, utente 1) → ok" && m1.righe[1].includes("ferma 60 s: richieste della pagina 0, segnale di presenza 1 volte → ok"),
+      "CB62. misure: vista contata per categoria (getUser, letture, scritture) escludendo il pid del collaudo; 60 s fermi con il segnale di presenza e lo stato della dashboard (preesistenti, contati a parte) → ok con 0 richieste di Opportunità",
+      m1.ok && m1.righe[0] === "Per te · titolare · caricamento: 4 richieste allo staging (lettura 2, scrittura 1, utente 1) → ok" && m1.righe[1].includes("ferma 60 s: richieste di Opportunità 0; area clienti (preesistenti, fuori dalla B4): segnale di presenza 1, altre 5 (stato della dashboard e sessione) → ok"),
       m1.righe.join(" | "),
     );
     const m2 = ca.misura(registro, {
@@ -715,11 +726,11 @@ async function prove() {
     });
     atteso(
       "CB63. misure non in regola: una lettura durante i 60 s fermi, finestra sotto i 60 s, richiesta fuori dallo staging, lettura oltre il massimo, finestra non valida → NON RIUSCITO ciascuna",
-      !m2.ok && m2.righe[0].includes("1 richieste della pagina durante l'attesa") && m2.righe[1].includes("finestra troppo corta (30 s") && m2.righe[2].includes("richieste FUORI dallo staging") && m2.righe[3].includes("GET /rest/v1/radar_procedure: 2 (al massimo 1)") && m2.righe[4].endsWith("finestra non valida"),
+      !m2.ok && m2.righe[0].includes("1 richieste di Opportunità durante l'attesa") && m2.righe[1].includes("finestra troppo corta (30 s") && m2.righe[2].includes("richieste FUORI dallo staging") && m2.righe[3].includes("GET /rest/v1/radar_procedure: 2 (al massimo 1)") && m2.righe[4].endsWith("finestra non valida"),
       m2.righe.join(" | "),
     );
     const conCollaudo = ca.misura(registro, { finestre: [finestre[1]] });
-    atteso("CB64. senza escludere il pid del collaudo le sue letture finirebbero tra quelle della pagina: per questo il pid si stampa all'avvio", !conCollaudo.ok && conCollaudo.righe[0].includes("1 richieste della pagina durante l'attesa"));
+    atteso("CB64. senza escludere il pid del collaudo le sue letture finirebbero tra quelle della pagina: per questo il pid si stampa all'avvio", !conCollaudo.ok && conCollaudo.righe[0].includes("1 richieste di Opportunità durante l'attesa"));
     const fileRegistro = scrivi("rete.log", registro);
     const fileFinestre = scrivi("finestre.json", JSON.stringify({ escludiPid: [777], finestre }));
     const fileFinestreKo = scrivi("finestre-ko.json", JSON.stringify({ escludiPid: [777], finestre: [{ nome: "fermi con una lettura", da: "2026-11-20T10:12:00.000Z", a: "2026-11-20T10:13:00.000Z", ferma: true }] }));
