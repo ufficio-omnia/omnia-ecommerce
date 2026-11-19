@@ -275,6 +275,7 @@ controlla("scadenza con ora indicata: ora di Roma e istante normalizzato", (() =
   const s1 = gruppiScadenza(null, [L("1", null, "2026-12-02")]);
   controlla("scadenza a 1 giorno", promemoriaDovuti({ oggi: "2026-12-01", gruppi: s1.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: true })[0]?.tipo === "scadenza_1");
   controlla("scadenza oggi: nessun promemoria", promemoriaDovuti({ oggi: "2026-12-02", gruppi: s1.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-12-01", aperta: true }).length === 0);
+  controlla("scadenza oggi con il giro di ieri saltato: il promemoria a 1 giorno NON si recupera", promemoriaDovuti({ oggi: "2026-12-02", gruppi: s1.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-30", aperta: true }).length === 0);
   // giro saltato
   const s4 = gruppiScadenza(null, [L("1", null, "2026-12-05")]);
   const rec = promemoriaDovuti({ oggi: "2026-12-01", gruppi: s4.gruppi, entrataInListaIl: "2026-11-01T10:00:00Z", ultimoGiroRiuscito: "2026-11-29", aperta: true });
