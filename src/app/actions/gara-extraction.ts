@@ -17,6 +17,14 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { ordinaPerCaricamento, testoElencoCronologicoPerEstrazione } from "@/lib/gara-documenti-elenco";
 import { PROPRIETA_SETTORE_ESTRAZIONE, normalizzaSettore } from "@/lib/gara-settore";
 import { unisciEsitiProroga } from "@/lib/gara-proroga-passaggio";
+import {
+  cigOpzionale,
+  elencoOggettiOpzionale,
+  elencoTestiOpzionale,
+  interoOpzionale,
+  numeroOpzionale,
+  testoOpzionale,
+} from "@/lib/estrazione-valori";
 import { secondoPassaggioProroga } from "@/lib/gara-proroga-secondo-passaggio";
 import {
   MESSAGGIO_MODIFICA_NON_CONSENTITA,
@@ -465,28 +473,31 @@ export async function extractGaraData(
       if (!nessunIntervento(pulizia.interventi)) console.warn("Estrazione gara: dati identificativi tolti dal personale uscente", garaId, pulizia.interventi);
     }
 
+    // Ogni valore passa da src/lib/estrazione-valori.ts: un campo del tipo sbagliato (per esempio "" dove la colonna vuole un
+    // intero) diventa «non indicato» invece di far rifiutare dal database TUTTO il salvataggio (caso reale del 19/11/2026).
     const { error: updateError } = await supabase
       .from("gare")
       .update({
-        stazione_appaltante: result.stazione_appaltante || null,
-        amministrazione_committente: result.amministrazione_committente || null,
-        cig: result.cig?.replace(/\s+/g, "").toUpperCase() || null,
+        stazione_appaltante: testoOpzionale(result.stazione_appaltante),
+        amministrazione_committente: testoOpzionale(result.amministrazione_committente),
+        cig: cigOpzionale(result.cig),
         scadenza: decisioneScadenza.scadenza,
-        importo: result.importo ?? null,
-        criteri_valutazione: result.criteri_valutazione,
-        requisiti: result.requisiti,
-        limiti_formattazione: result.limiti_formattazione,
-        relazione_font: garaEsistente?.relazione_font ?? result.font_richiesto ?? null,
+        importo: numeroOpzionale(result.importo),
+        criteri_valutazione: testoOpzionale(result.criteri_valutazione) ?? "Non specificati nei documenti forniti.",
+        requisiti: testoOpzionale(result.requisiti) ?? "Non specificati nei documenti forniti.",
+        limiti_formattazione:
+          testoOpzionale(result.limiti_formattazione) ?? "Nessun limite di pagine/formattazione specificato nei documenti forniti.",
+        relazione_font: garaEsistente?.relazione_font ?? testoOpzionale(result.font_richiesto),
         relazione_dimensione_carattere:
-          garaEsistente?.relazione_dimensione_carattere ?? result.dimensione_carattere_richiesta ?? null,
-        relazione_interlinea: garaEsistente?.relazione_interlinea ?? result.interlinea_richiesta ?? null,
-        limite_pagine_totale: result.limite_pagine_totale ?? null,
-        punteggio_tecnico_max: result.punteggio_tecnico_max ?? null,
-        punteggio_economico_max: result.punteggio_economico_max ?? null,
-        criteri_riepilogo: result.criteri_riepilogo ?? null,
-        requisiti_chiave: result.requisiti_chiave ?? null,
-        sub_criteri_tabellari: result.sub_criteri_tabellari ?? null,
-        sedi: result.sedi ?? null,
+          garaEsistente?.relazione_dimensione_carattere ?? numeroOpzionale(result.dimensione_carattere_richiesta),
+        relazione_interlinea: garaEsistente?.relazione_interlinea ?? numeroOpzionale(result.interlinea_richiesta),
+        limite_pagine_totale: interoOpzionale(result.limite_pagine_totale),
+        punteggio_tecnico_max: numeroOpzionale(result.punteggio_tecnico_max),
+        punteggio_economico_max: numeroOpzionale(result.punteggio_economico_max),
+        criteri_riepilogo: elencoOggettiOpzionale(result.criteri_riepilogo),
+        requisiti_chiave: elencoTestiOpzionale(result.requisiti_chiave),
+        sub_criteri_tabellari: elencoTestiOpzionale(result.sub_criteri_tabellari),
+        sedi: elencoOggettiOpzionale(result.sedi),
         personale_uscente: personaleUscente,
         estrazione_stato: "completata",
         estrazione_aggiornata_il: estrazioneAggiornataIl,
