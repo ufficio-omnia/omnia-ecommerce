@@ -40,6 +40,8 @@ create table if not exists public.omnia_ai_radar_eventi (
 create index if not exists omnia_ai_radar_eventi_gara_attivi_idx on public.omnia_ai_radar_eventi (gara_chiave, categoria) where stato = 'attivo';
 -- compattazione dei dati vecchi
 create index if not exists omnia_ai_radar_eventi_da_compattare_idx on public.omnia_ai_radar_eventi (creato_il) where dati is not null;
+-- conservazione (D-E7): cancellazione a blocchi degli eventi di oltre 12 mesi (i dati sono già compattati, quindi fuori dall'indice parziale)
+create index if not exists omnia_ai_radar_eventi_creato_idx on public.omnia_ai_radar_eventi (creato_il);
 
 -- CONSEGNE: un evento per UN destinatario. Unica per (destinatario, gara, tipo, versione) tramite «chiave».
 create table if not exists public.omnia_ai_radar_email_consegne (
