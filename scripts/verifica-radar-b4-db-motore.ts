@@ -903,6 +903,8 @@ async function provaPresaInCarico(): Promise<void> {
       consegna(61, { priorita: 6 }),
       consegna(62, { priorita: 1, stato: "in_invio", in_invio_fino_il: "2026-10-20T05:40:00Z" }),
       consegna(63, { priorita: 1, prossimo_tentativo_il: "2026-10-20T06:00:00Z" }),
+      // affitto scaduto ma tentativo non ancora dovuto: come prima (rimessa in coda, si prendeva solo quando dovuta) non si prende
+      consegna(64, { priorita: 1, stato: "in_invio", in_invio_fino_il: "2026-10-20T05:20:00Z", prossimo_tentativo_il: "2026-10-20T06:00:00Z" }),
     ];
     const r1 = await prendiInCarico(m.d, null);
     const id1 = new Set(r1.prese.map((x) => x.id));
@@ -913,11 +915,11 @@ async function provaPresaInCarico(): Promise<void> {
     })());
     const r2 = await prendiInCarico(m.d, null);
     const id2 = new Set(r2.prese.map((x) => x.id));
-    controlla("O1: il blocco dopo prende le rimaste (le altre 6 di priorità 5 + la meno urgente), mai l'affitto non scaduto né quella non dovuta", r2.prese.length === 7 && id2.has(U(9061)) && !id2.has(U(9062)) && !id2.has(U(9063)) && ![...id2].some((x) => id1.has(x)), { n: r2.prese.length });
+    controlla("O1: il blocco dopo prende le rimaste (le altre 6 di priorità 5 + la meno urgente), mai l'affitto non scaduto né quella non dovuta", r2.prese.length === 7 && id2.has(U(9061)) && !id2.has(U(9062)) && !id2.has(U(9063)) && !id1.has(U(9064)) && !id2.has(U(9064)) && ![...id2].some((x) => id1.has(x)), { n: r2.prese.length });
     const prima = m.db.conta();
     const r3 = await prendiInCarico(m.d, null);
     controlla("O1: nulla da prendere → UNA sola richiesta", r3.prese.length === 0 && m.db.conta() - prima === 1, { richieste: m.db.conta() - prima });
-    controlla("O1: l'affitto non scaduto e la consegna non dovuta restano com'erano", consegne(m).find((x) => x.id === U(9062))?.in_invio_fino_il === "2026-10-20T05:40:00Z" && consegne(m).find((x) => x.id === U(9063))?.stato === "in_coda");
+    controlla("O1: l'affitto non scaduto e la consegna non dovuta restano com'erano", consegne(m).find((x) => x.id === U(9062))?.in_invio_fino_il === "2026-10-20T05:40:00Z" && consegne(m).find((x) => x.id === U(9063))?.stato === "in_coda" && consegne(m).find((x) => x.id === U(9064))?.in_invio_fino_il === "2026-10-20T05:20:00Z");
     // avviso «ravvicinato» (soloIds): solo consegne in coda, mai un affitto scaduto, come prima
     const m2 = mondo();
     conEvento(m2);
