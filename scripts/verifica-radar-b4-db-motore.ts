@@ -535,6 +535,9 @@ async function principale(): Promise<void> {
   // ───── 11bis. difetto del 20/11: proroga di UN solo lotto ─────
   await provaLotti();
 
+  // ───── 11ter. N6 decisa: la compattazione annulla solo il testo, mai chiavi ed esiti ─────
+  await provaCompattazioneIntatta();
+
   // ───── 12. adattatore Resend (chiuso): classificazione delle risposte ─────
   provaResend();
 
@@ -848,6 +851,51 @@ async function provaRavvicinata(): Promise<void> {
   controlla("ravvicinata: scadenza a 10 giorni → nessun avviso", r4.esito === "non_dovuta", r4);
 }
 
+// N6 decisa il 20/11 (30 giorni; 7 respinto), con la richiesta dell'utente di tenere separate compattazione e conservazione: dopo la
+// compattazione di un riepilogo e degli altri eventi restano INTATTI chiavi uniche, chiavi di idempotenza, stato ed esiti delle consegne; si
+// annulla SOLO il testo (`dati`, con l'ora in `dati_compattati_il`). Rifare la fase «eventi» dopo la compattazione: 0 eventi, 0 consegne,
+// 0 email in più.
+async function provaCompattazioneIntatta(): Promise<void> {
+  controlla(
+    "N6: tre parametri distinti (riepiloghi 30, altri eventi 30, conservazione 365)",
+    PARAMETRI_PROPOSTI.giorniCompattazioneRiepiloghi === 30 && PARAMETRI_PROPOSTI.giorniCompattazioneAltri === 30 && PARAMETRI_PROPOSTI.giorniConservazione === 365,
+  );
+  const m = mondo();
+  // due gare nuove classificate A: il primo giro crea anche un riepilogo, oltre ai promemoria del mondo sintetico
+  for (const n of [460, 461]) {
+    const g = gara(n, { prima_rilevazione_il: "2026-10-19T10:00:00Z", data_pubblicazione: "2026-10-19", scadenza_giorno: "2026-12-01" });
+    m.db.t("radar_procedure").push(g);
+    m.db.t("radar_classificazioni_stato").push({ procedura_id: g.id, stato: "classificata" });
+    m.db.t("radar_classificazioni").push({ procedura_id: g.id, settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true });
+  }
+  await eseguiPassaggio(m.d);
+  const riepiloghi = eventi(m).filter((e) => e.tipo === "riepilogo_opportunita");
+  const altri = eventi(m).filter((e) => e.tipo !== "riepilogo_opportunita");
+  controlla("compattazione (preparazione): un riepilogo, altri eventi, consegne inviate con l'esito del provider", riepiloghi.length > 0 && altri.length > 0 && consegne(m).length > 0 && consegne(m).every((c) => c.stato === "inviata" && !!c.provider_id), { riepiloghi: riepiloghi.length, altri: altri.length });
+  // gli eventi e le consegne «invecchiano» di 50 giorni: oltre i 30 della compattazione, lontani dai 365 della conservazione
+  for (const e of eventi(m)) e.creato_il = "2026-08-31T05:30:00Z";
+  for (const c of consegne(m)) c.creata_il = "2026-08-31T05:30:00Z";
+  const senzaTesto = (e: Riga) => JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => k !== "dati" && k !== "dati_compattati_il")));
+  const fotoEventi = eventi(m).map(senzaTesto).sort();
+  const fotoConsegne = consegne(m).map((c) => JSON.stringify(c)).sort();
+  const email = m.provider.consegnate.length;
+  // la fase «eventi» rifatta lo stesso giorno (come dopo una caduta): calcola gli stessi eventi e compatta
+  const rifai = async (ora: string) => {
+    for (const g of m.db.t("radar_notifiche_giri")) if (g.fase === "eventi") Object.assign(g, { esito: "fallito", errore: "processo_caduto" });
+    m.ora.t = new Date(ora);
+    return eseguiPassaggio(m.d);
+  };
+  const r1 = await rifai("2026-10-20T06:00:00Z");
+  const compattati = eventi(m).filter((e) => e.dati === null && !!e.dati_compattati_il);
+  controlla("compattazione: riepilogo e altri eventi compattati (solo il testo, con l'ora)", r1.eseguito && compattati.length === eventi(m).length && compattati.some((e) => e.tipo === "riepilogo_opportunita") && compattati.some((e) => e.tipo !== "riepilogo_opportunita"), { compattati: compattati.length, eventi: eventi(m).length });
+  controlla("compattazione: chiavi ed esiti intatti — eventi uguali salvo il testo (id, chiave unica, stato)", JSON.stringify(eventi(m).map(senzaTesto).sort()) === JSON.stringify(fotoEventi));
+  controlla("compattazione: chiavi ed esiti intatti — consegne identiche (id e quindi chiave di idempotenza, chiave unica, stato, provider, provider_id, tentativi)", JSON.stringify(consegne(m).map((c) => JSON.stringify(c)).sort()) === JSON.stringify(fotoConsegne));
+  // e di nuovo, DOPO la compattazione: nessun evento né consegna rinasce, nessuna email
+  const r2 = await rifai("2026-10-20T06:30:00Z");
+  controlla("compattazione: rifatta la fase «eventi» dopo la compattazione → 0 eventi, 0 consegne, 0 email in più", r2.eseguito && !("saltata" in r2.eventi) && eventi(m).length === fotoEventi.length && consegne(m).length === fotoConsegne.length && m.provider.consegnate.length === email, { eventi: eventi(m).length, consegne: consegne(m).length, email: m.provider.consegnate.length, r2 });
+  controlla("compattazione: dopo il secondo giro chiavi ed esiti ancora intatti", JSON.stringify(eventi(m).map(senzaTesto).sort()) === JSON.stringify(fotoEventi) && JSON.stringify(consegne(m).map((c) => JSON.stringify(c)).sort()) === JSON.stringify(fotoConsegne));
+}
+
 // Difetto del 20/11 (Incarico 3): la proroga di UN solo lotto arriva all'email con il suo lotto anche senza CIG (TED «LOT-0001»); lo
 // spostamento della scadenza «più vicina» della gara non apre una seconda serie; lo stesso lotto da TED (numero) e PVL (CIG) compare una volta
 async function provaLotti(): Promise<void> {
@@ -896,7 +944,7 @@ async function provaParametri(): Promise<void> {
     controlla("N1 no: l'impresa riceve comunque (decide solo il Radar attivo e le email accese)", eventi(m2).some((e) => e.impresa_id === I2));
     controlla("N1 no: lo stato dell'abbonamento non si legge nemmeno", !m2.db.richieste.some((r) => r.tabella === "subscriptions"));
   }
-  // N6: compattazione dei riepiloghi a 7 giorni (proposta, non in uso) contro 30 (in uso, decisione 7); altri eventi a 30; conservazione 12 mesi
+  // N6: compattazione dei riepiloghi a 7 giorni (respinto il 20/11) contro 30 (N6 decisa); altri eventi a 30; conservazione 12 mesi
   for (const giorni of [7, 30]) {
     const m = mondo({ parametri: { giorniCompattazioneRiepiloghi: giorni } });
     m.db.t("omnia_ai_radar_eventi").push(
@@ -912,7 +960,7 @@ async function provaParametri(): Promise<void> {
     controlla(`N6 = ${giorni}: gli altri eventi si compattano a 30 giorni`, eventi(m).find((e) => e.id === "s-8")?.dati !== null && eventi(m).find((e) => e.id === "s-40")?.dati === null);
     controlla(`conservazione: eventi e consegne di oltre 12 mesi cancellati`, !eventi(m).some((e) => e.id === "vecchio") && !consegne(m).some((c) => c.id === "c-vecchia"));
   }
-  // Decisione 7 (approvata): con i parametri IN USO (quelli della rotta) anche i riepiloghi si compattano dopo 30 giorni, non 7
+  // N6 decisa il 20/11: con i parametri IN USO (quelli della rotta) anche i riepiloghi si compattano dopo 30 giorni, non 7
   {
     controlla("decisione 7: parametri in uso, riepiloghi e altri eventi compattati a 30 giorni", PARAMETRI_PROPOSTI.giorniCompattazioneRiepiloghi === 30 && PARAMETRI_PROPOSTI.giorniCompattazioneAltri === 30);
     const m = mondo();

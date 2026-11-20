@@ -1,6 +1,12 @@
 // Fase B4 (20/11/2026, B2) — PARAMETRI del motore delle notifiche email, isolati e con un nome. Le decisioni N1, N5 e N7 del rapporto
 // 38 (§1) sono ANCORA APERTE: qui c'è il valore PROPOSTO, e il motore riceve i parametri come argomento, così le prove usano anche l'altro
-// valore e cambiarli dopo la decisione dell'utente tocca solo questo file. N6 segue la decisione 7 già APPROVATA (30 giorni).
+// valore e cambiarli dopo la decisione dell'utente tocca solo questo file. N6 è DECISA (20/11: 30 giorni; 7 respinto).
+//
+// Compattazione e conservazione restano TRE parametri distinti, anche se oggi due valgono uguale (decisione N6 dell'utente: «Mantieni
+// separati i tempi di compattazione dei riepiloghi dalle regole di conservazione degli eventi, degli esiti di invio e dei dati necessari
+// all'idempotenza»). La compattazione annulla SOLO il testo congelato dell'evento (`dati`, con l'ora in `dati_compattati_il`): chiavi uniche,
+// chiavi di idempotenza, stato ed esiti delle consegne restano, quindi un evento o una consegna non rinascono (prova in
+// scripts/verifica-radar-b4-db-motore.ts, «compattazione: chiavi ed esiti intatti»).
 
 export type ParametriNotifiche = {
   /**
@@ -11,15 +17,13 @@ export type ParametriNotifiche = {
   /** N5 (proposta: sì) — il riepilogo delle «nuove» non elenca le gare che l'impresa ha già salvato o monitorato. */
   escludiGiaSalvateDalRiepilogo: boolean;
   /**
-   * N6 — giorni dalla creazione dell'evento dopo i quali si compattano i `dati` dei RIEPILOGHI (pesano circa 20 KB). Valore in uso: **30**,
-   * come la decisione 7 APPROVATA («dati delle email compattati dopo 30 giorni») e come gli altri eventi (D-E7).
-   * Proposta del rapporto 38, NON in uso: 7 giorni (meno spazio; dopo 7 giorni il riepilogo è già partito o annullato, perché i tentativi
-   * finiscono entro 24 ore). Vale solo se l'utente cambia la decisione 7. Le prove provano sia 7 sia 30.
+   * N6 decisa il 20/11: 30 giorni; 7 respinto. Giorni dalla creazione dell'evento dopo i quali si compatta il testo (`dati`, circa 20 KB) dei
+   * RIEPILOGHI. Motivo dell'utente: affidabilità, tracciabilità, prevenzione dei duplicati e diagnosi delle anomalie. Distinto dagli altri due.
    */
   giorniCompattazioneRiepiloghi: number;
-  /** D-E7 (approvata): giorni dopo i quali si compattano i dati degli altri eventi. */
+  /** D-E7 (approvata): giorni dopo i quali si compatta il testo (`dati`) degli altri eventi. Distinto dagli altri due. */
   giorniCompattazioneAltri: number;
-  /** D-E7 (approvata): giorni dopo i quali si cancellano eventi, consegne e giri (12 mesi). */
+  /** D-E7 (approvata): giorni dopo i quali si CANCELLANO eventi, consegne (con i loro esiti) e giri: 12 mesi. Distinto dalla compattazione. */
   giorniConservazione: number;
   /**
    * N7 (proposta: sì) — un passaggio «invio» senza consegne da inviare non scrive una riga di giro (resta 1 sola richiesta, la presa in
@@ -31,7 +35,7 @@ export type ParametriNotifiche = {
 export const PARAMETRI_PROPOSTI: Readonly<ParametriNotifiche> = Object.freeze({
   abbonamentoRichiesto: true,
   escludiGiaSalvateDalRiepilogo: true,
-  giorniCompattazioneRiepiloghi: 30, // decisione 7 approvata; la proposta N6 era 7
+  giorniCompattazioneRiepiloghi: 30, // N6 decisa il 20/11: 30 giorni; 7 respinto
   giorniCompattazioneAltri: 30,
   giorniConservazione: 365,
   giroInvioSoloConLavoro: true,
