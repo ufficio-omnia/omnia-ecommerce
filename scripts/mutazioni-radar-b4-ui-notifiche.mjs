@@ -11,6 +11,9 @@ const AZIONI = "src/app/actions/radar-notifiche.ts";
 const PAGINA = "src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx";
 const MODULI = "src/components/omnia-ai/opportunita/notifiche-form.tsx";
 const INTERRUTTORI = "src/lib/radar/interruttori-b4.ts";
+// File di B2 (regola «riceve»): mutato SOLO in memoria durante la prova e ripristinato dal buffer (sha256 controllato alla fine); mai modificato
+// né committato da B1. Serve a dimostrare che le prove A1 si accorgono se un motivo di esclusione sparisce (38B §1.5 A1).
+const DESTINATARI_B2 = "src/lib/radar/notifiche/destinatari-calcoli.ts";
 
 const MUTAZIONI = [
   { nome: "M1 nuove opportunità accese anche per l'Ufficio Gare", file: CALCOLI, cerca: 'return { nuove_opportunita: ruolo === "titolare", scadenze: true, rettifiche: true };', con: "return { nuove_opportunita: true, scadenze: true, rettifiche: true };" },
@@ -33,6 +36,39 @@ const MUTAZIONI = [
   { nome: "M18 «solo spegnere» non applicato nel modulo", file: MODULI, cerca: 'disabled={modo === "solo_spegnere" && !valori[c]}', con: "disabled={false}" },
   { nome: "M19 destinatari visibili anche all'Ufficio Gare", file: PAGINA, cerca: "{titolare && (\n            <section", con: "{(\n            <section" },
   { nome: "M20 testi dello stato dell'indirizzo scambiati", file: CALCOLI, cerca: 'verificato: "Indirizzo verificato",\n  da_verificare: "Indirizzo da verificare",', con: 'verificato: "Indirizzo da verificare",\n  da_verificare: "Indirizzo verificato",' },
+  // A3: Ufficio Gare e riga altrui con lo stesso indirizzo (le persone si riconoscono dall'identificativo, mai dall'indirizzo)
+  { nome: "M21 persone unite per indirizzo nella vista del titolare", file: CALCOLI, cerca: "if (ammessa && !visibili.some((v) => v.userId === p.userId)) visibili.push(p);", con: "if (ammessa && !visibili.some((v) => v.email === p.email)) visibili.push(p);", richiede: "A3.2" },
+  { nome: "M22 riga propria dell'Ufficio Gare riconosciuta dall'indirizzo", file: CALCOLI, cerca: ": p.userId === d.chiGuarda.userId;", con: ": p.email === d.persone.find((x) => x.userId === d.chiGuarda.userId)?.email;", richiede: "A3.1" },
+  { nome: "M23 preferenze di chi guarda al posto di quelle della riga", file: CALCOLI, cerca: "const pref = d.preferenze.get(p.userId) ?? null;", con: "const pref = d.preferenze.get(d.chiGuarda.userId) ?? null;", richiede: "A3.2" },
+  { nome: "M29 preferenze attuali lette senza la persona", file: SERVER, cerca: '.eq("impresa_id", impresaId).eq("user_id", userId).maybeSingle', con: '.eq("impresa_id", impresaId).maybeSingle', richiede: "A3.3" },
+  // A1: dalle righe della 0124 / 0125 ai destinatari (catena di B1)
+  { nome: "M24 «true» testuale accende le scadenze", file: CALCOLI, cerca: "scadenze: r.scadenze === true,", con: "scadenze: !!r.scadenze,", richiede: "A1.10" },
+  { nome: "M25 blocco dell'indirizzo perso dalla riga della 0124", file: CALCOLI, cerca: 'email_bloccata_il: typeof r.email_bloccata_il === "string" ? r.email_bloccata_il : null,', con: "email_bloccata_il: null,", richiede: "A1.9" },
+  { nome: "M26 preferenze di righe senza user_id valido", file: SERVER, cerca: 'if (p && typeof r.user_id === "string") preferenze.set(r.user_id, p);', con: "if (p) preferenze.set(String(r.user_id), p);", richiede: "A1.14" },
+  { nome: "M27 preferenze lette senza il filtro dell'impresa", file: SERVER, cerca: 'sessione.from(TABELLA_NOTIFICHE_PERSONE).select(COLONNE_NOTIFICHE_PERSONE).eq("impresa_id", impresaId)', con: "sessione.from(TABELLA_NOTIFICHE_PERSONE).select(COLONNE_NOTIFICHE_PERSONE)", richiede: "A1.0" },
+  { nome: "M28 email dell'impresa lette senza il filtro dell'impresa", file: SERVER, cerca: '.select("email_attive").eq("impresa_id", impresaId)', con: '.select("email_attive")', richiede: "A1.0" },
+  { nome: "M30 funzione dei destinatari chiesta senza l'impresa", file: SERVER, cerca: "{ p_imprese: [impresaId] }", con: "{ p_imprese: [] }", richiede: "A1.0" },
+  // A1: la regola di B2, un motivo per volta (mutazioni temporanee, vedi DESTINATARI_B2)
+  { nome: "M31 [B2] motivo altra_impresa tolto", file: DESTINATARI_B2, cerca: '  if (!dellaImpresa(persona, impresa.impresaId)) motivi.add("altra_impresa");\n', con: "", richiede: "A1.1" },
+  { nome: "M32 [B2] ruolo non confrontato con l'impresa", file: DESTINATARI_B2, cerca: 'return p.ruolo === "titolare" ? p.userId === impresaId : p.userId !== impresaId;', con: "return true;", richiede: "A1.1" },
+  { nome: "M33 [B2] motivo radar_non_attivo tolto", file: DESTINATARI_B2, cerca: '  if (!impresa.radarAttivo) motivi.add("radar_non_attivo");\n', con: "", richiede: "A1.2" },
+  { nome: "M34 [B2] motivo abbonamento_non_valido tolto", file: DESTINATARI_B2, cerca: '  if (impresa.abbonamentoValido === false) motivi.add("abbonamento_non_valido");\n', con: "", richiede: "A1.3" },
+  { nome: "M35 [B2] abbonamento non controllato preso per non valido", file: DESTINATARI_B2, cerca: "impresa.abbonamentoValido === false", con: "!impresa.abbonamentoValido", richiede: "A1.3" },
+  { nome: "M36 [B2] motivo email_impresa_spente tolto", file: DESTINATARI_B2, cerca: '  if (!impresa.emailAttive) motivi.add("email_impresa_spente");\n', con: "", richiede: "A1.4" },
+  { nome: "M37 [B2] motivo membro_disattivato tolto", file: DESTINATARI_B2, cerca: '  if (!persona.membroAttivo) motivi.add("membro_disattivato");\n', con: "", richiede: "A1.5" },
+  { nome: "M38 [B2] motivo utente_bloccato tolto", file: DESTINATARI_B2, cerca: '  if (persona.bloccato) motivi.add("utente_bloccato");\n', con: "", richiede: "A1.6" },
+  { nome: "M39 [B2] indirizzo valido con la sola @", file: DESTINATARI_B2, cerca: "/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)", con: 'email.includes("@")', richiede: "A1.7" },
+  { nome: "M40 [B2] lunghezza dell'indirizzo non controllata", file: DESTINATARI_B2, cerca: "email.length <= 320 && ", con: "", richiede: "A1.7" },
+  { nome: "M41 [B2] motivo email_da_verificare tolto", file: DESTINATARI_B2, cerca: '  else if (!persona.emailConfermata) motivi.add("email_da_verificare");\n', con: "", richiede: "A1.8" },
+  { nome: "M42 [B2] motivo email_bloccata tolto", file: DESTINATARI_B2, cerca: '  if (preferenze?.email_bloccata_il) motivi.add("email_bloccata");\n', con: "", richiede: "A1.9" },
+  { nome: "M43 [B2] motivo categoria_spenta tolto", file: DESTINATARI_B2, cerca: '  if (!preferenze || preferenze[categoria] !== true) motivi.add("categoria_spenta");\n', con: "", richiede: "A1.10" },
+  { nome: "M44 [B2] senza riga delle preferenze = tutto acceso", file: DESTINATARI_B2, cerca: "if (!preferenze || preferenze[categoria] !== true)", con: "if (preferenze && preferenze[categoria] !== true)", richiede: "A1.10" },
+  { nome: "M45 [B2] ordine dei motivi cambiato", file: DESTINATARI_B2, cerca: '  "radar_non_attivo",\n  "abbonamento_non_valido",\n  "email_impresa_spente",\n  "membro_disattivato",\n', con: '  "membro_disattivato",\n  "radar_non_attivo",\n  "abbonamento_non_valido",\n  "email_impresa_spente",\n', richiede: "A1.11" },
+  { nome: "M46 [B2] persona doppia non tolta", file: DESTINATARI_B2, cerca: "    if (visti.has(p.userId)) continue;\n", con: "", richiede: "A1.12" },
+  { nome: "M47 [B2] utente non bloccato nel dubbio", file: DESTINATARI_B2, cerca: "bloccato: x.bloccato !== false,", con: "bloccato: x.bloccato === true,", richiede: "A1.6" },
+  { nome: "M48 [B2] membro attivo nel dubbio", file: DESTINATARI_B2, cerca: "membroAttivo: x.membro_attivo === true,", con: "membroAttivo: x.membro_attivo !== false,", richiede: "A1.5" },
+  { nome: "M49 [B2] indirizzo confermato nel dubbio", file: DESTINATARI_B2, cerca: "emailConfermata: x.email_confermata === true,", con: "emailConfermata: x.email_confermata !== false,", richiede: "A1.8" },
+  { nome: "M50 [B2] indirizzo non normalizzato", file: DESTINATARI_B2, cerca: "x.email.trim().toLowerCase()", con: "x.email", richiede: "A1.13" },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-radar-b4-ui-notifiche.ts", mutazioni: MUTAZIONI }));

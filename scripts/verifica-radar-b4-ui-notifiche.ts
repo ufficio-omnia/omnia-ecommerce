@@ -1,6 +1,8 @@
 // Verifica della fase B4, grado 3 (B1): pagina «Notifiche» (preferenze delle email) e pagina della console delle email non consegnate.
 // Decisione dell'utente del 19/11 §3 e approvazione definitiva (D-E3: l'Ufficio Gare solo spegne le proprie; D-E4: valori iniziali; n. 4–5:
 // reinvio della verifica e «riprova» rimandati). Solo funzioni pure, dati SINTETICI e lettura dei sorgenti: nessuna rete, nessun database.
+// Fase A della B4 (via Z1 del 20/11, rapporto 38): prove A1 (dalle preferenze ai destinatari, un caso per ogni motivo di esclusione, lungo la
+// catena vera con client di Supabase FINTI) e A3 (Ufficio Gare con una riga altrui con lo stesso indirizzo), dal 38B §1.5.
 // Mutazioni: scripts/mutazioni-radar-b4-ui-notifiche.mjs.
 import fs from "node:fs";
 import path from "node:path";
@@ -23,7 +25,22 @@ import {
   type PersoneDellImpresa,
 } from "../src/lib/radar/notifiche-preferenze-calcoli";
 import { invioEmailDichiaratoAcceso, preferenzeNotificheAttive } from "../src/lib/radar/interruttori-b4";
-import type { PersonaImpresa, PreferenzePersona, StatoImpresaNotifiche } from "../src/lib/radar/notifiche/destinatari-calcoli";
+import {
+  ORDINE_MOTIVI,
+  TESTO_MOTIVO,
+  destinatariCheRicevono,
+  personaDaRiga,
+  riceve,
+  statoIndirizzo,
+  type EsitoRiceve,
+  type PersonaImpresa,
+  type PreferenzePersona,
+  type StatoImpresaNotifiche,
+} from "../src/lib/radar/notifiche/destinatari-calcoli";
+import { CATEGORIE_NOTIFICA, type CategoriaNotifica } from "../src/lib/radar/notifiche/tipi";
+import { leggiNotifiche, leggiPreferenzePersona } from "../src/lib/radar/notifiche-preferenze";
+import { TABELLA_NOTIFICHE_IMPRESA, TABELLA_NOTIFICHE_PERSONE } from "../src/lib/radar/notifiche-preferenze-calcoli";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const RADICE = path.resolve(__dirname, "..");
 const leggi = (p: string) => fs.readFileSync(path.join(RADICE, p), "utf8");
@@ -210,5 +227,265 @@ atteso("S11 la scheda «Notifiche» solo con il suo interruttore", testata.inclu
 atteso("S12 il collegamento della console alla pagina nuova non si precarica", /<Link href="\/tender-intelligence\/email" prefetch=\{false\}>/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")));
 atteso("S13 righe LF nei file nuovi", nuovi.every((f) => !leggi(f).includes("\r\n")));
 
-console.log(fallimenti.length ? `\n${fallimenti.length} controlli FALLITI` : "\nTutti i controlli del grado 3 della fase B4 sono passati.");
-process.exit(fallimenti.length ? 1 : 0);
+// ───── Client finti di Supabase (nessuna rete): filtrano le righe con gli .eq() chiesti dal codice e annotano ogni lettura ─────
+// maybeSingle con più di una riga risponde con l'errore di PostgREST (PGRST116), come il database vero: una lettura senza filtro non «passa».
+
+type Riga = Record<string, unknown>;
+type Risultato = { data: unknown; error: { code: string; message: string } | null };
+type Costruttore = {
+  select(colonne: string): Costruttore;
+  eq(colonna: string, valore: unknown): Costruttore;
+  returns(): Costruttore;
+  maybeSingle(): Promise<Risultato>;
+  then<A = Risultato, B = never>(ok?: ((x: Risultato) => A | PromiseLike<A>) | null, ko?: ((e: unknown) => B | PromiseLike<B>) | null): Promise<A | B>;
+};
+function clienteFinto(tabelle: Record<string, readonly Riga[]>, funzioni: Record<string, (argomenti: unknown) => readonly Riga[]>, registro: string[]): SupabaseClient {
+  const costruttore = (tabella: string): Costruttore => {
+    const filtri: [string, unknown][] = [];
+    const righe = () => (tabelle[tabella] ?? []).filter((r) => filtri.every(([c, v]) => r[c] === v));
+    const b: Costruttore = {
+      select: () => b,
+      eq: (colonna, valore) => {
+        filtri.push([colonna, valore]);
+        registro.push(`eq ${tabella} ${colonna}=${String(valore)}`);
+        return b;
+      },
+      returns: () => b,
+      maybeSingle: () => {
+        const r = righe();
+        return Promise.resolve(r.length > 1 ? { data: null, error: { code: "PGRST116", message: "più righe" } } : { data: r[0] ?? null, error: null });
+      },
+      then: (ok, ko) => Promise.resolve<Risultato>({ data: righe(), error: null }).then(ok, ko),
+    };
+    return b;
+  };
+  const cliente = {
+    from: (tabella: string) => costruttore(tabella),
+    rpc: (nome: string, argomenti: unknown) => {
+      registro.push(`rpc ${nome} ${JSON.stringify(argomenti)}`);
+      return Promise.resolve<Risultato>({ data: funzioni[nome]?.(argomenti) ?? [], error: null });
+    },
+  };
+  return cliente as unknown as SupabaseClient;
+}
+
+// Righe sintetiche: della funzione radar_notifiche_destinatari (0125) e della tabella delle preferenze (0124).
+const rigaDest = (userId: string, ruolo: "titolare" | "ufficio_gare", campi: Riga = {}): Riga => ({
+  impresa_id: ALFA,
+  user_id: userId,
+  ruolo,
+  email: `${ruolo === "titolare" ? "titolare" : userId.slice(-4)}@alfa.example`,
+  email_confermata: true,
+  bloccato: false,
+  membro_attivo: true,
+  ...campi,
+});
+const rigaPref = (userId: string, campi: Riga = {}): Riga => ({ impresa_id: ALFA, user_id: userId, nuove_opportunita: true, scadenze: true, rettifiche: true, email_bloccata_il: null, motivo_blocco: null, ...campi });
+
+type Scenario = { impresa?: Riga[]; persone?: Riga[]; destinatari?: Riga[]; radarAttivo?: boolean; operativo?: boolean | null };
+
+/**
+ * La catena vera della pagina e del motore: righe → leggiNotifiche (client finti) → stato dell'impresa come in page.tsx → regola «riceve» di B2.
+ * Di base c'è anche l'impresa BETA in ogni tabella: una lettura senza il filtro dell'impresa se ne accorge.
+ */
+async function catena(s: Scenario) {
+  const registro: string[] = [];
+  const sessione = clienteFinto(
+    {
+      [TABELLA_NOTIFICHE_IMPRESA]: s.impresa ?? [{ impresa_id: BETA, email_attive: false }, { impresa_id: ALFA, email_attive: true }],
+      [TABELLA_NOTIFICHE_PERSONE]: s.persone ?? [rigaPref(UFFICIO_BETA, { impresa_id: BETA }), rigaPref(ALFA), rigaPref(UFFICIO_ALFA)],
+    },
+    {},
+    registro,
+  );
+  // la funzione finta restituisce TUTTE le righe date, anche di altre imprese (come un errore della funzione): il codice deve rifiltrare
+  const admin = clienteFinto({}, { radar_notifiche_destinatari: () => s.destinatari ?? [rigaDest(ALFA, "titolare"), rigaDest(UFFICIO_ALFA, "ufficio_gare")] }, registro);
+  const lettura = await leggiNotifiche(sessione, admin, ALFA);
+  // come page.tsx: Radar attivo dal cliente della console, email dalla 0124, abbonamento = diritto operativo
+  const impresa: StatoImpresaNotifiche = { impresaId: ALFA, radarAttivo: s.radarAttivo ?? true, emailAttive: lettura.emailAttive, abbonamentoValido: s.operativo === undefined ? true : s.operativo };
+  const esito = (userId: string, categoria: CategoriaNotifica = "scadenze"): EsitoRiceve | null => {
+    const p = lettura.persone?.find((x) => x.userId === userId);
+    return p ? riceve(p, lettura.preferenze.get(userId) ?? null, impresa, categoria) : null;
+  };
+  const ricevono = (categoria: CategoriaNotifica) => destinatariCheRicevono(lettura.persone ?? [], lettura.preferenze, impresa, categoria).map((p) => p.userId);
+  return { lettura, impresa, registro, esito, ricevono };
+}
+const motivoDi = (e: EsitoRiceve | null) => (e === null ? "assente" : e.riceve ? "riceve" : e.motivo);
+
+// ───── A1. Dalle preferenze ai destinatari (38B §1.5 A1): un caso per ogni motivo di esclusione ─────
+
+async function proveA1() {
+  const base = await catena({});
+  uguale("A1.0 caso base: titolare e Ufficio Gare ricevono tutte e tre le categorie", CATEGORIE_NOTIFICA.map((c) => base.ricevono(c)), CATEGORIE_NOTIFICA.map(() => [ALFA, UFFICIO_ALFA]));
+  atteso(
+    "A1.0 letture per la SOLA impresa della sessione: filtri delle due tabelle e argomento della funzione",
+    [`eq ${TABELLA_NOTIFICHE_IMPRESA} impresa_id=${ALFA}`, `eq ${TABELLA_NOTIFICHE_PERSONE} impresa_id=${ALFA}`, `rpc radar_notifiche_destinatari {"p_imprese":["${ALFA}"]}`].every((r) => base.registro.includes(r)),
+    base.registro.join(" | "),
+  );
+  uguale("A1.0 preferenze solo dell'impresa, per user_id", [...base.lettura.preferenze.keys()].sort(), [ALFA, UFFICIO_ALFA].sort());
+
+  // altra_impresa: la persona di BETA non arriva nemmeno alla pagina; chiesta direttamente alla regola, è «altra impresa»
+  const conBeta = await catena({ destinatari: [rigaDest(ALFA, "titolare"), rigaDest(UFFICIO_BETA, "ufficio_gare", { impresa_id: BETA })] });
+  atteso("A1.1 altra_impresa: la persona di un'altra impresa restituita per errore dalla funzione non passa", motivoDi(conBeta.esito(UFFICIO_BETA)) === "assente" && !conBeta.ricevono("scadenze").includes(UFFICIO_BETA));
+  const beta = personaDaRiga(rigaDest(UFFICIO_BETA, "ufficio_gare", { impresa_id: BETA }));
+  atteso("A1.1 altra_impresa: chiesta direttamente alla regola", !!beta && motivoDi(riceve(beta, null, conBeta.impresa, "scadenze")) === "altra_impresa" && destinatariCheRicevono([beta], new Map([[UFFICIO_BETA, pref()]]), conBeta.impresa, "scadenze").length === 0);
+  const ruoliFalsati = await catena({ destinatari: [rigaDest(UFFICIO_ALFA, "titolare"), rigaDest(ALFA, "ufficio_gare")] });
+  uguale("A1.1 altra_impresa: «titolare» che non è l'impresa, «Ufficio Gare» che è l'impresa", [motivoDi(ruoliFalsati.esito(UFFICIO_ALFA)), motivoDi(ruoliFalsati.esito(ALFA))], ["altra_impresa", "altra_impresa"]);
+
+  uguale("A1.2 radar_non_attivo: Opportunità spenta per l'impresa", motivoDi((await catena({ radarAttivo: false })).esito(ALFA)), "radar_non_attivo");
+
+  uguale("A1.3 abbonamento_non_valido: diritto non operativo", motivoDi((await catena({ operativo: false })).esito(ALFA)), "abbonamento_non_valido");
+  uguale("A1.3 abbonamento non controllato (null, D-E8 aperta): riceve", motivoDi((await catena({ operativo: null })).esito(ALFA)), "riceve");
+
+  uguale(
+    "A1.4 email_impresa_spente: spente dal titolare, riga dell'impresa assente, valore non booleano",
+    [
+      motivoDi((await catena({ impresa: [{ impresa_id: BETA, email_attive: true }, { impresa_id: ALFA, email_attive: false }] })).esito(ALFA)),
+      motivoDi((await catena({ impresa: [{ impresa_id: BETA, email_attive: true }] })).esito(ALFA)),
+      motivoDi((await catena({ impresa: [{ impresa_id: ALFA, email_attive: "true" }] })).esito(ALFA)),
+    ],
+    ["email_impresa_spente", "email_impresa_spente", "email_impresa_spente"],
+  );
+
+  uguale(
+    "A1.5 membro_disattivato: Ufficio Gare sospeso o stato mancante",
+    [
+      motivoDi((await catena({ destinatari: [rigaDest(UFFICIO_ALFA, "ufficio_gare", { membro_attivo: false })] })).esito(UFFICIO_ALFA)),
+      motivoDi((await catena({ destinatari: [rigaDest(UFFICIO_ALFA, "ufficio_gare", { membro_attivo: undefined })] })).esito(UFFICIO_ALFA)),
+    ],
+    ["membro_disattivato", "membro_disattivato"],
+  );
+
+  uguale(
+    "A1.6 utente_bloccato: bloccato o dato mancante (nel dubbio bloccato)",
+    [
+      motivoDi((await catena({ destinatari: [rigaDest(ALFA, "titolare", { bloccato: true })] })).esito(ALFA)),
+      motivoDi((await catena({ destinatari: [rigaDest(ALFA, "titolare", { bloccato: undefined })] })).esito(ALFA)),
+    ],
+    ["utente_bloccato", "utente_bloccato"],
+  );
+
+  const indirizzi = [null, "", "senza-chiocciola", "a@b", `${"x".repeat(309)}@alfa.example`];
+  const mancanti: string[] = [];
+  for (const email of indirizzi) mancanti.push(motivoDi((await catena({ destinatari: [rigaDest(ALFA, "titolare", { email })] })).esito(ALFA)));
+  uguale("A1.7 email_mancante: assente, vuota, senza @, senza dominio, oltre 320 caratteri", mancanti, indirizzi.map(() => "email_mancante"));
+
+  const daVerificare = await catena({ destinatari: [rigaDest(ALFA, "titolare", { email_confermata: false }), rigaDest(UFFICIO_ALFA, "ufficio_gare", { email_confermata: undefined })] });
+  uguale("A1.8 email_da_verificare: non confermata o dato mancante", [motivoDi(daVerificare.esito(ALFA)), motivoDi(daVerificare.esito(UFFICIO_ALFA))], ["email_da_verificare", "email_da_verificare"]);
+  const pDaVerificare = daVerificare.lettura.persone?.find((p) => p.userId === ALFA);
+  atteso("A1.8 stato dell'indirizzo «da verificare»", !!pDaVerificare && statoIndirizzo(pDaVerificare, daVerificare.lettura.preferenze.get(ALFA) ?? null) === "da_verificare");
+
+  const bloccata = await catena({ persone: [rigaPref(ALFA, { email_bloccata_il: "2026-11-19T10:00:00.000Z", motivo_blocco: "rimbalzo" }), rigaPref(UFFICIO_ALFA)] });
+  const pBloccata = bloccata.lettura.persone?.find((p) => p.userId === ALFA);
+  atteso("A1.9 email_bloccata: indirizzo bloccato dopo un rimbalzo, stato «bloccato»", motivoDi(bloccata.esito(ALFA)) === "email_bloccata" && !!pBloccata && statoIndirizzo(pBloccata, bloccata.lettura.preferenze.get(ALFA) ?? null) === "bloccato");
+
+  const senzaRiga = await catena({ persone: [rigaPref(ALFA)] });
+  uguale("A1.10 categoria_spenta: nessuna riga delle preferenze = tutto spento", CATEGORIE_NOTIFICA.map((c) => motivoDi(senzaRiga.esito(UFFICIO_ALFA, c))), CATEGORIE_NOTIFICA.map(() => "categoria_spenta"));
+  const unaSpenta = await catena({ persone: [rigaPref(ALFA, { scadenze: false }), rigaPref(UFFICIO_ALFA, { scadenze: "true", rettifiche: 1 })] });
+  uguale(
+    "A1.10 categoria_spenta: la sola categoria spenta; «true» o 1 al posto del booleano non accendono",
+    [motivoDi(unaSpenta.esito(ALFA, "scadenze")), motivoDi(unaSpenta.esito(ALFA, "rettifiche")), motivoDi(unaSpenta.esito(UFFICIO_ALFA, "scadenze")), motivoDi(unaSpenta.esito(UFFICIO_ALFA, "rettifiche")), motivoDi(unaSpenta.esito(UFFICIO_ALFA, "nuove_opportunita"))],
+    ["categoria_spenta", "riceve", "categoria_spenta", "categoria_spenta", "riceve"],
+  );
+
+  // più motivi insieme: tutti, nell'ordine dal più generale al più specifico, il primo con il suo testo
+  const molti = (await catena({ radarAttivo: false, destinatari: [rigaDest(UFFICIO_ALFA, "ufficio_gare", { membro_attivo: false, email: null })], persone: [] })).esito(UFFICIO_ALFA);
+  atteso(
+    "A1.11 più motivi: tutti, in ordine, il primo con il suo testo",
+    !!molti && !molti.riceve && JSON.stringify(molti.motivi) === JSON.stringify(["radar_non_attivo", "membro_disattivato", "email_mancante", "categoria_spenta"]) && molti.motivo === "radar_non_attivo" && molti.testo === TESTO_MOTIVO.radar_non_attivo,
+    JSON.stringify(molti),
+  );
+  uguale("A1.11 ordine dei motivi (dal più generale al più specifico)", ORDINE_MOTIVI, ["altra_impresa", "radar_non_attivo", "abbonamento_non_valido", "email_impresa_spente", "membro_disattivato", "utente_bloccato", "email_mancante", "email_da_verificare", "email_bloccata", "categoria_spenta"]);
+
+  const doppia = await catena({ destinatari: [rigaDest(ALFA, "titolare"), rigaDest(ALFA, "titolare"), rigaDest(UFFICIO_ALFA, "ufficio_gare")] });
+  uguale("A1.12 una persona elencata due volte riceve una volta sola", doppia.ricevono("scadenze"), [ALFA, UFFICIO_ALFA]);
+
+  const maiuscole = await catena({ destinatari: [rigaDest(ALFA, "titolare", { email: "  Titolare@ALFA.Example " })] });
+  uguale("A1.13 indirizzo normalizzato (spazi tolti, minuscole) e mai nella vista", maiuscole.lettura.persone?.[0]?.email, "titolare@alfa.example");
+
+  const senzaId = await catena({ persone: [rigaPref(ALFA), { ...rigaPref(UFFICIO_ALFA), user_id: null }, { ...rigaPref(UFFICIO_ALFA), user_id: 7 }] });
+  uguale("A1.14 righe delle preferenze senza user_id valido ignorate (quella persona: tutto spento)", [[...senzaId.lettura.preferenze.keys()], motivoDi(senzaId.esito(UFFICIO_ALFA))], [[ALFA], "categoria_spenta"]);
+
+  atteso(
+    "A1.15 la pagina costruisce lo stato dell'impresa come la catena provata qui",
+    leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx").includes("{ impresaId: contesto.accountId, radarAttivo: cliente?.attivo === true, emailAttive: lettura.emailAttive, abbonamentoValido: diritto.operativo }"),
+  );
+}
+
+// ───── A3. Ufficio Gare e una «riga altrui con lo stesso indirizzo» (38B §1.5 A3) ─────
+// Nel database un indirizzo appartiene a un solo utente, ma la pagina e la regola non devono MAI riconoscere le persone dall'indirizzo:
+// solo dall'identificativo. Qui titolare di ALFA, Ufficio Gare di ALFA e Ufficio Gare di BETA hanno lo stesso indirizzo.
+
+async function proveA3() {
+  const STESSO = "gare@alfa.example";
+  const destinatari = [rigaDest(ALFA, "titolare", { email: STESSO }), rigaDest(UFFICIO_ALFA, "ufficio_gare", { email: STESSO }), rigaDest(UFFICIO_BETA, "ufficio_gare", { impresa_id: BETA, email: STESSO })];
+  const proprie = { nuove_opportunita: false, scadenze: true, rettifiche: false };
+  const persone = [rigaPref(ALFA), rigaPref(UFFICIO_ALFA, proprie), rigaPref(UFFICIO_BETA, { impresa_id: BETA })];
+  const c = await catena({ destinatari, persone });
+  const tutte = destinatari.map(personaDaRiga).filter((p): p is PersonaImpresa => !!p);
+
+  const vistaUfficio = personeVisibili({ persone: c.lettura.persone ?? [], preferenze: c.lettura.preferenze, impresa: c.impresa, chiGuarda: UFFICIO });
+  uguale("A3.1 l'Ufficio Gare vede solo la propria riga, con le PROPRIE preferenze", vistaUfficio.map((p) => [p.userId, p.tu, p.categorie]), [[UFFICIO_ALFA, true, proprie]]);
+  uguale(
+    "A3.1 anche se l'elenco contenesse persone di altre imprese con lo stesso indirizzo",
+    personeVisibili({ persone: tutte, preferenze: c.lettura.preferenze, impresa: c.impresa, chiGuarda: UFFICIO }).map((p) => p.userId),
+    [UFFICIO_ALFA],
+  );
+
+  const vistaTitolare = personeVisibili({ persone: c.lettura.persone ?? [], preferenze: c.lettura.preferenze, impresa: c.impresa, chiGuarda: TITOLARE });
+  uguale(
+    "A3.2 il titolare vede due righe distinte con lo stesso indirizzo, ognuna con le sue preferenze",
+    vistaTitolare.map((p) => [p.userId, p.categorie]),
+    [[ALFA, ACCESE], [UFFICIO_ALFA, proprie]],
+  );
+
+  const registro: string[] = [];
+  const admin = clienteFinto({ [TABELLA_NOTIFICHE_IMPRESA]: [{ impresa_id: ALFA, email_attive: true }, { impresa_id: BETA, email_attive: true }], [TABELLA_NOTIFICHE_PERSONE]: persone }, {}, registro);
+  const attuali = await leggiPreferenzePersona(admin, ALFA, UFFICIO_ALFA);
+  uguale("A3.3 preferenze attuali lette per impresa E persona: quelle dell'Ufficio Gare, non della riga altrui", attuali, { ok: true, esisteImpresa: true, categorie: proprie });
+  const categorieAttuali = attuali.ok ? attuali.categorie : null;
+  const prova = (destinatarioId: string, richieste: CategoriePreferenze) => {
+    const e = validaModificaPreferenze({ chiModifica: UFFICIO, destinatarioId, persone: PERSONE_ALFA, attuali: categorieAttuali, richieste });
+    return e.ok ? "ok" : e.errore;
+  };
+  uguale(
+    "A3.4 Ufficio Gare: non tocca la riga altrui con lo stesso indirizzo né quella dell'altra impresa; spegne le proprie; non riaccende ciò che è acceso solo nella riga altrui",
+    [prova(ALFA, TUTTO_SPENTO), prova(UFFICIO_BETA, TUTTO_SPENTO), prova(UFFICIO_ALFA, TUTTO_SPENTO), prova(UFFICIO_ALFA, { ...proprie, rettifiche: true })],
+    [MESSAGGIO_SOLO_PROPRIE, "Persona non valida.", "ok", MESSAGGIO_RIACCENDERE],
+  );
+
+  const altruiBloccata = await catena({ destinatari, persone: [rigaPref(ALFA, { email_bloccata_il: "2026-11-19T10:00:00.000Z", motivo_blocco: "reclamo" }), rigaPref(UFFICIO_ALFA, proprie)] });
+  const statoDi = (k: Awaited<ReturnType<typeof catena>>, userId: string) => {
+    const p = k.lettura.persone?.find((x) => x.userId === userId);
+    return p ? statoIndirizzo(p, k.lettura.preferenze.get(userId) ?? null) : "assente";
+  };
+  uguale(
+    "A3.5 il blocco della riga altrui (stesso indirizzo) non blocca la propria",
+    [statoDi(altruiBloccata, ALFA), statoDi(altruiBloccata, UFFICIO_ALFA), motivoDi(altruiBloccata.esito(UFFICIO_ALFA))],
+    ["bloccato", "verificato", "riceve"],
+  );
+
+  uguale(
+    "A3.6 la regola decide per persona, mai per indirizzo",
+    [c.ricevono("scadenze"), c.ricevono("rettifiche"), c.ricevono("nuove_opportunita")],
+    [[ALFA, UFFICIO_ALFA], [ALFA], [ALFA]],
+  );
+  const ufficioSpento = await catena({ destinatari, persone: [rigaPref(ALFA, { scadenze: false }), rigaPref(UFFICIO_ALFA, proprie)] });
+  uguale("A3.6 spenta dal titolare, accesa dall'Ufficio Gare: riceve solo l'Ufficio Gare", ufficioSpento.ricevono("scadenze"), [UFFICIO_ALFA]);
+
+  const sorgenti = ["src/lib/radar/notifiche-preferenze.ts", "src/lib/radar/notifiche-preferenze-calcoli.ts", "src/app/actions/radar-notifiche.ts"].map(leggi).join("\n");
+  atteso("A3.7 nessuna lettura o scelta per indirizzo email nel codice della pagina", !/\.eq\(\s*"email"|\.email\s*===|===\s*[\w.]*\.email\b/.test(sorgenti));
+}
+
+proveA1()
+  .then(proveA3)
+  .then(
+    () => {
+      console.log(fallimenti.length ? `\n${fallimenti.length} controlli FALLITI` : "\nTutti i controlli del grado 3 della fase B4 sono passati.");
+      process.exit(fallimenti.length ? 1 : 0);
+    },
+    (e: unknown) => {
+      console.log(`FALLITO prove A1/A3 interrotte: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    },
+  );
