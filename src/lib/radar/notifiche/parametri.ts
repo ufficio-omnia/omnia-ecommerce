@@ -1,6 +1,6 @@
-// Fase B4 (20/11/2026, B2) — PARAMETRI del motore delle notifiche email, isolati e con un nome. Le decisioni N1, N5, N6 e N7 del rapporto
+// Fase B4 (20/11/2026, B2) — PARAMETRI del motore delle notifiche email, isolati e con un nome. Le decisioni N1, N5 e N7 del rapporto
 // 38 (§1) sono ANCORA APERTE: qui c'è il valore PROPOSTO, e il motore riceve i parametri come argomento, così le prove usano anche l'altro
-// valore e cambiarli dopo la decisione dell'utente tocca solo questo file.
+// valore e cambiarli dopo la decisione dell'utente tocca solo questo file. N6 segue la decisione 7 già APPROVATA (30 giorni).
 
 export type ParametriNotifiche = {
   /**
@@ -11,8 +11,10 @@ export type ParametriNotifiche = {
   /** N5 (proposta: sì) — il riepilogo delle «nuove» non elenca le gare che l'impresa ha già salvato o monitorato. */
   escludiGiaSalvateDalRiepilogo: boolean;
   /**
-   * N6 (proposta: 7) — giorni dopo la chiusura di tutte le consegne entro cui si compattano i `dati` dei RIEPILOGHI (pesano circa 20 KB).
-   * Gli altri eventi seguono la decisione D-E7 (30 giorni).
+   * N6 — giorni dalla creazione dell'evento dopo i quali si compattano i `dati` dei RIEPILOGHI (pesano circa 20 KB). Valore in uso: **30**,
+   * come la decisione 7 APPROVATA («dati delle email compattati dopo 30 giorni») e come gli altri eventi (D-E7).
+   * Proposta del rapporto 38, NON in uso: 7 giorni (meno spazio; dopo 7 giorni il riepilogo è già partito o annullato, perché i tentativi
+   * finiscono entro 24 ore). Vale solo se l'utente cambia la decisione 7. Le prove provano sia 7 sia 30.
    */
   giorniCompattazioneRiepiloghi: number;
   /** D-E7 (approvata): giorni dopo i quali si compattano i dati degli altri eventi. */
@@ -29,7 +31,7 @@ export type ParametriNotifiche = {
 export const PARAMETRI_PROPOSTI: Readonly<ParametriNotifiche> = Object.freeze({
   abbonamentoRichiesto: true,
   escludiGiaSalvateDalRiepilogo: true,
-  giorniCompattazioneRiepiloghi: 7,
+  giorniCompattazioneRiepiloghi: 30, // decisione 7 approvata; la proposta N6 era 7
   giorniCompattazioneAltri: 30,
   giorniConservazione: 365,
   giroInvioSoloConLavoro: true,

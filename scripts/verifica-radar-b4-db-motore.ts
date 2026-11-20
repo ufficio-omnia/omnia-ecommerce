@@ -858,7 +858,7 @@ async function provaParametri(): Promise<void> {
     controlla("N1 no: l'impresa riceve comunque (decide solo il Radar attivo e le email accese)", eventi(m2).some((e) => e.impresa_id === I2));
     controlla("N1 no: lo stato dell'abbonamento non si legge nemmeno", !m2.db.richieste.some((r) => r.tabella === "subscriptions"));
   }
-  // N6: compattazione dei riepiloghi a 7 giorni (proposta) contro 30; altri eventi a 30; conservazione 12 mesi
+  // N6: compattazione dei riepiloghi a 7 giorni (proposta, non in uso) contro 30 (in uso, decisione 7); altri eventi a 30; conservazione 12 mesi
   for (const giorni of [7, 30]) {
     const m = mondo({ parametri: { giorniCompattazioneRiepiloghi: giorni } });
     m.db.t("omnia_ai_radar_eventi").push(
@@ -873,6 +873,17 @@ async function provaParametri(): Promise<void> {
     controlla(`N6 = ${giorni}: riepilogo di 8 giorni ${giorni === 7 ? "compattato" : "ancora intero"}`, giorni === 7 ? r8?.dati === null && !!r8?.dati_compattati_il : r8?.dati !== null, r8);
     controlla(`N6 = ${giorni}: gli altri eventi si compattano a 30 giorni`, eventi(m).find((e) => e.id === "s-8")?.dati !== null && eventi(m).find((e) => e.id === "s-40")?.dati === null);
     controlla(`conservazione: eventi e consegne di oltre 12 mesi cancellati`, !eventi(m).some((e) => e.id === "vecchio") && !consegne(m).some((c) => c.id === "c-vecchia"));
+  }
+  // Decisione 7 (approvata): con i parametri IN USO (quelli della rotta) anche i riepiloghi si compattano dopo 30 giorni, non 7
+  {
+    controlla("decisione 7: parametri in uso, riepiloghi e altri eventi compattati a 30 giorni", PARAMETRI_PROPOSTI.giorniCompattazioneRiepiloghi === 30 && PARAMETRI_PROPOSTI.giorniCompattazioneAltri === 30);
+    const m = mondo();
+    const riepilogo = (id: string, giorno: string) => ({ id, impresa_id: I1, categoria: "nuove_opportunita", tipo: "riepilogo_opportunita", gara_chiave: "riepilogo", versione: giorno, stato: "attivo", dati: { x: 1 }, dati_compattati_il: null, creato_il: `${giorno}T05:30:00Z` });
+    m.db.t("omnia_ai_radar_eventi").push(riepilogo("r-8", "2026-10-12"), riepilogo("r-29", "2026-09-21"), riepilogo("r-31", "2026-09-19"));
+    await eseguiPassaggio(m.d);
+    const dati = (id: string) => eventi(m).find((e) => e.id === id)?.dati;
+    controlla("decisione 7: riepiloghi di 8 e 29 giorni ancora interi", dati("r-8") !== null && dati("r-8") !== undefined && dati("r-29") !== null && dati("r-29") !== undefined);
+    controlla("decisione 7: riepilogo di 31 giorni compattato", dati("r-31") === null && !!eventi(m).find((e) => e.id === "r-31")?.dati_compattati_il);
   }
   // N7: con il parametro spento ogni passaggio scrive il suo giro «invio»
   {
