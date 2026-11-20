@@ -142,6 +142,16 @@ export function leggiVariabili(testo) {
 
 /** I problemi dell'ambiente (solo nomi, mai valori). Vuoto = solo staging e interruttori della B4 come nel piano 28. */
 export function erroriAmbiente(v) {
+  const e = erroriAmbienteBase(v);
+  if (v.RADAR_PER_TE !== "attivo") e.push("RADAR_PER_TE non è «attivo»");
+  if (v.RADAR_UFFICIO_GARE !== "attivo") e.push("RADAR_UFFICIO_GARE non è «attivo»");
+  if (v.RADAR_CLASSIFICAZIONI !== "attive") e.push("RADAR_CLASSIFICAZIONI non è «attive»");
+  for (const k of ["RADAR_NOTIFICHE_PREFERENZE", "RADAR_NOTIFICHE_EMAIL"]) if (!["", "0"].includes(v[k] ?? "")) e.push(`${k} deve essere spento (vuoto o «0»)`);
+  return [...new Set(e)];
+}
+
+/** La parte comune a tutti i collaudi con accesso (anche il grado 3, collaudo-notifiche-b4.mjs): solo staging, chiavi giuste, nulla di produzione. */
+export function erroriAmbienteBase(v) {
   const e = [];
   if ((v.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(/\/+$/, "") !== STAGING_URL) e.push("NEXT_PUBLIC_SUPABASE_URL non è lo staging");
   if (!(v.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").startsWith("sb_publishable_")) e.push("NEXT_PUBLIC_SUPABASE_ANON_KEY non è una chiave publishable");
@@ -152,11 +162,7 @@ export function erroriAmbiente(v) {
     if (/\b(sk|rk|pk)_live_/.test(valore)) e.push(`${k} contiene una chiave «live»`);
     if (/postgres(ql)?:\/\//i.test(valore)) e.push(`${k} contiene una stringa di connessione a un database`);
   }
-  if (v.RADAR_PER_TE !== "attivo") e.push("RADAR_PER_TE non è «attivo»");
-  if (v.RADAR_UFFICIO_GARE !== "attivo") e.push("RADAR_UFFICIO_GARE non è «attivo»");
-  if (v.RADAR_CLASSIFICAZIONI !== "attive") e.push("RADAR_CLASSIFICAZIONI non è «attive»");
-  for (const k of ["RADAR_NOTIFICHE_PREFERENZE", "RADAR_NOTIFICHE_EMAIL"]) if (!["", "0"].includes(v[k] ?? "")) e.push(`${k} deve essere spento (vuoto o «0»)`);
-  return [...new Set(e)];
+  return e;
 }
 
 export function dentro(file, cartella) {
@@ -719,12 +725,19 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", 
 const STILE =
   "body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:16px;background:#fff;color:#111}main{max-width:720px;margin:0 auto}h1{font-size:1.4rem}p.stato{padding:12px;border-radius:8px}p.aperta{background:#e6f4ea}p.preliminare{background:#fff4d6}p.fermo{background:#fde2e1;font-weight:600}ol{padding-left:20px}li{margin:12px 0}button{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid #444;background:#f4f4f4;cursor:pointer;max-width:100%}button[disabled]{opacity:.55;cursor:not-allowed}span,small{color:#555;font-size:.9rem}code{background:#f1f1f1;padding:1px 4px;border-radius:4px;word-break:break-all}.d2{border:1px solid #ccc;border-radius:8px;padding:12px}";
 
-function paginaPronto({ portaApp, preliminare, codice, stato }) {
+/** La pagina /pronto dei gradi 1–2: titolo e riquadro con i dati della gara sintetica D2 da copiare (passo 3e). */
+export const PAGINA_B4 = {
+  titolo: "Collaudo B4",
+  riquadro: () =>
+    `<div class="d2"><strong>Gara sintetica D2</strong> (passo 3e, «Aggiungi a mano», nessun CIG):<br>oggetto <code>${escapeHtml(GARA_D2.oggetto)}</code><br>ente <code>${escapeHtml(GARA_D2.ente)}</code><br>collegamento <code>${escapeHtml(GARA_D2.url)}</code></div>`,
+};
+
+function paginaPronto({ portaApp, preliminare, codice, stato, utenti, pagina }) {
   const app = `http://${SOLO_LOCALE}:${portaApp}`;
-  const righe = UTENTI_COLLAUDO.map((u, i) => {
+  const righe = utenti.map((u, i) => {
     const p = percorsoAccesso(u.email);
     const usato = stato.usati.has(p);
-    const precedenteMancante = UTENTI_COLLAUDO.slice(0, i).find((x) => !stato.riusciti.has(percorsoAccesso(x.email)));
+    const precedenteMancante = utenti.slice(0, i).find((x) => !stato.riusciti.has(percorsoAccesso(x.email)));
     let nota = "da usare, una volta";
     if (stato.fermo) nota = "fermo";
     else if (preliminare) nota = "bloccato (preliminare)";
@@ -733,9 +746,10 @@ function paginaPronto({ portaApp, preliminare, codice, stato }) {
     const spento = preliminare || usato || !!stato.fermo || !!precedenteMancante;
     return `<li><form method="post" action="${p}"><input type="hidden" name="via" value="${escapeHtml(codice)}"><button type="submit"${spento ? " disabled" : ""}>Passo ${escapeHtml(u.passo)} · Entra come ${escapeHtml(nomeUtente(u.email))} (${u.zona === "console" ? "console" : "OMNIA AI"})</button> <span>${escapeHtml(nota)}</span><br><small>${escapeHtml(u.compito)}</small></form></li>`;
   }).join("");
-  const ultimo = percorsoAccesso(UTENTI_COLLAUDO[UTENTI_COLLAUDO.length - 1].email);
+  const ultimoUtente = utenti[utenti.length - 1];
+  const ultimo = percorsoAccesso(ultimoUtente.email);
   const finaliSpento = preliminare || !!stato.fermo || stato.finali !== null || !stato.riusciti.has(ultimo);
-  const finali = `<form method="post" action="/verifiche-finali"><input type="hidden" name="via" value="${escapeHtml(codice)}"><button type="submit"${finaliSpento ? " disabled" : ""}>Verifiche finali (dopo il passo 4)</button> <span>${stato.finali === null ? "solo letture con la chiave di servizio" : "già eseguite"}</span></form>`;
+  const finali = `<form method="post" action="/verifiche-finali"><input type="hidden" name="via" value="${escapeHtml(codice)}"><button type="submit"${finaliSpento ? " disabled" : ""}>Verifiche finali (dopo il passo ${escapeHtml(ultimoUtente.passo)})</button> <span>${stato.finali === null ? "solo letture con la chiave di servizio" : "già eseguite"}</span></form>`;
   const conteggio = `${stato.voci.length} verifiche lato server, ${stato.voci.filter((v) => ESITI_FERMO.has(v.esito)).length} da fermo`;
   let testoStato = "Finestra aperta. Nessun collegamento è stato generato: ognuno nasce solo quando premi il pulsante del suo utente, nell'ordine.";
   let classe = "aperta";
@@ -747,11 +761,11 @@ function paginaPronto({ portaApp, preliminare, codice, stato }) {
     testoStato = `COLLAUDO FERMATO: ${stato.fermo}. Nessun altro clic: l'app è stata spenta.`;
     classe = "fermo";
   }
-  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><title>Collaudo B4 · pronto</title><style>${STILE}</style></head><body><main><h1>Collaudo B4 — pronto</h1><p class="stato ${classe}">${escapeHtml(testoStato)}</p><p>App: <a href="${app}/login?__zone=omnia-ai">${app}</a> (solo su questo computer). Questa pagina non contiene token e non ne genera da sola. ${escapeHtml(conteggio)}.</p><ol>${righe}</ol><div class="d2"><strong>Gara sintetica D2</strong> (passo 3e, «Aggiungi a mano», nessun CIG):<br>oggetto <code>${escapeHtml(GARA_D2.oggetto)}</code><br>ente <code>${escapeHtml(GARA_D2.ente)}</code><br>collegamento <code>${escapeHtml(GARA_D2.url)}</code></div><p>${finali}</p></main></body></html>`;
+  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="same-origin"><title>${escapeHtml(pagina.titolo)} · pronto</title><style>${STILE}</style></head><body><main><h1>${escapeHtml(pagina.titolo)} — pronto</h1><p class="stato ${classe}">${escapeHtml(testoStato)}</p><p>App: <a href="${app}/login?__zone=omnia-ai">${app}</a> (solo su questo computer). Questa pagina non contiene token e non ne genera da sola. ${escapeHtml(conteggio)}.</p><ol>${righe}</ol>${pagina.riquadro ? pagina.riquadro() : ""}<p>${finali}</p></main></body></html>`;
 }
 
-function paginaEsito(titolo, righe) {
-  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Collaudo B4 · ${escapeHtml(titolo)}</title><style>${STILE}</style></head><body><main><h1>${escapeHtml(titolo)}</h1><ul>${righe.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul></main></body></html>`;
+function paginaEsito(titolo, righe, pagina = PAGINA_B4) {
+  return `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pagina.titolo)} · ${escapeHtml(titolo)}</title><style>${STILE}</style></head><body><main><h1>${escapeHtml(titolo)}</h1><ul>${righe.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul></main></body></html>`;
 }
 
 /**
@@ -762,11 +776,13 @@ function paginaEsito(titolo, righe) {
  *   accedi(utente) → { cookie, accessToken };
  *   verifica(utente, accessToken) → { voci, extra }: PRIMA del 303; VIOLAZIONE o ERRORE → nessun cookie, FERMO;
  *   finali() → voci; alFermo(motivo): spegne l'app.
+ *   utenti (di base quelli dei gradi 1–2) e pagina (titolo e riquadro di /pronto): li cambia il collaudo del grado 3 (collaudo-notifiche-b4.mjs).
+ * Il server espone ferma(motivo), per i fermi decisi fuori dalle verifiche (per esempio la sorveglianza della rete del grado 3).
  */
-export function serverAccesso({ portaApp, preliminare = false, prerequisiti = async () => ({ ok: true }), accedi, verifica = async () => ({ voci: [] }), finali = async () => [], alFermo = () => {} }) {
+export function serverAccesso({ portaApp, preliminare = false, prerequisiti = async () => ({ ok: true }), accedi, verifica = async () => ({ voci: [] }), finali = async () => [], alFermo = () => {}, utenti: elenco = UTENTI_COLLAUDO, pagina = PAGINA_B4 }) {
   const codice = randomBytes(24).toString("base64url");
   const stato = { usati: new Set(), riusciti: new Set(), inCorso: false, fermo: null, finali: null, voci: [], extra: {} };
-  const utenti = new Map(UTENTI_COLLAUDO.map((u) => [percorsoAccesso(u.email), u]));
+  const utenti = new Map(elenco.map((u) => [percorsoAccesso(u.email), u]));
   const base = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY" };
   const ferma = (motivo) => {
     if (stato.fermo) return;
@@ -803,7 +819,7 @@ export function serverAccesso({ portaApp, preliminare = false, prerequisiti = as
         "Content-Type": "text/html; charset=utf-8",
         "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' http://${SOLO_LOCALE}:${portaApp}; frame-ancestors 'none'; base-uri 'none'`,
       });
-      risposta.end(paginaPronto({ portaApp, preliminare, codice, stato }));
+      risposta.end(paginaPronto({ portaApp, preliminare, codice, stato, utenti: elenco, pagina }));
       return;
     }
     const utente = utenti.get(percorso);
@@ -823,7 +839,7 @@ export function serverAccesso({ portaApp, preliminare = false, prerequisiti = as
 
     if (!utente) {
       // verifiche finali: dopo il passo 4, una volta
-      if (!stato.riusciti.has(percorsoAccesso(UTENTI_COLLAUDO[UTENTI_COLLAUDO.length - 1].email))) return testo(409, "Le verifiche finali vengono dopo il passo 4.");
+      if (!stato.riusciti.has(percorsoAccesso(elenco[elenco.length - 1].email))) return testo(409, "Le verifiche finali vengono dopo il passo " + elenco[elenco.length - 1].passo + ".");
       if (stato.finali !== null) return testo(410, "Verifiche finali già eseguite.");
       stato.finali = "in corso";
       stato.inCorso = true;
@@ -832,14 +848,14 @@ export function serverAccesso({ portaApp, preliminare = false, prerequisiti = as
         registra(voci);
         stato.finali = "fatte";
         console.log("Verifiche finali eseguite.");
-        return html(stato.fermo ? 423 : 200, paginaEsito(stato.fermo ? "COLLAUDO FERMATO" : "Verifiche finali", voci.map(rigaVoce)));
+        return html(stato.fermo ? 423 : 200, paginaEsito(stato.fermo ? "COLLAUDO FERMATO" : "Verifiche finali", voci.map(rigaVoce), pagina));
       } finally {
         stato.inCorso = false;
       }
     }
 
-    const i = UTENTI_COLLAUDO.indexOf(utente);
-    const mancante = UTENTI_COLLAUDO.slice(0, i).find((x) => !stato.riusciti.has(percorsoAccesso(x.email)));
+    const i = elenco.indexOf(utente);
+    const mancante = elenco.slice(0, i).find((x) => !stato.riusciti.has(percorsoAccesso(x.email)));
     if (mancante) return testo(409, `Prima va completato il passo ${mancante.passo} (${nomeUtente(mancante.email)}).`);
     if (stato.usati.has(percorso)) return testo(410, "Accesso già usato per questo utente: ne serve uno nuovo con una nuova autorizzazione.");
     stato.inCorso = true;
@@ -871,7 +887,7 @@ export function serverAccesso({ portaApp, preliminare = false, prerequisiti = as
       }
       sessione.accessToken = null;
       Object.assign(stato.extra, esito.extra ?? {});
-      if (!registra(esito.voci)) return html(423, paginaEsito("COLLAUDO FERMATO", [stato.fermo, "Il browser NON è entrato nell'app. Nessun altro clic."]));
+      if (!registra(esito.voci)) return html(423, paginaEsito("COLLAUDO FERMATO", [stato.fermo, "Il browser NON è entrato nell'app. Nessun altro clic."], pagina));
       const nuovi = new Set(sessione.cookie.map((c) => c.name));
       const vecchi = nomiCookie(richiesta.headers.cookie).filter((n) => (n === COOKIE_SESSIONE || n.startsWith(`${COOKIE_SESSIONE}.`)) && !nuovi.has(n));
       risposta.writeHead(303, {
@@ -887,6 +903,7 @@ export function serverAccesso({ portaApp, preliminare = false, prerequisiti = as
     }
   });
   server.stato = stato;
+  server.ferma = ferma;
   return server;
 }
 
