@@ -462,6 +462,28 @@ async function provaLottoPvl(): Promise<void> {
   controlla("difetto lotto (PVL): la proroga del SOLO lotto BD920D7140 dentro la rettifica dichiarata porta l'email (registrata anche dal motore di unione)", !!r && r.tipo === "proroga" && r.notifica_email === true && r.affidabilita === "avviso_ufficiale" && r.id_fonte === bNuovo.meta.idAvviso, diLotto);
   controlla("lotti (PVL): nessuna riga per i lotti che non cambiano", diLotto.length === 1, diLotto.map((a) => a.campo));
   controlla("lotti (PVL): nessuna riga del registro viola il vincolo della 0123", mem.tabelle.radar_aggiornamenti.every((a) => !a.notifica_email || (a.notificabile && ["rettifica", "proroga", "annullamento"].includes(String(a.tipo)) && ["avviso_ufficiale", "confronto_versioni"].includes(String(a.affidabilita)))));
+
+  // giro di recupero con DUE versioni nella stessa pagina: la rettifica (proroga del lotto) e una versione successiva SINTETICA con un lotto in
+  // meno (lotti non allineati) → i lotti non si scrivono, quindi il motore di unione non scrive righe di lotto (il registro dice solo ciò che
+  // l'archivio mostra); restano solo le righe del rilevamento PVL, come evidenza
+  const terza = JSON.parse(JSON.stringify(reale).split("781699-2026").join("781700-2026")) as Avviso;
+  terza.idAvviso = "00000000-0000-4000-8000-000000000003";
+  terza.dataPubblicazione = "2026-11-12T07:00:00.000+00:00";
+  const sezioneTerza = (((terza.templates as Record<string, unknown>[])[0].template ?? {}) as { sections: { name: string; items?: Record<string, unknown>[] }[] }).sections.find((s) => s.name.startsWith("SEZ. C"));
+  if (sezioneTerza?.items) sezioneTerza.items = sezioneTerza.items.filter((x) => x.cig !== "BD920D8213");
+  const bTerza = bando(terza);
+  const memR = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+  await applicaPaginaBandiPvl(memR.client, [bPrec], "incrementale", new Date("2026-11-03T08:00:00Z"), misure(), statisticheVuote(), { evidenza: true, grezzi: new Map([[bPrec.meta.idAvviso, precedente]]) });
+  await applicaPaginaBandiPvl(memR.client, [bNuovo, bTerza], "incrementale", new Date("2026-11-13T08:00:00Z"), misure(), statisticheVuote(), {
+    evidenza: true,
+    grezzi: new Map<string, unknown>([[bNuovo.meta.idAvviso, reale], [bTerza.meta.idAvviso, terza]]),
+  });
+  const pid = String(memR.tabelle.radar_procedure[0]?.id);
+  const l7140 = memR.tabelle.radar_lotti.find((x) => x.procedura_id === pid && x.cig === "BD920D7140");
+  controlla("lotti (PVL): lotti non allineati in una versione della pagina → archivio dei lotti invariato e nessuna riga di lotto del motore di unione", l7140?.scadenza_giorno === "2026-12-04" && !memR.tabelle.radar_aggiornamenti.some((a) => String(a.campo).startsWith("scadenza_offerte@") && a.id_fonte === bTerza.meta.idAvviso), {
+    lotto: l7140?.scadenza_giorno,
+    registro: memR.tabelle.radar_aggiornamenti.map((a) => `${a.tipo}:${a.campo}:${a.id_fonte}:${a.notifica_email}`),
+  });
 }
 
 // Sintel: righe SINTETICHE (stessa forma della verifica B2-0), un lotto per riga
@@ -537,19 +559,6 @@ async function provaSintel(): Promise<void> {
     await giornoSintel(mem, [rigaSintel({})], "2026-11-10");
     await giornoSintel(mem, [rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-10");
     controlla("Sintel: due letture nello stesso giorno (stessa versione) → nessuna riga di lotto", !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), righeRegistro(mem));
-  }
-  // due versioni della stessa gara nella STESSA pagina: la prima proroga il lotto 12, la seconda ha un lotto nuovo (non allineata) → i lotti
-  // non si scrivono, quindi nessuna riga di lotto (il registro dice solo ciò che l'archivio mostra)
-  {
-    const mem = memoriaVuota();
-    await giornoSintel(mem, [lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-15")], "2026-11-10");
-    const pagina = [
-      ...bandiSintel([lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-22")], "2026-11-11"),
-      ...bandiSintel([lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-22"), lottoSintel("13", "PRV0000013", "2026-12-22")], "2026-11-12"),
-    ];
-    await applicaPaginaBandiRegionali(mem.client, pagina, { fonte: "sintel", modo: "incrementale", adesso: new Date("2026-11-12T08:00:00Z"), misure: misure(), stat: statisticheRegionaliVuote(), nascoste: new Set(), proponi: false, evidenza: true });
-    const pid = String(mem.tabelle.radar_procedure[0]?.id);
-    controlla("Sintel: lotti non allineati in una versione della pagina → archivio dei lotti invariato e nessuna riga di lotto", lottoDi(mem, pid, "SINTEL-12")?.scadenza_giorno === "2026-12-15" && !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), { lotti: mem.tabelle.radar_lotti.map((l) => `${l.numero_lotto}:${l.scadenza_giorno}`), registro: righeRegistro(mem) });
   }
   // senza l'evidenza: nessuna riga di lotto, registro come prima
   {
