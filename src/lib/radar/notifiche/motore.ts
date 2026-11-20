@@ -803,7 +803,7 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
 
   let eventi: Conteggi | { saltata: string };
   // UNA lettura dei giri di oggi serve a tutte e due le fasi: c'è già un giro «eventi» riuscito? c'è già il battito «invio» (N7)?
-  const diOggi = controlla<{ fase: string; esito: string }[]>("giri di oggi", await d.admin.from(T.giri).select("fase, esito").eq("giorno_roma", oggi).limit(500));
+  const diOggi = controlla<{ fase: string; esito: string }[]>("giri di oggi", await d.admin.from(T.giri).select("fase, esito").in("fase", ["eventi", "invio"]).eq("giorno_roma", oggi).limit(500));
   if (diOggi.some((g) => g.fase === "eventi" && g.esito === "riuscito")) {
     eventi = { saltata: "gia_eseguita_oggi" };
   } else {

@@ -216,11 +216,9 @@ class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | null }>
         scritte.push(esistente);
         continue;
       }
+      // come PostgREST (ON CONFLICT sulle SOLE colonne indicate): un doppione su un'altra chiave unica è un errore, non si ignora
       const e = vincoli(this.db, this.tabella, completa, null);
-      if (e) {
-        if (this.op === "upsert" && this.opzioni.ignoreDuplicates && e.code === "23505") continue;
-        return { data: null, error: e };
-      }
+      if (e) return { data: null, error: e };
       righe.push(completa);
       scritte.push(completa);
     }
@@ -473,6 +471,17 @@ async function principale(): Promise<void> {
   const richiesteVuoto = m.db.conta() - richiestePrimaDelSecondo;
   controlla("passaggio vuoto (N7): ≤ 3 richieste e nessun giro «invio» in più dopo il battito", richiesteVuoto <= 3 && m.db.t("radar_notifiche_giri").filter((g) => g.fase === "invio").length === 1, { richiesteVuoto });
 
+  // ───── 3-bis. fase «eventi» caduta prima della chiusura e rifatta lo stesso giorno: chiavi uniche, nessun doppione ─────
+  {
+    const k = mondo();
+    await eseguiPassaggio(k.d);
+    const n = { e: eventi(k).length, c: consegne(k).length, p: k.provider.consegnate.length };
+    for (const g of k.db.t("radar_notifiche_giri")) if (g.fase === "eventi") Object.assign(g, { esito: "fallito", errore: "processo_caduto" });
+    k.ora.t = new Date("2026-10-20T06:00:00Z");
+    const e = await eseguiPassaggio(k.d);
+    controlla("fase «eventi» rifatta dopo una caduta: 0 eventi, 0 consegne, 0 email in più", e.eseguito && !("saltata" in e.eventi) && eventi(k).length === n.e && consegne(k).length === n.c && k.provider.consegnate.length === n.p && n.e > 0, { prima: n, e });
+  }
+
   // ───── 4. proroga TED e la stessa notizia dalla PVL: un solo evento, i promemoria della vecchia scadenza annullati ─────
   m.db.t("omnia_ai_radar_email_consegne").push(); // nulla
   const vecchia = "2026-10-30T11:00:00Z", nuova = "2026-11-06T11:00:00Z";
@@ -532,8 +541,34 @@ async function principale(): Promise<void> {
   // ───── 14. simulazione di 10 giorni (con il cambio d'ora del 25/10/2026) ─────
   await provaSimulazione();
 
-  // ───── 15. testo dei file ─────
+  // ───── 15. testo dei file e rotta ─────
   provaTesto();
+  await provaRotta();
+}
+
+async function provaRotta(): Promise<void> {
+  const { GET } = await import("../src/app/api/cron/radar-promemoria/route");
+  const salvato = { segreto: process.env.CRON_SECRET, email: process.env.RADAR_NOTIFICHE_EMAIL };
+  try {
+    delete process.env.RADAR_NOTIFICHE_EMAIL;
+    process.env.CRON_SECRET = "segreto-di-prova-sintetico";
+    const richiesta = (h: Record<string, string>) => ({ headers: new Headers(h) }) as unknown as Parameters<typeof GET>[0];
+    const senza = await GET(richiesta({}));
+    controlla("rotta: senza il segreto del cron → 401", senza.status === 401);
+    const sbagliato = await GET(richiesta({ authorization: "Bearer altro" }));
+    controlla("rotta: segreto sbagliato → 401", sbagliato.status === 401);
+    const giusto = await GET(richiesta({ authorization: "Bearer segreto-di-prova-sintetico" }));
+    const corpo = (await giusto.json()) as { eseguito?: boolean; motivo?: string };
+    controlla("rotta: segreto giusto e interruttore spento → nessun passaggio («spento»)", giusto.status === 200 && corpo.eseguito === false && corpo.motivo === "spento", corpo);
+    delete process.env.CRON_SECRET;
+    const vuoto = await GET(richiesta({ authorization: "Bearer undefined" }));
+    controlla("rotta: senza CRON_SECRET impostato nessuna chiamata passa", vuoto.status === 401);
+  } finally {
+    if (salvato.segreto === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = salvato.segreto;
+    if (salvato.email === undefined) delete process.env.RADAR_NOTIFICHE_EMAIL;
+    else process.env.RADAR_NOTIFICHE_EMAIL = salvato.email;
+  }
 }
 
 async function provaRiepilogo(): Promise<void> {
@@ -606,6 +641,33 @@ async function provaTetto(): Promise<void> {
   controlla("tetto: al passaggio dopo partono anche loro", di(m, (c) => c.destinatario_id === I1 && c.stato === "in_coda").length === 0);
   controlla("tetto: email consegnate a I1 nei due passaggi = 18 (15 singole + 1 raggruppata, poi i 2 promemoria non urgenti)", m.provider.consegnate.filter((x) => x.a === "titolare1@prova.test").length === 18);
   controlla("tetto: nessuna consegna inclusa partita da sola", incluse.every((c) => !m.provider.consegnate.some((x) => x.chiave === `omnia-radar/${c.id}`)));
+  // l'email raggruppata, ritentata dopo una caduta della rete, ha lo STESSO contenuto (la chiave di idempotenza lo pretende)
+  {
+    const m2 = mondo();
+    for (let i = 0; i < 20; i++) {
+      const g = gara(500 + i, { scadenza_giorno: "2026-10-21", scadenza_offerte: "2026-10-21T09:00:00Z", scadenza_ora_indicata: true });
+      m2.db.t("radar_procedure").push(g);
+      m2.db.t("omnia_ai_radar_salvate").push({ user_id: I1, procedura_id: g.id, aggiunta_id: null, creata_il: "2026-10-01T08:00:00Z" });
+    }
+    const originale = m2.provider.invia.bind(m2.provider);
+    let cadute = 0;
+    m2.d.provider = {
+      nome: "finto",
+      quotaResidua: () => null,
+      invia: async (x) => {
+        const r = await originale(x);
+        if (x.tags.some((t) => t.value === "raggruppamento") && cadute++ === 0) return { esito: "riprova", codice: "rete", attesaSecondi: null, dopoInvio: true };
+        return r;
+      },
+    };
+    await eseguiPassaggio(m2.d);
+    const raggr = di(m2, (c) => c.tipo_consegna === "raggruppata" && c.destinatario_id === I1);
+    controlla("raggruppata: dopo la caduta della rete resta in coda (nessuna perdita)", raggr.length === 1 && raggr[0].stato === "in_coda", raggr.map((c) => c.stato));
+    m2.ora.t = new Date("2026-10-20T05:40:00Z");
+    await eseguiPassaggio(m2.d);
+    const dopo = di(m2, (c) => c.tipo_consegna === "raggruppata" && c.destinatario_id === I1);
+    controlla("raggruppata: il nuovo tentativo ha lo stesso contenuto (inviata, non «esito_incerto») e nessuna email doppia", dopo.length === 1 && dopo[0].stato === "inviata" && new Set(m2.provider.consegnate.map((x) => x.chiave)).size === m2.provider.consegnate.length, dopo.map((c) => [c.stato, c.motivo]));
+  }
   // pianoInvioCompleto: il riepilogo non entra mai in un raggruppamento
   const coda: ConsegnaInCoda[] = [...Array.from({ length: 16 }, (_, i) => ({ id: `u${i}`, tipo: "scadenza_1" as TipoEvento, creataIl: "2026-10-20T05:00:00Z", giornoEvento: "2026-10-20" })), { id: "r", tipo: "riepilogo_opportunita", creataIl: "2026-10-20T05:00:00Z", giornoEvento: "2026-10-20" }];
   const p = pianoInvioCompleto(coda, { oggi: "2026-10-20", ultimoPassaggioDelGiorno: false, quotaResidua: null });
