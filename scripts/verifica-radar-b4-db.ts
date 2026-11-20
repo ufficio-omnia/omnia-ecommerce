@@ -35,6 +35,7 @@ import { aggiungiGiorni, giornoRoma, giorniDiCalendario, gruppiScadenza, oraRoma
 import { chiaveRaggruppamento, pianoInvio, PRIORITA_DEL_TIPO, type ConsegnaInCoda } from "../src/lib/radar/notifiche/coda-calcoli";
 import { invioEmailAcceso, statoInvioEmail, VARIABILE_INTERRUTTORE_EMAIL } from "../src/lib/radar/notifiche/interruttore";
 import { dopoIngressoInLista } from "../src/lib/radar/notifiche/ravvicinata";
+import { ambienteDb, fonteAutorizzata, FONTI_RADAR, MOTIVO_ANTEPRIMA, scrittureRadarConsentite } from "../src/lib/radar/ambiente";
 
 // rete bloccata: qualunque fetch fa fallire la verifica
 globalThis.fetch = (async () => {
@@ -347,6 +348,58 @@ const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
     controlla(`interruttore unico: ${JSON.stringify(env)} → ${atteso ? "acceso" : motivo}`, invioEmailAcceso(env) === atteso && (s.acceso ? atteso : !atteso && s.motivo === motivo), s);
   }
   controlla("interruttore unico: la variabile è RADAR_NOTIFICHE_EMAIL", VARIABILE_INTERRUTTORE_EMAIL === "RADAR_NOTIFICHE_EMAIL");
+}
+
+// ---------- 7-sexies. guardia unica delle fonti (L6): fonte × uso × ambiente ----------
+{
+  // la regola di PRIMA (ambiente.ts fino al 19/11), copiata qui come oracolo: per l'importazione la semantica deve restare IDENTICA
+  const vecchia = (fonte: string, env: Record<string, string | undefined>) => {
+    const ambiente = ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL);
+    if (env.VERCEL_ENV === "preview") return { ok: false, ambiente, motivo: MOTIVO_ANTEPRIMA };
+    if (ambiente === "staging") return { ok: true, ambiente };
+    if (fonte === "pvl") return { ok: false, ambiente, motivo: "La PVL è autorizzata solo sullo staging: nessuna scrittura in questo database." };
+    if (fonte !== "ted") return { ok: false, ambiente, motivo: "Le fonti regionali sono autorizzate solo sullo staging: nessuna scrittura in questo database." };
+    if (ambiente === "produzione" && env.VERCEL_ENV === "production") return { ok: true, ambiente };
+    return { ok: false, ambiente, motivo: "Scritture nell'archivio di produzione consentite solo dal deploy di produzione." };
+  };
+  const ambienti: [string, Record<string, string | undefined>][] = [
+    ["staging locale", { NEXT_PUBLIC_SUPABASE_URL: STAGING_URL }],
+    ["staging, deploy di produzione", { NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, VERCEL_ENV: "production" }],
+    ["staging, anteprima", { NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, VERCEL_ENV: "preview" }],
+    ["produzione, deploy di produzione", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" }],
+    ["produzione, computer locale", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL }],
+    ["produzione, anteprima", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "preview" }],
+    ["database sconosciuto, deploy di produzione", { NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co", VERCEL_ENV: "production" }],
+    ["database sconosciuto, locale", { NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co" }],
+    ["nessun database", {}],
+    ["staging scritto con una barra finale", { NEXT_PUBLIC_SUPABASE_URL: `${STAGING_URL}/` }],
+  ];
+  // atteso: [fonte, ambiente] → consentita? (uguale per i due usi)
+  const atteso = (fonte: string, nome: string): boolean => {
+    if (!(FONTI_RADAR as readonly string[]).includes(fonte) || nome.includes("anteprima")) return false;
+    if (nome.startsWith("staging")) return true;
+    return fonte === "ted" && nome === "produzione, deploy di produzione";
+  };
+  let celle = 0;
+  for (const fonte of [...FONTI_RADAR, "manuale", "ted2", ""]) {
+    for (const [nome, env] of ambienti) {
+      for (const uso of ["importazione", "notifiche"] as const) {
+        const p = fonteAutorizzata(fonte, uso, env);
+        celle++;
+        controlla(`fonteAutorizzata(${fonte || "«»"}, ${uso}, ${nome}) = ${atteso(fonte, nome) ? "sì" : "no"}`, p.ok === atteso(fonte, nome) && (p.ok || p.motivo.length > 10), p);
+      }
+      if ((FONTI_RADAR as readonly string[]).includes(fonte)) {
+        const f = fonte as (typeof FONTI_RADAR)[number];
+        controlla(`importazione identica alla regola di prima: ${fonte}, ${nome}`, JSON.stringify(scrittureRadarConsentite(f, env)) === JSON.stringify(vecchia(f, env)), [scrittureRadarConsentite(f, env), vecchia(f, env)]);
+      }
+    }
+  }
+  controlla("matrice completa: 7 fonti × 10 ambienti × 2 usi", celle === 140, celle);
+  controlla("le notifiche dicono «nessuna notifica», l'importazione «nessuna scrittura»", fonteAutorizzata("pvl", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" }).ok === false
+    && /nessuna notifica/.test((fonteAutorizzata("pvl", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL }) as { motivo: string }).motivo));
+  const testoAmbiente = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "ambiente.ts"), "utf8");
+  controlla("ambiente.ts: nessuna variabile RADAR_<FONTE>_PRODUZIONE (arriva con la P2 della PVL)", !/RADAR_[A-Z]+_PRODUZIONE/.test(testoAmbiente.replace(/\/\/.*$/gm, "")));
+  controlla("ambiente.ts: scrittureRadarConsentite è fonteAutorizzata per l'importazione", /return fonteAutorizzata\(fonte, "importazione", env\)/.test(testoAmbiente));
 }
 
 async function provaRavvicinata(): Promise<void> {
