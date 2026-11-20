@@ -27,7 +27,7 @@ import { collegaDoppioniPerAvvisoTed, collegaGare, proponiCollegamenti, type Pro
 import { aperta, notificabile, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import type { ScadenzaTed } from "./fonti/ted-calcoli";
 import type { RecordProcedura } from "./fonti/tipi";
-import { eFonteUnita, unisciLotti, unisciVersione, type FonteUnita, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
+import { cambiamentiDeiLotti, eFonteUnita, unisciLotti, unisciVersione, type FonteUnita, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
 import { evidenzaDellaRiga, type AvvisoDellaModifica, type RigaRegistro } from "./importa-evidenza";
 import type { FotoVersionePvl, ModificaPvl, RilevamentoPvl } from "./modifiche-pvl";
 
@@ -243,6 +243,8 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     lottiPrima: LottoUnito[];
     ultimaVersione: { riga: RigaProcedura; lotti: LottoUnito[] } | null;
     classificazione: ClassificazioneImportata | null;
+    // fase B4: l'ultima versione STRETTAMENTE più recente della gara in questa pagina (le scadenze dei lotti cambiano solo con una di queste)
+    versioneLotti: string | null;
   };
   const stati = new Map<string, Stato>();
   for (const v of [...daApplicare].sort(o.confronta)) {
@@ -273,6 +275,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       lottiPrima: d.proceduraId ? (lottiEsistenti.get(d.proceduraId) ?? []) : [],
       ultimaVersione: null,
       classificazione: null,
+      versioneLotti: null,
     };
     // fonte nascosta su una gara già visibile ai clienti: solo provenienza, nessun dato nella gara mostrata
     if (nascosta && iniziale && visibile(iniziale)) {
@@ -287,6 +290,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     const u = unisciVersione(s.riga, s.provenienza, v.riga, v.versione, iso);
     if (u.campiPresi.length > 0 || u.ultima || !s.riga) s.cambiata = true;
     s.cambiamenti.push(...u.cambiamenti.map((c) => ({ ...c, idFonte: v.idCambiamento })));
+    if (u.piuRecente) s.versioneLotti = v.idCambiamento;
     s.riga = u.riga;
     s.provenienza = u.provenienza;
     const lottiNuovi: LottoUnito[] = v.record.lotti.map((l, i) => ({
@@ -320,6 +324,18 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       if (amb) s.ambiguita.set(amb.chiave, amb);
     }
     stati.set(chiaveGruppo, s);
+  }
+
+  // 3ter) fase B4 (difetto «proroga di un solo lotto», 20/11), SOLO con l'evidenza: le scadenze dei LOTTI cambiate tra i lotti in archivio
+  //       prima di questa pagina e quelli che si scrivono, attribuite all'ultima versione strettamente più recente. Mai se i lotti non si
+  //       scrivono (non allineati): il registro dice solo ciò che l'archivio mostra. Con l'evidenza spenta il registro resta quello di prima.
+  if (o.evidenza) {
+    for (const s of stati.values()) {
+      const v = s.versioneLotti;
+      if (!s.iniziale || !v || s.lottiNonAllineati) continue;
+      const lotti = cambiamentiDeiLotti(s.lottiPrima, s.lotti, fonte, s.cambiamenti.filter((c) => c.idFonte === v));
+      s.cambiamenti.push(...lotti.map((c) => ({ ...c, idFonte: v })));
+    }
   }
 
   // 3bis) fase B2b, SOLO con l'interruttore acceso: classificazione sui dati uniti con i lotti che resteranno in archivio; la colonna

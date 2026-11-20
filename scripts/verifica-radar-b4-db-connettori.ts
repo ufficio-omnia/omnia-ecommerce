@@ -15,8 +15,10 @@ import { fotoDaBandoPvl } from "../src/lib/radar/modifiche-pvl";
 import { leggiAvvisoPvl, type BandoPvl } from "../src/lib/radar/fonti/pvl-calcoli";
 import { eEsclusione, leggiBandoTed } from "../src/lib/radar/fonti/ted-calcoli";
 import { leggiElementoAflink, type BandoAflink } from "../src/lib/radar/fonti/aflink-calcoli";
-import { bandoDaAflink } from "../src/lib/radar/importa-regionali-calcoli";
-import { bandoUnificabileRegionale } from "../src/lib/radar/importa-regionali-pagina";
+import { bandoDaAflink, bandoDaSintel, statisticheRegionaliVuote, type BandoRegionale } from "../src/lib/radar/importa-regionali-calcoli";
+import { applicaPaginaBandiRegionali, bandoUnificabileRegionale } from "../src/lib/radar/importa-regionali-pagina";
+import { leggiProceduraSintel, type BandoSintel, type RigaSintel } from "../src/lib/radar/fonti/sintel-calcoli";
+import { cambiamentiDeiLotti, identificativoLottoStabile, unisciLotti, type LottoUnito } from "../src/lib/radar/unione-calcoli";
 
 globalThis.fetch = (async () => {
   throw new Error("RETE VIETATA nella verifica dei connettori B4");
@@ -339,6 +341,251 @@ async function provaPvl(): Promise<void> {
   controlla("PVL senza evidenza: provenienza senza fotografia e registro senza le colonne della 0123", memS.tabelle.radar_procedure_fonti.every((p) => !("foto" in p)) && memS.tabelle.radar_aggiornamenti.every((a) => !("notifica_email" in a)));
 }
 
+// ═══════════ 6. difetti del 20/11 (Incarico 3): proroga di UN solo lotto e modifiche Sintel ═══════════
+const righeRegistro = (mem: ReturnType<typeof databaseInMemoria>) =>
+  mem.tabelle.radar_aggiornamenti
+    .filter((a) => a.tipo !== "nuova")
+    .map((a) => `${a.tipo}:${a.campo}:${a.notifica_email}`)
+    .sort();
+const lottoArchivio = (procedura_id: string, numero: string, iso: string): RigaMem => ({ procedura_id, numero_lotto: numero, cig: null, oggetto: null, cpv_principale: "90910000", cpv_tutti: ["90910000"], valore_stimato: 1000000, durata_mesi: null, scadenza_giorno: iso.slice(0, 10), scadenza_offerte: iso, scadenza_ora_indicata: true, scadenza_fonte: null, url_documenti: null });
+// gara TED con due lotti in archivio; la gara porta la scadenza PIÙ VICINA tra i lotti (come il lettore TED)
+function memoriaDueLotti(s1: string, s2: string): ReturnType<typeof databaseInMemoria> {
+  const vicina = [s1, s2].sort()[0];
+  return databaseInMemoria({
+    radar_procedure: [garaTed("A", { chiave: "ted:proc-A", n_lotti: 2, scadenza_giorno: vicina.slice(0, 10), scadenza_offerte: vicina })],
+    radar_lotti: [lottoArchivio("A", "LOT-0001", s1), lottoArchivio("A", "LOT-0002", s2)],
+    radar_procedure_fonti: [{ procedura_id: "A", fonte: "ted", id_fonte: "700001-2026", impronta: "imp-700001", id_procedura_fonte: "proc-A", rif_ted: null }],
+    radar_aggiornamenti: [],
+    omnia_ai_radar_gare_aggiunte: [],
+  });
+}
+// avviso TED SINTETICO con due lotti, ore 10:00 di Roma
+const avvisoDueLotti = (numero: string, giorni: [string, string], p: Record<string, unknown> = {}) =>
+  avvisoTed(numero, {
+    "change-reason-code": ["cor-buy"],
+    "title-lot": { ita: ["Pulizia lotto 1 (prova sintetica)", "Pulizia lotto 2 (prova sintetica)"] },
+    "identifier-lot": ["LOT-0001", "LOT-0002"],
+    "main-classification-lot": ["90910000", "90910000"],
+    "estimated-value-lot": ["1000000.00", "1000000.00"],
+    "estimated-value-cur-lot": ["EUR", "EUR"],
+    "deadline-receipt-tender-date-lot": [`${giorni[0]}+01:00`, `${giorni[1]}+01:00`],
+    "deadline-receipt-tender-time-lot": ["10:00:00+01:00", "10:00:00+01:00"],
+    "document-url-lot": ["https://esempio.invalid/documenti/700001", "https://esempio.invalid/documenti/700001"],
+    ...p,
+  });
+const lottoDi = (mem: ReturnType<typeof databaseInMemoria>, procedura: string, numero: string) => mem.tabelle.radar_lotti.find((l) => l.procedura_id === procedura && l.numero_lotto === numero);
+
+async function provaLottoTed(): Promise<void> {
+  const d10 = "2026-12-10T09:00:00.000Z", d15 = "2026-12-15T09:00:00.000Z";
+  // DIFETTO: proroga del solo lotto 2 (la gara, «la più vicina», non cambia). Prima: nessuna riga di scadenza, solo la riga «avviso»
+  {
+    const mem = memoriaDueLotti(d10, d10);
+    await applicaPaginaBandi(mem.client, [bandoTed(avvisoDueLotti("700410-2026", ["2026-12-10", "2026-12-20"]))], "incrementale", ADESSO, misure(), { evidenza: true });
+    const r = righeRegistro(mem);
+    controlla("difetto lotto (TED): la proroga del SOLO lotto 2 è una riga del registro con il lotto, notificabile per email", JSON.stringify(r) === JSON.stringify(["proroga:scadenza_offerte@LOT-0002:true"]), r);
+    const riga = mem.tabelle.radar_aggiornamenti.find((a) => a.campo === "scadenza_offerte@LOT-0002");
+    controlla("difetto lotto (TED): prima e dopo del lotto, avviso ufficiale", !!riga && String(riga.valore_precedente).startsWith("2026-12-10") && String(riga.valore_nuovo).startsWith("2026-12-20") && riga.affidabilita === "avviso_ufficiale" && riga.avviso_ted === "700410-2026", riga);
+    controlla("difetto lotto (TED): l'archivio mostra la nuova scadenza del lotto 2", lottoDi(mem, "A", "LOT-0002")?.scadenza_giorno === "2026-12-20" && lottoDi(mem, "A", "LOT-0001")?.scadenza_giorno === "2026-12-10");
+  }
+  // la stessa versione riletta (stesso numero TED, impronta diversa): non è una modifica, nessuna riga di lotto
+  {
+    const mem = memoriaDueLotti(d10, d10);
+    await applicaPaginaBandi(mem.client, [bandoTed(avvisoDueLotti("700001-2026", ["2026-12-10", "2026-12-20"], { "change-reason-code": [], "notice-version": 1 }))], "incrementale", ADESSO, misure(), { evidenza: true });
+    controlla("lotti (TED): la stessa versione riletta non dà righe di lotto", !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), mem.tabelle.radar_aggiornamenti);
+  }
+  // tutti i lotti cambiano come la gara: basta la riga della gara
+  {
+    const mem = memoriaDueLotti(d10, d10);
+    await applicaPaginaBandi(mem.client, [bandoTed(avvisoDueLotti("700411-2026", ["2026-12-20", "2026-12-20"]))], "incrementale", ADESSO, misure(), { evidenza: true });
+    const r = righeRegistro(mem);
+    controlla("lotti (TED): tutti i lotti prorogati come la gara → solo la riga della gara", JSON.stringify(r) === JSON.stringify(["proroga:scadenza_offerte:true"]), r);
+  }
+  // il lotto più vicino prorogato OLTRE l'altro: la gara passa alla scadenza dell'altro lotto; la riga del lotto dice la proroga vera
+  {
+    const mem = memoriaDueLotti(d10, d15);
+    await applicaPaginaBandi(mem.client, [bandoTed(avvisoDueLotti("700412-2026", ["2026-12-20", "2026-12-15"]))], "incrementale", ADESSO, misure(), { evidenza: true });
+    const r = righeRegistro(mem);
+    controlla("lotti (TED): lotto 1 prorogato oltre il lotto 2 → riga della gara (dal 10 al 15) e riga del lotto 1 (dal 10 al 20)", JSON.stringify(r) === JSON.stringify(["proroga:scadenza_offerte:true", "proroga:scadenza_offerte@LOT-0001:true"]), r);
+  }
+  // un lotto che esce dall'avviso non è una proroga
+  {
+    const mem = memoriaDueLotti(d10, d10);
+    const uno = avvisoTed("700413-2026", { "change-reason-code": ["cor-buy"], "identifier-lot": ["LOT-0001"], "deadline-receipt-tender-date-lot": ["2026-12-10+01:00"] });
+    await applicaPaginaBandi(mem.client, [bandoTed(uno)], "incrementale", ADESSO, misure(), { evidenza: true });
+    controlla("lotti (TED): un lotto che esce dall'avviso non dà righe di lotto", !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), mem.tabelle.radar_aggiornamenti);
+  }
+  // senza l'evidenza: registro come prima e nessuna lettura in più; con l'evidenza UNA lettura in più (i lotti in archivio)
+  {
+    const mem = memoriaDueLotti(d10, d10);
+    const m0 = misure();
+    await applicaPaginaBandi(mem.client, [bandoTed(avvisoDueLotti("700414-2026", ["2026-12-10", "2026-12-20"]))], "incrementale", ADESSO, m0);
+    controlla("lotti (TED) senza evidenza: nessuna riga di lotto, archivio aggiornato come prima", mem.tabelle.radar_aggiornamenti.length === 0 && lottoDi(mem, "A", "LOT-0002")?.scadenza_giorno === "2026-12-20", mem.tabelle.radar_aggiornamenti);
+    const mem1 = memoriaDueLotti(d10, d10);
+    const m1 = misure();
+    await applicaPaginaBandi(mem1.client, [bandoTed(avvisoDueLotti("700414-2026", ["2026-12-10", "2026-12-20"]))], "incrementale", ADESSO, m1, { evidenza: true });
+    // con l'evidenza: UNA lettura in più (i lotti in archivio, a blocchi) e la scrittura del registro, che senza evidenza non c'è perché
+    // non c'è nessuna riga da scrivere
+    controlla("lotti (TED): con l'evidenza una sola lettura in più (lotti in archivio) più la scrittura della riga del lotto", m1.richiesteDb === m0.richiesteDb + 2, { senza: m0.richiesteDb, con: m1.richiesteDb });
+  }
+}
+
+// PVL: la proroga di UN lotto nella rettifica reale del campione (3 lotti con CIG). Prima: la riga del rilevamento c'era, ma senza email
+async function provaLottoPvl(): Promise<void> {
+  const campione = JSON.parse(fs.readFileSync(path.join(RADICE, "scripts/dati/radar-pvl-campione.json"), "utf8")) as { avvisi: Avviso[] };
+  const reale = campione.avvisi.find((a) => typeof a.idAvviso === "string" && a.idAvviso.startsWith("f906425a")) as Avviso;
+  const lotti = (a: Avviso) => ((((a.templates as Record<string, unknown>[])[0].template ?? {}) as { sections: { name: string; items?: Record<string, unknown>[] }[] }).sections.find((s) => s.name.startsWith("SEZ. C"))?.items ?? []);
+  if (!reale || lotti(reale).length !== 3) {
+    controlla("PVL lotto: (preparazione) la rettifica reale con 3 lotti è nel campione", false);
+    return;
+  }
+  // versione precedente SINTETICA: identica, salvo il lotto BD920D7140 che scadeva il 04/12 (la rettifica lo porta al 14/12)
+  const precedente = JSON.parse(JSON.stringify(reale).split("781699-2026").join("781698-2026")) as Avviso;
+  precedente.idAvviso = "00000000-0000-4000-8000-000000000002";
+  precedente.dataPubblicazione = "2026-11-02T07:00:00.000+00:00";
+  precedente.tipo = "avviso";
+  precedente.nuovoAvviso = reale.idAvviso;
+  precedente.tipoNuovoAvviso = "rettifica";
+  precedente.attivo = false;
+  for (const l of lotti(precedente)) if (l.cig === "BD920D7140") l.termine_ricezione = "2026-12-04+01:00";
+  const bando = (a: Avviso) => {
+    const l = leggiAvvisoPvl(a as never);
+    if (l.tipo !== "bando") throw new Error("non è un bando");
+    return l as BandoPvl;
+  };
+  const bPrec = bando(precedente);
+  const bNuovo = bando(reale);
+  const mem = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+  await applicaPaginaBandiPvl(mem.client, [bPrec], "incrementale", new Date("2026-11-03T08:00:00Z"), misure(), statisticheVuote(), { evidenza: true, grezzi: new Map([[bPrec.meta.idAvviso, precedente]]) });
+  await applicaPaginaBandiPvl(mem.client, [bNuovo], "incrementale", new Date("2026-11-05T08:00:00Z"), misure(), statisticheVuote(), { evidenza: true, grezzi: new Map([[bNuovo.meta.idAvviso, reale]]) });
+  const diLotto = mem.tabelle.radar_aggiornamenti.filter((a) => String(a.campo).startsWith("scadenza_offerte@"));
+  const r = diLotto.find((a) => a.campo === "scadenza_offerte@BD920D7140");
+  controlla("difetto lotto (PVL): la proroga del SOLO lotto BD920D7140 dentro la rettifica dichiarata porta l'email (registrata anche dal motore di unione)", !!r && r.tipo === "proroga" && r.notifica_email === true && r.affidabilita === "avviso_ufficiale" && r.id_fonte === bNuovo.meta.idAvviso, diLotto);
+  controlla("lotti (PVL): nessuna riga per i lotti che non cambiano", diLotto.length === 1, diLotto.map((a) => a.campo));
+  controlla("lotti (PVL): nessuna riga del registro viola il vincolo della 0123", mem.tabelle.radar_aggiornamenti.every((a) => !a.notifica_email || (a.notificabile && ["rettifica", "proroga", "annullamento"].includes(String(a.tipo)) && ["avviso_ufficiale", "confronto_versioni"].includes(String(a.affidabilita)))));
+
+  // giro di recupero con DUE versioni nella stessa pagina: la rettifica (proroga del lotto) e una versione successiva SINTETICA con un lotto in
+  // meno (lotti non allineati) → i lotti non si scrivono, quindi il motore di unione non scrive righe di lotto (il registro dice solo ciò che
+  // l'archivio mostra); restano solo le righe del rilevamento PVL, come evidenza
+  const terza = JSON.parse(JSON.stringify(reale).split("781699-2026").join("781700-2026")) as Avviso;
+  terza.idAvviso = "00000000-0000-4000-8000-000000000003";
+  terza.dataPubblicazione = "2026-11-12T07:00:00.000+00:00";
+  const sezioneTerza = (((terza.templates as Record<string, unknown>[])[0].template ?? {}) as { sections: { name: string; items?: Record<string, unknown>[] }[] }).sections.find((s) => s.name.startsWith("SEZ. C"));
+  if (sezioneTerza?.items) sezioneTerza.items = sezioneTerza.items.filter((x) => x.cig !== "BD920D8213");
+  const bTerza = bando(terza);
+  const memR = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+  await applicaPaginaBandiPvl(memR.client, [bPrec], "incrementale", new Date("2026-11-03T08:00:00Z"), misure(), statisticheVuote(), { evidenza: true, grezzi: new Map([[bPrec.meta.idAvviso, precedente]]) });
+  await applicaPaginaBandiPvl(memR.client, [bNuovo, bTerza], "incrementale", new Date("2026-11-13T08:00:00Z"), misure(), statisticheVuote(), {
+    evidenza: true,
+    grezzi: new Map<string, unknown>([[bNuovo.meta.idAvviso, reale], [bTerza.meta.idAvviso, terza]]),
+  });
+  const pid = String(memR.tabelle.radar_procedure[0]?.id);
+  const l7140 = memR.tabelle.radar_lotti.find((x) => x.procedura_id === pid && x.cig === "BD920D7140");
+  controlla("lotti (PVL): lotti non allineati in una versione della pagina → archivio dei lotti invariato e nessuna riga di lotto del motore di unione", l7140?.scadenza_giorno === "2026-12-04" && !memR.tabelle.radar_aggiornamenti.some((a) => String(a.campo).startsWith("scadenza_offerte@") && a.id_fonte === bTerza.meta.idAvviso), {
+    lotto: l7140?.scadenza_giorno,
+    registro: memR.tabelle.radar_aggiornamenti.map((a) => `${a.tipo}:${a.campo}:${a.id_fonte}:${a.notifica_email}`),
+  });
+}
+
+// Sintel: righe SINTETICHE (stessa forma della verifica B2-0), un lotto per riga
+function rigaSintel(p: Record<string, unknown>): RigaSintel {
+  return {
+    id_procedura: "900000002",
+    id_lotto: "N/D",
+    multilotto: "NO",
+    cig: "PRV0000001",
+    codice_cpv: "90910000-9",
+    data_inizio_negoziazione: "2026-11-01T00:00:00.000",
+    data_fine_negoziazione: "2026-12-15T00:00:00.000",
+    modalita_scelta_contraente: "Procedura Aperta",
+    ambito_merceologico: "Procedura per forniture/servizi",
+    stato_procedura: "Pubblicata",
+    stato_lotto: "N/D",
+    accordo_quadro: "NO",
+    valore_economico_procedura: "110000",
+    cf_stazione_appaltante: "00000000001",
+    stazione_appaltante: "COMUNE DI PROVASINTETICA",
+    nome_procedura: "Servizio di pulizia degli uffici comunali (prova sintetica)",
+    link_procedura: { url: "http://www.sintel.regione.lombardia.it/eprocdata/auctionDetail.xhtml?id=900000002" },
+    ...p,
+  };
+}
+const lottoSintel = (id: string, cig: string, fine: string, stato = "Pubblicata") =>
+  rigaSintel({ multilotto: "SI", id_lotto: id, cig, base_asta_lotto: "50000", stato_lotto: stato, nome_lotto: `Lotto ${id} pulizia (prova sintetica)`, data_fine_negoziazione: `${fine}T00:00:00.000` });
+function bandiSintel(righe: RigaSintel[], oggi: string): BandoRegionale[] {
+  const letta = leggiProceduraSintel(String(righe[0].id_procedura), righe, oggi);
+  if ((letta as { tipo: string }).tipo === "esclusione") throw new Error(`procedura Sintel sintetica esclusa: ${JSON.stringify(letta)}`);
+  const b = bandoDaSintel(letta as BandoSintel, oggi);
+  if (!b) throw new Error("procedura Sintel sintetica senza bando");
+  return [b];
+}
+async function giornoSintel(mem: ReturnType<typeof databaseInMemoria>, righe: RigaSintel[], oggi: string): Promise<void> {
+  await applicaPaginaBandiRegionali(mem.client, bandiSintel(righe, oggi), { fonte: "sintel", modo: "incrementale", adesso: new Date(`${oggi}T08:00:00Z`), misure: misure(), stat: statisticheRegionaliVuote(), nascoste: new Set(), proponi: false, evidenza: true });
+}
+const memoriaVuota = () => databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+
+async function provaSintel(): Promise<void> {
+  // DIFETTO, dall'importatore: il lotto 11 si chiude (esce dall'elenco), il lotto 12 è prorogato dal 15/12 al 22/12. Prima: nessuna email
+  {
+    const mem = memoriaVuota();
+    await giornoSintel(mem, [lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-15")], "2026-11-10");
+    await giornoSintel(mem, [lottoSintel("11", "PRV0000011", "2026-12-15", "Chiusa"), lottoSintel("12", "PRV0000012", "2026-12-22")], "2026-11-11");
+    const lotto = mem.tabelle.radar_aggiornamenti.find((a) => a.campo === "scadenza_offerte@PRV0000012");
+    controlla("difetto Sintel: la proroga del lotto 12 è notificabile per email (confronto di versioni)", !!lotto && lotto.tipo === "proroga" && lotto.notifica_email === true && lotto.affidabilita === "confronto_versioni" && lotto.valore_precedente === "2026-12-15" && lotto.valore_nuovo === "2026-12-22", mem.tabelle.radar_aggiornamenti);
+    const garaRiga = mem.tabelle.radar_aggiornamenti.find((a) => a.campo === "scadenza_offerte");
+    controlla("Sintel: la scadenza della GARA che salta in avanti resta «parziale», senza email", !!garaRiga && garaRiga.notifica_email === false && garaRiga.affidabilita === "parziale", garaRiga);
+    controlla("Sintel: nessuna riga per il lotto chiuso", !mem.tabelle.radar_aggiornamenti.some((a) => a.campo === "scadenza_offerte@PRV0000011"));
+    const pid = String(mem.tabelle.radar_procedure[0]?.id);
+    controlla("Sintel: in archivio il lotto chiuso resta com'era, il lotto 12 ha la nuova scadenza", lottoDi(mem, pid, "SINTEL-11")?.scadenza_giorno === "2026-12-15" && lottoDi(mem, pid, "SINTEL-12")?.scadenza_giorno === "2026-12-22", mem.tabelle.radar_lotti);
+  }
+  // falsa proroga: il lotto 11 si chiude e la minima salta dal 15/12 al 20/12, il lotto 12 non cambia → nessuna email
+  {
+    const mem = memoriaVuota();
+    await giornoSintel(mem, [lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-20")], "2026-11-10");
+    await giornoSintel(mem, [lottoSintel("11", "PRV0000011", "2026-12-15", "Chiusa"), lottoSintel("12", "PRV0000012", "2026-12-20")], "2026-11-11");
+    const r = mem.tabelle.radar_aggiornamenti.filter((a) => a.tipo !== "nuova");
+    controlla("Sintel: la falsa proroga (lotto chiuso) è registrata ma MAI email, e nessuna riga di lotto", r.some((a) => a.campo === "scadenza_offerte") && r.every((a) => a.notifica_email === false) && !r.some((a) => String(a.campo).includes("@")), r.map((a) => `${a.tipo}:${a.campo}:${a.notifica_email}`));
+  }
+  // monolotto: la proroga si notifica dalla riga del lotto (la gara resta «parziale»)
+  {
+    const mem = memoriaVuota();
+    await giornoSintel(mem, [rigaSintel({})], "2026-11-10");
+    await giornoSintel(mem, [rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-11");
+    const r = righeRegistro(mem);
+    controlla("difetto Sintel: monolotto prorogato → la riga del lotto porta l'email, quella della gara no", JSON.stringify(r) === JSON.stringify(["proroga:scadenza_offerte:false", "proroga:scadenza_offerte@PRV0000001:true"]), r);
+  }
+  // stessa lettura ripetuta lo stesso giorno: nessuna modifica
+  {
+    const mem = memoriaVuota();
+    await giornoSintel(mem, [rigaSintel({})], "2026-11-10");
+    await giornoSintel(mem, [rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-10");
+    controlla("Sintel: due letture nello stesso giorno (stessa versione) → nessuna riga di lotto", !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), righeRegistro(mem));
+  }
+  // senza l'evidenza: nessuna riga di lotto, registro come prima
+  {
+    const mem = memoriaVuota();
+    const senza = (righe: RigaSintel[], oggi: string) =>
+      applicaPaginaBandiRegionali(mem.client, bandiSintel(righe, oggi), { fonte: "sintel", modo: "incrementale", adesso: new Date(`${oggi}T08:00:00Z`), misure: misure(), stat: statisticheRegionaliVuote(), nascoste: new Set(), proponi: false });
+    await senza([rigaSintel({})], "2026-11-10");
+    await senza([rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-11");
+    controlla("Sintel senza evidenza: nessuna riga di lotto, registro come prima", mem.tabelle.radar_aggiornamenti.some((a) => a.campo === "scadenza_offerte") && !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")) && mem.tabelle.radar_aggiornamenti.every((a) => !("notifica_email" in a)), righeRegistro(mem));
+  }
+  // regole pure (dopo l'importatore: col codice di prima si vedono prima i fallimenti veri)
+  const l = (numero: string, giorno: string | null, iso: string | null = null): LottoUnito => ({ numero_lotto: numero, cig: null, oggetto: null, cpv_principale: null, cpv_tutti: [], valore_stimato: null, durata_mesi: null, scadenza_giorno: giorno, scadenza_offerte: iso, scadenza_ora_indicata: !!iso, scadenza_fonte: null, url_documenti: null });
+  controlla("Sintel: «SINTEL-<id>» è un identificativo stabile, «LOT-0001» no", identificativoLottoStabile("SINTEL-12") && !identificativoLottoStabile("LOT-0001") && !identificativoLottoStabile("SINTEL-12x"));
+  const u = unisciLotti([l("SINTEL-11", "2026-12-15"), l("SINTEL-12", "2026-12-15")], [l("SINTEL-12", "2026-12-22")], "sintel", true);
+  controlla("difetto Sintel: un lotto chiuso esce dall'elenco → i lotti si abbinano per identificativo, l'altro si aggiorna", u.allineati && u.lotti.length === 2 && u.lotti.find((x) => x.numero_lotto === "SINTEL-11")?.scadenza_giorno === "2026-12-15" && u.lotti.find((x) => x.numero_lotto === "SINTEL-12")?.scadenza_giorno === "2026-12-22", u);
+  const nuovoLotto = unisciLotti([l("SINTEL-11", "2026-12-15"), l("SINTEL-12", "2026-12-15")], [l("SINTEL-12", "2026-12-22"), l("SINTEL-13", "2026-12-22")], "sintel", true);
+  controlla("Sintel: con un lotto NUOVO resta la regola di prima (stesso numero di lotti, altrimenti nulla si tocca)", nuovoLotto.allineati === false);
+  controlla("lotti: un solo lotto (non Sintel) → basta la riga della gara", cambiamentiDeiLotti([l("LOT-0001", "2026-12-10")], [l("LOT-0001", "2026-12-20")], "ted", []).length === 0);
+  controlla("lotti: Sintel con un solo lotto → la riga del lotto c'è", JSON.stringify(cambiamentiDeiLotti([l("LOT-0001", "2026-12-10")], [l("LOT-0001", "2026-12-20")], "sintel", []).map((c) => `${c.tipo}:${c.campo}`)) === JSON.stringify(["proroga:scadenza_offerte@LOT-0001"]));
+  controlla("lotti: una scadenza che compare o un lotto che sparisce non sono proroghe", cambiamentiDeiLotti([l("A", null), l("B", "2026-12-10")], [l("A", "2026-12-20")], "sintel", []).length === 0);
+  controlla("lotti: l'ora che sparisce nello stesso giorno non è una modifica; il CIG nel campo se c'è", cambiamentiDeiLotti([l("A", "2026-12-10", "2026-12-10T09:00:00Z"), l("B", "2026-12-10")], [l("A", "2026-12-10"), { ...l("B", "2026-12-12"), cig: "ABCDEFGHIJ" }], "ted", []).map((c) => c.campo).join() === "scadenza_offerte@ABCDEFGHIJ");
+  const aff = (campo: string, prima: string, dopo: string) => affidabilitaDi("sintel", { dichiarazione: null }, { campo, prima, dopo });
+  controlla("difetto Sintel: la scadenza di un LOTTO con il giorno cambiato è «confronto_versioni»", aff("scadenza_offerte@PRV0000012", "2026-12-15", "2026-12-22") === "confronto_versioni");
+  controlla("Sintel: la scadenza della GARA (la minima dei lotti aperti), lo stesso giorno o un altro campo restano «parziale»", aff("scadenza_offerte", "2026-12-15", "2026-12-22") === "parziale" && aff("scadenza_offerte@PRV0000012", "2026-12-15", "2026-12-15") === "parziale" && aff("n_lotti", "2", "1") === "parziale");
+
+}
+
 // ═══════════ 5. testo dei file ═══════════
 function provaTesto(): void {
   const leggi = (f: string) => fs.readFileSync(path.join(RADICE, f), "utf8");
@@ -354,6 +601,9 @@ function provaTesto(): void {
   await provaTed();
   provaSardegna();
   await provaPvl();
+  await provaLottoTed();
+  await provaLottoPvl();
+  await provaSintel();
   provaTesto();
 })()
   .catch((e) => falliti.push(`eccezione: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`))

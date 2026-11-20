@@ -10,7 +10,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { eEsclusione, impronta, type BandoTed, type EsclusioneTed, type EsitoTed, chiaveProceduraTed } from "./fonti/ted-calcoli";
 import { notificabile, piuRecente, rigaDaBando, statoDopoEsito, aperta, type Cambiamento, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
-import { unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
+import { cambiamentiDeiLotti, unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
 import { collegaDoppioniPerAvvisoTed } from "./collegamenti";
 import { ambiguitaTraFonti, classificaPerArchivio, rigaSegnalazioneClassificazione } from "./classificazione-unita";
 import { fontiDellaGara } from "./fonti-gara-calcoli";
@@ -236,13 +236,15 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     avvisi: BandoTed[];
     // la gara è stata raggiunta passando da una gara collegata: i lotti si uniscono a quelli della gara che resta, non si sovrascrivono
     risolta: boolean;
+    // fase B4: almeno una versione STRETTAMENTE più recente di quella in archivio (solo così si confrontano le scadenze dei lotti)
+    piuRecente: boolean;
   };
   const stati = new Map<string, Stato>();
   for (const v of [...daApplicare].sort((a, b) => confronta(a.meta, b.meta))) {
     const iniziale = esistenti.get(v.record.chiaveProcedura) ?? null;
     // una sola unione per gara: due procedure TED che arrivano alla stessa gara (per esempio la gara che resta) si uniscono in sequenza
     const chiave = iniziale?.chiave ?? v.record.chiaveProcedura;
-    const s = stati.get(chiave) ?? { iniziale, riga: iniziale, provenienza: iniziale?.provenienza_campi ?? null, cambiata: false, bando: null, ultimaApplicata: false, cambiamenti: [], avvisi: [], risolta: false };
+    const s = stati.get(chiave) ?? { iniziale, riga: iniziale, provenienza: iniziale?.provenienza_campi ?? null, cambiata: false, bando: null, ultimaApplicata: false, cambiamenti: [], avvisi: [], risolta: false, piuRecente: false };
     if (risolte.has(v.record.chiaveProcedura)) s.risolta = true;
     s.avvisi.push(v);
     // stesse regole di prima per le gare di sola fonte TED (unisciVersione le rispetta); regole di unione se c'è anche la PVL
@@ -254,6 +256,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       s.cambiata = true;
       if (u.ultima || !s.bando) s.bando = v;
       if (u.ultima) s.ultimaApplicata = true;
+      if (u.piuRecente) s.piuRecente = true;
       s.cambiamenti.push(...u.cambiamenti.map((c) => ({ ...c, idFonte: v.meta.numero })));
       // fase B4 (26B §6.2 punto 6), solo con l'evidenza: un avviso UFFICIALE di modifica (codice del motivo) su una gara già in archivio
       // che non cambia nessun campo confrontato diventa una riga «rettifica» con campo «avviso» (l'email rimanda all'avviso, senza supporre)
@@ -330,6 +333,28 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       lottiPvl.set(l.procedura_id, v);
     }
   }
+  // fase B4 (difetto «proroga di un solo lotto», 20/11), SOLO con l'evidenza: i lotti in archivio delle gare di sola fonte TED con una versione
+  // strettamente più recente, per confrontare le scadenze lotto per lotto (oggi la gara porta la scadenza del PRIMO lotto: la proroga di un
+  // lotto successivo non si vedeva). Con le classificazioni accese sono già stati letti (2ter); altrimenti una lettura a blocchi. Con
+  // l'evidenza spenta nessuna lettura in più e il registro resta quello di prima.
+  const lottiArchivio = new Map<string, LottoUnito[]>();
+  if (opzioni.evidenza) {
+    const servono = daScrivere.filter((s) => s.iniziale && s.piuRecente && !(haAltreFonti(s.iniziale) || s.risolta)).map((s) => (s.iniziale as RigaArchivio).id);
+    if (opzioni.classificazioni) for (const id of servono) lottiArchivio.set(id, lottiPrima.get(id) ?? []);
+    for (const b of opzioni.classificazioni ? [] : blocchi(servono, 80)) {
+      const { data } = await misura(misure, "lettura dei lotti da confrontare", () => admin.from("radar_lotti").select(COLONNE_LOTTO).in("procedura_id", b).returns<(LottoUnito & { procedura_id: string; valore_stimato: number | string | null })[]>());
+      for (const l of data ?? []) lottiArchivio.set(l.procedura_id, [...(lottiArchivio.get(l.procedura_id) ?? []), { ...l, valore_stimato: l.valore_stimato === null ? null : Number(l.valore_stimato), cpv_tutti: l.cpv_tutti ?? [] }]);
+    }
+  }
+  const lottiCambiati = (s: Stato, prima: readonly LottoUnito[], dopo: readonly LottoUnito[]): void => {
+    if (!opzioni.evidenza || !s.iniziale || !s.piuRecente || !s.bando) return;
+    const numero = s.bando.meta.numero;
+    const righe = cambiamentiDeiLotti(prima, dopo, "ted", s.cambiamenti.filter((c) => c.idFonte === numero));
+    if (righe.length === 0) return;
+    // l'avviso ufficiale che cambia la scadenza di un lotto non è più «senza campi confrontati»: niente riga «avviso» (26B §6.2 punto 6)
+    s.cambiamenti = s.cambiamenti.filter((c) => !(c.campo === "avviso" && c.idFonte === numero));
+    s.cambiamenti.push(...righe.map((c) => ({ ...c, idFonte: numero })));
+  };
   // classificatore unico (classificazione-unita.ts): sulle gare che hanno anche un'altra fonte si confrontano TED, la gara di prima e i dati
   // uniti; le differenze si segnalano all'amministratore (i settori restano l'unione delle fonti, come prima)
   const segnalazioni: Record<string, unknown>[] = [];
@@ -341,6 +366,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     if (haAltreFonti(s.iniziale) || s.risolta) {
       const u = unisciLotti(lottiPvl.get(id) ?? [], nuovi, "ted", s.ultimaApplicata);
       esito.cigScartati += u.cigScartati;
+      if (u.allineati) lottiCambiati(s, lottiPvl.get(id) ?? [], u.lotti);
       const prima = s.iniziale as RigaArchivio;
       const amb = ambiguitaTraFonti({
         fonte: "ted",
@@ -352,6 +378,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       if (amb) segnalazioni.push(rigaSegnalazioneClassificazione(id, amb));
       return u.lotti.map((l) => ({ ...l, procedura_id: id, aggiornato_il: iso }));
     }
+    if (s.iniziale) lottiCambiati(s, lottiArchivio.get(s.iniziale.id) ?? [], nuovi);
     return nuovi.map((l) => ({ ...l, procedura_id: id, aggiornato_il: iso }));
   });
   const cig = [...new Set(righeLotti.map((l) => l.cig).filter((c): c is string => !!c))];

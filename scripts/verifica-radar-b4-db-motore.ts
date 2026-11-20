@@ -532,6 +532,9 @@ async function principale(): Promise<void> {
   // ───── 11. parametri N1, N6, N7 e conservazione ─────
   await provaParametri();
 
+  // ───── 11bis. difetto del 20/11: proroga di UN solo lotto ─────
+  await provaLotti();
+
   // ───── 12. adattatore Resend (chiuso): classificazione delle risposte ─────
   provaResend();
 
@@ -845,6 +848,41 @@ async function provaRavvicinata(): Promise<void> {
   controlla("ravvicinata: scadenza a 10 giorni → nessun avviso", r4.esito === "non_dovuta", r4);
 }
 
+// Difetto del 20/11 (Incarico 3): la proroga di UN solo lotto arriva all'email con il suo lotto anche senza CIG (TED «LOT-0001»); lo
+// spostamento della scadenza «più vicina» della gara non apre una seconda serie; lo stesso lotto da TED (numero) e PVL (CIG) compare una volta
+async function provaLotti(): Promise<void> {
+  const m = mondo();
+  m.db.t("radar_procedure").push(
+    // dopo l'avviso: lotto 1 dal 05/11 al 20/11, lotto 2 fermo al 10/11; la gara («la più vicina») passa dal 05/11 al 10/11
+    gara(6, { scadenza_giorno: "2026-11-10", scadenza_offerte: "2026-11-10T10:00:00Z", scadenza_ora_indicata: true }),
+    gara(7, { scadenza_giorno: "2026-11-25", scadenza_offerte: "2026-11-25T10:00:00Z", scadenza_ora_indicata: true, fonti: ["ted", "pvl"] }),
+  );
+  m.db.t("radar_lotti").push(
+    { procedura_id: U(106), numero_lotto: "LOT-0001", oggetto: "Lotto 1 (sintetico)", cig: null, scadenza_giorno: "2026-11-20", scadenza_offerte: "2026-11-20T10:00:00Z", scadenza_ora_indicata: true },
+    { procedura_id: U(106), numero_lotto: "LOT-0002", oggetto: "Lotto 2 (sintetico)", cig: null, scadenza_giorno: "2026-11-10", scadenza_offerte: "2026-11-10T10:00:00Z", scadenza_ora_indicata: true },
+    { procedura_id: U(107), numero_lotto: "LOT-0001", oggetto: "Lotto 1 (sintetico)", cig: "BBBBBBBBB1", scadenza_giorno: "2026-11-25", scadenza_offerte: "2026-11-25T10:00:00Z", scadenza_ora_indicata: true },
+    { procedura_id: U(107), numero_lotto: "LOT-0002", oggetto: "Lotto 2 (sintetico)", cig: "BBBBBBBBB2", scadenza_giorno: "2026-11-30", scadenza_offerte: "2026-11-30T10:00:00Z", scadenza_ora_indicata: true },
+  );
+  m.db.t("omnia_ai_radar_salvate").push({ user_id: I1, procedura_id: U(106), aggiunta_id: null, creata_il: "2026-10-15T08:00:00Z" }, { user_id: I1, procedura_id: U(107), aggiunta_id: null, creata_il: "2026-10-15T08:00:00Z" });
+  const riga = (n: number, p: Record<string, unknown>) => ({ id: U(n), tipo: "proroga", notificabile: true, notifica_email: true, avviso_url: null, avviso_pubblicato_il: "2026-10-19", dichiarazione_fonte: "cor-buy", affidabilita: "avviso_ufficiale", rilevato_il: "2026-10-19T09:00:00Z", avviso_ted: null, ...p });
+  m.db.t("radar_aggiornamenti").push(
+    riga(410, { procedura_id: U(106), campo: "scadenza_offerte", valore_precedente: "2026-11-05T10:00:00Z", valore_nuovo: "2026-11-10T10:00:00Z", fonte: "ted", id_fonte: "700900-2026" }),
+    riga(411, { procedura_id: U(106), campo: "scadenza_offerte@LOT-0001", valore_precedente: "2026-11-05T10:00:00Z", valore_nuovo: "2026-11-20T10:00:00Z", fonte: "ted", id_fonte: "700900-2026" }),
+    riga(412, { procedura_id: U(107), campo: "scadenza_offerte@LOT-0001", valore_precedente: "2026-11-15T10:00:00Z", valore_nuovo: "2026-11-25T10:00:00Z", fonte: "ted", id_fonte: "700901-2026" }),
+    riga(413, { procedura_id: U(107), campo: "scadenza_offerte@BBBBBBBBB1", valore_precedente: "2026-11-15T10:00:00Z", valore_nuovo: "2026-11-25T10:00:00Z", fonte: "pvl", id_fonte: "pvl-avviso-7", avviso_ted: "700901-2026", affidabilita: "confronto_versioni" }),
+  );
+  await eseguiPassaggio(m.d);
+  type DatiProroga = { cambioScadenza?: { lotti: { numero: string | null; titolo: string | null; cig: string | null }[] } };
+  const proroghe = (n: number) => eventi(m).filter((e) => e.tipo === "proroga" && e.impresa_id === I1 && e.gara_chiave === `p:${U(n)}`);
+  const p6 = proroghe(106);
+  controlla("difetto lotto (motore): UNA proroga, alla nuova scadenza del lotto 1 (nessuna serie per il 10/11 della gara)", p6.length === 1 && p6[0].versione === "scadenza:2026-11-20T10:00:00.000Z", p6.map((e) => e.versione));
+  const lotti6 = (p6[0]?.dati as DatiProroga | undefined)?.cambioScadenza?.lotti ?? [];
+  controlla("difetto lotto (motore): il lotto senza CIG si riconosce dal numero, con il suo titolo", lotti6.length === 1 && lotti6[0].numero === "LOT-0001" && lotti6[0].titolo === "Lotto 1 (sintetico)" && lotti6[0].cig === null, lotti6);
+  const p7 = proroghe(107);
+  const lotti7 = (p7[0]?.dati as DatiProroga | undefined)?.cambioScadenza?.lotti ?? [];
+  controlla("lotti (motore): lo stesso lotto da TED (numero) e PVL (CIG) → un evento con il lotto UNA volta", p7.length === 1 && lotti7.length === 1 && lotti7[0].cig === "BBBBBBBBB1" && lotti7[0].numero === "LOT-0001", { p7: p7.length, lotti7 });
+}
+
 async function provaParametri(): Promise<void> {
   // N1: abbonamento richiesto (proposta) contro non richiesto
   {
@@ -858,7 +896,7 @@ async function provaParametri(): Promise<void> {
     controlla("N1 no: l'impresa riceve comunque (decide solo il Radar attivo e le email accese)", eventi(m2).some((e) => e.impresa_id === I2));
     controlla("N1 no: lo stato dell'abbonamento non si legge nemmeno", !m2.db.richieste.some((r) => r.tabella === "subscriptions"));
   }
-  // N6: compattazione dei riepiloghi a 7 giorni (proposta) contro 30; altri eventi a 30; conservazione 12 mesi
+  // N6: compattazione dei riepiloghi a 7 giorni (proposta, non in uso) contro 30 (in uso, decisione 7); altri eventi a 30; conservazione 12 mesi
   for (const giorni of [7, 30]) {
     const m = mondo({ parametri: { giorniCompattazioneRiepiloghi: giorni } });
     m.db.t("omnia_ai_radar_eventi").push(
@@ -873,6 +911,17 @@ async function provaParametri(): Promise<void> {
     controlla(`N6 = ${giorni}: riepilogo di 8 giorni ${giorni === 7 ? "compattato" : "ancora intero"}`, giorni === 7 ? r8?.dati === null && !!r8?.dati_compattati_il : r8?.dati !== null, r8);
     controlla(`N6 = ${giorni}: gli altri eventi si compattano a 30 giorni`, eventi(m).find((e) => e.id === "s-8")?.dati !== null && eventi(m).find((e) => e.id === "s-40")?.dati === null);
     controlla(`conservazione: eventi e consegne di oltre 12 mesi cancellati`, !eventi(m).some((e) => e.id === "vecchio") && !consegne(m).some((c) => c.id === "c-vecchia"));
+  }
+  // Decisione 7 (approvata): con i parametri IN USO (quelli della rotta) anche i riepiloghi si compattano dopo 30 giorni, non 7
+  {
+    controlla("decisione 7: parametri in uso, riepiloghi e altri eventi compattati a 30 giorni", PARAMETRI_PROPOSTI.giorniCompattazioneRiepiloghi === 30 && PARAMETRI_PROPOSTI.giorniCompattazioneAltri === 30);
+    const m = mondo();
+    const riepilogo = (id: string, giorno: string) => ({ id, impresa_id: I1, categoria: "nuove_opportunita", tipo: "riepilogo_opportunita", gara_chiave: "riepilogo", versione: giorno, stato: "attivo", dati: { x: 1 }, dati_compattati_il: null, creato_il: `${giorno}T05:30:00Z` });
+    m.db.t("omnia_ai_radar_eventi").push(riepilogo("r-8", "2026-10-12"), riepilogo("r-29", "2026-09-21"), riepilogo("r-31", "2026-09-19"));
+    await eseguiPassaggio(m.d);
+    const dati = (id: string) => eventi(m).find((e) => e.id === id)?.dati;
+    controlla("decisione 7: riepiloghi di 8 e 29 giorni ancora interi", dati("r-8") !== null && dati("r-8") !== undefined && dati("r-29") !== null && dati("r-29") !== undefined);
+    controlla("decisione 7: riepilogo di 31 giorni compattato", dati("r-31") === null && !!eventi(m).find((e) => e.id === "r-31")?.dati_compattati_il);
   }
   // N7: con il parametro spento ogni passaggio scrive il suo giro «invio»
   {
