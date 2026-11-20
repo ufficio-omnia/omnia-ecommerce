@@ -86,7 +86,10 @@ const HTTP = /^https?:\/\//;
  * Quanto è affidabile una modifica di questa fonte (26B §6.1, 26C):
  *   - TED: ogni versione è un avviso ufficiale; con il codice del motivo «avviso_ufficiale», altrimenti «confronto_versioni»;
  *   - PVL: «avviso_ufficiale» con la rettifica dichiarata; altrimenti decide il rilevamento PVL (importa-pvl-pagina.ts);
- *   - Sintel: «parziale» finché la scadenza non si confronta lotto per lotto (mai email);
+ *   - Sintel (difetto «modifiche Sintel», 20/11): la scadenza di UN LOTTO (campo «scadenza_offerte@<lotto>», confrontata lotto per lotto
+ *     dal motore di unione) con il giorno davvero cambiato è «confronto_versioni» (26B §6.3: Sintel dà solo il giorno); tutto il resto resta
+ *     «parziale», mai email: la scadenza della GARA (è la minima dei lotti aperti: salta in avanti quando il primo lotto si chiude), gli
+ *     altri campi (Sintel non ne dichiara le modifiche);
  *   - SardegnaCAT: «parziale» (il segnale c'è, i campi no), e comunque fonte nascosta ai clienti;
  *   - un'ora che compare nello stesso giorno: «parziale» (mai email da sola); dentro una modifica DICHIARATA dalla fonte vale come avviso
  *     ufficiale (decisione 15, approvata il 19/11: «si segnala solo dentro una rettifica dichiarata»).
@@ -99,7 +102,12 @@ export function affidabilitaDi(fonte: string, avviso: Pick<AvvisoDellaModifica, 
   }
   if (fonte === "ted") return avviso.dichiarazione ? "avviso_ufficiale" : "confronto_versioni";
   if (fonte === "pvl") return avviso.dichiarazione === "rettifica" ? "avviso_ufficiale" : "confronto_versioni";
-  if (fonte === "sintel" || fonte === "sardegnacat") return "parziale";
+  if (fonte === "sintel") {
+    const lotto = String(cambio.campo ?? "").split("@")[1] ?? "";
+    const giorniCambiati = !!cambio.prima && !!cambio.dopo && GIORNO.test(cambio.prima) && GIORNO.test(cambio.dopo) && cambio.prima !== cambio.dopo;
+    return base === "scadenza_offerte" && lotto !== "" && giorniCambiati ? "confronto_versioni" : "parziale";
+  }
+  if (fonte === "sardegnacat") return "parziale";
   return "non_verificata";
 }
 

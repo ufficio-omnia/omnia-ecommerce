@@ -381,9 +381,13 @@ export const MOTIVO_FONTE: Readonly<Record<string, string>> = {
 
 const FORMATO_IMPORTO = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function campoBase(campo: string | null): { base: string; cig: string | null } {
-  const [base, cig] = String(campo ?? "").split("@");
-  return { base, cig: cig && /^[0-9A-Z]{10}$/.test(cig) ? cig : null };
+const CIG = /^[0-9A-Z]{10}$/;
+/** Il lotto dopo «@» nel campo del registro: il CIG, oppure il numero del lotto della fonte («LOT-0002» di TED, «SINTEL-123» di Sintel). */
+const LOTTO_DEL_CAMPO = /^[0-9A-Za-z][0-9A-Za-z._-]{0,39}$/;
+
+function campoBase(campo: string | null): { base: string; lotto: string | null } {
+  const [base, lotto] = String(campo ?? "").split("@");
+  return { base, lotto: lotto && LOTTO_DEL_CAMPO.test(lotto) ? lotto : null };
 }
 
 /** Una scadenza scritta nel registro (istante se c'era l'ora, altrimenti il giorno) come scadenza nota del contratto. */
@@ -408,17 +412,34 @@ function leggibile(base: string, v: string | null): string | null {
   return v.slice(0, 2000);
 }
 
-function lottiDelCampo(cig: string | null, g: GaraEmail): LottoEmail[] {
-  if (!cig) return [];
+/**
+ * Il lotto della riga, cercato nei lotti dell'archivio per CIG e poi per numero (difetto «proroga di un solo lotto», 20/11: TED e Sintel
+ * non hanno sempre il CIG). Non trovato: solo ciò che dice il campo, mai inventato.
+ */
+function lottiDelCampo(lotto: string | null, g: GaraEmail): LottoEmail[] {
+  if (!lotto) return [];
   const tutti = [...g.scadenze.flatMap((s) => s.lotti), ...g.lottiSenzaScadenza];
-  return [tutti.find((l) => l.cig === cig) ?? { numero: null, titolo: null, cig }];
+  const trovato = tutti.find((l) => l.cig === lotto) ?? tutti.find((l) => l.numero === lotto);
+  if (trovato) return [trovato];
+  return [CIG.test(lotto) ? { numero: null, titolo: null, cig: lotto } : { numero: lotto, titolo: null, cig: null }];
+}
+
+/** Lo stesso lotto una volta sola (TED con il numero e la PVL con il CIG possono dire la stessa proroga dello stesso lotto). */
+function lottiDistinti(lotti: readonly LottoEmail[]): LottoEmail[] {
+  const visti = new Set<string>();
+  return lotti.filter((l) => {
+    const k = `${l.cig ?? ""}|${l.numero ?? ""}`;
+    if (visti.has(k)) return false;
+    visti.add(k);
+    return true;
+  });
 }
 
 function modificaRilevata(r: RigaModifica, g: GaraEmail): ModificaRilevata | null {
-  const { base, cig } = campoBase(r.campo);
+  const { base, lotto } = campoBase(r.campo);
   const e = ETICHETTA_CAMPO[base];
   if (!e) return null;
-  return { campo: e.campo, etichetta: e.etichetta, prima: leggibile(base, r.valore_precedente), dopo: leggibile(base, r.valore_nuovo), lotti: lottiDelCampo(cig, g) };
+  return { campo: e.campo, etichetta: e.etichetta, prima: leggibile(base, r.valore_precedente), dopo: leggibile(base, r.valore_nuovo), lotti: lottiDelCampo(lotto, g) };
 }
 
 /** L'avviso che porta la modifica: «ted:<numero>» (anche quando la PVL cita il numero TED), «<fonte>:<id>», oppure la riga stessa. */
@@ -497,10 +518,20 @@ export function eventiModifica(
         if (diScadenza.length) {
           // una serie per ogni NUOVA scadenza distinta (lotti con la stessa nuova scadenza insieme); gli altri campi dell'avviso vanno con la prima
           const perNuova = new Map<string, RigaModifica[]>();
+          // con righe per LOTTO nello stesso avviso, la riga della GARA (per TED e Sintel la scadenza più vicina tra i lotti) non apre una
+          // serie sua se la sua nuova scadenza non è quella di nessun lotto cambiato: è solo l'effetto dello spostamento di un lotto (un lotto
+          // prorogato oltre un altro), mai una proroga da annunciare (difetto «proroga di un solo lotto», 20/11)
+          const nuoveDeiLotti = new Set(
+            diScadenza.filter((r) => campoBase(r.campo).lotto).flatMap((r) => {
+              const n = scadenzaDaRegistro(r.valore_nuovo);
+              return n ? [versioneScadenza(n)] : [];
+            }),
+          );
           for (const r of diScadenza) {
             const n = scadenzaDaRegistro(r.valore_nuovo);
             if (!n) continue;
             const v = versioneScadenza(n);
+            if (nuoveDeiLotti.size > 0 && !campoBase(r.campo).lotto && !nuoveDeiLotti.has(v)) continue;
             perNuova.set(v, [...(perNuova.get(v) ?? []), r]);
           }
           const altri = tutte.filter((m) => m.campo !== "scadenza");
@@ -508,7 +539,7 @@ export function eventiModifica(
           for (const [v, rr] of [...perNuova.entries()].sort(([a], [b]) => a.localeCompare(b))) {
             const nuova = scadenzaDaRegistro(rr[0].valore_nuovo)!;
             const precedente = scadenzaDaRegistro(rr[0].valore_precedente);
-            const lotti = rr.flatMap((r) => lottiDelCampo(campoBase(r.campo).cig, g.gara));
+            const lotti = lottiDistinti(rr.flatMap((r) => lottiDelCampo(campoBase(r.campo).lotto, g.gara)));
             const tipo = rr.every((r) => r.tipo === "proroga") ? "proroga" : "modifica_scadenza";
             const proprie = rr.map((r) => modificaRilevata(r, g.gara)).filter((m): m is ModificaRilevata => m !== null);
             nuovo(tipo, `scadenza:${v}`, [...proprie, ...(primo ? altri : [])], { precedente, nuova, lotti }, rr[0].id);

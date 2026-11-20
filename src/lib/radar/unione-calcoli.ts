@@ -14,7 +14,7 @@
 //     notizia ripubblicata da un'altra fonte non genera né cambiamenti né notifiche;
 //   - una gara letta da una sola fonte si comporta esattamente come prima (stesse regole di importa-calcoli.ts).
 import { ordinePubblicazione } from "./fonti/ted-calcoli";
-import { cambiamentiTraVersioni, type Cambiamento, type RigaProcedura } from "./importa-calcoli";
+import { cambiamentiTraVersioni, cambioDiScadenza, scadenzaDaValore, type Cambiamento, type RigaProcedura, type Scadenza } from "./importa-calcoli";
 
 // Fase B2a: anche Sintel e SardegnaCAT (e le fonti future) passano da QUESTO motore, nessun altro.
 export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat";
@@ -131,6 +131,9 @@ export type EsitoUnione = {
   provenienza: ProvenienzaCampi;
   // la versione nuova è diventata l'ultima applicata alla gara
   ultima: boolean;
+  // la versione nuova è STRETTAMENTE più recente dell'ultima applicata (non la stessa notizia riletta o ripubblicata da un'altra fonte):
+  // solo così le scadenze dei lotti si confrontano (cambiamentiDeiLotti)
+  piuRecente: boolean;
   // gruppi presi dalla versione nuova (per le statistiche e la scheda)
   campiPresi: string[];
   cambiamenti: Cambiamento[];
@@ -145,7 +148,7 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
   if (!precedente) {
     const provenienza: ProvenienzaCampi = { _versione: pv };
     for (const g of GRUPPI_CAMPI) if (!vuoto(valoreGruppo(nuova, g))) provenienza[g.nome] = pv;
-    return { riga: { ...nuova, ultima_versione_id: idVersione(versione) }, provenienza, ultima: true, campiPresi: Object.keys(provenienza).filter((k) => k !== "_versione"), cambiamenti: [] };
+    return { riga: { ...nuova, ultima_versione_id: idVersione(versione) }, provenienza, ultima: true, piuRecente: false, campiPresi: Object.keys(provenienza).filter((k) => k !== "_versione"), cambiamenti: [] };
   }
 
   const implicita = provenienzaImplicita(precedente);
@@ -264,7 +267,7 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
     riga.ultima_rilevazione_il = adessoIso;
     riga.aggiornata_il = adessoIso;
   }
-  return { riga, provenienza: prov, ultima, campiPresi: presi, cambiamenti };
+  return { riga, provenienza: prov, ultima, piuRecente: confrontoUltima > 0, campiPresi: presi, cambiamenti };
 }
 
 // L'identificativo dell'ultima versione come si conserva nella gara: il numero TED così com'è (compatibile con le gare di B1), le altre fonti
@@ -298,23 +301,41 @@ function stessoImporto(a: number | null, b: number | null): boolean {
 }
 
 /**
+ * Identificativo di lotto STABILE della fonte, lo stesso in ogni lettura: Sintel «SINTEL-<id_lotto>» (sintel-calcoli.ts). I numeri d'ordine
+ * («LOT-0001»…) non lo sono: quando un lotto esce dall'elenco gli altri possono cambiare numero.
+ */
+export function identificativoLottoStabile(numero: string): boolean {
+  return /^SINTEL-\d{1,12}$/.test(numero);
+}
+
+/**
  * I lotti di una versione uniti a quelli già in archivio per la stessa gara. I lotti si abbinano per numero (TED e PVL usano «LOT-0001»…
  * nello stesso ordine); se i valori stimati di due lotti abbinati non coincidono l'abbinamento non è sicuro: i lotti già presenti restano
  * come sono e il CIG della nuova fonte NON si assegna (mai un CIG sul lotto sbagliato).
+ * Fase B4 (26B §6.2 punto 4, difetto «modifiche Sintel», 20/11): con identificativi STABILI su tutti i lotti, e nessun lotto nuovo, i lotti
+ * si abbinano per identificativo anche se il loro numero cambia: un lotto chiuso esce dall'elenco di Sintel e resta in archivio com'era (non
+ * è una proroga), gli altri si aggiornano. Prima, con un lotto in meno, nessun lotto si aggiornava più.
  */
 export function unisciLotti(esistenti: readonly LottoUnito[], nuovi: readonly LottoUnito[], fonteNuova: FonteUnita, versioneNuovaPiuRecente: boolean): EsitoLotti {
   if (esistenti.length === 0) return { lotti: nuovi.map((l) => ({ ...l })), cigScartati: 0, allineati: true };
   const perNumero = new Map(esistenti.map((l) => [l.numero_lotto, l]));
-  const allineati = esistenti.length === nuovi.length && nuovi.every((n) => {
-    const e = perNumero.get(n.numero_lotto);
-    return !!e && stessoImporto(e.valore_stimato, n.valore_stimato);
-  });
+  const perIdentificativo =
+    nuovi.length > 0 && [...esistenti, ...nuovi].every((l) => identificativoLottoStabile(l.numero_lotto)) && nuovi.every((n) => perNumero.has(n.numero_lotto));
+  const allineati =
+    perIdentificativo ||
+    (esistenti.length === nuovi.length &&
+      nuovi.every((n) => {
+        const e = perNumero.get(n.numero_lotto);
+        return !!e && stessoImporto(e.valore_stimato, n.valore_stimato);
+      }));
   if (!allineati) {
     return { lotti: esistenti.map((l) => ({ ...l })), cigScartati: nuovi.filter((l) => l.cig && !esistenti.some((e) => e.cig === l.cig)).length, allineati: false };
   }
   let cigScartati = 0;
   const lotti = esistenti.map((e) => {
-    const n = nuovi.find((x) => x.numero_lotto === e.numero_lotto) as LottoUnito;
+    const n = nuovi.find((x) => x.numero_lotto === e.numero_lotto);
+    // solo per identificativo: il lotto che la versione nuova non elenca più resta com'era
+    if (!n) return { ...e };
     const pvl = fonteNuova === "pvl";
     const out: LottoUnito = { ...e };
     if (n.cig) {
@@ -341,4 +362,49 @@ export function unisciLotti(esistenti: readonly LottoUnito[], nuovi: readonly Lo
     return out;
   });
   return { lotti, cigScartati, allineati: true };
+}
+
+/**
+ * Fonti la cui scadenza della GARA non dice se una scadenza è cambiata davvero: Sintel (è la minima dei lotti ancora aperti, e salta in
+ * avanti quando il primo lotto si chiude). Per queste le righe dei lotti si scrivono sempre, anche con un solo lotto, e solo quelle possono
+ * portare un'email (importa-evidenza.ts, affidabilitaDi).
+ */
+export const FONTI_SCADENZA_PER_LOTTO: readonly FonteUnita[] = ["sintel"];
+
+function stessoValoreDiScadenza(a: Scadenza, b: Scadenza): boolean {
+  if (a.giorno !== b.giorno) return false;
+  if (a.iso && b.iso) return Date.parse(a.iso) === Date.parse(b.iso);
+  return !a.iso && !b.iso;
+}
+
+/**
+ * Fase B4 (difetto «proroga di un solo lotto», 20/11/2026): le scadenze dei LOTTI cambiate tra i lotti in archivio e quelli che si
+ * scrivono, come righe del registro con il lotto nel campo: «scadenza_offerte@<CIG, altrimenti numero del lotto>» (26B A.2, stesso campo del
+ * rilevamento PVL). Chi chiama la usa SOLO con una versione strettamente più recente e SOLO se i lotti si scrivono davvero.
+ *   - si confrontano solo i lotti presenti prima e dopo, con una scadenza in entrambe: un lotto che esce dall'elenco, o una scadenza che
+ *     compare o sparisce, non è una proroga; stessa regola della gara (cambioDiScadenza: istante, ora che sparisce nello stesso giorno);
+ *   - un solo lotto: la riga della gara dice già tutto (salvo FONTI_SCADENZA_PER_LOTTO);
+ *   - più lotti: le righe si omettono solo se TUTTI i lotti cambiano esattamente come la gara (la riga della gara lo dice già); altrimenti
+ *     ogni lotto cambiato ha la sua riga, anche quello che coincide con la gara (stessa regola di modifiche-pvl.ts).
+ */
+export function cambiamentiDeiLotti(prima: readonly LottoUnito[], dopo: readonly LottoUnito[], fonte: FonteUnita, cambiamentiGara: readonly Cambiamento[]): Cambiamento[] {
+  const perNumero = new Map(prima.map((l) => [l.numero_lotto, l]));
+  const scadenza = (l: LottoUnito): Scadenza => ({ giorno: l.scadenza_giorno, iso: l.scadenza_offerte });
+  let comuni = 0;
+  const righe: { cambio: Cambiamento; prima: Scadenza; dopo: Scadenza }[] = [];
+  for (const d of dopo) {
+    const p = perNumero.get(d.numero_lotto);
+    if (!p || !p.scadenza_giorno || !d.scadenza_giorno) continue;
+    comuni++;
+    const cambio = cambioDiScadenza(scadenza(p), scadenza(d), `scadenza_offerte@${d.cig ?? d.numero_lotto}`.slice(0, 60));
+    if (cambio) righe.push({ cambio, prima: scadenza(p), dopo: scadenza(d) });
+  }
+  if (righe.length === 0) return [];
+  if (!FONTI_SCADENZA_PER_LOTTO.includes(fonte)) {
+    if (Math.max(prima.length, dopo.length) <= 1) return [];
+    const gara = cambiamentiGara.find((c) => c.campo === "scadenza_offerte");
+    const comeLaGara = !!gara && righe.length === comuni && righe.every((r) => stessoValoreDiScadenza(r.prima, scadenzaDaValore(gara.prima)) && stessoValoreDiScadenza(r.dopo, scadenzaDaValore(gara.dopo)));
+    if (comeLaGara) return [];
+  }
+  return righe.map((r) => r.cambio);
 }

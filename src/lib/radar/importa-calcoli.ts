@@ -167,18 +167,23 @@ function stessoValore(a: number | null, b: number | null): boolean {
 export function cambiamentiTraVersioni(prima: RigaProcedura, dopo: RigaProcedura): Cambiamento[] {
   const c: Cambiamento[] = [];
   if (dopo.stato === "annullata" && prima.stato !== "annullata") c.push({ tipo: "annullamento", campo: "stato", prima: prima.stato, dopo: "annullata" });
-  const sPrima = { giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte };
-  const sDopo = { giorno: dopo.scadenza_giorno, iso: dopo.scadenza_offerte };
-  if (!stessaScadenza(sPrima, sDopo)) {
-    // proroga: giorno successivo, oppure stesso giorno con un'ora più tarda
-    const proroga = !!sPrima.giorno && !!sDopo.giorno && (sDopo.giorno > sPrima.giorno || (sDopo.giorno === sPrima.giorno && !!sPrima.iso && !!sDopo.iso && Date.parse(sDopo.iso) > Date.parse(sPrima.iso)));
-    c.push({ tipo: proroga ? "proroga" : "rettifica", campo: "scadenza_offerte", prima: valoreScadenza(sPrima), dopo: valoreScadenza(sDopo) });
-  }
+  const s = cambioDiScadenza({ giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte }, { giorno: dopo.scadenza_giorno, iso: dopo.scadenza_offerte }, "scadenza_offerte");
+  if (s) c.push(s);
   if (!stessoValore(prima.valore_stimato, dopo.valore_stimato)) c.push({ tipo: "rettifica", campo: "valore_stimato", prima: testo(prima.valore_stimato), dopo: testo(dopo.valore_stimato) });
   if (oggettoPerConfronto(prima.oggetto) !== oggettoPerConfronto(dopo.oggetto)) c.push({ tipo: "rettifica", campo: "oggetto", prima: prima.oggetto.slice(0, 2000), dopo: dopo.oggetto.slice(0, 2000) });
   if (documentiPerConfronto(prima.url_documenti) !== documentiPerConfronto(dopo.url_documenti)) c.push({ tipo: "rettifica", campo: "url_documenti", prima: prima.url_documenti, dopo: dopo.url_documenti });
   if (prima.n_lotti !== dopo.n_lotti) c.push({ tipo: "rettifica", campo: "n_lotti", prima: String(prima.n_lotti), dopo: String(dopo.n_lotti) });
   return c;
+}
+
+/**
+ * Il cambiamento di UNA scadenza (della gara o di un lotto: il campo lo dice) tra due versioni; null se è la stessa (punti 1 e 2). Proroga:
+ * giorno successivo, oppure stesso giorno con un'ora più tarda; altrimenti rettifica. Una regola sola per la gara e per i lotti.
+ */
+export function cambioDiScadenza(sPrima: Scadenza, sDopo: Scadenza, campo: string): Cambiamento | null {
+  if (stessaScadenza(sPrima, sDopo)) return null;
+  const proroga = !!sPrima.giorno && !!sDopo.giorno && (sDopo.giorno > sPrima.giorno || (sDopo.giorno === sPrima.giorno && !!sPrima.iso && !!sDopo.iso && Date.parse(sDopo.iso) > Date.parse(sPrima.iso)));
+  return { tipo: proroga ? "proroga" : "rettifica", campo, prima: valoreScadenza(sPrima), dopo: valoreScadenza(sDopo) };
 }
 
 // La scadenza di una gara: il giorno e, SOLO se l'ora è indicata, l'istante. Mai un'ora presunta (regola del progetto, migrazione 0102).
