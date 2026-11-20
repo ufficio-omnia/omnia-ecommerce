@@ -1,5 +1,7 @@
 -- 0125 — Tender Intelligence, fase B4: eventi per impresa, coda delle email per destinatario, giri del processo giornaliero, destinatari
--- validi. BOZZA (B2, 26B): non applicata. Additiva e idempotente. Richiede 0092, 0111, 0124.
+-- validi. SQL definitivo proposto per Z4 (B2, documento 44): NON applicata senza l'autorizzazione dell'utente. Additiva e idempotente.
+-- Richiede 0092, 0111, 0124. NON richiede la 0123 (provato applicandola senza, sull'albero dello staging dopo Z2). Contiene anche la colonna
+-- dei giri «nuove_in_sospeso» (difetto 3.3, proposta A approvata il 20/11) e la funzione dello stato del passaggio (O2, documento 44).
 -- Solo il server (service_role) legge e scrive: nessun permesso ai clienti. MAI indirizzi email o testi delle email in queste tabelle
 -- (il testo si ricompone dai dati congelati dell'evento, l'indirizzo si legge al momento dell'invio).
 
