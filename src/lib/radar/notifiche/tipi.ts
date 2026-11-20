@@ -231,6 +231,12 @@ export type GaraRiepilogo = GaraEmail & {
   settori: { settore: string; nome: string; sottocategorie: string[] }[];
   /** motivi leggibili, per esempio «nel tuo profilo: Pulizia › Pulizia di edifici · Lombardia» */
   perche: string[];
+  /**
+   * v2, campo FACOLTATIVO aggiunto il 20/11 (decisione N4 proposta nel rapporto 38): il livello di rilevanza della gara per il profilo
+   * dell'impresa. Il motore lo scrive SEMPRE ed è sempre «A»: il riepilogo contiene solo gare pertinenti (decisione approvata il 19/11), mai
+   * le correlate (B) né le C. Difesa in profondità: il modello può rifiutare una gara che non sia «A». Assente nei dati di prima.
+   */
+  rilevanza?: "A" | "B" | "C";
 };
 
 export type EventoRiepilogo = EventoBase & {
