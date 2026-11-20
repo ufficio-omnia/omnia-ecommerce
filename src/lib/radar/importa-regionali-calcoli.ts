@@ -41,6 +41,8 @@ export type BandoRegionale = {
   tipoAvvisoFonte: string | null;
   pubblicatoIl: string | null;
   mancanti: string[];
+  // fase B4 (26B §6.2 punto 5): che cosa DICHIARA la fonte sulla versione (SardegnaCAT «rettificato»); null se nulla
+  dichiarazione: string | null;
 };
 
 export function bandoDaSintel(b: BandoSintel, oggi: string): BandoRegionale | null {
@@ -64,6 +66,8 @@ export function bandoDaSintel(b: BandoSintel, oggi: string): BandoRegionale | nu
     tipoAvvisoFonte: b.meta.modalita,
     pubblicatoIl: null,
     mancanti: b.mancanti,
+    // Sintel non dichiara rettifiche (solo istantanee giornaliere): mai una dichiarazione
+    dichiarazione: null,
   };
 }
 
@@ -89,6 +93,8 @@ export function bandoDaAflink(b: BandoAflink, oggi: string): BandoRegionale | nu
     tipoAvvisoFonte: b.record.tipoAvviso,
     pubblicatoIl: b.record.dataPubblicazione,
     mancanti: b.mancanti,
+    // il segnale «Bando Rettificato / In Rettifica» del feed non si perde più: arriva al registro come dichiarazione della fonte
+    dichiarazione: b.rettificato ? "rettificato" : null,
   };
 }
 

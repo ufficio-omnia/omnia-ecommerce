@@ -28,6 +28,8 @@ import { aperta, notificabile, type ModoImportazione, type RigaProcedura, type S
 import type { ScadenzaTed } from "./fonti/ted-calcoli";
 import type { RecordProcedura } from "./fonti/tipi";
 import { eFonteUnita, unisciLotti, unisciVersione, type FonteUnita, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
+import { evidenzaDellaRiga, type AvvisoDellaModifica, type RigaRegistro } from "./importa-evidenza";
+import type { FotoVersionePvl, ModificaPvl, RilevamentoPvl } from "./modifiche-pvl";
 
 export type BandoUnificabile = {
   fonte: Exclude<FonteUnita, "ted">;
@@ -67,7 +69,20 @@ export type OpzioniPaginaFonte = {
   // fase B2b: classificazioni della 0121 tenute dentro il giro (interruttore di ambiente.ts, SPENTO di base)
   classificazioni?: boolean;
   nuovoId?: () => string;
+  // fase B4: colonne dell'evidenza (0123) nel registro (interruttore RADAR_REGISTRO_EVIDENZA, SPENTO di base) e, per la PVL, la fotografia
+  // di ogni versione e il rilevamento delle modifiche (modifiche-pvl.ts, collegato da importa-pvl-pagina.ts)
+  evidenza?: boolean;
+  esecuzioneId?: string | null;
+  pvl?: { foto: ReadonlyMap<string, FotoVersionePvl>; rilevamenti: ReadonlyMap<string, RilevamentoPvl> };
 };
+
+/** Il campo del registro per una modifica del rilevamento PVL (stessi nomi del motore di unione; il lotto dopo «@»). */
+export function campoRegistroPvl(m: Pick<ModificaPvl, "campo" | "lotto">): string {
+  if (m.campo === null) return "avviso";
+  if (m.campo === "scadenza") return "scadenza_offerte";
+  if (m.campo === "scadenza_lotto") return `scadenza_offerte@${m.lotto ?? ""}`.slice(0, 60);
+  return m.campo.slice(0, 60);
+}
 
 type Via = "procedura" | "ted" | "cig" | "nuova";
 type Destinazione = { proceduraId: string | null; via: Via; conflitto: boolean; tedPresente: boolean; suCollegata: boolean };
@@ -422,6 +437,8 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       id_procedura_fonte: v.idProcedura,
       rif_ted: v.rifTed,
       aggiornato_il: iso,
+      // fase B4 (0123), solo con l'evidenza: la fotografia della versione PVL, per confrontare versione con versione nei giri successivi
+      ...(o.evidenza && fonte === "pvl" ? { foto: o.pvl?.foto.get(v.idAvviso) ?? null } : {}),
     });
     return [...s.avvisi.map((v) => riga(v, true)), ...s.nonApplicati.map((v) => riga(v, false))];
   });
@@ -452,6 +469,43 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
         notificabile: !nascosta && modo === "incrementale" && !s.iniziale?.unita_a && (eraAperta || aperta(r.stato, sc, adesso)),
       });
     }
+    // fase B4 (26B A.5), PVL con l'evidenza: le modifiche del rilevamento PVL. Una modifica che il motore di unione ha registrato (stesso tipo,
+    // campo e avviso) porta la sua evidenza su quella riga; le altre restano evidenza SENZA email (notificabile falso); una rettifica dichiarata
+    // senza cambiamenti letti è la riga «avviso» (avviso ufficiale), notificabile come le altre righe della gara
+    if (o.evidenza && fonte === "pvl" && o.pvl) {
+      const notificabileGara = !nascosta && modo === "incrementale" && !s.iniziale?.unita_a && (eraAperta || aperta(r.stato, sc, adesso));
+      for (const v of s.avvisi) {
+        const ril = o.pvl.rilevamenti.get(v.idAvviso);
+        if (!ril) continue;
+        const mods: ModificaPvl[] = ril.confrontabili
+          ? ril.modifiche
+          : ril.rettificaDichiarata
+            ? [{ tipo: "rettifica", categoria: "rettifica", campo: null, lotto: null, prima: null, dopo: null, affidabilita: "affidabile", notificabile: true, motivo: "Rettifica dichiarata dalla fonte, senza una versione precedente da confrontare" }]
+            : [];
+        for (const m of mods) {
+          const campo = campoRegistroPvl(m);
+          // dentro una rettifica DICHIARATA dalla fonte una modifica notificabile vale come avviso ufficiale (anche l'ora che compare nello stesso
+          // giorno: decisione 15 del 19/11); fuori, «parziale» resta parziale (mai email)
+          const affidabilita = m.notificabile && ril.rettificaDichiarata ? "avviso_ufficiale" : m.affidabilita === "parziale" ? "parziale" : ril.rettificaDichiarata ? "avviso_ufficiale" : "confronto_versioni";
+          const esistente = righe.find((x) => x.tipo === m.tipo && x.campo === campo && x.id_fonte === v.idCambiamento);
+          const pvl = { affidabilitaPvl: affidabilita, notificabilePvl: m.notificabile, notaPvl: m.motivo };
+          if (esistente) Object.assign(esistente, pvl);
+          else
+            righe.push({
+              procedura_id: id,
+              tipo: m.tipo,
+              campo,
+              valore_precedente: m.prima,
+              valore_nuovo: m.dopo,
+              fonte,
+              id_fonte: v.idCambiamento,
+              // solo la riga «avviso» è notificabile da sola: le altre il motore di unione non le ha registrate (A.5)
+              notificabile: campo === "avviso" && notificabileGara,
+              ...pvl,
+            });
+        }
+      }
+    }
     // classificazioni diverse tra le fonti: segnalazione per l'amministratore, mai notificabile, mai mostrata ai clienti
     for (const a of s.ambiguita.values()) righe.push(rigaSegnalazioneClassificazione(id, a));
     esito.ambiguita += s.ambiguita.size;
@@ -462,6 +516,51 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     }
     return righe;
   });
+  // fase B4 (0123), solo con l'evidenza: le colonne dell'avviso su OGNI riga di questa scrittura (stesse colonne per tutte)
+  if (o.evidenza) {
+    const perAvviso = new Map<string, BandoUnificabile>();
+    const precedente = new Map<string, string | null>();
+    for (const s of stati.values()) {
+      for (const v of s.avvisi) perAvviso.set(v.idCambiamento, v);
+      const id = ids.get(s.chiaveGruppo);
+      if (id) precedente.set(id, s.iniziale?.ultima_versione_id ?? null);
+    }
+    for (let i = 0; i < righeAggiornamenti.length; i++) {
+      const { affidabilitaPvl, notificabilePvl, notaPvl, ...r } = righeAggiornamenti[i] as Record<string, unknown> & { affidabilitaPvl?: string; notificabilePvl?: boolean; notaPvl?: string };
+      const riga = r as unknown as RigaRegistro & { procedura_id: string; id_fonte: string | null; nota?: string | null };
+      const v = riga.id_fonte ? perAvviso.get(riga.id_fonte) : undefined;
+      const ril = v && fonte === "pvl" ? o.pvl?.rilevamenti.get(v.idAvviso) : undefined;
+      const fotoNuova = v && fonte === "pvl" ? o.pvl?.foto.get(v.idAvviso) : undefined;
+      const dichiarazione =
+        fonte === "pvl" ? (ril?.rettificaDichiarata || /rettific/.test(fotoNuova?.tipoDichiarato ?? "") ? "rettifica" : null) : (v?.motivoModifica ?? null);
+      const avviso: AvvisoDellaModifica = {
+        fonte,
+        idAvviso: String(riga.id_fonte ?? ""),
+        idAvvisoPrecedente: ril?.confrontabili ? ril.evidenza.idAvvisoPrecedente : (precedente.get(riga.procedura_id) ?? null),
+        url: ril?.confrontabili ? ril.evidenza.urlAvviso : (v?.record.urlAvviso ?? null),
+        pubblicatoIl: ril?.confrontabili ? ril.evidenza.giornoPubblicazione : (v?.pubblicatoIl ?? null),
+        versione: null,
+        tipo: v?.tipoAvvisoFonte ?? null,
+        avvisoTed: v?.rifTed ?? null,
+        dichiarazione,
+      };
+      const ev = evidenzaDellaRiga(riga, avviso, o.esecuzioneId ?? null);
+      if (fonte === "pvl" && ["rettifica", "proroga", "annullamento"].includes(String(riga.tipo))) {
+        if (affidabilitaPvl) {
+          // la riga ha un riscontro nel rilevamento PVL: decide la sua affidabilità, e la notifica serve anche al rilevamento
+          ev.affidabilita = affidabilitaPvl;
+          ev.notifica_email = !!(riga.notificabile && notificabilePvl && affidabilitaPvl !== "parziale" && String(riga.campo ?? "").split("@")[0] !== "url_documenti");
+        } else {
+          // nessuna versione precedente da confrontare (o fotografia assente): comportamento di prima, mai email (26B A.1)
+          ev.affidabilita = "non_verificata";
+          ev.notifica_email = false;
+        }
+      }
+      righeAggiornamenti[i] = { ...r, ...ev, ...(notaPvl && !riga.nota ? { nota: String(notaPvl).slice(0, 1000) } : {}) };
+    }
+    // stesse colonne per tutte le righe dello stesso blocco: «nota» c'è solo se qualcuna la porta
+    if (righeAggiornamenti.some((x) => "nota" in x)) for (const x of righeAggiornamenti) if (!("nota" in x)) x.nota = null;
+  }
   for (const b of blocchi(righeAggiornamenti, 200)) {
     await misura(misure, "registro dei cambiamenti", () => admin.from("radar_aggiornamenti").upsert(b, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true }));
   }

@@ -12,7 +12,7 @@ import { conta, rigaDaBandoRegionale, type BandoRegionale, type FonteRegionale, 
 import { confrontaVersioni } from "./unione-calcoli";
 
 // fase B2b: «classificazioni» = righe e stato della 0121 dentro il giro (interruttore di ambiente.ts, SPENTO di base)
-export type OpzioniPaginaRegionale = { fonte: FonteRegionale; modo: ModoImportazione; adesso: Date; misure: Misure; stat: StatisticheRegionali; nascoste: ReadonlySet<string>; proponi: boolean; classificazioni?: boolean; nuovoId?: () => string };
+export type OpzioniPaginaRegionale = { fonte: FonteRegionale; modo: ModoImportazione; adesso: Date; misure: Misure; stat: StatisticheRegionali; nascoste: ReadonlySet<string>; proponi: boolean; classificazioni?: boolean; nuovoId?: () => string; evidenza?: boolean; esecuzioneId?: string | null };
 
 export function bandoUnificabileRegionale(b: BandoRegionale, adesso: Date): BandoUnificabile {
   return {
@@ -29,7 +29,7 @@ export function bandoUnificabileRegionale(b: BandoRegionale, adesso: Date): Band
     lottiDocumenti: b.lottiDocumenti,
     mancanti: b.mancanti,
     tipoAvvisoFonte: b.tipoAvvisoFonte?.slice(0, 60) ?? null,
-    motivoModifica: null,
+    motivoModifica: b.dichiarazione,
     pubblicatoIl: b.pubblicatoIl,
   };
 }
@@ -39,7 +39,7 @@ export async function applicaPaginaBandiRegionali(admin: SupabaseClient, bandi: 
   const e = await applicaPaginaBandiFonte(
     admin,
     bandi.filter((b) => b.fonte === o.fonte).map((b) => bandoUnificabileRegionale(b, o.adesso)),
-    { fonte: o.fonte, modo: o.modo, adesso: o.adesso, misure: o.misure, nascoste: o.nascoste, confronta: (a, b) => confrontaVersioni(a.versione, b.versione), collegaPerCig: true, proponiEnteGiorno: o.proponi, classificazioni: o.classificazioni, nuovoId: o.nuovoId },
+    { fonte: o.fonte, modo: o.modo, adesso: o.adesso, misure: o.misure, nascoste: o.nascoste, confronta: (a, b) => confrontaVersioni(a.versione, b.versione), collegaPerCig: true, proponiEnteGiorno: o.proponi, classificazioni: o.classificazioni, nuovoId: o.nuovoId, evidenza: o.evidenza, esecuzioneId: o.esecuzioneId },
   );
   stat.invariati += e.invariati;
   stat.conflitti += e.conflitti;

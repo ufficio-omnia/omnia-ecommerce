@@ -11,6 +11,7 @@ import { giornoDiRoma, ordinePubblicazione, type BandoTed } from "./fonti/ted-ca
 import { idPiattaformaDaUrl } from "./fonti/piattaforme-calcoli";
 import { opportunitaDaTipoAvviso, type PartecipazioneArchivio, type TipoOpportunitaArchivio } from "./opportunita-calcoli";
 import { titoloBreve } from "./sintesi-calcoli";
+import { documentiPerConfronto, oggettoPerConfronto, stessaScadenza } from "./importa-evidenza";
 
 export type ModoImportazione = "recupero" | "incrementale";
 
@@ -160,20 +161,22 @@ function stessoValore(a: number | null, b: number | null): boolean {
   return Math.abs(a - b) < 0.005;
 }
 
-// I cambiamenti che contano per chi segue la gara, tra la versione in archivio e quella nuova.
+// I cambiamenti che contano per chi segue la gara, tra la versione in archivio e quella nuova. Fase B4 (26B §6.2, punti 1, 2, 3 e 7): la
+// scadenza si confronta per ISTANTE (non come testo) e un'ora che sparisce nello stesso giorno non è una modifica; oggetto e collegamento ai
+// documenti si confrontano normalizzati (importa-evidenza.ts): una differenza solo di forma non entra nel registro.
 export function cambiamentiTraVersioni(prima: RigaProcedura, dopo: RigaProcedura): Cambiamento[] {
   const c: Cambiamento[] = [];
   if (dopo.stato === "annullata" && prima.stato !== "annullata") c.push({ tipo: "annullamento", campo: "stato", prima: prima.stato, dopo: "annullata" });
   const sPrima = { giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte };
   const sDopo = { giorno: dopo.scadenza_giorno, iso: dopo.scadenza_offerte };
-  if (valoreScadenza(sPrima) !== valoreScadenza(sDopo)) {
+  if (!stessaScadenza(sPrima, sDopo)) {
     // proroga: giorno successivo, oppure stesso giorno con un'ora più tarda
     const proroga = !!sPrima.giorno && !!sDopo.giorno && (sDopo.giorno > sPrima.giorno || (sDopo.giorno === sPrima.giorno && !!sPrima.iso && !!sDopo.iso && Date.parse(sDopo.iso) > Date.parse(sPrima.iso)));
     c.push({ tipo: proroga ? "proroga" : "rettifica", campo: "scadenza_offerte", prima: valoreScadenza(sPrima), dopo: valoreScadenza(sDopo) });
   }
   if (!stessoValore(prima.valore_stimato, dopo.valore_stimato)) c.push({ tipo: "rettifica", campo: "valore_stimato", prima: testo(prima.valore_stimato), dopo: testo(dopo.valore_stimato) });
-  if (prima.oggetto !== dopo.oggetto) c.push({ tipo: "rettifica", campo: "oggetto", prima: prima.oggetto.slice(0, 2000), dopo: dopo.oggetto.slice(0, 2000) });
-  if ((prima.url_documenti ?? null) !== (dopo.url_documenti ?? null)) c.push({ tipo: "rettifica", campo: "url_documenti", prima: prima.url_documenti, dopo: dopo.url_documenti });
+  if (oggettoPerConfronto(prima.oggetto) !== oggettoPerConfronto(dopo.oggetto)) c.push({ tipo: "rettifica", campo: "oggetto", prima: prima.oggetto.slice(0, 2000), dopo: dopo.oggetto.slice(0, 2000) });
+  if (documentiPerConfronto(prima.url_documenti) !== documentiPerConfronto(dopo.url_documenti)) c.push({ tipo: "rettifica", campo: "url_documenti", prima: prima.url_documenti, dopo: dopo.url_documenti });
   if (prima.n_lotti !== dopo.n_lotti) c.push({ tipo: "rettifica", campo: "n_lotti", prima: String(prima.n_lotti), dopo: String(dopo.n_lotti) });
   return c;
 }

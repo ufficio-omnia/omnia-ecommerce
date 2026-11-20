@@ -16,6 +16,7 @@ import { ambiguitaTraFonti, classificaPerArchivio, rigaSegnalazioneClassificazio
 import { fontiDellaGara } from "./fonti-gara-calcoli";
 import { scriviClassificazioni, type EsitoClassificazioni } from "./classificazioni";
 import { cambiaColonna, classificaImportazione, lottiDopoScrittura, righeImportate, rigaRegistroImportazione, type ClassificazioneImportata } from "./classificazioni-importazione";
+import { evidenzaDellaRiga, type AvvisoDellaModifica, type RigaRegistro } from "./importa-evidenza";
 
 export type Misure = { richiesteDb: number; msDb: number };
 
@@ -41,7 +42,8 @@ export type EsitoPaginaBandi = {
 };
 
 // Fase B2b: classificazioni della 0121 tenute dentro il giro TED (interruttore di ambiente.ts, SPENTO di base).
-export type OpzioniPaginaTed = { classificazioni?: boolean; nuovoId?: () => string };
+// fase B4: «evidenza» = colonne della 0123 nel registro (importa-evidenza.ts, interruttore RADAR_REGISTRO_EVIDENZA, SPENTO di base)
+export type OpzioniPaginaTed = { classificazioni?: boolean; nuovoId?: () => string; evidenza?: boolean; esecuzioneId?: string | null };
 
 export type EsitoPaginaEsiti = { letti: number; applicati: number; senzaBando: number; invariati: number; senzaStato: number };
 
@@ -253,6 +255,11 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       if (u.ultima || !s.bando) s.bando = v;
       if (u.ultima) s.ultimaApplicata = true;
       s.cambiamenti.push(...u.cambiamenti.map((c) => ({ ...c, idFonte: v.meta.numero })));
+      // fase B4 (26B §6.2 punto 6), solo con l'evidenza: un avviso UFFICIALE di modifica (codice del motivo) su una gara già in archivio
+      // che non cambia nessun campo confrontato diventa una riga «rettifica» con campo «avviso» (l'email rimanda all'avviso, senza supporre)
+      if (opzioni.evidenza && iniziale && u.ultima && v.meta.motivoModifica && v.meta.motivoModifica !== "cancel" && u.cambiamenti.length === 0) {
+        s.cambiamenti.push({ tipo: "rettifica", campo: "avviso", prima: null, dopo: null, idFonte: v.meta.numero });
+      }
     }
     stati.set(chiave, s);
   }
@@ -420,6 +427,33 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
   });
   // classificazioni diverse tra le fonti: mai notificabili, mai mostrate ai clienti
   righeAggiornamenti.push(...segnalazioni);
+  // fase B4 (0123), solo con l'evidenza: le colonne dell'avviso su OGNI riga di questa scrittura (stesse colonne per tutte; notifica_email
+  // vero solo per modifiche verificate e notificabili: importa-evidenza.ts)
+  if (opzioni.evidenza) {
+    const perNumero = new Map<string, BandoTed>();
+    const precedente = new Map<string, string | null>();
+    for (const s of stati.values()) {
+      for (const v of s.avvisi) perNumero.set(v.meta.numero, v);
+      const id = s.riga ? ids.get(s.riga.chiave) : undefined;
+      if (id) precedente.set(id, s.iniziale?.ultima_versione_id ?? null);
+    }
+    for (let i = 0; i < righeAggiornamenti.length; i++) {
+      const r = righeAggiornamenti[i] as RigaRegistro & { procedura_id: string; id_fonte: string | null };
+      const v = r.id_fonte ? perNumero.get(r.id_fonte) : undefined;
+      const avviso: AvvisoDellaModifica = {
+        fonte: "ted",
+        idAvviso: String(r.id_fonte ?? ""),
+        idAvvisoPrecedente: precedente.get(r.procedura_id) ?? null,
+        url: v?.record.urlAvviso ?? null,
+        pubblicatoIl: v?.meta.data ?? null,
+        versione: v?.meta.versione ?? null,
+        tipo: v?.meta.tipo || null,
+        avvisoTed: v ? v.meta.numero : null,
+        dichiarazione: v?.meta.motivoModifica ?? null,
+      };
+      righeAggiornamenti[i] = { ...righeAggiornamenti[i], ...evidenzaDellaRiga({ ...r, fonte: "ted" }, avviso, opzioni.esecuzioneId ?? null) };
+    }
+  }
   for (const b of blocchi(righeAggiornamenti, 200)) {
     await misura(misure, "registro dei cambiamenti", () => admin.from("radar_aggiornamenti").upsert(b, { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true }));
   }
