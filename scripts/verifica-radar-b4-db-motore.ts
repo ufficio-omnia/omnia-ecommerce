@@ -809,6 +809,14 @@ async function provaRicontrollo(): Promise<void> {
   const i2 = di(m, (c) => c.impresa_id === I2);
   controlla("ricontrollo: abbonamento scaduto (N1) → scartata", i2.length > 0 && i2.every((c) => c.stato === "scartata" && c.motivo === "abbonamento_non_valido"), i2.map((c) => [c.stato, c.motivo]));
   controlla("ricontrollo: le scartate non partono mai", !m.provider.consegnate.some((x) => consegne(m).some((c) => c.stato === "scartata" && x.chiave === `omnia-radar/${c.id}`)));
+  // la scadenza cambia nell'archivio mentre il promemoria aspetta in coda (stesso giorno: la fase «eventi» non rigira) → scartato all'invio
+  const s = mondo({ copione });
+  await eseguiPassaggio(s.d);
+  Object.assign(s.db.t("radar_procedure").find((p) => p.id === U(101))!, { scadenza_giorno: "2026-11-06", scadenza_offerte: "2026-11-06T11:00:00Z" });
+  s.ora.t = new Date("2026-10-20T05:36:00Z");
+  await eseguiPassaggio(s.d);
+  const dieci = di(s, (c) => tipoDi(s, c) === "scadenza_10" && c.impresa_id === I1);
+  controlla("ricontrollo: scadenza cambiata dopo la nascita del promemoria → scartato («scadenza_cambiata»), mai inviato", dieci.length > 0 && dieci.every((c) => c.stato === "scartata" && c.motivo === "scadenza_cambiata"), dieci.map((c) => [c.stato, c.motivo]));
 }
 
 async function provaRavvicinata(): Promise<void> {
