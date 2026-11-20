@@ -28,6 +28,7 @@ import {
   eventoRiepilogo,
   gareDelleListe,
   nuovaPerIlGiro,
+  nuoveDaValutare,
   type EventoAttivo,
   type EventoNuovo,
   type GaraInLista,
@@ -129,6 +130,8 @@ export interface CostruttoreDb extends PromiseLike<RispostaDb> {
   in(c: string, v: readonly unknown[]): CostruttoreDb;
   is(c: string, v: null): CostruttoreDb;
   not(c: string, op: "is", v: null): CostruttoreDb;
+  /** filtro «or» di PostgREST, es. «and(stato.eq.in_coda,prossimo_tentativo_il.lte.<istante>),and(…)» (solo valori senza virgole né parentesi) */
+  or(filtri: string): CostruttoreDb;
   order(c: string, o?: { ascending?: boolean }): CostruttoreDb;
   limit(n: number): CostruttoreDb;
   update(v: Record<string, unknown>): CostruttoreDb;
@@ -241,12 +244,12 @@ async function leggiListe(d: DipendenzeMotore, imprese: readonly string[], nasco
 
 // ───────────────────────── giri ─────────────────────────
 
-type RigaGiro = { id: string; giorno_roma: string; fase: string; esito: string; iniziato_il: string; cursore_modifiche: string | null; cursore_nuove: string | null; conteggi: Conteggi };
+type RigaGiro = { id: string; giorno_roma: string; fase: string; esito: string; iniziato_il: string; cursore_modifiche: string | null; cursore_nuove: string | null; nuove_in_sospeso: string[] | null; conteggi: Conteggi };
 
 async function ultimiGiriEventi(d: DipendenzeMotore): Promise<RigaGiro[]> {
   return controlla<RigaGiro[]>(
     "ultimi giri",
-    await d.admin.from(T.giri).select("id, giorno_roma, fase, esito, iniziato_il, cursore_modifiche, cursore_nuove, conteggi").eq("fase", "eventi").eq("esito", "riuscito").order("giorno_roma", { ascending: false }).order("iniziato_il", { ascending: false }).limit(1),
+    await d.admin.from(T.giri).select("id, giorno_roma, fase, esito, iniziato_il, cursore_modifiche, cursore_nuove, nuove_in_sospeso, conteggi").eq("fase", "eventi").eq("esito", "riuscito").order("giorno_roma", { ascending: false }).order("iniziato_il", { ascending: false }).limit(1),
   );
 }
 
@@ -273,10 +276,16 @@ async function apriGiro(d: DipendenzeMotore, fase: "eventi" | "invio", oggi: str
   return id;
 }
 
-async function chiudiGiro(d: DipendenzeMotore, id: string, esito: "riuscito" | "fallito" | "fermato", dati: { conteggi: Conteggi; errore?: string | null; cursore_modifiche?: string | null; cursore_nuove?: string | null }): Promise<void> {
+async function chiudiGiro(
+  d: DipendenzeMotore,
+  id: string,
+  esito: "riuscito" | "fallito" | "fermato",
+  dati: { conteggi: Conteggi; errore?: string | null; cursore_modifiche?: string | null; cursore_nuove?: string | null; nuove_in_sospeso?: string[] },
+): Promise<void> {
   const valori: Record<string, unknown> = { esito, finito_il: d.adesso().toISOString(), conteggi: dati.conteggi, errore: dati.errore ?? null };
   if (dati.cursore_modifiche !== undefined) valori.cursore_modifiche = dati.cursore_modifiche;
   if (dati.cursore_nuove !== undefined) valori.cursore_nuove = dati.cursore_nuove;
+  if (dati.nuove_in_sospeso !== undefined) valori.nuove_in_sospeso = dati.nuove_in_sospeso;
   controlla("chiusura del giro", await d.admin.from(T.giri).update(valori).eq("id", id));
 }
 
@@ -326,7 +335,7 @@ async function inserisciConsegne(d: DipendenzeMotore, eventi: readonly EventoNuo
 
 // ───────────────────────── fase «eventi» ─────────────────────────
 
-async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, precedente: RigaGiro | null): Promise<{ conteggi: Conteggi; cursori: { modifiche: string; nuove: string } }> {
+async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, precedente: RigaGiro | null): Promise<{ conteggi: Conteggi; cursori: { modifiche: string; nuove: string }; inSospeso: string[] }> {
   const c: Conteggi = {};
   const adesso = d.adesso();
   const contesto = { nuovoId: d.nuovoId, adessoIso: adesso.toISOString() };
@@ -364,6 +373,10 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
   const vogliono = imprese.filter((i) => quadro.persone.some((p) => p.impresaId === i && quadro.preferenze.get(p.userId)?.nuove_opportunita === true));
   const riepiloghi: EventoNuovo[] = [];
   let nuovoCursoreNuove = cursoreNuove;
+  // difetto 3.3 (proposta A): le gare lette dal giro riuscito prima quando non erano ancora classificate. Se oggi il riepilogo non si
+  // calcola (nessuno lo vuole, nessun profilo) restano com'erano: nulla si perde.
+  const idsSospesi = (precedente?.nuove_in_sospeso ?? []).filter((x): x is string => typeof x === "string");
+  let inSospeso: string[] = idsSospesi;
   if (vogliono.length) {
     const profili = controlla<RigaProfilo[]>("profili", await d.admin.from(TABELLA_PROFILI).select(COLONNE_PROFILO as string).in("user_id", vogliono).eq("posizione", POSIZIONE_PROFILO));
     const perImpresa = new Map<string, ProfiloRadar>();
@@ -377,13 +390,21 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
         await d.admin.from(T.procedure).select(COLONNE_GARA).gt("prima_rilevazione_il", cursoreNuove).gte("data_pubblicazione", aggiungiGiorni(oggi, -FINESTRA_NUOVE_GIORNI)).eq("stato", "aperta").is("unita_a", null).order("prima_rilevazione_il", { ascending: true }).limit(2000),
       ).filter((r) => nuovaPerIlGiro(r, cursoreNuove, oggi));
       if (nuove.length) nuovoCursoreNuove = nuove[nuove.length - 1].prima_rilevazione_il;
-      const ids = nuove.map((r) => r.id);
+      // le gare in sospeso, rilette per identificativo: UNA richiesta in più, e solo se l'elenco non è vuoto
+      const sospese = await leggiPer<RigaGara>("gare in sospeso", idsSospesi, (b) => d.admin.from(T.procedure).select(COLONNE_GARA).in("id", b));
+      const ids = [...new Set([...nuove.map((r) => r.id), ...sospese.map((r) => r.id)])];
       const stati = await leggiPer<{ procedura_id: string; stato: "classificata" | "in_attesa" | "fallita" }>("stato delle classificazioni", ids, (b) => d.admin.from(T.stato).select("procedura_id, stato").in("procedura_id", b));
       const righe = await leggiPer<{ procedura_id: string; settore: string; rilevanza: "A" | "B" | "C"; sottocategorie: string[] | null; attiva: boolean }>("classificazioni", ids, (b) =>
         d.admin.from(T.classificazioni).select("procedura_id, settore, rilevanza, sottocategorie, attiva").in("procedura_id", b).eq("attiva", true),
       );
       const stato = new Map(stati.map((s) => [s.procedura_id, s]));
-      const conClassi: RigaNuova[] = nuove.map((r) => ({
+      const valutare = nuoveDaValutare({ nuove, idsSospesi, sospese, statoDi: new Map(stati.map((s) => [s.procedura_id, s.stato])), oggi });
+      inSospeso = valutare.inSospeso;
+      c.nuove_in_sospeso = valutare.inSospeso.length;
+      c.nuove_rivalutate = valutare.rivalutate;
+      c.nuove_sospese_uscite = valutare.uscite;
+      if (valutare.oltreIlMassimo) c.nuove_sospese_oltre_il_massimo = valutare.oltreIlMassimo;
+      const conClassi: RigaNuova[] = valutare.candidate.map((r) => ({
         ...r,
         classificazione_stato: stato.get(r.id) ? { stato: stato.get(r.id)!.stato } : null,
         classificazioni: righe.filter((x) => x.procedura_id === r.id).map((x) => ({ settore: x.settore, rilevanza: x.rilevanza, sottocategorie: x.sottocategorie, attiva: x.attiva })),
@@ -417,7 +438,7 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
 
   // 6) conservazione (D-E7, N6): compattazione dei dati e cancellazione dopo 12 mesi, a blocchi
   Object.assign(c, await conservazione(d));
-  return { conteggi: c, cursori: { modifiche: nuovoCursoreModifiche, nuove: nuovoCursoreNuove } };
+  return { conteggi: c, cursori: { modifiche: nuovoCursoreModifiche, nuove: nuovoCursoreNuove }, inSospeso };
 }
 
 async function annullaEventi(d: DipendenzeMotore, a: readonly { id: string; motivo: string }[]): Promise<number> {
@@ -495,36 +516,45 @@ const COLONNE_SCRIVIBILI = COLONNE_CONSEGNA.split(", ").filter((c) => c !== "cre
 type RigaEvento = { id: string; impresa_id: string; categoria: string; tipo: TipoEvento; gara_chiave: string; versione: string; stato: string; dati: EventoRadar | null; creato_il: string };
 
 /**
- * Prende in carico al più BLOCCO_INVIO consegne pronte, in ordine di priorità: lettura degli identificativi, poi aggiornamento CONDIZIONATO
- * (in_coda e pronte) che restituisce solo quelle prese davvero. Due processi insieme non prendono mai la stessa riga: Postgres rilegge la
- * condizione nel secondo aggiornamento (provato su Postgres isolato con due sessioni).
+ * Le consegne che si possono prendere ORA (O1, approvata dall'utente il 20/11): quelle in coda con il tentativo dovuto, e quelle «in_invio»
+ * il cui affitto è scaduto (il processo che le aveva prese è caduto prima di scrivere l'esito) con lo stesso tentativo dovuto. Prima il
+ * recupero degli affitti era una richiesta a parte che le rimetteva in coda; ora si riprendono direttamente, nello stesso ordine (priorità,
+ * poi tentativo dovuto, che il recupero non cambia). Filtro «or» di PostgREST: valori senza virgole né parentesi (istanti ISO).
  */
-async function prendiInCarico(d: DipendenzeMotore, soloIds: readonly string[] | null): Promise<RigaConsegna[]> {
-  const ora = d.adesso().toISOString();
-  let q = d.admin.from(T.consegne).select("id").eq("stato", "in_coda").lte("prossimo_tentativo_il", ora);
-  if (soloIds) q = q.in("id", [...soloIds]);
-  const candidate = controlla<{ id: string }[]>("consegne pronte", await q.order("priorita", { ascending: true }).order("prossimo_tentativo_il", { ascending: true }).limit(BLOCCO_INVIO));
-  if (!candidate.length) return [];
-  return controlla<RigaConsegna[]>(
-    "presa in carico",
-    await d.admin
-      .from(T.consegne)
-      .update({ stato: "in_invio", in_invio_fino_il: new Date(d.adesso().getTime() + AFFITTO_MINUTI * 60_000).toISOString(), aggiornata_il: ora })
-      .in("id", candidate.map((x) => x.id))
-      .eq("stato", "in_coda")
-      .lte("prossimo_tentativo_il", ora)
-      .select(COLONNE_CONSEGNA),
-  );
+function filtroPrendibili(ora: string): string {
+  return `and(stato.eq.in_coda,prossimo_tentativo_il.lte.${ora}),and(stato.eq.in_invio,in_invio_fino_il.lt.${ora},prossimo_tentativo_il.lte.${ora})`;
 }
 
-/** Rimette in coda le consegne il cui «affitto» è scaduto (il processo che le aveva prese è caduto prima di scrivere l'esito). */
-async function liberaAffittiScaduti(d: DipendenzeMotore): Promise<number> {
+/**
+ * Prende in carico al più BLOCCO_INVIO consegne pronte, in ordine di priorità: UNA lettura degli identificativi (in coda e dovute, oppure con
+ * l'affitto scaduto), poi UN aggiornamento CONDIZIONATO con la stessa condizione, che restituisce solo quelle prese davvero. Due processi
+ * insieme non prendono mai la stessa riga: Postgres rilegge la condizione nel secondo aggiornamento (provato su Postgres isolato con due
+ * sessioni); una riga appena presa da un altro processo ha l'affitto nel futuro e non passa più. L'indice parziale
+ * omnia_ai_radar_email_consegne_da_inviare_idx copre già «in_coda» e «in_invio» (EXPLAIN nella prova isolata). Passaggio a vuoto: 1 lettura.
+ * Con `soloIds` (avviso «ravvicinato», consegne appena nate) solo quelle in coda, come prima. Esportata SOLO per le prove (ordine e concorrenza).
+ */
+export async function prendiInCarico(d: DipendenzeMotore, soloIds: readonly string[] | null): Promise<{ prese: RigaConsegna[]; affittiScaduti: number }> {
   const ora = d.adesso().toISOString();
-  const r = controlla<{ id: string }[]>(
-    "affitti scaduti",
-    await d.admin.from(T.consegne).update({ stato: "in_coda", in_invio_fino_il: null, aggiornata_il: ora }).eq("stato", "in_invio").lt("in_invio_fino_il", ora).select("id"),
+  const condizione = (q: CostruttoreDb): CostruttoreDb => {
+    const t = q.in("stato", ["in_coda", "in_invio"]);
+    return soloIds ? t.in("id", [...soloIds]).eq("stato", "in_coda").lte("prossimo_tentativo_il", ora) : t.or(filtroPrendibili(ora));
+  };
+  const candidate = controlla<{ id: string; stato: string }[]>(
+    "consegne pronte",
+    await condizione(d.admin.from(T.consegne).select("id, stato")).order("priorita", { ascending: true }).order("prossimo_tentativo_il", { ascending: true }).limit(BLOCCO_INVIO),
   );
-  return r.length;
+  if (!candidate.length) return { prese: [], affittiScaduti: 0 };
+  const prese = controlla<RigaConsegna[]>(
+    "presa in carico",
+    await condizione(
+      d.admin
+        .from(T.consegne)
+        .update({ stato: "in_invio", in_invio_fino_il: new Date(d.adesso().getTime() + AFFITTO_MINUTI * 60_000).toISOString(), aggiornata_il: ora })
+        .in("id", candidate.map((x) => x.id)),
+    ).select(COLONNE_CONSEGNA),
+  );
+  const eranoInInvio = new Set(candidate.filter((x) => x.stato === "in_invio").map((x) => x.id));
+  return { prese, affittiScaduti: prese.filter((x) => eranoInInvio.has(x.id)).length };
 }
 
 async function scriviEsiti(d: DipendenzeMotore, righe: readonly RigaConsegna[]): Promise<void> {
@@ -610,16 +640,19 @@ type DaInviare = { consegna: RigaConsegna; contenuto: EventoRadar | EventoRaggru
 async function faseInvio(d: DipendenzeMotore, origine: string, oggi: string, soloIds: readonly string[] | null): Promise<Conteggi> {
   const c: Conteggi = { prese: 0, inviate: 0, raggruppate: 0, incluse: 0, rinviate: 0, scartate: 0, riprova: 0, quota: 0, fallite: 0, incerte: 0 };
   const inizio = d.adesso().getTime();
-  c.affitti_scaduti = soloIds ? 0 : await liberaAffittiScaduti(d);
+  // O1: gli affitti scaduti si riprendono dentro la presa in carico (nessuna richiesta a parte); qui solo il conteggio
+  c.affitti_scaduti = 0;
   const inviatePerPersona = new Map<string, number>();
   const ultimo = d.ultimoPassaggio(d.adesso());
   const ora = () => d.adesso().toISOString();
   let fermo: string | null = null;
   for (let blocco = 0; blocco < 100 && !fermo; blocco++) {
     if (d.adesso().getTime() - inizio > TEMPO_MASSIMO_GIRO_MS) break;
-    const prese = await prendiInCarico(d, soloIds);
+    const presa = await prendiInCarico(d, soloIds);
+    const prese = presa.prese;
     if (!prese.length) break;
     c.prese += prese.length;
+    c.affitti_scaduti += presa.affittiScaduti;
     const raggr = prese.filter((x) => x.tipo_consegna === "raggruppata");
     // per i raggruppamenti già creati e da ritentare: le loro incluse, per ricomporre lo stesso contenuto
     const incluseDi = raggr.length ? controlla<RigaConsegna[]>("consegne incluse", await d.admin.from(T.consegne).select(COLONNE_CONSEGNA).in("inclusa_in", raggr.map((x) => x.id)).eq("stato", "inclusa")) : [];
@@ -814,7 +847,7 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
     else {
       try {
         const f = await faseEventi(d, o.origine, oggi, precedente ?? null);
-        await chiudiGiro(d, id, "riuscito", { conteggi: f.conteggi, cursore_modifiche: f.cursori.modifiche, cursore_nuove: f.cursori.nuove });
+        await chiudiGiro(d, id, "riuscito", { conteggi: f.conteggi, cursore_modifiche: f.cursori.modifiche, cursore_nuove: f.cursori.nuove, nuove_in_sospeso: f.inSospeso });
         eventi = f.conteggi;
       } catch (e) {
         const codice = e instanceof ErroreDb ? `${e.passo}:${e.codice}` : "eccezione";

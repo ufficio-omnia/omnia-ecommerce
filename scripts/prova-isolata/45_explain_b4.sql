@@ -111,11 +111,13 @@ select prova.senza_seq('ultimo giro «eventi» riuscito',
   $q$select * from public.radar_notifiche_giri where fase = 'eventi' and esito = 'riuscito' order by giorno_roma desc, iniziato_il desc limit 1$q$,
   '{radar_notifiche_giri}');
 -- fase «invio»
-select prova.senza_seq('consegne pronte (presa in carico)',
-  $q$select id from public.omnia_ai_radar_email_consegne where stato = 'in_coda' and prossimo_tentativo_il <= timestamptz '2026-11-21' order by priorita, prossimo_tentativo_il limit 50$q$,
+-- O1 (20/11): UNA lettura delle consegne prendibili (in coda e dovute, oppure con l'affitto scaduto) e UN aggiornamento condizionato, come
+-- li manda PostgREST (stato in (…) e il filtro «or»); EXPLAIN senza ANALYZE: l'aggiornamento non si esegue
+select prova.senza_seq('consegne prendibili (O1: in coda e dovute, oppure affitto scaduto)',
+  $q$select id, stato from public.omnia_ai_radar_email_consegne where stato in ('in_coda', 'in_invio') and ((stato = 'in_coda' and prossimo_tentativo_il <= timestamptz '2026-11-21') or (stato = 'in_invio' and in_invio_fino_il < timestamptz '2026-11-21' and prossimo_tentativo_il <= timestamptz '2026-11-21')) order by priorita, prossimo_tentativo_il limit 50$q$,
   '{omnia_ai_radar_email_consegne}');
-select prova.senza_seq('affitti scaduti',
-  $q$select id from public.omnia_ai_radar_email_consegne where stato = 'in_invio' and in_invio_fino_il < timestamptz '2026-11-21'$q$,
+select prova.senza_seq('presa in carico condizionata (O1, 50 identificativi)',
+  format($q$update public.omnia_ai_radar_email_consegne set stato = 'in_invio', in_invio_fino_il = timestamptz '2026-11-21 00:10', aggiornata_il = timestamptz '2026-11-21' where id = any (%L::uuid[]) and stato in ('in_coda', 'in_invio') and ((stato = 'in_coda' and prossimo_tentativo_il <= timestamptz '2026-11-21') or (stato = 'in_invio' and in_invio_fino_il < timestamptz '2026-11-21' and prossimo_tentativo_il <= timestamptz '2026-11-21')) returning id$q$, prova.uuid_da('00000000-0000-4000-d000-', 1, 50)),
   '{omnia_ai_radar_email_consegne}');
 select prova.senza_seq('eventi delle consegne (150)',
   format($q$select id, dati from public.omnia_ai_radar_eventi where id = any (%L::uuid[])$q$, prova.uuid_da('00000000-0000-4000-b000-', 1, 150)),

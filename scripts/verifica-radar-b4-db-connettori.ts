@@ -282,7 +282,8 @@ async function provaPvl(): Promise<void> {
     controlla("PVL: (preparazione) l'avviso pubblico di rettifica è nel campione", false);
     return;
   }
-  const sezioneC = (a: Avviso) => (((a.templates as Record<string, unknown>[])[0].template ?? {}) as { sections: { name: string; items?: Record<string, unknown>[] }[] }).sections.find((s) => s.name === "SEZ. C")?.items ?? [];
+  // la sezione dei lotti si chiama «SEZ. C - Oggetto» (prima il filtro cercava «SEZ. C» esatto e non la trovava: i lotti non cambiavano)
+  const sezioneC = (a: Avviso) => (((a.templates as Record<string, unknown>[])[0].template ?? {}) as { sections: { name: string; items?: Record<string, unknown>[] }[] }).sections.find((s) => s.name.startsWith("SEZ. C"))?.items ?? [];
   // versione precedente SINTETICA: stesso appalto, avviso TED precedente (781698 invece di 781699: la rettifica ha un suo avviso TED, quindi le
   // due versioni NON sono «pari» per il motore di unione), pubblicata il 02/11, sostituita dalla rettifica reale
   const precedente = JSON.parse(JSON.stringify(reale).split("781699-2026").join("781698-2026")) as Avviso;
@@ -335,6 +336,10 @@ async function provaPvl(): Promise<void> {
   controlla("PVL importatore: la modifica della scadenza dentro la rettifica dichiarata ha l'evidenza della PVL (avviso ufficiale, precedente, URL dell'avviso) e l'email", !!scad && scad.affidabilita === "avviso_ufficiale" && scad.avviso_precedente_id === bPrec.meta.idAvviso && /^https:\/\//.test(String(scad.avviso_url)) && scad.dichiarazione_fonte === "rettifica" && scad.notifica_email === true, registro);
   controlla("PVL importatore: nessuna riga del registro viola il vincolo della 0123", memG.tabelle.radar_aggiornamenti.every((a) => !a.notifica_email || (a.notificabile && ["rettifica", "proroga", "annullamento"].includes(String(a.tipo)) && ["avviso_ufficiale", "confronto_versioni"].includes(String(a.affidabilita)))));
   controlla("PVL importatore: le modifiche non registrate dal motore di unione restano evidenza senza email", registro.filter((a) => a.notificabilePvl !== undefined).length === 0 && registro.filter((a) => String(a.campo).includes("@") || ["oggetto", "url_documenti", "criterio_aggiudicazione"].includes(String(a.campo))).every((a) => a.notifica_email === false));
+  // con il filtro della sezione corretto i 3 lotti passano davvero dal 30/11 al 14/12, come la gara: l'archivio lo mostra e basta la riga della
+  // gara (nessuna riga di lotto, né dal rilevamento PVL né dal motore di unione)
+  const lottiG = memG.tabelle.radar_lotti.map((l) => `${l.cig}:${l.scadenza_giorno}`).sort();
+  controlla("PVL importatore: i 3 lotti cambiati come la gara → archivio aggiornato, una sola riga (della gara), nessuna riga di lotto", JSON.stringify(lottiG) === JSON.stringify(["BD920D606D:2026-12-14", "BD920D7140:2026-12-14", "BD920D8213:2026-12-14"]) && !registro.some((a) => String(a.campo).includes("@")) && registro.filter((a) => a.campo === "scadenza_offerte").length === 1, { lottiG, registro: registro.map((a) => `${a.tipo}:${a.campo}:${a.notifica_email}`) });
   // senza evidenza: nessuna fotografia, registro come prima
   const memS = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
   await applicaPaginaBandiPvl(memS.client, [bPrec], "incrementale", new Date("2026-11-03T08:00:00Z"), misure(), statisticheVuote());

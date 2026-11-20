@@ -146,6 +146,8 @@ create table if not exists public.radar_notifiche_giri (
   provider text not null check (provider in ('finto', 'resend')),
   cursore_modifiche timestamptz,                 -- radar_aggiornamenti.rilevato_il già letti
   cursore_nuove timestamptz,                     -- radar_procedure.prima_rilevazione_il già letti
+  -- gare nuove non ancora classificate al giro: si rivalutano al giro dopo (difetto 3.3, proposta A approvata dall'utente il 20/11)
+  nuove_in_sospeso uuid[] not null default '{}'::uuid[] check (cardinality(nuove_in_sospeso) <= 2000),
   conteggi jsonb not null default '{}'::jsonb check (jsonb_typeof(conteggi) = 'object' and octet_length(conteggi::text) <= 20000),
   errore text check (errore is null or char_length(errore) <= 1000),
   constraint radar_notifiche_giri_finito check ((esito = 'in_corso') = (finito_il is null))
