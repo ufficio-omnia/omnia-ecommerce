@@ -387,7 +387,13 @@ function stessoValoreDiScadenza(a: Scadenza, b: Scadenza): boolean {
  *   - più lotti: le righe si omettono solo se TUTTI i lotti cambiano esattamente come la gara (la riga della gara lo dice già); altrimenti
  *     ogni lotto cambiato ha la sua riga, anche quello che coincide con la gara (stessa regola di modifiche-pvl.ts).
  */
-export function cambiamentiDeiLotti(prima: readonly LottoUnito[], dopo: readonly LottoUnito[], fonte: FonteUnita, cambiamentiGara: readonly Cambiamento[]): Cambiamento[] {
+export function cambiamentiDeiLotti(
+  prima: readonly LottoUnito[],
+  dopo: readonly LottoUnito[],
+  fonte: FonteUnita,
+  // i cambiamenti della gara nella stessa versione: servono solo campo, prima e dopo (gli importatori li tengono con il tipo come testo)
+  cambiamentiGara: readonly Pick<Cambiamento, "campo" | "prima" | "dopo">[],
+): Cambiamento[] {
   const perNumero = new Map(prima.map((l) => [l.numero_lotto, l]));
   const scadenza = (l: LottoUnito): Scadenza => ({ giorno: l.scadenza_giorno, iso: l.scadenza_offerte });
   let comuni = 0;
