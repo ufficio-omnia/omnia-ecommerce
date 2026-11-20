@@ -538,6 +538,19 @@ async function provaSintel(): Promise<void> {
     await giornoSintel(mem, [rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-10");
     controlla("Sintel: due letture nello stesso giorno (stessa versione) → nessuna riga di lotto", !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), righeRegistro(mem));
   }
+  // due versioni della stessa gara nella STESSA pagina: la prima proroga il lotto 12, la seconda ha un lotto nuovo (non allineata) → i lotti
+  // non si scrivono, quindi nessuna riga di lotto (il registro dice solo ciò che l'archivio mostra)
+  {
+    const mem = memoriaVuota();
+    await giornoSintel(mem, [lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-15")], "2026-11-10");
+    const pagina = [
+      ...bandiSintel([lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-22")], "2026-11-11"),
+      ...bandiSintel([lottoSintel("11", "PRV0000011", "2026-12-15"), lottoSintel("12", "PRV0000012", "2026-12-22"), lottoSintel("13", "PRV0000013", "2026-12-22")], "2026-11-12"),
+    ];
+    await applicaPaginaBandiRegionali(mem.client, pagina, { fonte: "sintel", modo: "incrementale", adesso: new Date("2026-11-12T08:00:00Z"), misure: misure(), stat: statisticheRegionaliVuote(), nascoste: new Set(), proponi: false, evidenza: true });
+    const pid = String(mem.tabelle.radar_procedure[0]?.id);
+    controlla("Sintel: lotti non allineati in una versione della pagina → archivio dei lotti invariato e nessuna riga di lotto", lottoDi(mem, pid, "SINTEL-12")?.scadenza_giorno === "2026-12-15" && !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), { lotti: mem.tabelle.radar_lotti.map((l) => `${l.numero_lotto}:${l.scadenza_giorno}`), registro: righeRegistro(mem) });
+  }
   // senza l'evidenza: nessuna riga di lotto, registro come prima
   {
     const mem = memoriaVuota();
