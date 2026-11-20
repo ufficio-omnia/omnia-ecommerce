@@ -637,11 +637,15 @@ type DaInviare = { consegna: RigaConsegna; contenuto: EventoRadar | EventoRaggru
  * per passaggio, urgenti mai rinviati ma raggruppati, riepilogo mai raggruppato), composizione con il modello di B1, provider, esiti a
  * blocchi. `soloIds` limita alle consegne date (avviso «ravvicinato» subito dopo il salvataggio).
  */
-async function faseInvio(d: DipendenzeMotore, origine: string, oggi: string, soloIds: readonly string[] | null): Promise<Conteggi> {
-  const c: Conteggi = { prese: 0, inviate: 0, raggruppate: 0, incluse: 0, rinviate: 0, scartate: 0, riprova: 0, quota: 0, fallite: 0, incerte: 0 };
-  const inizio = d.adesso().getTime();
+/** I conteggi della fase «invio» quando non c'è nulla da prendere (anche quelli del passaggio che, con O2, la salta). */
+function conteggiInvioVuoti(): Conteggi {
   // O1: gli affitti scaduti si riprendono dentro la presa in carico (nessuna richiesta a parte); qui solo il conteggio
-  c.affitti_scaduti = 0;
+  return { prese: 0, inviate: 0, raggruppate: 0, incluse: 0, rinviate: 0, scartate: 0, riprova: 0, quota: 0, fallite: 0, incerte: 0, affitti_scaduti: 0 };
+}
+
+async function faseInvio(d: DipendenzeMotore, origine: string, oggi: string, soloIds: readonly string[] | null): Promise<Conteggi> {
+  const c: Conteggi = conteggiInvioVuoti();
+  const inizio = d.adesso().getTime();
   const inviatePerPersona = new Map<string, number>();
   const ultimo = d.ultimoPassaggio(d.adesso());
   const ora = () => d.adesso().toISOString();
@@ -835,9 +839,30 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
   const oggi = giornoRoma(d.adesso());
 
   let eventi: Conteggi | { saltata: string };
-  // UNA lettura dei giri di oggi serve a tutte e due le fasi: c'è già un giro «eventi» riuscito? c'è già il battito «invio» (N7)?
-  const diOggi = controlla<{ fase: string; esito: string }[]>("giri di oggi", await d.admin.from(T.giri).select("fase, esito").in("fase", ["eventi", "invio"]).eq("giorno_roma", oggi).limit(500));
-  if (diOggi.some((g) => g.fase === "eventi" && g.esito === "riuscito")) {
+  // lo STATO DEL PASSAGGIO serve a tutte e due le fasi: c'è già un giro «eventi» riuscito oggi? c'è già il battito «invio» (N7)?
+  //   - O1: UNA lettura dei giri di oggi; se c'è lavoro lo dice la presa in carico;
+  //   - O2 (parametro esplicito, in valutazione): UNA chiamata alla funzione SQL, che dice anche se c'è lavoro da prendere (stessa condizione
+  //     di filtroPrendibili). Nulla da fare = 1 richiesta.
+  let eventiFatti: boolean;
+  let battitoScritto: boolean;
+  let lavoroDaPrendere: boolean | null = null;
+  if (d.parametri.statoPassaggioInUnaChiamata) {
+    const [s] = controlla<{ eventi_fatti: boolean; battito_invio: boolean; lavoro: boolean }[]>(
+      "stato del passaggio",
+      await d.admin.rpc("radar_notifiche_stato_passaggio", { p_giorno: oggi, p_adesso: d.adesso().toISOString() }),
+    );
+    if (!s) throw new ErroreDb("stato del passaggio", "vuoto");
+    eventiFatti = s.eventi_fatti === true;
+    battitoScritto = s.battito_invio === true;
+    lavoroDaPrendere = s.lavoro === true;
+  } else {
+    const diOggi = controlla<{ fase: string; esito: string }[]>("giri di oggi", await d.admin.from(T.giri).select("fase, esito").in("fase", ["eventi", "invio"]).eq("giorno_roma", oggi).limit(500));
+    eventiFatti = diOggi.some((g) => g.fase === "eventi" && g.esito === "riuscito");
+    battitoScritto = diOggi.some((g) => g.fase === "invio");
+  }
+  // la fase «eventi» è stata eseguita IN QUESTO passaggio (riuscita o no): può aver creato consegne, quindi la fase «invio» si fa sempre
+  let eventiInQuestoPassaggio = false;
+  if (eventiFatti) {
     eventi = { saltata: "gia_eseguita_oggi" };
   } else {
     // solo una volta al giorno: l'ultimo giro «eventi» riuscito, per i cursori e il recupero breve
@@ -845,6 +870,7 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
     const id = await apriGiro(d, "eventi", oggi);
     if (!id) eventi = { saltata: "altro_giro_in_corso" };
     else {
+      eventiInQuestoPassaggio = true;
       try {
         const f = await faseEventi(d, o.origine, oggi, precedente ?? null);
         await chiudiGiro(d, id, "riuscito", { conteggi: f.conteggi, cursore_modifiche: f.cursori.modifiche, cursore_nuove: f.cursori.nuove, nuove_in_sospeso: f.inSospeso });
@@ -859,16 +885,21 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
 
   let invio: Conteggi;
   let erroreInvio: string | null = null;
-  try {
-    invio = await faseInvio(d, o.origine, oggi, null);
-  } catch (e) {
-    invio = { errore: 1 };
-    erroreInvio = e instanceof ErroreDb ? `${e.passo}:${e.codice}` : "eccezione";
+  if (lavoroDaPrendere === false && !eventiInQuestoPassaggio) {
+    // O2: la chiamata ha già guardato la coda con la stessa condizione della presa in carico: nulla da prendere, nessuna richiesta in più
+    invio = conteggiInvioVuoti();
+  } else {
+    try {
+      invio = await faseInvio(d, o.origine, oggi, null);
+    } catch (e) {
+      invio = { errore: 1 };
+      erroreInvio = e instanceof ErroreDb ? `${e.passo}:${e.codice}` : "eccezione";
+    }
   }
   // N7: il giro «invio» si registra solo con del lavoro, più un battito al giorno (con il parametro spento, sempre)
   const lavoro = (invio.prese ?? 0) + (invio.affitti_scaduti ?? 0) > 0 || !!invio.errore;
   let registra = !d.parametri.giroInvioSoloConLavoro || lavoro;
-  if (!registra) registra = !diOggi.some((g) => g.fase === "invio");
+  if (!registra) registra = !battitoScritto;
   if (registra) {
     const ora = d.adesso().toISOString();
     controlla(

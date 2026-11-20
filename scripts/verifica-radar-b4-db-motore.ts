@@ -55,6 +55,31 @@ class DbFinto {
   }
   async rpc(nome: string, argomenti: Record<string, unknown>): Promise<{ data: unknown; error: Errore | null }> {
     this.richieste.push({ tabella: `rpc:${nome}`, metodo: "rpc" });
+    const guasto = this.guasti.get(`rpc:${nome}|rpc`) ?? 0;
+    if (guasto > 0) {
+      this.guasti.set(`rpc:${nome}|rpc`, guasto - 1);
+      return { data: null, error: { code: "XX000", message: "guasto simulato" } };
+    }
+    if (nome === "radar_notifiche_stato_passaggio") {
+      // O2: la STESSA condizione della funzione SQL (provata su Postgres isolato contro le letture di O1)
+      const giorno = String(argomenti.p_giorno), adesso = String(argomenti.p_adesso);
+      const giri = this.t("radar_notifiche_giri");
+      const lavoro = this.t("omnia_ai_radar_email_consegne").some(
+        (c) =>
+          (c.stato === "in_coda" && c.prossimo_tentativo_il != null && confronta(c.prossimo_tentativo_il, adesso) <= 0) ||
+          (c.stato === "in_invio" && c.in_invio_fino_il != null && confronta(c.in_invio_fino_il, adesso) < 0 && c.prossimo_tentativo_il != null && confronta(c.prossimo_tentativo_il, adesso) <= 0),
+      );
+      return {
+        data: [
+          {
+            eventi_fatti: giri.some((g) => g.fase === "eventi" && g.giorno_roma === giorno && g.esito === "riuscito"),
+            battito_invio: giri.some((g) => g.fase === "invio" && g.giorno_roma === giorno),
+            lavoro,
+          },
+        ],
+        error: null,
+      };
+    }
     if (nome !== "radar_notifiche_destinatari") return { data: null, error: { code: "PGRST202", message: "funzione" } };
     const imprese = (argomenti.p_imprese as string[]) ?? [];
     const utenti = this.t("auth_users");
@@ -285,6 +310,9 @@ function vincoli(db: DbFinto, tabella: string, nuovo: Riga, vecchio: Riga | null
 
 const U = (n: number) => `${String(n).padStart(8, "0")}-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const I1 = U(1), I2 = U(2), I3 = U(3), M1 = U(11), M2 = U(12), MB = U(21);
+// O2 (direttiva 44A, confronto A/B): di base il valore proposto (PARAMETRI_PROPOSTI); RADAR_PROVA_O2=0 o =1 fa girare TUTTA questa verifica
+// con O1 o con O2. La prova «provaO2AB» confronta comunque le due nella stessa esecuzione.
+const O2 = process.env.RADAR_PROVA_O2 === undefined ? PARAMETRI_PROPOSTI.statoPassaggioInUnaChiamata : process.env.RADAR_PROVA_O2 === "1";
 const STAGING = { NEXT_PUBLIC_SUPABASE_URL: "https://ryawdldqiumqsskrnyps.supabase.co", RADAR_NOTIFICHE_EMAIL: "attivo", RADAR_EMAIL_ORIGINE: "http://localhost:3000" };
 
 type Mondo = { db: DbFinto; provider: ProviderFinto; d: DipendenzeMotore; ora: { t: Date }; accesso: Map<string, StatoAccesso> };
@@ -395,7 +423,7 @@ function mondo(opzioni: { parametri?: Partial<ParametriNotifiche>; copione?: Cop
     env: opzioni.env ?? STAGING,
     provider,
     componi: componiEmailRadar,
-    parametri: { ...PARAMETRI_PROPOSTI, ...opzioni.parametri },
+    parametri: { ...PARAMETRI_PROPOSTI, statoPassaggioInUnaChiamata: O2, ...opzioni.parametri },
     statoAccesso: async (id) => {
       db.richieste.push({ tabella: "subscriptions", metodo: "select" });
       return accesso.get(id) ?? "cessato";
@@ -492,7 +520,7 @@ async function principale(): Promise<void> {
   const e2 = await eseguiPassaggio(m.d);
   controlla("rieseguito lo stesso giorno: fase «eventi» saltata, 0 eventi, 0 consegne, 0 email", e2.eseguito && "saltata" in e2.eventi && eventi(m).length === prima.e && consegne(m).length === prima.c && m.provider.consegnate.length === prima.p, e2);
   const richiesteVuoto = m.db.conta() - richiestePrimaDelSecondo;
-  controlla("passaggio vuoto (N7, O1): ESATTAMENTE 2 richieste (giri di oggi, consegne pronte) e nessun giro «invio» in più dopo il battito", richiesteVuoto === 2 && m.db.t("radar_notifiche_giri").filter((g) => g.fase === "invio").length === 1, { richiesteVuoto });
+  controlla(`passaggio vuoto (N7, ${O2 ? "O2" : "O1"}): ESATTAMENTE ${O2 ? "1 richiesta (stato del passaggio)" : "2 richieste (giri di oggi, consegne pronte)"} e nessun giro «invio» in più dopo il battito`, richiesteVuoto === (O2 ? 1 : 2) && m.db.t("radar_notifiche_giri").filter((g) => g.fase === "invio").length === 1, { richiesteVuoto });
 
   // ───── 3-bis. fase «eventi» caduta prima della chiusura e rifatta lo stesso giorno: chiavi uniche, nessun doppione ─────
   {
@@ -575,6 +603,9 @@ async function principale(): Promise<void> {
 
   // ───── 14. simulazione di 10 giorni (con il cambio d'ora del 25/10/2026) ─────
   await provaSimulazione();
+
+  // ───── O2 (44A): confronto A/B sugli stessi scenari ─────
+  await provaO2AB();
 
   // ───── 15. testo dei file e rotta ─────
   provaTesto();
@@ -1295,16 +1326,20 @@ function provaD5(): void {
   controlla("avviso ufficiale senza campi cambiati: evento «rettifica» con modifiche vuote (il modello rimanda all'avviso)", soloAvviso.eventi.length === 1 && dm?.modifiche?.length === 0 && dm?.evidenza?.affidabilita === "avviso_ufficiale", soloAvviso);
 }
 
-async function provaSimulazione(): Promise<void> {
-  // 10 giorni, passaggi ogni 30 minuti dalle 05:30 alle 19:30 UTC (29 al giorno), con il cambio d'ora del 25/10/2026; il 27/10 nessun
-  // passaggio (giro saltato: recupero breve); il 23/10 una proroga; il 24/10 una gara salvata tardi.
-  const m = mondo({ inizio: "2026-10-20T05:30:00Z" });
+/**
+ * La simulazione di 10 giorni, riusabile (confronto A/B di O2): passaggi ogni 30 minuti dalle 05:30 alle 19:30 UTC (29 al giorno), con il
+ * cambio d'ora del 25/10/2026; il 27/10 nessun passaggio (giro saltato: recupero breve); il 23/10 una proroga; il 24/10 una gara salvata tardi.
+ */
+async function simula(parametri: Partial<ParametriNotifiche> = {}): Promise<{ m: Mondo; g: RigaGara; tarda: RigaGara; richiestePerGiorno: number[]; richiestePerPassaggio: number[]; nonEseguiti: number }> {
+  const m = mondo({ inizio: "2026-10-20T05:30:00Z", parametri });
   const g = gara(700, { scadenza_giorno: "2026-10-29", scadenza_offerte: "2026-10-29T11:00:00Z", scadenza_ora_indicata: true });
   m.db.t("radar_procedure").push(g);
   m.db.t("omnia_ai_radar_salvate").push({ user_id: I1, procedura_id: g.id, aggiunta_id: null, creata_il: "2026-10-01T08:00:00Z" });
   const tarda = gara(701, { scadenza_giorno: "2026-10-29" });
   m.db.t("radar_procedure").push(tarda);
   const richiestePerGiorno: number[] = [];
+  const richiestePerPassaggio: number[] = [];
+  let nonEseguiti = 0;
   for (let gi = 0; gi < 10; gi++) {
     const g0 = giorno("2026-10-20", gi);
     if (g0 === "2026-10-23") {
@@ -1316,11 +1351,144 @@ async function provaSimulazione(): Promise<void> {
     const prima = m.db.conta();
     for (let p = 0; p < 29; p++) {
       m.ora.t = new Date(Date.parse(`${g0}T05:30:00Z`) + p * 30 * 60_000);
+      const primaDelPassaggio = m.db.conta();
       const e = await eseguiPassaggio(m.d);
-      if (!e.eseguito) falliti.push(`simulazione: passaggio non eseguito il ${g0}`);
+      richiestePerPassaggio.push(m.db.conta() - primaDelPassaggio);
+      if (!e.eseguito) nonEseguiti++;
     }
     richiestePerGiorno.push(m.db.conta() - prima);
   }
+  return { m, g, tarda, richiestePerGiorno, richiestePerPassaggio, nonEseguiti };
+}
+
+// O2 (direttiva 44A): confronto A/B sugli STESSI scenari e sullo STESSO database sintetico. A = O1 (giri di oggi e presa in carico),
+// B = O2 (stato del passaggio in una chiamata). Il risultato deve essere IDENTICO (email, consegne con stato, tentativi ed esito, eventi,
+// giri); B non deve mai fare più richieste di A.
+async function provaO2AB(): Promise<void> {
+  const foto = (m: Mondo) =>
+    JSON.stringify({
+      email: m.provider.consegnate.map((x) => `${x.chiave}|${x.providerId}`),
+      consegne: consegne(m).map((c) => `${c.chiave}|${c.stato}|${c.tentativi}|${c.provider_id ?? ""}|${c.motivo ?? ""}|${c.inviata_il ?? ""}|${c.prossimo_tentativo_il ?? ""}`).sort(),
+      eventi: eventi(m).map((e) => `${e.impresa_id}|${e.gara_chiave}|${e.tipo}|${e.versione}|${e.stato}`).sort(),
+      giri: m.db.t("radar_notifiche_giri").map((g) => `${g.fase}|${g.giorno_roma}|${g.esito}`).sort(),
+    });
+  const ab = async (nome: string, scenario: (o2: boolean) => Promise<Mondo>) => {
+    const a = await scenario(false);
+    const b = await scenario(true);
+    const ra = a.db.conta(), rb = b.db.conta();
+    controlla(`O2 A/B «${nome}»: stesso risultato (email, consegne, eventi, giri) con O2 spenta e accesa`, foto(a) === foto(b), { a: foto(a).slice(0, 300), b: foto(b).slice(0, 300) });
+    controlla(`O2 A/B «${nome}»: O2 mai più richieste di O1 (${rb} contro ${ra})`, rb <= ra, { ra, rb });
+    return { ra, rb };
+  };
+  const passaggio = async (m: Mondo, quando: string) => {
+    m.ora.t = new Date(quando);
+    return eseguiPassaggio(m.d);
+  };
+  const o2 = (x: boolean) => ({ statoPassaggioInUnaChiamata: x });
+
+  // 1. simulazione di 10 giorni, richieste passaggio per passaggio
+  {
+    const a = await simula(o2(false));
+    const b = await simula(o2(true));
+    controlla("O2 A/B «simulazione di 10 giorni»: stesso risultato", foto(a.m) === foto(b.m));
+    const passaggi = a.richiestePerPassaggio.map((ra, i) => [ra, b.richiestePerPassaggio[i]]);
+    controlla("O2 A/B «simulazione»: in OGNI passaggio O2 ≤ O1; nei passaggi senza nulla da fare 1 richiesta contro 2", passaggi.every(([ra, rb]) => rb <= ra) && passaggi.every(([ra, rb]) => ra !== 2 || rb === 1) && a.nonEseguiti === 0 && b.nonEseguiti === 0, passaggi.filter(([ra, rb]) => rb > ra || (ra === 2 && rb !== 1)));
+    const vuotiA = a.richiestePerPassaggio.filter((x) => x === 2).length;
+    const totA = a.richiestePerGiorno.reduce((s, x) => s + x, 0), totB = b.richiestePerGiorno.reduce((s, x) => s + x, 0);
+    console.log(`O2 A/B simulazione: richieste al giorno O1 ${a.richiestePerGiorno.join(", ")} | O2 ${b.richiestePerGiorno.join(", ")}; passaggi a vuoto ${vuotiA} su ${a.richiestePerPassaggio.length}; totale ${totA} → ${totB}`);
+  }
+  // 2. concorrenza: dopo un 429 tutte in coda, due passaggi INSIEME
+  await ab("concorrenza (due passaggi insieme dopo un 429)", async (x) => {
+    const m = mondo({ parametri: o2(x), copione: (_m, n) => (n === 0 ? { esito: "riprova", codice: "rate_limit_exceeded", attesaSecondi: null, dopoInvio: false } : null) });
+    await passaggio(m, "2026-10-20T05:30:00Z");
+    m.ora.t = new Date("2026-10-20T05:36:00Z");
+    await Promise.all([eseguiPassaggio(m.d), eseguiPassaggio(m.d)]);
+    const chiavi = m.provider.consegnate.map((c) => c.chiave);
+    controlla(`O2 ${x ? "accesa" : "spenta"}: due passaggi insieme, ogni email una volta`, chiavi.length > 0 && new Set(chiavi).size === chiavi.length && consegne(m).every((c) => c.stato === "inviata"));
+    return m;
+  });
+  // 3. giro caduto a metà: la fase «eventi» fallisce (guasto), il passaggio dopo la rifà
+  await ab("giro «eventi» caduto e rifatto", async (x) => {
+    const m = mondo({ parametri: o2(x) });
+    m.db.guasti.set("omnia_ai_radar_eventi|upsert", 1);
+    await passaggio(m, "2026-10-20T05:30:00Z");
+    await passaggio(m, "2026-10-20T06:00:00Z");
+    await passaggio(m, "2026-10-20T06:30:00Z");
+    return m;
+  });
+  // 4. lettura dello stato del passaggio che fallisce (O1: i giri di oggi; O2: la funzione): il passaggio si ferma, quello dopo recupera
+  await ab("stato del passaggio non letto, poi recupero", async (x) => {
+    const m = mondo({ parametri: o2(x) });
+    m.db.guasti.set(x ? "rpc:radar_notifiche_stato_passaggio|rpc" : "radar_notifiche_giri|select", 1);
+    const caduto = await passaggio(m, "2026-10-20T05:30:00Z").then(() => false, () => true);
+    controlla(`O2 ${x ? "accesa" : "spenta"}: lettura dello stato non riuscita → il passaggio si ferma senza scrivere nulla`, caduto && eventi(m).length === 0 && consegne(m).length === 0);
+    await passaggio(m, "2026-10-20T06:00:00Z");
+    return m;
+  });
+  // 5. 429 e quota: tutte in coda, poi partono con la stessa chiave; quota esaurita: nulla parte, nulla si perde
+  await ab("429 e nuovo tentativo", async (x) => {
+    const m = mondo({ parametri: o2(x), copione: (_m, n) => (n === 0 ? { esito: "riprova", codice: "rate_limit_exceeded", attesaSecondi: null, dopoInvio: false } : null) });
+    await passaggio(m, "2026-10-20T05:30:00Z");
+    await passaggio(m, "2026-10-20T05:33:00Z"); // il tentativo non è ancora dovuto: nulla da prendere
+    await passaggio(m, "2026-10-20T05:36:00Z");
+    await passaggio(m, "2026-10-20T06:00:00Z");
+    return m;
+  });
+  await ab("quota esaurita", async (x) => {
+    const m = mondo({ parametri: o2(x), quota: 0 });
+    await passaggio(m, "2026-10-20T05:30:00Z");
+    await passaggio(m, "2026-10-20T06:00:00Z");
+    controlla(`O2 ${x ? "accesa" : "spenta"}: quota esaurita, nessuna email, nulla perso`, m.provider.consegnate.length === 0 && consegne(m).length > 0 && consegne(m).every((c) => c.stato === "in_coda"));
+    return m;
+  });
+  // 6. affitti scaduti: il processo cade tra l'invio e la scrittura degli esiti; dopo 10 minuti si riprendono con la stessa chiave
+  await ab("affitti scaduti (caduta tra invio ed esito)", async (x) => {
+    const m = mondo({ parametri: o2(x) });
+    let upsert = 0;
+    const da = m.d.admin.from.bind(m.d.admin);
+    m.d.admin = {
+      ...m.db,
+      rpc: m.db.rpc.bind(m.db),
+      from: (t: string) => {
+        const q = da(t) as unknown as { upsert: (...a: unknown[]) => unknown };
+        if (t === "omnia_ai_radar_email_consegne") {
+          const orig = q.upsert.bind(q);
+          q.upsert = (...a: unknown[]) => {
+            const o = a[1] as { onConflict?: string } | undefined;
+            if (o?.onConflict === "id" && (a[0] as { stato?: string }[]).some((r) => r.stato === "inviata") && ++upsert === 1) throw new Error("processo caduto");
+            return orig(...a);
+          };
+        }
+        return q;
+      },
+    } as unknown as DipendenzeMotore["admin"];
+    await passaggio(m, "2026-10-20T05:30:00Z");
+    const appese = consegne(m).filter((c) => c.stato === "in_invio").length;
+    await passaggio(m, "2026-10-20T05:35:00Z"); // affitto ancora valido: nulla da prendere
+    await passaggio(m, "2026-10-20T05:50:00Z"); // affitto scaduto: riprese
+    controlla(`O2 ${x ? "accesa" : "spenta"}: affitti scaduti ripresi, nessuna email doppia`, appese > 0 && consegne(m).every((c) => c.stato === "inviata") && new Set(m.provider.consegnate.map((c) => c.chiave)).size === m.provider.consegnate.length);
+    return m;
+  });
+  // 7. passaggio a vuoto: 2 richieste con O1, 1 con O2; il primo passaggio vuoto del giorno scrive il battito (O1: 3, O2: 2)
+  {
+    const conta = async (x: boolean) => {
+      const m = mondo({ parametri: { ...o2(x), giroInvioSoloConLavoro: true } });
+      await passaggio(m, "2026-10-20T05:30:00Z");
+      const p0 = m.db.conta();
+      await passaggio(m, "2026-10-20T06:00:00Z");
+      const p1 = m.db.conta();
+      await passaggio(m, "2026-10-20T06:30:00Z");
+      return [p1 - p0, m.db.conta() - p1];
+    };
+    const [a1, a2] = await conta(false);
+    const [b1, b2] = await conta(true);
+    controlla("O2 A/B: passaggi a vuoto dopo il primo del giorno → O1 2 richieste, O2 1 richiesta", a1 === 2 && a2 === 2 && b1 === 1 && b2 === 1, { a1, a2, b1, b2 });
+  }
+}
+
+async function provaSimulazione(): Promise<void> {
+  const { m, g, tarda, richiestePerGiorno, nonEseguiti } = await simula();
+  if (nonEseguiti) falliti.push(`simulazione: ${nonEseguiti} passaggi non eseguiti`);
   const ev = eventi(m).filter((e) => e.gara_chiave === `p:${g.id}` && e.impresa_id === I1);
   const serie = ev.map((e) => `${e.tipo}@${e.versione}:${e.stato}`).sort();
   controlla("simulazione: nessun promemoria della vecchia scadenza (le sue soglie cadevano prima o dopo la proroga), la proroga una volta, poi 10 e 5 giorni della NUOVA scadenza alle loro date", JSON.stringify(serie) === JSON.stringify([
@@ -1370,7 +1538,7 @@ function provaTesto(): void {
 principale()
   .catch((e) => falliti.push(`eccezione: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`))
   .finally(() => {
-    console.log(`Verifica B4 motore delle notifiche: ${ok} ok, ${falliti.length} falliti`);
+    console.log(`Verifica B4 motore delle notifiche${O2 ? " (O2 attiva)" : ""}: ${ok} ok, ${falliti.length} falliti`);
     for (const f of falliti) console.log(`  FALLITO: ${f}`);
     process.exit(falliti.length ? 1 : 0);
   });

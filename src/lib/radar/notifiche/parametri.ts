@@ -34,6 +34,13 @@ export type ParametriNotifiche = {
    * carico vuota, 1 richiesta); si registra comunque un «battito» al giorno. Con false ogni passaggio scriverebbe il suo giro.
    */
   giroInvioSoloConLavoro: boolean;
+  /**
+   * O2 (direttiva 44A: valutata con i 7 controlli dell'utente, tutti superati, documento 44; PROPOSTA nella 0125, da approvare con Z4) —
+   * lo stato del passaggio in UNA chiamata (funzione SQL radar_notifiche_stato_passaggio della 0125): fase «eventi» già fatta oggi, battito
+   * «invio» già scritto, lavoro da prendere. Un passaggio senza nulla da fare fa 1 richiesta invece di 2. Con false resta O1 (lettura dei
+   * giri di oggi e presa in carico): un ritorno indietro è solo questo valore.
+   */
+  statoPassaggioInUnaChiamata: boolean;
 };
 
 export const PARAMETRI_PROPOSTI: Readonly<ParametriNotifiche> = Object.freeze({
@@ -43,6 +50,7 @@ export const PARAMETRI_PROPOSTI: Readonly<ParametriNotifiche> = Object.freeze({
   giorniCompattazioneAltri: 30,
   giorniConservazione: 365,
   giroInvioSoloConLavoro: true, // N7 recepita come scelta tecnica
+  statoPassaggioInUnaChiamata: true, // O2: 7 controlli superati (doc 44), proposta con la 0125 (Z4); false = O1
 });
 
 /** Le gare «nuove» del riepilogo: pubblicate al più da questi giorni (26B §5.2 passo f). */

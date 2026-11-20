@@ -139,6 +139,56 @@ select prova.senza_seq('compattazione dei riepiloghi',
   $q$select id from public.omnia_ai_radar_eventi where tipo = 'riepilogo_opportunita' and dati is not null and creato_il < timestamptz '2025-10-20'$q$,
   '{omnia_ai_radar_eventi}');
 
+-- ───── O2 (direttiva 44A): stato del passaggio in UNA chiamata contro le letture di O1, sugli STESSI volumi ─────
+-- la funzione ha un search_path proprio: Postgres non la scioglie nel piano, quindi si controlla anche il suo corpo con valori letterali
+select prova.senza_seq('O2: stato del passaggio (corpo della funzione)',
+  $q$select coalesce(bool_or(g.fase = 'eventi' and g.esito = 'riuscito'), false), coalesce(bool_or(g.fase = 'invio'), false), exists (select 1 from public.omnia_ai_radar_email_consegne c where c.stato in ('in_coda', 'in_invio') and ((c.stato = 'in_coda' and c.prossimo_tentativo_il <= timestamptz '2026-11-19') or (c.stato = 'in_invio' and c.in_invio_fino_il < timestamptz '2026-11-19' and c.prossimo_tentativo_il <= timestamptz '2026-11-19'))) from (select g.fase, g.esito from public.radar_notifiche_giri g where g.fase in ('eventi', 'invio') and g.giorno_roma = date '2026-10-20' limit 500) g$q$,
+  '{omnia_ai_radar_email_consegne,radar_notifiche_giri}');
+-- contatori di Postgres della transazione: 20 chiamate della funzione, nessuna lettura intera di giri e consegne
+begin;
+create temp table prova_o2_prima on commit drop as
+  select relname, seq_scan, idx_scan from pg_stat_xact_user_tables where relname in ('omnia_ai_radar_email_consegne', 'radar_notifiche_giri');
+select count(*) from generate_series(1, 20) i, lateral public.radar_notifiche_stato_passaggio(date '2026-10-20', timestamptz '2026-11-19' + make_interval(secs => i)) s;
+select prova.verifica('O2: 20 chiamate sui volumi sintetici → 0 letture intere di giri e consegne, solo indici (contatori della transazione)',
+  (select sum(x.seq_scan - p.seq_scan) = 0 and sum(x.idx_scan - p.idx_scan) >= 20
+     from pg_stat_xact_user_tables x join prova_o2_prima p using (relname)));
+commit;
+-- blocchi di memoria condivisa toccati PER PASSAGGIO (esecuzione + pianificazione; letti dal disco tra parentesi), seconda esecuzione:
+--   a vuoto   O1 = giri di oggi + consegne prendibili (vuota)     O2 = chiamata della funzione
+--   con lavoro O1 = giri di oggi + consegne prendibili (50)       O2 = chiamata della funzione + consegne prendibili (50)
+-- Solo misure per il resoconto (la decisione su O2 sta nel documento 44): nessun vincolo, salvo che le misure ci siano.
+create or replace function prova.blocchi(q text) returns bigint[] language plpgsql as $f$
+declare p jsonb;
+begin
+  execute 'explain (analyze, buffers, format json) ' || q into p;
+  execute 'explain (analyze, buffers, format json) ' || q into p;
+  return array[
+    coalesce((p->0->'Plan'->>'Shared Hit Blocks')::bigint, 0) + coalesce((p->0->'Plan'->>'Shared Read Blocks')::bigint, 0)
+      + coalesce((p->0->'Planning'->>'Shared Hit Blocks')::bigint, 0) + coalesce((p->0->'Planning'->>'Shared Read Blocks')::bigint, 0),
+    coalesce((p->0->'Plan'->>'Shared Read Blocks')::bigint, 0) + coalesce((p->0->'Planning'->>'Shared Read Blocks')::bigint, 0)];
+end $f$;
+do $$
+declare
+  caso record;
+  giri bigint[];
+  coda bigint[];
+  fun bigint[];
+  o1 bigint;
+  o2 bigint;
+begin
+  giri := prova.blocchi($q$select fase, esito from public.radar_notifiche_giri where fase in ('eventi', 'invio') and giorno_roma = date '2026-10-20' limit 500$q$);
+  for caso in select * from (values ('a vuoto', timestamptz '2026-11-19'), ('con lavoro', timestamptz '2026-11-21')) v (nome, adesso) loop
+    coda := prova.blocchi(format($q$select id, stato from public.omnia_ai_radar_email_consegne where stato in ('in_coda', 'in_invio') and ((stato = 'in_coda' and prossimo_tentativo_il <= %1$L) or (stato = 'in_invio' and in_invio_fino_il < %1$L and prossimo_tentativo_il <= %1$L)) order by priorita, prossimo_tentativo_il limit 50$q$, caso.adesso));
+    fun := prova.blocchi(format('select * from public.radar_notifiche_stato_passaggio(date %L, %L)', '2026-10-20', caso.adesso));
+    o1 := giri[1] + coda[1];
+    o2 := fun[1] + case when caso.nome = 'con lavoro' then coda[1] else 0 end;
+    raise notice '%', format('piano  O2 blocchi per passaggio %s: O1 %s (giri %s + coda %s), O2 %s (funzione %s%s), differenza %s; dal disco O1 %s, O2 %s',
+      caso.nome, o1, giri[1], coda[1], o2, fun[1], case when caso.nome = 'con lavoro' then format(' + coda %s', coda[1]) else '' end, o2 - o1, giri[2] + coda[2],
+      fun[2] + case when caso.nome = 'con lavoro' then coda[2] else 0 end);
+    perform prova.verifica(format('O2: blocchi per passaggio %s misurati (O1 %s, O2 %s)', caso.nome, o1, o2), o1 > 0 and o2 > 0);
+  end loop;
+end $$;
+
 -- dimensione su disco dopo i volumi sintetici (per il resoconto: tabelle e indici)
 do $$
 declare r record;
