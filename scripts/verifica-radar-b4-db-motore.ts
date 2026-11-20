@@ -6,7 +6,7 @@
 import fs from "fs";
 import path from "path";
 import { componiEmailRadar } from "../src/lib/radar/email-modelli";
-import { dipendenzeReali, eseguiPassaggio, eseguiRavvicinata, ultimoPassaggioProgrammato, type DipendenzeMotore, type StatoAccesso } from "../src/lib/radar/notifiche/motore";
+import { dipendenzeReali, eseguiPassaggio, eseguiRavvicinata, prendiInCarico, ultimoPassaggioProgrammato, type DipendenzeMotore, type StatoAccesso } from "../src/lib/radar/notifiche/motore";
 import { PARAMETRI_PROPOSTI, type ParametriNotifiche } from "../src/lib/radar/notifiche/parametri";
 import { ProviderFinto, resendConsentito, sceltaProvider, type CopioneFinto } from "../src/lib/radar/notifiche/provider";
 import { classificaRispostaResend, creaProviderResend, quotaDaIntestazioni, richiestaResend } from "../src/lib/radar/notifiche/provider-resend";
@@ -148,6 +148,29 @@ class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | null }>
   in(c: string, vs: unknown[]) { const s = new Set(vs); this.filtri.push((r) => s.has(r[c])); return this; }
   is(c: string, v: null) { this.filtri.push((r) => (r[c] ?? null) === v); return this; }
   not(c: string, op: string, v: null) { if (op !== "is") throw new Error("not: solo «is»"); this.filtri.push((r) => (r[c] ?? null) !== v); return this; }
+  /** filtro «or» di PostgREST: «and(c.op.v,…),c.op.v,…». Parser STRETTO: ogni sintassi non prevista è un errore (mai un filtro ignorato). */
+  or(filtri: string) {
+    const condizione = (s: string): ((r: Riga) => boolean) => {
+      const m = /^([a-z_]+)\.(eq|lt|lte|gt|gte)\.([^,()]+)$/.exec(s);
+      if (!m) throw new Error(`or: condizione non prevista «${s}»`);
+      const [, c, op, v] = m;
+      return (r) => {
+        if (op === "eq") return String(r[c] ?? "") === v;
+        if (r[c] == null) return false;
+        const k = confronta(r[c], v);
+        return op === "lt" ? k < 0 : op === "lte" ? k <= 0 : op === "gt" ? k > 0 : k >= 0;
+      };
+    };
+    const rami: ((r: Riga) => boolean)[] = [];
+    for (const ramo of filtri.match(/and\([^()]*\)|[^,]+/g) ?? []) {
+      const e = /^and\(([^()]*)\)$/.exec(ramo);
+      const parti = (e ? e[1].split(",") : [ramo]).map(condizione);
+      rami.push((r) => parti.every((p) => p(r)));
+    }
+    if (rami.length === 0 || (filtri.match(/and\([^()]*\)|[^,]+/g) ?? []).join(",") !== filtri) throw new Error(`or: filtro non previsto «${filtri}»`);
+    this.filtri.push((r) => rami.some((p) => p(r)));
+    return this;
+  }
   order(c: string, o: { ascending?: boolean } = {}) { this.ordini.push([c, o.ascending !== false]); return this; }
   limit(n: number) { this.lim = n; return this; }
   then<A, B>(ok?: ((v: { data: unknown; error: Errore | null }) => A | PromiseLike<A>) | null, ko?: ((e: unknown) => B | PromiseLike<B>) | null): Promise<A | B> {
@@ -469,7 +492,7 @@ async function principale(): Promise<void> {
   const e2 = await eseguiPassaggio(m.d);
   controlla("rieseguito lo stesso giorno: fase «eventi» saltata, 0 eventi, 0 consegne, 0 email", e2.eseguito && "saltata" in e2.eventi && eventi(m).length === prima.e && consegne(m).length === prima.c && m.provider.consegnate.length === prima.p, e2);
   const richiesteVuoto = m.db.conta() - richiestePrimaDelSecondo;
-  controlla("passaggio vuoto (N7): ≤ 3 richieste e nessun giro «invio» in più dopo il battito", richiesteVuoto <= 3 && m.db.t("radar_notifiche_giri").filter((g) => g.fase === "invio").length === 1, { richiesteVuoto });
+  controlla("passaggio vuoto (N7, O1): ESATTAMENTE 2 richieste (giri di oggi, consegne pronte) e nessun giro «invio» in più dopo il battito", richiesteVuoto === 2 && m.db.t("radar_notifiche_giri").filter((g) => g.fase === "invio").length === 1, { richiesteVuoto });
 
   // ───── 3-bis. fase «eventi» caduta prima della chiusura e rifatta lo stesso giorno: chiavi uniche, nessun doppione ─────
   {
@@ -540,6 +563,9 @@ async function principale(): Promise<void> {
 
   // ───── 11quater. difetto 3.3 (proposta A): gare classificate dopo il giro che le ha viste ─────
   await provaSospese();
+
+  // ───── 11quinquies. O1: presa in carico con gli affitti scaduti (ordine, concorrenza, passaggio a vuoto) ─────
+  await provaPresaInCarico();
 
   // ───── 12. adattatore Resend (chiuso): classificazione delle risposte ─────
   provaResend();
@@ -777,7 +803,7 @@ async function provaErrori(): Promise<void> {
     controlla("caduta tra invio e scrittura: consegne rimaste «in_invio» con l'affitto", inviateDalFinto > 0 && appese.length === inviateDalFinto, { inviateDalFinto, appese: appese.length });
     m.ora.t = new Date("2026-10-20T05:50:00Z"); // affitto di 10 minuti scaduto
     await eseguiPassaggio(m.d);
-    controlla("affitto scaduto: rimesse in coda e chiuse con la stessa chiave, NESSUNA email doppia", consegne(m).every((c) => c.stato === "inviata") && m.provider.consegnate.length === inviateDalFinto, { finto: m.provider.consegnate.length, stati: consegne(m).map((c) => c.stato) });
+    controlla("affitto scaduto (O1): riprese nella presa in carico e chiuse con la stessa chiave, NESSUNA email doppia", consegne(m).every((c) => c.stato === "inviata") && m.provider.consegnate.length === inviateDalFinto, { finto: m.provider.consegnate.length, stati: consegne(m).map((c) => c.stato) });
   }
   // un errore del database nella fase «eventi»: giro «fallito», la fase «invio» continua
   {
@@ -856,6 +882,76 @@ async function provaRavvicinata(): Promise<void> {
 
 // Difetto 3.3 (proposta A, approvata dall'utente il 20/11): una gara letta da un giro quando non era ancora classificata resta «in sospeso»
 // nel giro (radar_notifiche_giri.nuove_in_sospeso, bozza 0125) e si rivaluta al giro dopo. Prima la gara era persa per sempre (R1).
+// O1 (approvata dall'utente il 20/11): UNA lettura delle consegne prendibili (in coda e dovute, oppure con l'affitto scaduto) e UN
+// aggiornamento condizionato. Recupero identico, stesso ordine di priorità, mai una consegna presa due volte da passaggi concorrenti.
+async function provaPresaInCarico(): Promise<void> {
+  const consegna = (n: number, p: Riga = {}): Riga => ({
+    id: U(9000 + n), tipo_consegna: "singola", evento_id: U(8000), inclusa_in: null, impresa_id: I1, destinatario_id: I1, ruolo: "titolare", chiave: `prova-presa-in-carico-${n}`,
+    priorita: 5, stato: "in_coda", tentativi: 0, primo_tentativo_il: null, prossimo_tentativo_il: "2026-10-20T05:00:00Z", in_invio_fino_il: null, provider: null, provider_id: null,
+    ultimo_errore: null, motivo: null, inviata_il: null, chiusa_il: null, creata_il: "2026-10-20T04:00:00Z", aggiornata_il: "2026-10-20T04:00:00Z", ...p,
+  });
+  // l'evento SINTETICO delle consegne della prova (una consegna «singola» ha sempre il suo evento, della stessa impresa)
+  const conEvento = (m: Mondo) => m.db.t("omnia_ai_radar_eventi").push({ id: U(8000), impresa_id: I1, categoria: "scadenze", tipo: "scadenza_10", gara_chiave: `p:${U(101)}`, versione: "prova-presa", stato: "attivo", dati: { x: 1 }, dati_compattati_il: null, creato_il: "2026-10-20T04:00:00Z" });
+  // alle 05:30: 55 in coda dovute (priorità 5), un affitto SCADUTO urgente (priorità 1), una in coda poco urgente (6), un affitto NON scaduto,
+  // una in coda non ancora dovuta
+  {
+    const m = mondo();
+    conEvento(m);
+    m.db.tabelle.omnia_ai_radar_email_consegne = [
+      ...Array.from({ length: 55 }, (_, i) => consegna(i + 1)),
+      consegna(60, { priorita: 1, stato: "in_invio", in_invio_fino_il: "2026-10-20T05:20:00Z" }),
+      consegna(61, { priorita: 6 }),
+      consegna(62, { priorita: 1, stato: "in_invio", in_invio_fino_il: "2026-10-20T05:40:00Z" }),
+      consegna(63, { priorita: 1, prossimo_tentativo_il: "2026-10-20T06:00:00Z" }),
+    ];
+    const r1 = await prendiInCarico(m.d, null);
+    const id1 = new Set(r1.prese.map((x) => x.id));
+    controlla("O1: un blocco di 50 in ordine di priorità: l'affitto scaduto urgente dentro, la meno urgente fuori", r1.prese.length === 50 && id1.has(U(9060)) && !id1.has(U(9061)) && r1.affittiScaduti === 1, { n: r1.prese.length, affitti: r1.affittiScaduti });
+    controlla("O1: l'affitto scaduto ripreso con un affitto nuovo, tentativo dovuto invariato", (() => {
+      const c = consegne(m).find((x) => x.id === U(9060))!;
+      return c.stato === "in_invio" && c.in_invio_fino_il === "2026-10-20T05:40:00.000Z" && c.prossimo_tentativo_il === "2026-10-20T05:00:00Z";
+    })());
+    const r2 = await prendiInCarico(m.d, null);
+    const id2 = new Set(r2.prese.map((x) => x.id));
+    controlla("O1: il blocco dopo prende le rimaste (le altre 6 di priorità 5 + la meno urgente), mai l'affitto non scaduto né quella non dovuta", r2.prese.length === 7 && id2.has(U(9061)) && !id2.has(U(9062)) && !id2.has(U(9063)) && ![...id2].some((x) => id1.has(x)), { n: r2.prese.length });
+    const prima = m.db.conta();
+    const r3 = await prendiInCarico(m.d, null);
+    controlla("O1: nulla da prendere → UNA sola richiesta", r3.prese.length === 0 && m.db.conta() - prima === 1, { richieste: m.db.conta() - prima });
+    controlla("O1: l'affitto non scaduto e la consegna non dovuta restano com'erano", consegne(m).find((x) => x.id === U(9062))?.in_invio_fino_il === "2026-10-20T05:40:00Z" && consegne(m).find((x) => x.id === U(9063))?.stato === "in_coda");
+    // avviso «ravvicinato» (soloIds): solo consegne in coda, mai un affitto scaduto, come prima
+    const m2 = mondo();
+    conEvento(m2);
+    m2.db.tabelle.omnia_ai_radar_email_consegne = [consegna(70, { stato: "in_invio", in_invio_fino_il: "2026-10-20T05:20:00Z" }), consegna(71)];
+    const r4 = await prendiInCarico(m2.d, [U(9070), U(9071)]);
+    controlla("O1: con l'elenco del «ravvicinato» solo quelle in coda (come prima)", r4.prese.length === 1 && r4.prese[0].id === U(9071) && r4.affittiScaduti === 0);
+  }
+  // concorrenza: due prese in carico NELLO STESSO MOMENTO (le due letture vedono le stesse 32 righe): ogni consegna presa una volta sola
+  {
+    const m = mondo();
+    conEvento(m);
+    m.db.tabelle.omnia_ai_radar_email_consegne = [
+      ...Array.from({ length: 30 }, (_, i) => consegna(i + 1)),
+      consegna(40, { stato: "in_invio", in_invio_fino_il: "2026-10-20T05:20:00Z" }),
+      consegna(41, { stato: "in_invio", in_invio_fino_il: "2026-10-20T05:25:00Z" }),
+    ];
+    const [a, b] = await Promise.all([prendiInCarico(m.d, null), prendiInCarico(m.d, null)]);
+    const ia = new Set(a.prese.map((x) => x.id));
+    const comuni = b.prese.filter((x) => ia.has(x.id)).length;
+    controlla("O1 concorrenza: due prese in carico insieme → 32 consegne prese, NESSUNA due volte; affitti contati una volta", a.prese.length + b.prese.length === 32 && comuni === 0 && a.affittiScaduti + b.affittiScaduti === 2, { a: a.prese.length, b: b.prese.length, comuni });
+  }
+  // concorrenza tra due PASSAGGI interi: dopo un 429 tutte in coda; due passaggi insieme → ogni email una sola volta
+  {
+    const copione: CopioneFinto = (_m, n) => (n === 0 ? { esito: "riprova", codice: "rate_limit_exceeded", attesaSecondi: null, dopoInvio: false } : null);
+    const m = mondo({ copione });
+    await eseguiPassaggio(m.d);
+    const tutte = consegne(m).length;
+    m.ora.t = new Date("2026-10-20T05:36:00Z");
+    await Promise.all([eseguiPassaggio(m.d), eseguiPassaggio(m.d)]);
+    const chiavi = m.provider.consegnate.map((x) => x.chiave);
+    controlla("O1 concorrenza: due passaggi insieme → ogni consegna inviata UNA volta", tutte > 0 && consegne(m).every((c) => c.stato === "inviata") && chiavi.length === tutte && new Set(chiavi).size === tutte, { tutte, inviate: chiavi.length });
+  }
+}
+
 async function provaSospese(): Promise<void> {
   type DatiRiepilogo = { gare?: { proceduraId: string | null }[] };
   const nelRiepilogo = (m: Mondo, giorno: string, id: string) =>
