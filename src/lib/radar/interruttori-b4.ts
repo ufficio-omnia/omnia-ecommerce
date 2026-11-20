@@ -5,6 +5,7 @@
 //   2. RADAR_UFFICIO_GARE         → Opportunità aperta all'Ufficio Gare (matrice del §2 di 26A);
 //   3. RADAR_NOTIFICHE_PREFERENZE → pagina «Notifiche» e azioni delle preferenze (il motore degli invii è RADAR_NOTIFICHE_EMAIL di B2).
 import { ambienteDb } from "./ambiente";
+import { invioEmailAcceso } from "./notifiche/interruttore";
 
 export const INTERRUTTORI_B4 = ["RADAR_PER_TE", "RADAR_UFFICIO_GARE", "RADAR_NOTIFICHE_PREFERENZE"] as const;
 export type InterruttoreB4 = (typeof INTERRUTTORI_B4)[number];
@@ -27,10 +28,10 @@ export function preferenzeNotificheAttive(env: Record<string, string | undefined
 }
 
 /**
- * SOLO per l'avviso della pagina «Notifiche» («gli avvisi email non sono ancora attivi»): il motore degli invii è di B2 e la regola che conta è
- * la sua. Qui la lettura più prudente (accesi solo con «attivo» sullo staging): nel dubbio la pagina dice che non sono attivi. Da allineare
- * alla funzione del motore di B2 all'integrazione.
+ * SOLO per l'avviso della pagina «Notifiche» («gli avvisi email non sono ancora attivi»). Nessuna lettura propria dell'ambiente: delega
+ * all'INTERRUTTORE UNICO del motore di B2 (notifiche/interruttore.ts: «attivo» esatto, mai su un'anteprima di Vercel, solo staging), così
+ * la pagina dice esattamente ciò che fa il motore (Fase A della B4, A9 del 20/11).
  */
 export function invioEmailDichiaratoAcceso(env: Record<string, string | undefined>): boolean {
-  return env.RADAR_NOTIFICHE_EMAIL === "attivo" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";
+  return invioEmailAcceso(env);
 }

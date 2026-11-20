@@ -38,6 +38,9 @@ import {
   type StatoImpresaNotifiche,
 } from "../src/lib/radar/notifiche/destinatari-calcoli";
 import { CATEGORIE_NOTIFICA, type CategoriaNotifica } from "../src/lib/radar/notifiche/tipi";
+import { invioEmailAcceso, statoInvioEmail } from "../src/lib/radar/notifiche/interruttore";
+import type { EsitoRavvicinata } from "../src/lib/radar/notifiche/ravvicinata";
+import { pianificaScadenzaRavvicinata, type IngressoInLista, type Pianificatore } from "../src/lib/radar/ingresso-lista";
 import { leggiNotifiche, leggiPreferenzePersona } from "../src/lib/radar/notifiche-preferenze";
 import { TABELLA_NOTIFICHE_IMPRESA, TABELLA_NOTIFICHE_PERSONE } from "../src/lib/radar/notifiche-preferenze-calcoli";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -161,6 +164,58 @@ const IMPRESA: StatoImpresaNotifiche = { impresaId: ALFA, radarAttivo: true, ema
 
 atteso("I1 pagina «Notifiche»: solo «attivo» sullo staging", preferenzeNotificheAttive({ RADAR_NOTIFICHE_PREFERENZE: "attivo", NEXT_PUBLIC_SUPABASE_URL: STAGING }) && !preferenzeNotificheAttive({ RADAR_NOTIFICHE_PREFERENZE: "attivo", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }) && !preferenzeNotificheAttive({ RADAR_NOTIFICHE_PREFERENZE: "1", NEXT_PUBLIC_SUPABASE_URL: STAGING }));
 atteso("I2 avviso «non ancora attivi»: il motore si considera acceso solo con «attivo» sullo staging (nel dubbio, spento)", invioEmailDichiaratoAcceso({ RADAR_NOTIFICHE_EMAIL: "attivo", NEXT_PUBLIC_SUPABASE_URL: STAGING }) && !invioEmailDichiaratoAcceso({ RADAR_NOTIFICHE_EMAIL: "si", NEXT_PUBLIC_SUPABASE_URL: STAGING }) && !invioEmailDichiaratoAcceso({ NEXT_PUBLIC_SUPABASE_URL: STAGING }));
+
+// ───── A4/A9. L'avviso «non ancora attivi» dice esattamente ciò che fa il motore: interruttore unico di B2, matrice delle variabili ─────
+{
+  const valori = [undefined, "", "0", "1", "true", "si", "on", "ATTIVO", "Attivo", " attivo", "attivo ", "attivo\n", "attivi", "attivo"];
+  const vercel = [undefined, "", "production", "preview", "development", "PREVIEW"];
+  const database = [STAGING, PRODUZIONE, undefined, "", "https://altro-progetto.supabase.co", "http://localhost:54321", `${STAGING}/`, STAGING.toUpperCase()];
+  let combinazioni = 0;
+  const diverse: string[] = [];
+  const accese: string[] = [];
+  for (const RADAR_NOTIFICHE_EMAIL of valori)
+    for (const VERCEL_ENV of vercel)
+      for (const NEXT_PUBLIC_SUPABASE_URL of database) {
+        const env = { RADAR_NOTIFICHE_EMAIL, VERCEL_ENV, NEXT_PUBLIC_SUPABASE_URL, RADAR_NOTIFICHE_PREFERENZE: "attivo" };
+        combinazioni++;
+        const pagina = invioEmailDichiaratoAcceso(env);
+        if (pagina !== invioEmailAcceso(env) || pagina !== statoInvioEmail(env).acceso) diverse.push(JSON.stringify(env));
+        if (pagina) accese.push(JSON.stringify([RADAR_NOTIFICHE_EMAIL, VERCEL_ENV, NEXT_PUBLIC_SUPABASE_URL]));
+      }
+  atteso(`A4.1 matrice delle variabili (${combinazioni} combinazioni): l'avviso della pagina coincide SEMPRE con l'interruttore unico di B2`, diverse.length === 0, diverse.slice(0, 3).join(" ; "));
+  // atteso scritto a mano, senza chiedere alla funzione: «attivo» esatto, mai «preview», solo il database dello staging
+  const indispensabili = [undefined, "production", "development"].map((v) => JSON.stringify(["attivo", v, STAGING]));
+  atteso(
+    "A4.2 acceso SOLO con «attivo» esatto, fuori dalle anteprime di Vercel e sul database dello staging",
+    indispensabili.every((a) => accese.includes(a)) &&
+      accese.every((a) => {
+        const [v, e, u] = JSON.parse(a) as [string, string | null, string | null];
+        return v === "attivo" && e !== "preview" && typeof u === "string" && u.toLowerCase().startsWith(STAGING) && ![PRODUZIONE, "https://altro-progetto.supabase.co", "http://localhost:54321"].includes(u);
+      }),
+    accese.join(" ; "),
+  );
+  const casiSpenti = [
+    { RADAR_NOTIFICHE_EMAIL: "1", NEXT_PUBLIC_SUPABASE_URL: STAGING },
+    { RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: STAGING },
+    { RADAR_NOTIFICHE_EMAIL: "attivo", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE },
+  ];
+  uguale(
+    "A4.3 i tre motivi dello spento: in tutti e tre la pagina mostra l'avviso",
+    casiSpenti.map((env) => [statoInvioEmail(env), invioEmailDichiaratoAcceso(env)]),
+    [[{ acceso: false, motivo: "spento" }, false], [{ acceso: false, motivo: "anteprima" }, false], [{ acceso: false, motivo: "ambiente_non_autorizzato" }, false]],
+  );
+  atteso("A4.4 di base (nessuna variabile) l'avviso c'è", !invioEmailDichiaratoAcceso({}) && !invioEmailDichiaratoAcceso({ NEXT_PUBLIC_SUPABASE_URL: STAGING }));
+  const interruttori = leggi("src/lib/radar/interruttori-b4.ts");
+  atteso(
+    "A9.1 interruttori-b4.ts delega all'interruttore unico di B2: nessuna lettura propria di RADAR_NOTIFICHE_EMAIL",
+    interruttori.includes('import { invioEmailAcceso } from "./notifiche/interruttore";') && /export function invioEmailDichiaratoAcceso\([^)]*\): boolean \{\n  return invioEmailAcceso\(env\);\n\}/.test(interruttori) && !/env\.RADAR_NOTIFICHE_EMAIL|env\[["']RADAR_NOTIFICHE_EMAIL/.test(interruttori),
+  );
+  const paginaNotifiche = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx");
+  atteso(
+    "A9.2 la pagina mostra l'avviso con questa sola funzione e non legge l'ambiente del motore per conto suo",
+    paginaNotifiche.includes("{!invioEmailDichiaratoAcceso(process.env) && (") && !paginaNotifiche.includes("RADAR_NOTIFICHE_EMAIL") && (paginaNotifiche.match(/invioEmailDichiaratoAcceso\(/g) ?? []).length === 1,
+  );
+}
 
 // ───── S. Sorgenti: guardie, impresa dalla sessione, nessun indirizzo, nessuna scrittura in console ─────
 
@@ -477,8 +532,85 @@ async function proveA3() {
   atteso("A3.7 nessuna lettura o scelta per indirizzo email nel codice della pagina", !/\.eq\(\s*"email"|\.email\s*===|===\s*[\w.]*\.email\b/.test(sorgenti));
 }
 
+// ───── A8. «Scadenza ravvicinata» agganciata alle azioni di Opportunità (regola e lavoro di B2: notifiche/ravvicinata.ts) ─────
+
+async function proveA8() {
+  delete process.env.RADAR_NOTIFICHE_EMAIL; // le prove girano sempre a interruttore unico spento, come di base
+  const PROCEDURA = "00000000-0000-4000-a000-00000000c001";
+  const AGGIUNTA = "00000000-0000-4000-a000-00000000c002";
+  const pianificati: (() => Promise<EsitoRavvicinata>)[] = [];
+  const pianifica: Pianificatore = (lavoro) => {
+    pianificati.push(lavoro);
+  };
+  uguale(
+    "A8.1 gara dell'archivio: una sola gara, impresa = titolare, autore = chi salva",
+    pianificaScadenzaRavvicinata({ impresaId: ALFA, autoreId: UFFICIO_ALFA, proceduraId: PROCEDURA }, pianifica),
+    { impresaId: ALFA, proceduraId: PROCEDURA, aggiuntaId: null, autoreId: UFFICIO_ALFA },
+  );
+  atteso("A8.1 il lavoro è PIANIFICATO (after di Next, dopo la risposta), non eseguito subito", pianificati.length === 1);
+  uguale(
+    "A8.2 gara aggiunta a mano",
+    pianificaScadenzaRavvicinata({ impresaId: ALFA, autoreId: ALFA, aggiuntaId: AGGIUNTA }, pianifica),
+    { impresaId: ALFA, proceduraId: null, aggiuntaId: AGGIUNTA, autoreId: ALFA },
+  );
+  const doppia = pianificaScadenzaRavvicinata({ impresaId: ALFA, autoreId: ALFA, proceduraId: PROCEDURA, aggiuntaId: AGGIUNTA } as unknown as IngressoInLista, pianifica);
+  const nessuna = pianificaScadenzaRavvicinata({ impresaId: ALFA, autoreId: ALFA } as unknown as IngressoInLista, pianifica);
+  atteso("A8.3 mai due gare insieme né nessuna: rifiutato e niente pianificato", doppia === null && nessuna === null && pianificati.length === 2);
+  const esiti = await Promise.all(pianificati.map((lavoro) => lavoro()));
+  uguale("A8.4 eseguito dopo, a interruttore unico spento: «spento» (B2 non legge né scrive), nessuna eccezione", esiti, [{ esito: "spento" }, { esito: "spento" }]);
+
+  const aiuto = leggi("src/lib/radar/ingresso-lista.ts");
+  atteso(
+    "A8.5 il modulo pianifica con after() di Next e chiama B2 SOLO dentro il lavoro pianificato",
+    aiuto.includes('import { after } from "next/server";') &&
+      aiuto.includes("pianifica: Pianificatore = after") &&
+      (aiuto.match(/dopoIngressoInLista\(/g) ?? []).length === 1 &&
+      /pianifica\(async \(\) => \{\n\s*const esito = await dopoIngressoInLista\(gara\);/.test(aiuto),
+  );
+
+  const azioni = leggi("src/app/actions/radar.ts");
+  const chiamate = [...azioni.matchAll(/pianificaScadenzaRavvicinata\(([^;]*)\);/g)].map((m) => m[1]);
+  atteso(
+    "A8.6 radar.ts: tre agganci (salva/monitora, archivio da «aggiungi», gara aggiunta), nessuna chiamata diretta a B2 né after() fuori dal modulo",
+    chiamate.length === 3 && !senzaCommenti(azioni).includes("dopoIngressoInLista") && !/\bafter\b/.test(senzaCommenti(azioni)) && azioni.includes('import { pianificaScadenzaRavvicinata } from "@/lib/radar/ingresso-lista";'),
+    `${chiamate.length} chiamate`,
+  );
+  const oggetti = chiamate.flatMap((c) => [...c.matchAll(/\{[^{}]*\}/g)].map((m) => m[0]));
+  atteso(
+    "A8.7 ogni gara passata ha ESATTAMENTE uno tra proceduraId e aggiuntaId, impresa dell'account e autore della sessione",
+    oggetti.length === 4 && oggetti.every((o) => /\bproceduraId\b/.test(o) !== /\baggiuntaId\b/.test(o) && o.includes("impresaId: g.contesto.accountId") && o.includes("autoreId: g.contesto.userId")),
+    oggetti.join(" ; "),
+  );
+  const salva = azioni.slice(azioni.indexOf("export async function aggiornaSalvataggio"), azioni.indexOf("export async function aggiungiGaraAMano"));
+  const iErrore = salva.indexOf('return { errore: "Non è stato possibile salvare la gara." };');
+  const iAggancio = salva.indexOf("pianificaScadenzaRavvicinata(");
+  atteso(
+    "A8.8 salva/monitora: solo dopo la scrittura riuscita, solo quando la gara ENTRA nella lista (mai per «rimuovi» o «non monitorare»)",
+    iErrore > 0 &&
+      iAggancio > iErrore &&
+      iAggancio < salva.lastIndexOf("ricarica(proceduraId, aggiuntaId);") &&
+      salva.slice(iErrore, iAggancio + "pianificaScadenzaRavvicinata(".length).includes('if ((azione === "salva" || azione === "monitora") && (!esistente || (monitorata === true && !esistente.monitorata)))\n    pianificaScadenzaRavvicinata(') &&
+      salva.indexOf("pianificaScadenzaRavvicinata(") === salva.lastIndexOf("pianificaScadenzaRavvicinata("),
+  );
+  const aggiungi = azioni.slice(azioni.indexOf("export async function aggiungiGaraAMano"));
+  const iRedirect = aggiungi.indexOf("redirect(destinazione);");
+  const archivio = "if (!erroreArchivio) pianificaScadenzaRavvicinata({ impresaId: g.contesto.accountId, autoreId: g.contesto.userId, proceduraId: lotto.procedura_id });";
+  const aggiunta = "if (!erroreSalvata) pianificaScadenzaRavvicinata({ impresaId: g.contesto.accountId, autoreId: g.contesto.userId, aggiuntaId: nuova.id });";
+  atteso(
+    "A8.9 «aggiungi a mano»: solo se la gara è davvero entrata tra le salvate (scrittura riuscita), prima del redirect (after parte anche con redirect)",
+    aggiungi.includes(`const { error: erroreArchivio } = await supabase.from("omnia_ai_radar_salvate").upsert(`) &&
+      aggiungi.indexOf(archivio) > aggiungi.indexOf("const { error: erroreArchivio }") &&
+      aggiungi.indexOf(aggiunta) > aggiungi.indexOf("const { error: erroreSalvata }") &&
+      [archivio, aggiunta].every((s) => aggiungi.indexOf(s) > 0 && aggiungi.indexOf(s) < iRedirect) &&
+      (aggiungi.match(/pianificaScadenzaRavvicinata\(/g) ?? []).length === 2,
+  );
+  const b2 = leggi("src/lib/radar/notifiche/ravvicinata.ts");
+  atteso("A8.10 contratto di B2 invariato: dopoIngressoInLista(gara, opzioni) con l'interruttore unico", /export async function dopoIngressoInLista\(gara: GaraEntrataInLista, opzioni: OpzioniRavvicinata = \{\}\): Promise<EsitoRavvicinata>/.test(b2) && b2.includes("if (!invioEmailAcceso(env)) return { esito: \"spento\" };"));
+}
+
 proveA1()
   .then(proveA3)
+  .then(proveA8)
   .then(
     () => {
       console.log(fallimenti.length ? `\n${fallimenti.length} controlli FALLITI` : "\nTutti i controlli del grado 3 della fase B4 sono passati.");

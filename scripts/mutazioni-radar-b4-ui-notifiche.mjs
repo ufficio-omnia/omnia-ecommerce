@@ -11,9 +11,13 @@ const AZIONI = "src/app/actions/radar-notifiche.ts";
 const PAGINA = "src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx";
 const MODULI = "src/components/omnia-ai/opportunita/notifiche-form.tsx";
 const INTERRUTTORI = "src/lib/radar/interruttori-b4.ts";
-// File di B2 (regola «riceve»): mutato SOLO in memoria durante la prova e ripristinato dal buffer (sha256 controllato alla fine); mai modificato
-// né committato da B1. Serve a dimostrare che le prove A1 si accorgono se un motivo di esclusione sparisce (38B §1.5 A1).
+// File di B2 (regola «riceve», interruttore unico): mutati SOLO in memoria durante la prova e ripristinati dal buffer (sha256 controllato alla
+// fine); mai modificati né committati da B1. Servono a dimostrare che le prove A1 e A4 si accorgono se una regola sparisce (38B §1.5).
 const DESTINATARI_B2 = "src/lib/radar/notifiche/destinatari-calcoli.ts";
+const INTERRUTTORE_B2 = "src/lib/radar/notifiche/interruttore.ts";
+// Fase A (A8): aggancio della «scadenza ravvicinata» nelle azioni di Opportunità
+const RADAR = "src/app/actions/radar.ts";
+const AGGANCIO = "src/lib/radar/ingresso-lista.ts";
 
 const MUTAZIONI = [
   { nome: "M1 nuove opportunità accese anche per l'Ufficio Gare", file: CALCOLI, cerca: 'return { nuove_opportunita: ruolo === "titolare", scadenze: true, rettifiche: true };', con: "return { nuove_opportunita: true, scadenze: true, rettifiche: true };" },
@@ -32,7 +36,7 @@ const MUTAZIONI = [
   { nome: "M14 riga dell'impresa creata anche dall'Ufficio Gare", file: AZIONI, cerca: 'creaImpresa: contesto.ruolo === "titolare"', con: "creaImpresa: true" },
   { nome: "M15 destinatari di altre imprese non rifiltrati", file: SERVER, cerca: " && p.impresaId === impresaId);", con: ");" },
   { nome: "M16 accendere le email in sola lettura", file: AZIONI, cerca: "if (attive && !diritto.operativo) return", con: "if (false && !diritto.operativo) return" },
-  { nome: "M17 motore dichiarato acceso con qualunque valore", file: INTERRUTTORI, cerca: 'return env.RADAR_NOTIFICHE_EMAIL === "attivo" && ambienteDb', con: "return !!env.RADAR_NOTIFICHE_EMAIL && ambienteDb" },
+  { nome: "M17 avviso con una lettura propria (la vecchia copia, senza l'esclusione delle anteprime)", file: INTERRUTTORI, cerca: "  return invioEmailAcceso(env);\n", con: '  return env.RADAR_NOTIFICHE_EMAIL === "attivo" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";\n', richiede: "A4.1" },
   { nome: "M18 «solo spegnere» non applicato nel modulo", file: MODULI, cerca: 'disabled={modo === "solo_spegnere" && !valori[c]}', con: "disabled={false}" },
   { nome: "M19 destinatari visibili anche all'Ufficio Gare", file: PAGINA, cerca: "{titolare && (\n            <section", con: "{(\n            <section" },
   { nome: "M20 testi dello stato dell'indirizzo scambiati", file: CALCOLI, cerca: 'verificato: "Indirizzo verificato",\n  da_verificare: "Indirizzo da verificare",', con: 'verificato: "Indirizzo da verificare",\n  da_verificare: "Indirizzo verificato",' },
@@ -69,6 +73,34 @@ const MUTAZIONI = [
   { nome: "M48 [B2] membro attivo nel dubbio", file: DESTINATARI_B2, cerca: "membroAttivo: x.membro_attivo === true,", con: "membroAttivo: x.membro_attivo !== false,", richiede: "A1.5" },
   { nome: "M49 [B2] indirizzo confermato nel dubbio", file: DESTINATARI_B2, cerca: "emailConfermata: x.email_confermata === true,", con: "emailConfermata: x.email_confermata !== false,", richiede: "A1.8" },
   { nome: "M50 [B2] indirizzo non normalizzato", file: DESTINATARI_B2, cerca: "x.email.trim().toLowerCase()", con: "x.email", richiede: "A1.13" },
+  // A4/A9: l'avviso «non ancora attivi» e l'interruttore unico di B2
+  { nome: "M51 avviso acceso con qualunque valore della variabile", file: INTERRUTTORI, cerca: "  return invioEmailAcceso(env);\n", con: '  return invioEmailAcceso({ ...env, RADAR_NOTIFICHE_EMAIL: env.RADAR_NOTIFICHE_EMAIL ? "attivo" : undefined });\n', richiede: "A4.1" },
+  { nome: "M52 avviso mai mostrato nella pagina", file: PAGINA, cerca: "{!invioEmailDichiaratoAcceso(process.env) && (", con: "{false && (", richiede: "A9.2" },
+  { nome: "M53 [B2] anteprime di Vercel non escluse", file: INTERRUTTORE_B2, cerca: '  if (env.VERCEL_ENV === "preview") return { acceso: false, motivo: "anteprima" };\n', con: "", richiede: "A4.2" },
+  { nome: "M54 [B2] valore non esatto accettato", file: INTERRUTTORE_B2, cerca: 'if (env[VARIABILE_INTERRUTTORE_EMAIL] !== "attivo")', con: "if (!env[VARIABILE_INTERRUTTORE_EMAIL])", richiede: "A4.2" },
+  { nome: "M55 [B2] acceso anche fuori dallo staging", file: INTERRUTTORE_B2, cerca: '  if (ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) !== "staging") return { acceso: false, motivo: "ambiente_non_autorizzato" };\n', con: "", richiede: "A4.2" },
+  // A8: «scadenza ravvicinata» (le tre del coordinamento: entrambi gli id, prima della risposta invece che in after(), anche ad azione fallita)
+  { nome: "M56 chiamata con entrambi gli id (gara dell'archivio da «aggiungi»)", file: RADAR, cerca: "proceduraId: lotto.procedura_id });", con: "proceduraId: lotto.procedura_id, aggiuntaId: lotto.procedura_id });", richiede: "A8.7" },
+  { nome: "M57 il modulo accetta entrambi gli id", file: AGGANCIO, cerca: "if ((proceduraId === null) === (aggiuntaId === null)) {", con: "if (proceduraId === null && aggiuntaId === null) {", richiede: "A8.3" },
+  {
+    nome: "M58 lavoro eseguito subito, prima della risposta, invece che in after()",
+    file: AGGANCIO,
+    cerca: "  pianifica(async () => {\n    const esito = await dopoIngressoInLista(gara);\n    if (esito.esito === \"errore\") console.error(\"Tender Intelligence: scadenza ravvicinata non riuscita\", esito.codice);\n    return esito;\n  });\n",
+    con: "  void (async () => {\n    const esito = await dopoIngressoInLista(gara);\n    if (esito.esito === \"errore\") console.error(\"Tender Intelligence: scadenza ravvicinata non riuscita\", esito.codice);\n    return esito;\n  })();\n",
+    richiede: "A8.1",
+  },
+  { nome: "M59 chiamata diretta a B2 nell'azione, prima della risposta", file: RADAR, cerca: "if (!erroreSalvata) pianificaScadenzaRavvicinata({ impresaId: g.contesto.accountId, autoreId: g.contesto.userId, aggiuntaId: nuova.id });", con: "if (!erroreSalvata) await dopoIngressoInLista({ impresaId: g.contesto.accountId, autoreId: g.contesto.userId, proceduraId: null, aggiuntaId: nuova.id });", richiede: "A8.6" },
+  {
+    nome: "M60 salva/monitora: aggancio prima del controllo dell'errore (anche ad azione fallita)",
+    file: RADAR,
+    cerca: "  if (error) {\n    if (!schemaAssente(error)) console.error(\"Tender Intelligence: salvataggio della gara non riuscito\", error.code);\n    return { errore: \"Non è stato possibile salvare la gara.\" };\n  }\n  // la gara ENTRA nella lista (nuova tra le salvate o appena monitorata): «scadenza ravvicinata» di B2 dopo la risposta (A8, spenta di base)\n  if ((azione === \"salva\" || azione === \"monitora\") && (!esistente || (monitorata === true && !esistente.monitorata)))\n    pianificaScadenzaRavvicinata(proceduraId ? { impresaId: g.contesto.accountId, autoreId: g.contesto.userId, proceduraId } : { impresaId: g.contesto.accountId, autoreId: g.contesto.userId, aggiuntaId: aggiuntaId as string });\n",
+    con: "  if ((azione === \"salva\" || azione === \"monitora\") && (!esistente || (monitorata === true && !esistente.monitorata)))\n    pianificaScadenzaRavvicinata(proceduraId ? { impresaId: g.contesto.accountId, autoreId: g.contesto.userId, proceduraId } : { impresaId: g.contesto.accountId, autoreId: g.contesto.userId, aggiuntaId: aggiuntaId as string });\n  if (error) {\n    if (!schemaAssente(error)) console.error(\"Tender Intelligence: salvataggio della gara non riuscito\", error.code);\n    return { errore: \"Non è stato possibile salvare la gara.\" };\n  }\n",
+    richiede: "A8.8",
+  },
+  { nome: "M61 «aggiungi»: aggancio anche se la gara aggiunta non è entrata tra le salvate", file: RADAR, cerca: "    if (!erroreSalvata) pianificaScadenzaRavvicinata(", con: "    pianificaScadenzaRavvicinata(", richiede: "A8.9" },
+  { nome: "M62 «aggiungi»: aggancio anche se il salvataggio della gara dell'archivio fallisce", file: RADAR, cerca: "      if (!erroreArchivio) pianificaScadenzaRavvicinata(", con: "      pianificaScadenzaRavvicinata(", richiede: "A8.9" },
+  { nome: "M63 aggancio anche per «rimuovi» e «non monitorare»", file: RADAR, cerca: '(azione === "salva" || azione === "monitora") && (!esistente', con: "(!esistente", richiede: "A8.8" },
+  { nome: "M64 aggancio a ogni clic, anche se la gara era già nella lista", file: RADAR, cerca: "&& (!esistente || (monitorata === true && !esistente.monitorata)))\n    pianificaScadenzaRavvicinata(", con: "&& true)\n    pianificaScadenzaRavvicinata(", richiede: "A8.8" },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-radar-b4-ui-notifiche.ts", mutazioni: MUTAZIONI }));

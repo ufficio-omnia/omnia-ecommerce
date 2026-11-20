@@ -10,12 +10,15 @@ import { registraUtilizzoRadar } from "@/lib/radar/utilizzi";
 import { validaGaraAggiunta } from "@/lib/radar/aggiunte-calcoli";
 import { MESSAGGIO_RADAR_NON_DISPONIBILE, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
+import { pianificaScadenzaRavvicinata } from "@/lib/radar/ingresso-lista";
 
 // Azioni di Tender Intelligence nell'area riservata: salvare e monitorare una gara, aggiungere una gara a mano. Fase B1: solo titolare; fase B4
 // (grado 2): anche l'Ufficio Gare attivo dell'impresa, SOLO con RADAR_UFFICIO_GARE acceso (guardie-opportunita.ts). Dati sempre dell'impresa.
 // Ogni azione parte dalla guardia di Opportunità e dal diritto al modulo, ricalcolati qui (il pulsante nella pagina non è una garanzia).
 // Le tabelle riservate si scrivono con la sessione dell'utente (regole di accesso del titolare effettivo, migrazione 0112); l'archivio
 // pubblico si legge con la chiave di servizio solo per controllare che la gara esista.
+// Fase A della B4 (A8, 20/11): quando una gara ENTRA nella lista dell'impresa, e solo dopo che la scrittura è riuscita, si aggancia la
+// «scadenza ravvicinata» di B2 dopo la risposta (ingresso-lista.ts, after() di Next): spenta di base, non rallenta mai il salvataggio.
 
 export type StatoAzioneRadar = { errore?: string; ok?: boolean; messaggio?: string };
 
@@ -79,6 +82,9 @@ export async function aggiornaSalvataggio(_stato: StatoAzioneRadar, formData: Fo
     if (!schemaAssente(error)) console.error("Tender Intelligence: salvataggio della gara non riuscito", error.code);
     return { errore: "Non è stato possibile salvare la gara." };
   }
+  // la gara ENTRA nella lista (nuova tra le salvate o appena monitorata): «scadenza ravvicinata» di B2 dopo la risposta (A8, spenta di base)
+  if ((azione === "salva" || azione === "monitora") && (!esistente || (monitorata === true && !esistente.monitorata)))
+    pianificaScadenzaRavvicinata(proceduraId ? { impresaId: g.contesto.accountId, autoreId: g.contesto.userId, proceduraId } : { impresaId: g.contesto.accountId, autoreId: g.contesto.userId, aggiuntaId: aggiuntaId as string });
   if (monitorata === true && !esistente?.monitorata) await registraUtilizzoRadar({ accountId: g.contesto.accountId, membroId: g.contesto.userId, azione: "monitora", proceduraId });
   ricarica(proceduraId, aggiuntaId);
   return { ok: true, messaggio: monitorata === true ? "Gara monitorata." : monitorata === false ? "Monitoraggio tolto: la gara resta tra le salvate." : "Gara salvata." };
@@ -102,10 +108,11 @@ export async function aggiungiGaraAMano(_stato: StatoAzioneRadar, formData: Form
   if (v.cig) {
     const { data: lotto } = await createAdminClient().from("radar_lotti").select("procedura_id").eq("cig", v.cig).maybeSingle<{ procedura_id: string }>();
     if (lotto) {
-      await supabase.from("omnia_ai_radar_salvate").upsert(
+      const { error: erroreArchivio } = await supabase.from("omnia_ai_radar_salvate").upsert(
         { user_id: g.contesto.accountId, procedura_id: lotto.procedura_id, monitorata: true, salvata_da: g.contesto.userId, ultimo_aggiornamento_visto_il: adesso, aggiornata_il: adesso },
         { onConflict: "user_id,procedura_id" },
       );
+      if (!erroreArchivio) pianificaScadenzaRavvicinata({ impresaId: g.contesto.accountId, autoreId: g.contesto.userId, proceduraId: lotto.procedura_id });
       destinazione = `${RADICE_OPPORTUNITA}/gara/${lotto.procedura_id}?da=aggiungi`;
     } else {
       const { data: gia } = await supabase.from("omnia_ai_radar_gare_aggiunte").select("id").eq("cig", v.cig).maybeSingle<{ id: string }>();
@@ -127,6 +134,7 @@ export async function aggiungiGaraAMano(_stato: StatoAzioneRadar, formData: Form
       .from("omnia_ai_radar_salvate")
       .insert({ user_id: g.contesto.accountId, aggiunta_id: nuova.id, monitorata: true, salvata_da: g.contesto.userId, ultimo_aggiornamento_visto_il: adesso });
     if (erroreSalvata) console.error("Tender Intelligence: gara aggiunta non messa tra le salvate", erroreSalvata.code);
+    if (!erroreSalvata) pianificaScadenzaRavvicinata({ impresaId: g.contesto.accountId, autoreId: g.contesto.userId, aggiuntaId: nuova.id });
     destinazione = `${RADICE_OPPORTUNITA}/aggiunta/${nuova.id}?da=aggiungi`;
   }
 
