@@ -1,6 +1,9 @@
-// Fase B4 (20/11/2026, B2) — PARAMETRI del motore delle notifiche email, isolati e con un nome. Le decisioni N1, N5 e N7 del rapporto
-// 38 (§1) sono ANCORA APERTE: qui c'è il valore PROPOSTO, e il motore riceve i parametri come argomento, così le prove usano anche l'altro
-// valore e cambiarli dopo la decisione dell'utente tocca solo questo file. N6 è DECISA (20/11: 30 giorni; 7 respinto).
+// Fase B4 (20/11/2026, B2) — PARAMETRI del motore delle notifiche email, isolati e con un nome. Il motore li riceve come argomento, così le
+// prove usano anche l'altro valore e un cambio tocca solo questo file. Stato delle decisioni del rapporto 38 (§1), secondo il 40B:
+//   - N1 DECISA (decisione 8 del piano 26, approvata il 19/11: «Abbonamento scaduto: nessuna email»);
+//   - N5 ANCORA DA DECIDERE: qui c'è il valore PROPOSTO («sì»);
+//   - N6 DECISA (20/11: 30 giorni; 7 respinto);
+//   - N7 RECEPITA come scelta tecnica.
 //
 // Compattazione e conservazione restano TRE parametri distinti, anche se oggi due valgono uguale (decisione N6 dell'utente: «Mantieni
 // separati i tempi di compattazione dei riepiloghi dalle regole di conservazione degli eventi, degli esiti di invio e dei dati necessari
@@ -10,11 +13,12 @@
 
 export type ParametriNotifiche = {
   /**
-   * N1 (proposta: sì) — un'impresa riceve gli avvisi solo con un abbonamento OMNIA AI valido (decisione D-E8 del 26B). Con false, conta solo
-   * che il Radar sia attivo in console e che il titolare abbia acceso le email.
+   * N1 DECISA (decisione 8 del piano 26, approvata il 19/11: «Abbonamento scaduto: nessuna email») — un'impresa riceve gli avvisi solo con
+   * un abbonamento OMNIA AI valido (decisione D-E8 del 26B). Con false (non in uso) conterebbero solo il Radar attivo in console e le email
+   * accese dal titolare.
    */
   abbonamentoRichiesto: boolean;
-  /** N5 (proposta: sì) — il riepilogo delle «nuove» non elenca le gare che l'impresa ha già salvato o monitorato. */
+  /** N5 ANCORA DA DECIDERE (proposta: sì) — il riepilogo delle «nuove» non elenca le gare che l'impresa ha già salvato o monitorato. */
   escludiGiaSalvateDalRiepilogo: boolean;
   /**
    * N6 decisa il 20/11: 30 giorni; 7 respinto. Giorni dalla creazione dell'evento dopo i quali si compatta il testo (`dati`, circa 20 KB) dei
@@ -26,19 +30,19 @@ export type ParametriNotifiche = {
   /** D-E7 (approvata): giorni dopo i quali si CANCELLANO eventi, consegne (con i loro esiti) e giri: 12 mesi. Distinto dalla compattazione. */
   giorniConservazione: number;
   /**
-   * N7 (proposta: sì) — un passaggio «invio» senza consegne da inviare non scrive una riga di giro (resta 1 sola richiesta, la presa in
-   * carico vuota); si registra comunque un «battito» al giorno. Con false ogni passaggio scrive il suo giro.
+   * N7 RECEPITA come scelta tecnica (sì) — un passaggio «invio» senza consegne da inviare non scrive una riga di giro (resta la sola presa in
+   * carico vuota, 1 richiesta); si registra comunque un «battito» al giorno. Con false ogni passaggio scriverebbe il suo giro.
    */
   giroInvioSoloConLavoro: boolean;
 };
 
 export const PARAMETRI_PROPOSTI: Readonly<ParametriNotifiche> = Object.freeze({
-  abbonamentoRichiesto: true,
-  escludiGiaSalvateDalRiepilogo: true,
+  abbonamentoRichiesto: true, // N1 decisa (decisione 8 del piano 26, 19/11)
+  escludiGiaSalvateDalRiepilogo: true, // N5 ancora da decidere: valore proposto
   giorniCompattazioneRiepiloghi: 30, // N6 decisa il 20/11: 30 giorni; 7 respinto
   giorniCompattazioneAltri: 30,
   giorniConservazione: 365,
-  giroInvioSoloConLavoro: true,
+  giroInvioSoloConLavoro: true, // N7 recepita come scelta tecnica
 });
 
 /** Le gare «nuove» del riepilogo: pubblicate al più da questi giorni (26B §5.2 passo f). */
