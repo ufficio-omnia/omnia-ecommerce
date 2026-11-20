@@ -28,6 +28,7 @@ import {
   eventoRiepilogo,
   gareDelleListe,
   nuovaPerIlGiro,
+  nuoveDaValutare,
   type EventoAttivo,
   type EventoNuovo,
   type GaraInLista,
@@ -241,12 +242,12 @@ async function leggiListe(d: DipendenzeMotore, imprese: readonly string[], nasco
 
 // ───────────────────────── giri ─────────────────────────
 
-type RigaGiro = { id: string; giorno_roma: string; fase: string; esito: string; iniziato_il: string; cursore_modifiche: string | null; cursore_nuove: string | null; conteggi: Conteggi };
+type RigaGiro = { id: string; giorno_roma: string; fase: string; esito: string; iniziato_il: string; cursore_modifiche: string | null; cursore_nuove: string | null; nuove_in_sospeso: string[] | null; conteggi: Conteggi };
 
 async function ultimiGiriEventi(d: DipendenzeMotore): Promise<RigaGiro[]> {
   return controlla<RigaGiro[]>(
     "ultimi giri",
-    await d.admin.from(T.giri).select("id, giorno_roma, fase, esito, iniziato_il, cursore_modifiche, cursore_nuove, conteggi").eq("fase", "eventi").eq("esito", "riuscito").order("giorno_roma", { ascending: false }).order("iniziato_il", { ascending: false }).limit(1),
+    await d.admin.from(T.giri).select("id, giorno_roma, fase, esito, iniziato_il, cursore_modifiche, cursore_nuove, nuove_in_sospeso, conteggi").eq("fase", "eventi").eq("esito", "riuscito").order("giorno_roma", { ascending: false }).order("iniziato_il", { ascending: false }).limit(1),
   );
 }
 
@@ -273,10 +274,16 @@ async function apriGiro(d: DipendenzeMotore, fase: "eventi" | "invio", oggi: str
   return id;
 }
 
-async function chiudiGiro(d: DipendenzeMotore, id: string, esito: "riuscito" | "fallito" | "fermato", dati: { conteggi: Conteggi; errore?: string | null; cursore_modifiche?: string | null; cursore_nuove?: string | null }): Promise<void> {
+async function chiudiGiro(
+  d: DipendenzeMotore,
+  id: string,
+  esito: "riuscito" | "fallito" | "fermato",
+  dati: { conteggi: Conteggi; errore?: string | null; cursore_modifiche?: string | null; cursore_nuove?: string | null; nuove_in_sospeso?: string[] },
+): Promise<void> {
   const valori: Record<string, unknown> = { esito, finito_il: d.adesso().toISOString(), conteggi: dati.conteggi, errore: dati.errore ?? null };
   if (dati.cursore_modifiche !== undefined) valori.cursore_modifiche = dati.cursore_modifiche;
   if (dati.cursore_nuove !== undefined) valori.cursore_nuove = dati.cursore_nuove;
+  if (dati.nuove_in_sospeso !== undefined) valori.nuove_in_sospeso = dati.nuove_in_sospeso;
   controlla("chiusura del giro", await d.admin.from(T.giri).update(valori).eq("id", id));
 }
 
@@ -326,7 +333,7 @@ async function inserisciConsegne(d: DipendenzeMotore, eventi: readonly EventoNuo
 
 // ───────────────────────── fase «eventi» ─────────────────────────
 
-async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, precedente: RigaGiro | null): Promise<{ conteggi: Conteggi; cursori: { modifiche: string; nuove: string } }> {
+async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, precedente: RigaGiro | null): Promise<{ conteggi: Conteggi; cursori: { modifiche: string; nuove: string }; inSospeso: string[] }> {
   const c: Conteggi = {};
   const adesso = d.adesso();
   const contesto = { nuovoId: d.nuovoId, adessoIso: adesso.toISOString() };
@@ -364,6 +371,10 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
   const vogliono = imprese.filter((i) => quadro.persone.some((p) => p.impresaId === i && quadro.preferenze.get(p.userId)?.nuove_opportunita === true));
   const riepiloghi: EventoNuovo[] = [];
   let nuovoCursoreNuove = cursoreNuove;
+  // difetto 3.3 (proposta A): le gare lette dal giro riuscito prima quando non erano ancora classificate. Se oggi il riepilogo non si
+  // calcola (nessuno lo vuole, nessun profilo) restano com'erano: nulla si perde.
+  const idsSospesi = (precedente?.nuove_in_sospeso ?? []).filter((x): x is string => typeof x === "string");
+  let inSospeso: string[] = idsSospesi;
   if (vogliono.length) {
     const profili = controlla<RigaProfilo[]>("profili", await d.admin.from(TABELLA_PROFILI).select(COLONNE_PROFILO as string).in("user_id", vogliono).eq("posizione", POSIZIONE_PROFILO));
     const perImpresa = new Map<string, ProfiloRadar>();
@@ -377,13 +388,21 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
         await d.admin.from(T.procedure).select(COLONNE_GARA).gt("prima_rilevazione_il", cursoreNuove).gte("data_pubblicazione", aggiungiGiorni(oggi, -FINESTRA_NUOVE_GIORNI)).eq("stato", "aperta").is("unita_a", null).order("prima_rilevazione_il", { ascending: true }).limit(2000),
       ).filter((r) => nuovaPerIlGiro(r, cursoreNuove, oggi));
       if (nuove.length) nuovoCursoreNuove = nuove[nuove.length - 1].prima_rilevazione_il;
-      const ids = nuove.map((r) => r.id);
+      // le gare in sospeso, rilette per identificativo: UNA richiesta in più, e solo se l'elenco non è vuoto
+      const sospese = await leggiPer<RigaGara>("gare in sospeso", idsSospesi, (b) => d.admin.from(T.procedure).select(COLONNE_GARA).in("id", b));
+      const ids = [...new Set([...nuove.map((r) => r.id), ...sospese.map((r) => r.id)])];
       const stati = await leggiPer<{ procedura_id: string; stato: "classificata" | "in_attesa" | "fallita" }>("stato delle classificazioni", ids, (b) => d.admin.from(T.stato).select("procedura_id, stato").in("procedura_id", b));
       const righe = await leggiPer<{ procedura_id: string; settore: string; rilevanza: "A" | "B" | "C"; sottocategorie: string[] | null; attiva: boolean }>("classificazioni", ids, (b) =>
         d.admin.from(T.classificazioni).select("procedura_id, settore, rilevanza, sottocategorie, attiva").in("procedura_id", b).eq("attiva", true),
       );
       const stato = new Map(stati.map((s) => [s.procedura_id, s]));
-      const conClassi: RigaNuova[] = nuove.map((r) => ({
+      const valutare = nuoveDaValutare({ nuove, idsSospesi, sospese, statoDi: new Map(stati.map((s) => [s.procedura_id, s.stato])), oggi });
+      inSospeso = valutare.inSospeso;
+      c.nuove_in_sospeso = valutare.inSospeso.length;
+      c.nuove_rivalutate = valutare.rivalutate;
+      c.nuove_sospese_uscite = valutare.uscite;
+      if (valutare.oltreIlMassimo) c.nuove_sospese_oltre_il_massimo = valutare.oltreIlMassimo;
+      const conClassi: RigaNuova[] = valutare.candidate.map((r) => ({
         ...r,
         classificazione_stato: stato.get(r.id) ? { stato: stato.get(r.id)!.stato } : null,
         classificazioni: righe.filter((x) => x.procedura_id === r.id).map((x) => ({ settore: x.settore, rilevanza: x.rilevanza, sottocategorie: x.sottocategorie, attiva: x.attiva })),
@@ -417,7 +436,7 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
 
   // 6) conservazione (D-E7, N6): compattazione dei dati e cancellazione dopo 12 mesi, a blocchi
   Object.assign(c, await conservazione(d));
-  return { conteggi: c, cursori: { modifiche: nuovoCursoreModifiche, nuove: nuovoCursoreNuove } };
+  return { conteggi: c, cursori: { modifiche: nuovoCursoreModifiche, nuove: nuovoCursoreNuove }, inSospeso };
 }
 
 async function annullaEventi(d: DipendenzeMotore, a: readonly { id: string; motivo: string }[]): Promise<number> {
@@ -814,7 +833,7 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
     else {
       try {
         const f = await faseEventi(d, o.origine, oggi, precedente ?? null);
-        await chiudiGiro(d, id, "riuscito", { conteggi: f.conteggi, cursore_modifiche: f.cursori.modifiche, cursore_nuove: f.cursori.nuove });
+        await chiudiGiro(d, id, "riuscito", { conteggi: f.conteggi, cursore_modifiche: f.cursori.modifiche, cursore_nuove: f.cursori.nuove, nuove_in_sospeso: f.inSospeso });
         eventi = f.conteggi;
       } catch (e) {
         const codice = e instanceof ErroreDb ? `${e.passo}:${e.codice}` : "eccezione";

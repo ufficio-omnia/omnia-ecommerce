@@ -11,7 +11,7 @@ import { PARAMETRI_PROPOSTI, type ParametriNotifiche } from "../src/lib/radar/no
 import { ProviderFinto, resendConsentito, sceltaProvider, type CopioneFinto } from "../src/lib/radar/notifiche/provider";
 import { classificaRispostaResend, creaProviderResend, quotaDaIntestazioni, richiestaResend } from "../src/lib/radar/notifiche/provider-resend";
 import { esitoDopoInvio, pianoInvioCompleto, type ConsegnaInCoda } from "../src/lib/radar/notifiche/coda-calcoli";
-import { eventiModifica, gareDelleListe, eventoRiepilogo, chiaveAvviso, scadenzaDaRegistro, type RigaModifica, type RigaGara, type RigaNuova } from "../src/lib/radar/notifiche/eventi-calcoli";
+import { eventiModifica, gareDelleListe, eventoRiepilogo, chiaveAvviso, nuoveDaValutare, scadenzaDaRegistro, type RigaModifica, type RigaGara, type RigaNuova } from "../src/lib/radar/notifiche/eventi-calcoli";
 import { dopoIngressoInLista } from "../src/lib/radar/notifiche/ravvicinata";
 import { giornoRoma } from "../src/lib/radar/notifiche/calendario";
 import type { EventoRiepilogo, TipoEvento } from "../src/lib/radar/notifiche/tipi";
@@ -538,6 +538,9 @@ async function principale(): Promise<void> {
   // ───── 11ter. N6 decisa: la compattazione annulla solo il testo, mai chiavi ed esiti ─────
   await provaCompattazioneIntatta();
 
+  // ───── 11quater. difetto 3.3 (proposta A): gare classificate dopo il giro che le ha viste ─────
+  await provaSospese();
+
   // ───── 12. adattatore Resend (chiuso): classificazione delle risposte ─────
   provaResend();
 
@@ -849,6 +852,131 @@ async function provaRavvicinata(): Promise<void> {
   const m3 = mondo({ inizio: "2026-10-20T14:00:00Z" });
   const r4 = await eseguiRavvicinata(m3.d, { ...ent, proceduraId: U(101) });
   controlla("ravvicinata: scadenza a 10 giorni → nessun avviso", r4.esito === "non_dovuta", r4);
+}
+
+// Difetto 3.3 (proposta A, approvata dall'utente il 20/11): una gara letta da un giro quando non era ancora classificata resta «in sospeso»
+// nel giro (radar_notifiche_giri.nuove_in_sospeso, bozza 0125) e si rivaluta al giro dopo. Prima la gara era persa per sempre (R1).
+async function provaSospese(): Promise<void> {
+  type DatiRiepilogo = { gare?: { proceduraId: string | null }[] };
+  const nelRiepilogo = (m: Mondo, giorno: string, id: string) =>
+    eventi(m).some((e) => e.tipo === "riepilogo_opportunita" && e.impresa_id === I1 && e.versione === giorno && ((e.dati as DatiRiepilogo | null)?.gare ?? []).some((g) => g.proceduraId === id));
+  const giroDi = (m: Mondo, giorno: string) => m.db.t("radar_notifiche_giri").find((g) => g.fase === "eventi" && g.giorno_roma === giorno && g.esito === "riuscito");
+  const sospese = (m: Mondo, giorno: string) => (giroDi(m, giorno)?.nuove_in_sospeso as string[] | undefined) ?? [];
+  const classifica = (m: Mondo, id: string) => {
+    const s = m.db.t("radar_classificazioni_stato").find((x) => x.procedura_id === id);
+    if (s) s.stato = "classificata";
+    else m.db.t("radar_classificazioni_stato").push({ procedura_id: id, stato: "classificata" });
+    m.db.t("radar_classificazioni").push({ procedura_id: id, settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true });
+  };
+  const nuova = (m: Mondo, n: number, x: { stato?: "in_attesa" | "fallita" | null; pubblicata?: string; rilevata?: string } = {}) => {
+    const g = gara(n, { prima_rilevazione_il: x.rilevata ?? "2026-10-19T10:00:00Z", data_pubblicazione: x.pubblicata ?? "2026-10-19", scadenza_giorno: "2026-12-01" });
+    m.db.t("radar_procedure").push(g);
+    if (x.stato) m.db.t("radar_classificazioni_stato").push({ procedura_id: g.id, stato: x.stato });
+    return g.id;
+  };
+  const giorno = async (m: Mondo, quando: string) => {
+    m.ora.t = new Date(quando);
+    return eseguiPassaggio(m.d);
+  };
+
+  // R1 (DIFETTO): vista il 20/10 «in attesa», classificata A il 20/10 alle 12:00 → nel riepilogo del 21/10. Prima: mai
+  {
+    const m = mondo();
+    const g = nuova(m, 470, { stato: "in_attesa" });
+    await giorno(m, "2026-10-20T05:30:00Z");
+    controlla("R1 sospese: vista «in attesa» il 20/10 → non nel riepilogo di oggi, ma in sospeso nel giro", !nelRiepilogo(m, "2026-10-20", g) && sospese(m, "2026-10-20").includes(g), sospese(m, "2026-10-20"));
+    classifica(m, g);
+    await giorno(m, "2026-10-21T05:30:00Z");
+    controlla("R1 difetto 3.3: classificata dopo il giro → nel riepilogo del 21/10", nelRiepilogo(m, "2026-10-21", g), eventi(m).filter((e) => e.tipo === "riepilogo_opportunita").map((e) => [e.versione, ((e.dati as DatiRiepilogo | null)?.gare ?? []).map((x) => x.proceduraId)]));
+    controlla("R1 sospese: valutata, esce dall'elenco", !sospese(m, "2026-10-21").includes(g));
+    // R3: mai due volte (giri del 22 e del 23)
+    await giorno(m, "2026-10-22T05:30:00Z");
+    await giorno(m, "2026-10-23T05:30:00Z");
+    controlla("R3 sospese: mai due volte nel riepilogo", !nelRiepilogo(m, "2026-10-22", g) && !nelRiepilogo(m, "2026-10-23", g));
+    // R5: riclassificata dopo essere stata proposta → non riproposta
+    const s = m.db.t("radar_classificazioni_stato").find((x) => x.procedura_id === g)!;
+    s.stato = "in_attesa";
+    await giorno(m, "2026-10-24T05:30:00Z");
+    s.stato = "classificata";
+    await giorno(m, "2026-10-25T05:30:00Z");
+    controlla("R5 sospese: riclassificata dopo la proposta → non riproposta, mai rimessa in sospeso", !nelRiepilogo(m, "2026-10-24", g) && !nelRiepilogo(m, "2026-10-25", g) && !sospese(m, "2026-10-24").includes(g) && !sospese(m, "2026-10-25").includes(g));
+  }
+  // R2: ancora in attesa dopo la finestra delle nuove (pubblicata il 19/10: fino al 26/10) → esce, nessun riepilogo
+  {
+    const m = mondo();
+    const h = nuova(m, 471, { stato: "in_attesa" });
+    const tenuta: boolean[] = [];
+    for (let gg = 20; gg <= 27; gg++) {
+      await giorno(m, `2026-10-${gg}T05:30:00Z`);
+      tenuta.push(sospese(m, `2026-10-${gg}`).includes(h));
+    }
+    controlla("R2 sospese: in sospeso dal 20 al 26/10, fuori il 27/10 (oltre i 7 giorni dalla pubblicazione)", JSON.stringify(tenuta) === JSON.stringify([true, true, true, true, true, true, true, false]), tenuta);
+    controlla("R2 sospese: mai nel riepilogo", !eventi(m).some((e) => e.tipo === "riepilogo_opportunita" && ((e.dati as DatiRiepilogo | null)?.gare ?? []).some((x) => x.proceduraId === h)));
+  }
+  {
+    const k = mondo();
+    const f = nuova(k, 472, { stato: "fallita" });
+    const senza = nuova(k, 473, { stato: null });
+    await giorno(k, "2026-10-20T05:30:00Z");
+    controlla("sospese: classificazione fallita o senza stato → in sospeso", sospese(k, "2026-10-20").includes(f) && sospese(k, "2026-10-20").includes(senza), sospese(k, "2026-10-20"));
+    // una gara in sospeso collegata a un'altra (0117) o chiusa esce dall'elenco
+    Object.assign(k.db.t("radar_procedure").find((p) => p.id === f)!, { unita_a: U(101) });
+    Object.assign(k.db.t("radar_procedure").find((p) => p.id === senza)!, { stato: "annullata" });
+    await giorno(k, "2026-10-21T05:30:00Z");
+    // (le gare sintetiche 101–104 del mondo non sono classificate: restano in sospeso anche loro, giustamente)
+    controlla("sospese: collegata a un'altra o non più aperta → esce", !sospese(k, "2026-10-21").includes(f) && !sospese(k, "2026-10-21").includes(senza), sospese(k, "2026-10-21"));
+  }
+  // R4: il giro del 21/10 fallisce → vale l'elenco del giro riuscito del 20/10; il 22/10 la gara arriva
+  {
+    const m = mondo();
+    const g = nuova(m, 474, { stato: "in_attesa" });
+    await giorno(m, "2026-10-20T05:30:00Z");
+    classifica(m, g);
+    m.db.guasti.set("omnia_ai_radar_eventi|upsert", 1);
+    const r = await giorno(m, "2026-10-21T05:30:00Z");
+    controlla("R4 sospese: giro del 21/10 fallito (guasto simulato), nessun riepilogo", r.eseguito && "saltata" in r.eventi && !nelRiepilogo(m, "2026-10-21", g), r);
+    await giorno(m, "2026-10-22T05:30:00Z");
+    controlla("R4 sospese: dopo il giro fallito vale l'elenco del 20/10 → nel riepilogo del 22/10", nelRiepilogo(m, "2026-10-22", g));
+  }
+  // R6: richieste. Due mondi uguali con una gara nuova classificata il 21/10; nel secondo c'è in più una gara in sospeso dal 20/10 (ancora
+  // in attesa): il giro del 21/10 fa UNA sola richiesta in più (la rilettura delle sospese). Senza sospese, nessuna richiesta in più.
+  {
+    const conta = async (conSospesa: boolean) => {
+      const m = mondo();
+      // le gare sintetiche del mondo classificate (senza righe: non pertinenti), così nel primo mondo non c'è nessuna gara in sospeso
+      for (const p of m.db.t("radar_procedure")) if (!m.db.t("radar_classificazioni_stato").some((x) => x.procedura_id === p.id)) m.db.t("radar_classificazioni_stato").push({ procedura_id: p.id, stato: "classificata" });
+      if (conSospesa) nuova(m, 475, { stato: "in_attesa" });
+      await giorno(m, "2026-10-20T05:30:00Z");
+      const n = nuova(m, 476, { rilevata: "2026-10-20T10:00:00Z", pubblicata: "2026-10-20" });
+      classifica(m, n);
+      const prima = m.db.conta();
+      await giorno(m, "2026-10-21T05:30:00Z");
+      return { richieste: m.db.conta() - prima, nel: nelRiepilogo(m, "2026-10-21", n), sospese: sospese(m, "2026-10-20").length };
+    };
+    const senza = await conta(false);
+    const con = await conta(true);
+    controlla("R6 sospese: senza gare in sospeso l'elenco è vuoto; con una, UNA richiesta in più nel giro e stesso riepilogo", senza.sospese === 0 && con.sospese === 1 && con.richieste === senza.richieste + 1 && con.nel && senza.nel, { senza, con });
+    // se quel giorno NON ci sono gare nuove, le sospese costano 3 richieste: la rilettura e le due delle classificazioni (che senza gare da
+    // valutare non si farebbero)
+    const soloSospese = async (conSospesa: boolean) => {
+      const m = mondo();
+      for (const p of m.db.t("radar_procedure")) if (!m.db.t("radar_classificazioni_stato").some((x) => x.procedura_id === p.id)) m.db.t("radar_classificazioni_stato").push({ procedura_id: p.id, stato: "classificata" });
+      if (conSospesa) nuova(m, 477, { stato: "in_attesa" });
+      await giorno(m, "2026-10-20T05:30:00Z");
+      const prima = m.db.conta();
+      await giorno(m, "2026-10-21T05:30:00Z");
+      return m.db.conta() - prima;
+    };
+    const a = await soloSospese(false);
+    const b = await soloSospese(true);
+    controlla("R6 sospese: giorno senza gare nuove → le sospese costano 3 richieste (rilettura e classificazioni)", b === a + 3, { senza: a, con: b });
+  }
+  // tetto della 0125: al più 2000 gare in sospeso, le più recenti; le altre contate
+  {
+    const tante = Array.from({ length: 2001 }, (_, i) => gara(5000 + i, { prima_rilevazione_il: new Date(Date.parse("2026-10-19T00:00:00Z") + i * 1000).toISOString(), data_pubblicazione: "2026-10-19" }));
+    const v = nuoveDaValutare({ nuove: tante, idsSospesi: [], sospese: [], statoDi: new Map(), oggi: "2026-10-20" });
+    controlla("sospese: al più 2000 (vincolo della 0125), le più recenti; l'esclusa contata", v.inSospeso.length === 2000 && v.oltreIlMassimo === 1 && !v.inSospeso.includes(tante[0].id) && v.inSospeso.includes(tante[2000].id), { n: v.inSospeso.length, oltre: v.oltreIlMassimo });
+  }
 }
 
 // N6 decisa il 20/11 (30 giorni; 7 respinto), con la richiesta dell'utente di tenere separate compattazione e conservazione: dopo la

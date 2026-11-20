@@ -146,6 +146,15 @@ select prova.atteso_errore('0125: «fallita» senza motivo', $q$update public.om
 insert into public.radar_notifiche_giri (giorno_roma, fase, in_corso_fino_il, ambiente, provider) values (current_date, 'eventi', now() + interval '10 minutes', 'locale', 'finto');
 select prova.atteso_errore('0125: un secondo giro in corso rifiutato (uno alla volta)', $q$insert into public.radar_notifiche_giri (giorno_roma, fase, in_corso_fino_il, ambiente, provider) values (current_date, 'invio', now() + interval '10 minutes', 'locale', 'finto')$q$, '23505');
 select prova.atteso_errore('0125: giro finito senza ora di fine', $q$update public.radar_notifiche_giri set esito = 'riuscito'$q$, '23514');
+-- difetto 3.3 (proposta A, 20/11): gare nuove ancora da classificare, rivalutate al giro dopo
+select prova.verifica('0125: «nuove_in_sospeso» uuid[] non nullo, vuoto di base',
+  (select nuove_in_sospeso = '{}'::uuid[] from public.radar_notifiche_giri limit 1)
+  and (select data_type = 'ARRAY' and udt_name = '_uuid' and is_nullable = 'NO' from information_schema.columns where table_schema = 'public' and table_name = 'radar_notifiche_giri' and column_name = 'nuove_in_sospeso'));
+update public.radar_notifiche_giri set nuove_in_sospeso = array(select gen_random_uuid() from generate_series(1, 2000));
+select prova.verifica('0125: «nuove_in_sospeso» accetta 2000 gare', (select cardinality(nuove_in_sospeso) from public.radar_notifiche_giri limit 1) = 2000);
+select prova.atteso_errore('0125: «nuove_in_sospeso» oltre 2000 gare rifiutato', $q$update public.radar_notifiche_giri set nuove_in_sospeso = array(select gen_random_uuid() from generate_series(1, 2001))$q$, '23514');
+select prova.atteso_errore('0125: «nuove_in_sospeso» nullo rifiutato', $q$update public.radar_notifiche_giri set nuove_in_sospeso = null$q$, '23502');
+update public.radar_notifiche_giri set nuove_in_sospeso = '{}';
 
 select prova.verifica('0125: destinatari dell''impresa 1 = titolare + Ufficio Gare attivo, email confermate',
   (select count(*) from public.radar_notifiche_destinatari(array['11111111-1111-4111-8111-111111111111']::uuid[])) = 2

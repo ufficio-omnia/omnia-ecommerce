@@ -590,6 +590,55 @@ export function nuovaPerIlGiro(r: Pick<RigaGara, "prima_rilevazione_il" | "data_
   return giorni >= 0 && giorni <= FINESTRA_NUOVE_GIORNI;
 }
 
+/** Al più queste gare restano «in sospeso» da un giro all'altro (vincolo della 0125 su radar_notifiche_giri.nuove_in_sospeso). */
+export const MASSIMO_NUOVE_IN_SOSPESO = 2000;
+
+/**
+ * Difetto 3.3 (proposta A, approvata dall'utente il 20/11): le gare da valutare nel riepilogo di questo giro e quelle che restano IN SOSPESO.
+ * Il riepilogo propone solo gare classificate; il cursore delle «nuove» però avanza su tutte le gare lette. Una gara letta prima di essere
+ * classificata resta quindi in sospeso nel giro e si rivaluta al giro dopo, finché:
+ *   - è classificata: si valuta UNA volta (per tutte le imprese) ed esce dall'elenco, quindi mai due volte nel riepilogo;
+ *   - esce dalla finestra delle nuove (FINESTRA_NUOVE_GIORNI dalla pubblicazione), non è più aperta, è collegata a un'altra o non esiste più.
+ * Una gara già classificata e poi riclassificata non torna mai (la riclassificazione interna non è una novità).
+ * `sospese` sono le righe rilette per le gare dell'elenco del giro riuscito prima (`idsSospesi`); `statoDi` lo stato della classificazione.
+ */
+export function nuoveDaValutare(x: {
+  nuove: readonly RigaGara[];
+  idsSospesi: readonly string[];
+  sospese: readonly RigaGara[];
+  statoDi: ReadonlyMap<string, string>;
+  oggi: string;
+}): { candidate: RigaGara[]; inSospeso: string[]; rivalutate: number; uscite: number; oltreIlMassimo: number } {
+  const perId = new Map<string, RigaGara>();
+  for (const r of x.nuove) perId.set(r.id, r);
+  const richieste = new Set(x.idsSospesi);
+  let rivalutate = 0;
+  let ancoraValide = 0;
+  for (const r of x.sospese) {
+    if (!richieste.has(r.id)) continue;
+    if (perId.has(r.id)) {
+      ancoraValide++;
+      continue;
+    }
+    if (r.stato !== "aperta" || r.unita_a || !nuovaPerIlGiro(r, null, x.oggi)) continue;
+    ancoraValide++;
+    perId.set(r.id, r);
+    if (x.statoDi.get(r.id) === "classificata") rivalutate++;
+  }
+  const candidate = [...perId.values()];
+  // le non classificate (in attesa, fallite, senza stato) restano in sospeso; le più recenti prima, se fossero più del massimo
+  const ancora = candidate
+    .filter((r) => x.statoDi.get(r.id) !== "classificata")
+    .sort((a, b) => b.prima_rilevazione_il.localeCompare(a.prima_rilevazione_il) || a.id.localeCompare(b.id));
+  return {
+    candidate,
+    inSospeso: ancora.slice(0, MASSIMO_NUOVE_IN_SOSPESO).map((r) => r.id),
+    rivalutate,
+    uscite: richieste.size - ancoraValide,
+    oltreIlMassimo: Math.max(0, ancora.length - MASSIMO_NUOVE_IN_SOSPESO),
+  };
+}
+
 /**
  * Il riepilogo di OGGI per un'impresa: le gare nuove PERTINENTI (classe A) per il suo profilo, le più recenti prima, al più
  * MASSIMO_GARE_RIEPILOGO più «altre N». Mai le correlate (B), mai le C, mai le gare collegate, chiuse o non visibili ai clienti; le gare la
