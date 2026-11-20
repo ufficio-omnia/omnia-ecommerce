@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { classificazioniAttive, scrittureRadarConsentite } from "./ambiente";
+import { registroConEvidenza } from "./importa-evidenza";
 import { cpvRicercaPvl, leggiAvvisoPvl, limitiPvl, limitiPvlDaRighe, type BandoPvl, type EsitoPvl, type LimitiPvl } from "./fonti/pvl-calcoli";
 import { ErrorePvl, SessionePvl } from "./fonti/pvl";
 import type { Misure } from "./importa";
@@ -42,6 +43,8 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
   const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
+  // fase B4: fotografie, rilevamento delle modifiche PVL ed evidenza nel registro solo con l'interruttore RADAR_REGISTRO_EVIDENZA (spento)
+  const evidenza = registroConEvidenza(opzioni.env ?? process.env);
 
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
@@ -90,6 +93,9 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
       if (stat.pvl.conteggioDichiarato === null) stat.pvl.conteggioDichiarato = pagina.count;
       if (conteggioAnomalo(pagina.count, cursore)) throw new ErrorePvl(`Numero di avvisi anomalo (${pagina.count}) per la finestra ${cursore.da} – ${cursore.a}: connettore sospeso finché non si verifica`, 200, true);
       const letti = pagina.content.map(leggiAvvisoPvl);
+      // il «tipo» dell'avviso (rettifica dichiarata) sta solo nell'avviso grezzo: serve alla fotografia della versione (fase B4)
+      const grezzi = new Map<string, unknown>();
+      if (evidenza) pagina.content.forEach((g, i) => { const l = letti[i]; if (l.tipo === "bando") grezzi.set(l.meta.idAvviso, g); });
       stat.avvisi.letti += letti.length;
       const bandi: BandoPvl[] = [];
       const esiti: EsitoPvl[] = [];
@@ -106,7 +112,7 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
       stat.avvisi.bandi += bandi.length;
       stat.avvisi.esiti += esiti.length;
       const adesso = ora();
-      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni });
+      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni, evidenza, grezzi });
       await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
       // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
       const ultimaPerConteggio = pagina.count !== null && pagina.count < 1000 && (cursore.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;

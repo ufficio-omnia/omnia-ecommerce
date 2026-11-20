@@ -40,6 +40,8 @@ create table if not exists public.omnia_ai_radar_eventi (
 create index if not exists omnia_ai_radar_eventi_gara_attivi_idx on public.omnia_ai_radar_eventi (gara_chiave, categoria) where stato = 'attivo';
 -- compattazione dei dati vecchi
 create index if not exists omnia_ai_radar_eventi_da_compattare_idx on public.omnia_ai_radar_eventi (creato_il) where dati is not null;
+-- conservazione (D-E7): cancellazione a blocchi degli eventi di oltre 12 mesi (i dati sono già compattati, quindi fuori dall'indice parziale)
+create index if not exists omnia_ai_radar_eventi_creato_idx on public.omnia_ai_radar_eventi (creato_il);
 
 -- CONSEGNE: un evento per UN destinatario. Unica per (destinatario, gara, tipo, versione) tramite «chiave».
 create table if not exists public.omnia_ai_radar_email_consegne (
@@ -200,9 +202,10 @@ alter table public.radar_notifiche_giri enable row level security;
 revoke all on public.omnia_ai_radar_eventi from public, anon, authenticated, service_role;
 revoke all on public.omnia_ai_radar_email_consegne from public, anon, authenticated, service_role;
 revoke all on public.radar_notifiche_giri from public, anon, authenticated, service_role;
--- niente delete al server su eventi e consegne: si annullano (stato), si compattano i dati, si cancellano solo con la conservazione (D-E7)
-grant select, insert, update on public.omnia_ai_radar_eventi to service_role;
-grant select, insert, update on public.omnia_ai_radar_email_consegne to service_role;
-grant select, insert, update on public.radar_notifiche_giri to service_role;
+-- eventi e consegne non si cancellano nel lavoro normale: si annullano (stato) e si compattano i dati. «delete» al solo server serve alla
+-- CONSERVAZIONE approvata (D-E7: righe cancellate dopo 12 mesi, a blocchi, dalla rotta del processo giornaliero); i clienti non hanno nulla
+grant select, insert, update, delete on public.omnia_ai_radar_eventi to service_role;
+grant select, insert, update, delete on public.omnia_ai_radar_email_consegne to service_role;
+grant select, insert, update, delete on public.radar_notifiche_giri to service_role;
 
 notify pgrst, 'reload schema';

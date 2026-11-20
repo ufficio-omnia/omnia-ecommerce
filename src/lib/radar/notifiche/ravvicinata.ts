@@ -11,7 +11,7 @@
 //     «scadenza_ravvicinata» per quella versione della scadenza, mai se il promemoria a 1 giorno è già nato; le consegne seguono le stesse
 //     regole del motore (destinatari dell'impresa, preferenze «scadenze», chiavi uniche) e partono dalla coda con il provider finto.
 //   - Non è «un'email per il clic su Salva»: avvisa una volta sola che la scadenza è imminente.
-// Il corpo con il database lo completa il motore (motore.ts) nei commit successivi della Fase A; la firma non cambia.
+// Il corpo con il database è eseguiRavvicinata di motore.ts, caricato SOLO con l'interruttore acceso; la firma resta quella del 4827fe4.
 
 import { invioEmailAcceso } from "./interruttore";
 
@@ -34,6 +34,8 @@ export type EsitoRavvicinata =
 export type OpzioniRavvicinata = {
   env?: Record<string, string | undefined>;
   adesso?: Date;
+  /** solo per le prove: il motore su un database in memoria con il provider finto */
+  dipendenze?: import("./motore").DipendenzeMotore;
 };
 
 function garaValida(g: GaraEntrataInLista): boolean {
@@ -49,9 +51,12 @@ export async function dopoIngressoInLista(gara: GaraEntrataInLista, opzioni: Opz
   try {
     if (!invioEmailAcceso(env)) return { esito: "spento" };
     if (!garaValida(gara)) return { esito: "non_dovuta", motivo: "gara_non_valida" };
-    // il corpo con il database arriva con motore.ts (Fase A); fino ad allora, anche acceso, nessuna lettura né scrittura
-    void opzioni.adesso;
-    return { esito: "non_dovuta", motivo: "motore_non_disponibile" };
+    // il motore si carica solo ora (acceso): con l'interruttore spento nessun modulo del database viene nemmeno importato
+    const { dipendenzeReali, eseguiRavvicinata } = await import("./motore");
+    const { PARAMETRI_PROPOSTI } = await import("./parametri");
+    const d = opzioni.dipendenze ?? (await dipendenzeReali(env, PARAMETRI_PROPOSTI));
+    const adesso = opzioni.adesso;
+    return await eseguiRavvicinata(adesso ? { ...d, adesso: () => adesso } : d, gara);
   } catch (e) {
     const codice = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code).slice(0, 40) : "eccezione";
     return { esito: "errore", codice };

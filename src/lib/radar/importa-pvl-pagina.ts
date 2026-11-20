@@ -10,7 +10,8 @@ import { cigPvl, confrontaVersioniPvl, type BandoPvl, type EsitoPvl } from "./fo
 import { blocchi, misura, type Misure } from "./importa";
 import { statoDopoEsito, type ModoImportazione, type StatoProcedura } from "./importa-calcoli";
 import { aggiungi, rigaDaBandoPvl, type StatistichePvl } from "./importa-pvl-calcoli";
-import { applicaPaginaBandiFonte, destinazioniFonte, type BandoUnificabile } from "./importa-fonti-pagina";
+import { applicaPaginaBandiFonte, destinazioniFonte, type BandoUnificabile, type OpzioniPaginaFonte } from "./importa-fonti-pagina";
+import { fotoDaBandoPvl, fotoPvlValida, rilevaModifichePvl, type FotoVersionePvl, type RilevamentoPvl } from "./modifiche-pvl";
 import type { VersioneFonte } from "./unione-calcoli";
 
 function versionePvl(b: { meta: { idAvviso: string; giorno: string; data: string; numeroTed: string | null } }): VersioneFonte {
@@ -38,8 +39,47 @@ export function bandoUnificabilePvl(v: BandoPvl, adesso: Date): BandoUnificabile
 }
 
 // fase B2b: «classificazioni» = righe e stato della 0121 dentro il giro (interruttore di ambiente.ts, SPENTO di base)
-export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoPvl[], modo: ModoImportazione, adesso: Date, misure: Misure, stat: StatistichePvl, opzioni: { classificazioni?: boolean; nuovoId?: () => string } = {}): Promise<void> {
+// Fase B4 (26B A.5, piano PVL L4), SOLO con l'evidenza (0123 applicata, interruttore RADAR_REGISTRO_EVIDENZA): la FOTOGRAFIA di ogni versione
+// (fotoDaBandoPvl, con il «tipo» dell'avviso grezzo) e il RILEVAMENTO delle modifiche rispetto alla versione precedente della stessa
+// procedura (rilevaModifichePvl). Le fotografie già in archivio si leggono con UNA lettura a blocchi per le procedure della pagina (niente
+// N+1, nessuna richiesta in più alla fonte); dentro la pagina le versioni si confrontano in ordine. Nessuna fotografia precedente = nessun
+// confronto (comportamento di prima, mai email): non si riempie nulla a posteriori.
+export async function fotografieERilevamentiPvl(admin: SupabaseClient, bandi: readonly BandoPvl[], grezzi: ReadonlyMap<string, unknown>, misure: Misure): Promise<NonNullable<OpzioniPaginaFonte["pvl"]>> {
+  const foto = new Map<string, FotoVersionePvl>(bandi.map((b) => [b.meta.idAvviso, fotoDaBandoPvl(b, grezzi.get(b.meta.idAvviso))]));
+  const note = new Map<string, FotoVersionePvl[]>();
+  for (const b of blocchi([...new Set(bandi.map((x) => x.meta.idAppalto))], 100)) {
+    const { data } = await misura(misure, "fotografie PVL precedenti", () =>
+      admin.from("radar_procedure_fonti").select("id_procedura_fonte, foto").eq("fonte", "pvl").in("id_procedura_fonte", b).not("foto", "is", null).returns<{ id_procedura_fonte: string; foto: unknown }[]>(),
+    );
+    for (const r of data ?? []) {
+      const f = fotoPvlValida(r.foto);
+      if (f) note.set(r.id_procedura_fonte, [...(note.get(r.id_procedura_fonte) ?? []), f]);
+    }
+  }
+  const istante = (f: FotoVersionePvl) => Date.parse(f.pubblicatoIl);
+  const piuVecchia = (a: FotoVersionePvl, b: FotoVersionePvl) => istante(a) - istante(b) || (a.idAvviso < b.idAvviso ? -1 : a.idAvviso > b.idAvviso ? 1 : 0);
+  const rilevamenti = new Map<string, RilevamentoPvl>();
+  for (const b of [...bandi].sort((x, y) => confrontaVersioniPvl({ data: x.meta.data, idAvviso: x.meta.idAvviso }, { data: y.meta.data, idAvviso: y.meta.idAvviso }))) {
+    const f = foto.get(b.meta.idAvviso) as FotoVersionePvl;
+    const precedenti = (note.get(b.meta.idAppalto) ?? []).filter((x) => x.idAvviso !== f.idAvviso && piuVecchia(x, f) < 0).sort(piuVecchia);
+    const prima = precedenti.length ? precedenti[precedenti.length - 1] : null;
+    rilevamenti.set(b.meta.idAvviso, rilevaModifichePvl(prima, f));
+    note.set(b.meta.idAppalto, [...(note.get(b.meta.idAppalto) ?? []), f]);
+  }
+  return { foto, rilevamenti };
+}
+
+export async function applicaPaginaBandiPvl(
+  admin: SupabaseClient,
+  bandi: BandoPvl[],
+  modo: ModoImportazione,
+  adesso: Date,
+  misure: Misure,
+  stat: StatistichePvl,
+  opzioni: { classificazioni?: boolean; nuovoId?: () => string; evidenza?: boolean; grezzi?: ReadonlyMap<string, unknown>; esecuzioneId?: string | null } = {},
+): Promise<void> {
   if (bandi.length === 0) return;
+  const pvl = opzioni.evidenza ? await fotografieERilevamentiPvl(admin, bandi, opzioni.grezzi ?? new Map(), misure) : undefined;
   const e = await applicaPaginaBandiFonte(
     admin,
     bandi.map((b) => bandoUnificabilePvl(b, adesso)),
@@ -55,6 +95,9 @@ export async function applicaPaginaBandiPvl(admin: SupabaseClient, bandi: BandoP
       proponiEnteGiorno: false,
       classificazioni: opzioni.classificazioni,
       nuovoId: opzioni.nuovoId,
+      evidenza: opzioni.evidenza,
+      esecuzioneId: opzioni.esecuzioneId,
+      pvl,
     },
   );
   stat.bandi.invariati += e.invariati;

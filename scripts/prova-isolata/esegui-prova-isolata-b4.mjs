@@ -33,6 +33,8 @@ const passi = [
   ...B4.map((v) => [`bozza ${v}`, migrazione(v)]),
   ...B4.map((v) => [`bozza ${v} di nuovo (idempotenza)`, migrazione(v)]),
   ["controlli B4", path.join(QUI, "40_prova_b4.sql")],
+  // Fase A (20/11): EXPLAIN delle interrogazioni del motore su volumi sintetici (piani e spazio stampati per il resoconto)
+  ["EXPLAIN su volumi sintetici", path.join(QUI, "45_explain_b4.sql")],
 ];
 const nome = `omnia-prova-b4-${randomBytes(4).toString("hex")}`;
 const docker = (args, input) => spawnSync("docker", args, { encoding: "utf8", input, maxBuffer: 50 * 1024 * 1024 });
@@ -53,7 +55,7 @@ try {
   console.log(`Contenitore ${nome}: ${docker(["exec", nome, "psql", "-U", "postgres", "-tAc", "select version()"]).stdout.trim().slice(0, 60)}`);
   for (const [etichetta, file] of passi) {
     const r = docker(["exec", "-i", nome, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q", "-f", "-"], fs.readFileSync(file, "utf8"));
-    const righe = `${r.stdout}\n${r.stderr}`.split("\n").map((x) => x.replace(/^psql:[^:]*:\d+:\s*/, "").replace(/^(NOTICE|AVVISO):\s*/, "")).filter((x) => /^(ok|FALLITO)\s/.test(x) || /ERROR|ERRORE/.test(x));
+    const righe = `${r.stdout}\n${r.stderr}`.split("\n").map((x) => x.replace(/^psql:[^:]*:\d+:\s*/, "").replace(/^(NOTICE|AVVISO):\s*/, "")).filter((x) => /^(ok|FALLITO|piano|spazio)\s/.test(x) || /ERROR|ERRORE/.test(x));
     for (const x of righe) {
       console.log(`  ${x}`);
       if (/^ok\s/.test(x)) ok++;

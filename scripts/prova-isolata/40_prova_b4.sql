@@ -171,7 +171,12 @@ select prova.verifica('0125: anon senza permessi su tutte le tabelle nuove',
   not has_table_privilege('anon', 'public.omnia_ai_radar_eventi', 'select') and not has_table_privilege('anon', 'public.omnia_ai_radar_email_consegne', 'select')
   and not has_table_privilege('anon', 'public.radar_notifiche_giri', 'select') and not has_table_privilege('anon', 'public.omnia_ai_radar_notifiche_impresa', 'select')
   and not has_table_privilege('anon', 'public.omnia_ai_radar_notifiche_persone', 'select'));
-select prova.verifica('0125: il server non cancella eventi né consegne (si annullano)', not has_table_privilege('service_role', 'public.omnia_ai_radar_eventi', 'delete') and not has_table_privilege('service_role', 'public.omnia_ai_radar_email_consegne', 'delete'));
+-- conservazione D-E7 (difetto 2 del 38A): il server PUÒ cancellare eventi, consegne e giri; i clienti no
+select prova.verifica('0125: delete al solo server su eventi, consegne e giri (conservazione D-E7)',
+  has_table_privilege('service_role', 'public.omnia_ai_radar_eventi', 'delete') and has_table_privilege('service_role', 'public.omnia_ai_radar_email_consegne', 'delete')
+  and has_table_privilege('service_role', 'public.radar_notifiche_giri', 'delete')
+  and not has_table_privilege('authenticated', 'public.omnia_ai_radar_eventi', 'delete') and not has_table_privilege('authenticated', 'public.omnia_ai_radar_email_consegne', 'delete')
+  and not has_table_privilege('authenticated', 'public.radar_notifiche_giri', 'delete') and not has_table_privilege('anon', 'public.omnia_ai_radar_email_consegne', 'delete'));
 select prova.verifica('0125: funzione dei destinatari SECURITY DEFINER con search_path fisso', (select prosecdef and proconfig is not null from pg_proc where proname = 'radar_notifiche_destinatari'));
 
 -- ═════════════════════════════ presa in carico concorrente (due sessioni vere, con dblink) ═════════════════════════════

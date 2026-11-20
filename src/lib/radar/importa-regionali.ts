@@ -9,6 +9,7 @@
 // Le procedure che spariscono dalla fonte NON si cancellano mai (nessuna cancellazione automatica dall'archivio).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { classificazioniAttive, scrittureRadarConsentite } from "./ambiente";
+import { registroConEvidenza } from "./importa-evidenza";
 import { ErroreFonte, SessioneFonte, limitiValidi, type LimitiFonte } from "./fonti/sessione-fonte";
 import { LIMITI_SINTEL_INTERVALLI, LIMITI_SINTEL_PREDEFINITI, leggiRigheSintel } from "./fonti/sintel-calcoli";
 import { LettoreSintel } from "./fonti/sintel";
@@ -39,6 +40,8 @@ export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: 
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
   const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
+  // fase B4: colonne dell'evidenza (0123) nel registro solo con l'interruttore RADAR_REGISTRO_EVIDENZA (spento di base, solo staging)
+  const evidenza = registroConEvidenza(opzioni.env ?? process.env);
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
 
@@ -106,7 +109,7 @@ export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: 
     }
     // la scrittura usa il motore di unione unico; a blocchi di 200 bandi
     for (let i = 0; i < bandi.length; i += 200) {
-      await applicaPaginaBandiRegionali(admin, bandi.slice(i, i + 200), { fonte, modo: "incrementale", adesso: inizio, misure, stat, nascoste, proponi: fonte === "sintel", classificazioni });
+      await applicaPaginaBandiRegionali(admin, bandi.slice(i, i + 200), { fonte, modo: "incrementale", adesso: inizio, misure, stat, nascoste, proponi: fonte === "sintel", classificazioni, evidenza });
     }
     bandi = [];
     if (datiDel) cursore = { ...cursore, datiDel };
