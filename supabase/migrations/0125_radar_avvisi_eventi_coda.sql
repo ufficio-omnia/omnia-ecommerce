@@ -198,6 +198,29 @@ $$;
 revoke all on function public.radar_email_conteggi(timestamptz) from public, anon, authenticated;
 grant execute on function public.radar_email_conteggi(timestamptz) to service_role;
 
+-- STATO DEL PASSAGGIO del processo giornaliero in UNA richiesta (O2, direttiva 44A): fase «eventi» già riuscita oggi, battito «invio» già
+-- scritto oggi, consegne da prendere adesso (STESSA condizione della presa in carico del motore: in coda e dovute, oppure con l'affitto
+-- scaduto e dovute). Restituisce SOLO tre valori veri/falsi: nessun dato di imprese o persone. «security invoker»: gira con i permessi di chi
+-- chiama (solo service_role, che legge già queste tabelle), quindi non dà a nessuno più di quanto abbia; search_path vuoto e nomi qualificati.
+create or replace function public.radar_notifiche_stato_passaggio(p_giorno date, p_adesso timestamptz)
+returns table (eventi_fatti boolean, battito_invio boolean, lavoro boolean)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  -- i giri di oggi in UNA lettura dell'indice (come la lettura dei giri del motore con O1: al più 500 righe), poi la coda
+  select coalesce(bool_or(g.fase = 'eventi' and g.esito = 'riuscito'), false),
+         coalesce(bool_or(g.fase = 'invio'), false),
+         exists (select 1 from public.omnia_ai_radar_email_consegne c
+                  where c.stato in ('in_coda', 'in_invio')
+                    and ((c.stato = 'in_coda' and c.prossimo_tentativo_il <= p_adesso)
+                      or (c.stato = 'in_invio' and c.in_invio_fino_il < p_adesso and c.prossimo_tentativo_il <= p_adesso)))
+    from (select g.fase, g.esito from public.radar_notifiche_giri g where g.fase in ('eventi', 'invio') and g.giorno_roma = p_giorno limit 500) g
+$$;
+revoke all on function public.radar_notifiche_stato_passaggio(date, timestamptz) from public, anon, authenticated;
+grant execute on function public.radar_notifiche_stato_passaggio(date, timestamptz) to service_role;
+
 alter table public.omnia_ai_radar_eventi enable row level security;
 alter table public.omnia_ai_radar_email_consegne enable row level security;
 alter table public.radar_notifiche_giri enable row level security;

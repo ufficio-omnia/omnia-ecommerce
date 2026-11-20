@@ -33,6 +33,8 @@ const passi = [
   ...B4.map((v) => [`bozza ${v}`, migrazione(v)]),
   ...B4.map((v) => [`bozza ${v} di nuovo (idempotenza)`, migrazione(v)]),
   ["controlli B4", path.join(QUI, "40_prova_b4.sql")],
+  // O2 (44A): la funzione dello stato del passaggio contro le letture di O1, sugli stessi dati
+  ["controlli O2", path.join(QUI, "55_prova_o2.sql")],
   // Fase A (20/11): EXPLAIN delle interrogazioni del motore su volumi sintetici (piani e spazio stampati per il resoconto)
   ["EXPLAIN su volumi sintetici", path.join(QUI, "45_explain_b4.sql")],
 ];
