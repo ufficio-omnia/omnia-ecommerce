@@ -33,6 +33,8 @@ import {
 import { CATEGORIA_DEL_TIPO, CATEGORIE_NOTIFICA, MASSIMO_EMAIL_SINGOLE_PER_PASSAGGIO, TIPI_EVENTO, TIPI_URGENTI, urgente, VERSIONE_CONTRATTO_NOTIFICHE, versioneScadenza } from "../src/lib/radar/notifiche/tipi";
 import { aggiungiGiorni, giornoRoma, giorniDiCalendario, gruppiScadenza, oraRoma, promemoriaDovuti, scadenzaNota, versioniDaAnnullare, type LottoArchivio } from "../src/lib/radar/notifiche/calendario";
 import { chiaveRaggruppamento, pianoInvio, PRIORITA_DEL_TIPO, type ConsegnaInCoda } from "../src/lib/radar/notifiche/coda-calcoli";
+import { invioEmailAcceso, statoInvioEmail, VARIABILE_INTERRUTTORE_EMAIL } from "../src/lib/radar/notifiche/interruttore";
+import { dopoIngressoInLista } from "../src/lib/radar/notifiche/ravvicinata";
 
 // rete bloccata: qualunque fetch fa fallire la verifica
 globalThis.fetch = (async () => {
@@ -323,6 +325,50 @@ controlla("scadenza con ora indicata: ora di Roma e istante normalizzato", (() =
   controlla("priorità: urgenti prima di 5 e 10 giorni e del riepilogo", TIPI_URGENTI.every((t) => PRIORITA_DEL_TIPO[t] < PRIORITA_DEL_TIPO.scadenza_5) && PRIORITA_DEL_TIPO.riepilogo_opportunita === Math.max(...Object.values(PRIORITA_DEL_TIPO)));
 }
 
+// ---------- 7-quinquies. interruttore unico del motore e aggancio della «scadenza ravvicinata» ----------
+const STAGING_URL = "https://ryawdldqiumqsskrnyps.supabase.co";
+const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
+{
+  const casi: [Record<string, string | undefined>, boolean, string][] = [
+    [{}, false, "spento"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL }, false, "spento"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "1" }, false, "spento"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "true" }, false, "spento"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: " attivo" }, false, "spento"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "attivo" }, true, ""],
+    [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "preview" }, false, "anteprima"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "production" }, false, "ambiente_non_autorizzato"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo" }, false, "ambiente_non_autorizzato"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co", RADAR_NOTIFICHE_EMAIL: "attivo" }, false, "ambiente_non_autorizzato"],
+    [{ RADAR_NOTIFICHE_EMAIL: "attivo" }, false, "ambiente_non_autorizzato"],
+  ];
+  for (const [env, atteso, motivo] of casi) {
+    const s = statoInvioEmail(env);
+    controlla(`interruttore unico: ${JSON.stringify(env)} → ${atteso ? "acceso" : motivo}`, invioEmailAcceso(env) === atteso && (s.acceso ? atteso : !atteso && s.motivo === motivo), s);
+  }
+  controlla("interruttore unico: la variabile è RADAR_NOTIFICHE_EMAIL", VARIABILE_INTERRUTTORE_EMAIL === "RADAR_NOTIFICHE_EMAIL");
+}
+
+async function provaRavvicinata(): Promise<void> {
+  const G = "55555555-5555-4555-8555-555555555555";
+  const gara = { impresaId: IMPRESA, proceduraId: G, aggiuntaId: null, autoreId: MEMBRO };
+  const acceso = { NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "attivo" };
+  controlla("ravvicinata: interruttore spento → «spento», nessun accesso", JSON.stringify(await dopoIngressoInLista(gara, { env: {} })) === JSON.stringify({ esito: "spento" }));
+  controlla("ravvicinata: anteprima → «spento»", (await dopoIngressoInLista(gara, { env: { ...acceso, VERCEL_ENV: "preview" } })).esito === "spento");
+  controlla("ravvicinata: produzione → «spento»", (await dopoIngressoInLista(gara, { env: { ...acceso, NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" } })).esito === "spento");
+  for (const [nome, g] of [
+    ["procedura e aggiunta insieme", { ...gara, aggiuntaId: G }],
+    ["né procedura né aggiunta", { ...gara, proceduraId: null }],
+    ["impresa non valida", { ...gara, impresaId: "x" }],
+    ["procedura non valida", { ...gara, proceduraId: "x" }],
+  ] as const) {
+    const e = await dopoIngressoInLista(g as typeof gara, { env: acceso });
+    controlla(`ravvicinata: ${nome} → «non_dovuta», mai un'eccezione`, e.esito === "non_dovuta", e);
+  }
+  const strana = await dopoIngressoInLista(null as unknown as typeof gara, { env: acceso });
+  controlla("ravvicinata: argomento nullo → esito, mai un'eccezione", strana.esito === "non_dovuta" || strana.esito === "errore", strana);
+}
+
 // ---------- 8. testo dei file delle notifiche ----------
 {
   const cartella = path.join(__dirname, "..", "src", "lib", "radar", "notifiche");
@@ -344,7 +390,7 @@ controlla("scadenza con ora indicata: ora di Roma e istante normalizzato", (() =
   controlla("nessun cron dei promemoria in vercel.json", !vercel.includes("radar-promemoria"));
 }
 
-provaConsole()
+Promise.all([provaConsole(), provaRavvicinata()])
   .catch((e) => falliti.push(`eccezione: ${e instanceof Error ? e.message : String(e)}`))
   .finally(() => {
     console.log(`Verifica B4 database e notifiche: ${ok} ok, ${falliti.length} falliti`);
