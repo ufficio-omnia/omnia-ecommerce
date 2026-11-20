@@ -538,6 +538,15 @@ async function provaSintel(): Promise<void> {
     await giornoSintel(mem, [rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-10");
     controlla("Sintel: due letture nello stesso giorno (stessa versione) → nessuna riga di lotto", !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")), righeRegistro(mem));
   }
+  // senza l'evidenza: nessuna riga di lotto, registro come prima
+  {
+    const mem = memoriaVuota();
+    const senza = (righe: RigaSintel[], oggi: string) =>
+      applicaPaginaBandiRegionali(mem.client, bandiSintel(righe, oggi), { fonte: "sintel", modo: "incrementale", adesso: new Date(`${oggi}T08:00:00Z`), misure: misure(), stat: statisticheRegionaliVuote(), nascoste: new Set(), proponi: false });
+    await senza([rigaSintel({})], "2026-11-10");
+    await senza([rigaSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000" })], "2026-11-11");
+    controlla("Sintel senza evidenza: nessuna riga di lotto, registro come prima", mem.tabelle.radar_aggiornamenti.some((a) => a.campo === "scadenza_offerte") && !mem.tabelle.radar_aggiornamenti.some((a) => String(a.campo).includes("@")) && mem.tabelle.radar_aggiornamenti.every((a) => !("notifica_email" in a)), righeRegistro(mem));
+  }
   // regole pure (dopo l'importatore: col codice di prima si vedono prima i fallimenti veri)
   const l = (numero: string, giorno: string | null, iso: string | null = null): LottoUnito => ({ numero_lotto: numero, cig: null, oggetto: null, cpv_principale: null, cpv_tutti: [], valore_stimato: null, durata_mesi: null, scadenza_giorno: giorno, scadenza_offerte: iso, scadenza_ora_indicata: !!iso, scadenza_fonte: null, url_documenti: null });
   controlla("Sintel: «SINTEL-<id>» è un identificativo stabile, «LOT-0001» no", identificativoLottoStabile("SINTEL-12") && !identificativoLottoStabile("LOT-0001") && !identificativoLottoStabile("SINTEL-12x"));
