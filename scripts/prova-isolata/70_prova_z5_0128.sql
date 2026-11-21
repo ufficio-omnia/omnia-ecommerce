@@ -33,6 +33,8 @@ select prova.verifica('0128: EXECUTE di tutte le funzioni invariato; regole RLS 
   prova.elenco_differenze('prima_0128', 'dopo_0128', 'execute') = '{}'
   and prova.elenco_differenze('prima_0128', 'dopo_0128', 'regola') = '{}'
   and prova.elenco_differenze('prima_0128', 'dopo_0128', 'rls') = array['+radar_esecuzioni:true:false']);
+select prova.verifica('0128: nessuna tabella esistente riscritta (stesso file su disco per tutte)',
+  not exists (select 1 from prova.differenze('prima_0128', 'dopo_0128', 'file') x where x not like '+radar_esecuzioni:%'));
 select prova.verifica('0128: nessuna chiave esterna DA o VERSO radar_esecuzioni (colonne di traccia senza chiave esterna)',
   not exists (select 1 from pg_constraint where contype = 'f' and (conrelid = 'public.radar_esecuzioni'::regclass or confrelid = 'public.radar_esecuzioni'::regclass)));
 select prova.verifica('0128: nessun trigger sulla tabella nuova', not exists (select 1 from pg_trigger where tgrelid = 'public.radar_esecuzioni'::regclass and not tgisinternal));

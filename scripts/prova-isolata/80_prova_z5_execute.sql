@@ -27,6 +27,11 @@ select prova.atteso_errore('EXECUTE oggi: un cliente collegato non può chiamare
 -- la forma «select … from funzione()», quella con cui PostgREST chiama le funzioni (/rpc), è rifiutata già nell'analisi della richiesta
 select prova.atteso_errore('EXECUTE oggi: nella forma di PostgREST (select … from funzione()) la chiamata è rifiutata prima ancora di eseguire (tipo «trigger» non ammesso)', $q$select * from public.radar_notifiche_persona_dell_impresa()$q$, '42804');
 select prova.atteso_errore('EXECUTE oggi: idem per radar_consegna_separazione()', $q$select * from public.radar_consegna_separazione()$q$, '42804');
+-- la forma esatta di una chiamata /rpc di PostgREST (v12: «with pgrst_source as (select pgrst_call.* from "schema"."funzione"() pgrst_call) …»)
+select prova.atteso_errore('EXECUTE oggi: la forma ESATTA di una chiamata /rpc di PostgREST è rifiutata (42804)',
+  $q$with pgrst_source as (select pgrst_call.* from "public"."radar_consegna_separazione"() pgrst_call) select count(*) from pgrst_source$q$, '42804');
+select prova.atteso_errore('EXECUTE oggi: idem per la funzione delle preferenze',
+  $q$with pgrst_source as (select pgrst_call.* from "public"."radar_notifiche_persona_dell_impresa"() pgrst_call) select count(*) from pgrst_source$q$, '42804');
 reset role;
 select set_config('request.jwt.claim.sub', '', false);
 set role service_role;

@@ -102,6 +102,9 @@ begin
   insert into prova.fotografie select etichetta, 'execute', x from prova.execute() x;
   insert into prova.fotografie select etichetta, 'regola', x from prova.regole() x;
   insert into prova.fotografie select etichetta, 'rls', x from prova.rls() x;
+  -- file su disco di ogni tabella: se una migrazione RISCRIVE una tabella, il suo relfilenode cambia
+  insert into prova.fotografie select etichetta, 'file', c.relname || ':' || c.relfilenode
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r';
 end $f$;
 
 -- piano di esecuzione (EXPLAIN senza costi) su una riga; «senza_scansione» spegne la scansione sequenziale per vedere se l'indice è usabile

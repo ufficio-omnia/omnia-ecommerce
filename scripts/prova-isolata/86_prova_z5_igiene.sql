@@ -44,6 +44,30 @@ delete from public.omnia_ai_radar_email_consegne where chiave = 'igiene-membro-g
 delete from public.omnia_ai_radar_eventi where id = 'eeeeeeee-0000-4000-8000-0000000000f1';
 reset role;
 
+-- QUANDO si controlla EXECUTE: alla CREAZIONE del trigger, NON quando scatta. Prova in una transazione annullata: EXECUTE tolto anche a
+-- service_role; i due trigger SCATTANO lo stesso per le sue scritture (e separano ancora le imprese), ma service_role NON può più CREARE
+-- un trigger con quelle funzioni.
+begin;
+revoke all on function public.radar_consegna_separazione() from service_role;
+revoke all on function public.radar_notifiche_persona_dell_impresa() from service_role;
+select prova.verifica('EXECUTE allo scatto: service_role SENZA EXECUTE sulle due funzioni (dentro una transazione poi annullata)',
+  not has_function_privilege('service_role', 'public.radar_consegna_separazione()', 'execute') and not has_function_privilege('service_role', 'public.radar_notifiche_persona_dell_impresa()', 'execute'));
+set local role service_role;
+insert into public.omnia_ai_radar_eventi (id, impresa_id, categoria, tipo, gara_chiave, versione, dati)
+  values ('eeeeeeee-0000-4000-8000-0000000000f2', '11111111-1111-4111-8111-111111111111', 'scadenze', 'scadenza_5', 'p:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'prova-scatto', '{}');
+select prova.atteso_errore('EXECUTE allo scatto: SENZA EXECUTE il trigger delle consegne SCATTA lo stesso e rifiuta l''altra impresa',
+  $q$insert into public.omnia_ai_radar_email_consegne (evento_id, impresa_id, destinatario_id, ruolo, chiave, priorita) values ('eeeeeeee-0000-4000-8000-0000000000f2', '22222222-2222-4222-8222-222222222222', '22222222-2222-4222-8222-222222222222', 'titolare', 'scatto-impresa-diversa', 1)$q$, '23514');
+insert into public.omnia_ai_radar_email_consegne (evento_id, impresa_id, destinatario_id, ruolo, chiave, priorita)
+  values ('eeeeeeee-0000-4000-8000-0000000000f2', '11111111-1111-4111-8111-111111111111', '33333333-3333-4333-8333-333333333333', 'ufficio_gare', 'scatto-giusto', 1);
+select prova.verifica('EXECUTE allo scatto: SENZA EXECUTE una consegna giusta entra (la funzione del trigger è stata eseguita)', exists (select 1 from public.omnia_ai_radar_email_consegne where chiave = 'scatto-giusto'));
+select prova.atteso_errore('EXECUTE allo scatto: SENZA EXECUTE il trigger delle preferenze SCATTA lo stesso e rifiuta l''altra impresa',
+  $q$insert into public.omnia_ai_radar_notifiche_persone (impresa_id, user_id) values ('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222')$q$, '23514');
+select prova.atteso_errore('EXECUTE alla creazione: SENZA EXECUTE il server non può CREARE un trigger con la funzione (pur avendo TRIGGER sulla tabella)',
+  $q$create trigger prova_z5_creazione before insert on public.omnia_ai_radar_salvate for each row execute function public.radar_consegna_separazione()$q$, '42501');
+rollback;
+select prova.verifica('EXECUTE allo scatto: prova annullata (EXECUTE di service_role tornato, nessuna riga rimasta)',
+  has_function_privilege('service_role', 'public.radar_consegna_separazione()', 'execute') and not exists (select 1 from public.omnia_ai_radar_eventi where id = 'eeeeeeee-0000-4000-8000-0000000000f2'));
+
 -- il trigger del multifonte (0120/0121, già con EXECUTE ristretto) funziona come sempre: riferimento di come si comportano gli altri due
 set role service_role;
 insert into public.radar_procedure_fonti (procedura_id, fonte, id_fonte) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'sintel', 'igiene-1');

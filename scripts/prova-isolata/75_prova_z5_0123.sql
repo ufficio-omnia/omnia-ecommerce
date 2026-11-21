@@ -27,6 +27,8 @@ select prova.verifica('0123: impronta di TUTTE le altre tabelle invariata; regis
     = array['radar_aggiornamenti', 'radar_aggiornamenti', 'radar_procedure_fonti', 'radar_procedure_fonti']);
 select prova.verifica('0123: impronta delle righe sulle SOLE colonne di prima IDENTICA (registro e provenienze, campo per campo)',
   prova.elenco_differenze('prima_0123', 'dopo_0123', 'vecchie') = '{}');
+select prova.verifica('0123: NESSUNA riscrittura del registro e delle provenienze, pur con dati (stesso file su disco prima e dopo: valori di base costanti)',
+  prova.elenco_differenze('prima_0123', 'dopo_0123', 'file') = '{}');
 select prova.verifica('0123: righe esistenti NON notificabili per email (notifica_email falso su tutte le 2.056) e tutte le altre colonne nuove vuote',
   (select count(*) from public.radar_aggiornamenti where notifica_email) = 0
   and (select count(*) from public.radar_aggiornamenti where notifica_email is false) = 2056
