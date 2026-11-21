@@ -1,5 +1,6 @@
 -- 0123 — Tender Intelligence, fase B4: evidenza delle modifiche nel registro dei cambiamenti (radar_aggiornamenti, 0109/0112), segno
--- «notifica_email» e FOTOGRAFIA di ogni versione nella provenienza (radar_procedure_fonti). BOZZA v2 (B2, 26B, dopo il 26C): non applicata.
+-- «notifica_email» e FOTOGRAFIA di ogni versione nella provenienza (radar_procedure_fonti). SQL proposto per Z5 (B2, documento 45): NON
+-- applicata senza l'autorizzazione dell'utente. Si applica DOPO la 0128 (registro dei giri), con il semaforo delle fonti chiuso.
 -- Additiva e idempotente: colonne nuove con valori predefiniti costanti (in Postgres 17 nessuna riscrittura della tabella), vincoli, un
 -- indice parziale. Le righe esistenti restano com'erano e NON diventano notificabili per email (notifica_email = false): nessuna ondata
 -- di email per il passato. Scrivono solo gli importatori (service_role): permessi della 0109 invariati. Nessun indice unico cambia: gli
@@ -26,7 +27,7 @@ alter table public.radar_aggiornamenti
   add column if not exists avviso_ted text,              -- numero TED corrispondente (PVL: link_eform_ted; TED: il proprio)
   add column if not exists dichiarazione_fonte text,     -- che cosa DICHIARA la fonte: TED change-reason-code, PVL «rettifica», SardegnaCAT «rettificato»
   add column if not exists affidabilita text,
-  add column if not exists esecuzione_id uuid,           -- giro che l'ha rilevata: registro dei giri dell'importatore (migrazione proposta 0128, numero da confermare dall'utente); audit, senza chiave esterna
+  add column if not exists esecuzione_id uuid,           -- giro che l'ha rilevata: radar_esecuzioni.id della 0128 (registro dei giri); audit, senza chiave esterna
   add column if not exists notifica_email boolean not null default false;
 
 alter table public.radar_aggiornamenti drop constraint if exists radar_aggiornamenti_evidenza_forma;
