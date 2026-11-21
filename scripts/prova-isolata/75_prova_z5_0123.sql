@@ -23,7 +23,7 @@ select prova.verifica('0123: righe di TUTTE le tabelle invariate (registro 2.056
   prova.elenco_differenze('prima_0123', 'dopo_0123', 'righe') = '{}'
   and (select count(*) from public.radar_aggiornamenti) = 2056 and (select count(*) from public.radar_procedure_fonti) = 1947);
 select prova.verifica('0123: impronta di TUTTE le altre tabelle invariata; registro e provenienze cambiano SOLO per le colonne nuove',
-  (select array_agg(split_part(substr(x, 2), ':', 1) order by x) from prova.differenze('prima_0123', 'dopo_0123', 'impronta') x)
+  (select array_agg(split_part(substr(x, 2), ':', 1) order by split_part(substr(x, 2), ':', 1)) from prova.differenze('prima_0123', 'dopo_0123', 'impronta') x)
     = array['radar_aggiornamenti', 'radar_aggiornamenti', 'radar_procedure_fonti', 'radar_procedure_fonti']);
 select prova.verifica('0123: impronta delle righe sulle SOLE colonne di prima IDENTICA (registro e provenienze, campo per campo)',
   prova.elenco_differenze('prima_0123', 'dopo_0123', 'vecchie') = '{}');
@@ -45,13 +45,14 @@ select prova.verifica('0123: le colonne nuove vanno IN FONDO (l''ordine delle co
      and column_name not in ('avviso_precedente_id', 'avviso_url', 'avviso_pubblicato_il', 'avviso_versione', 'avviso_tipo', 'avviso_ted', 'dichiarazione_fonte', 'affidabilita', 'esecuzione_id', 'notifica_email'))
   < (select min(ordinal_position) from information_schema.columns where table_schema = 'public' and table_name = 'radar_aggiornamenti' and column_name = 'avviso_precedente_id'));
 select prova.verifica('0123: nessuna chiave esterna nuova (esecuzione_id è una colonna di traccia, senza chiave esterna verso radar_esecuzioni)',
-  (select array_agg(conname order by conname) from pg_constraint where contype = 'f' and conrelid in ('public.radar_aggiornamenti'::regclass, 'public.radar_procedure_fonti'::regclass))
+  (select array_agg(conname::text order by conname) from pg_constraint where contype = 'f' and conrelid in ('public.radar_aggiornamenti'::regclass, 'public.radar_procedure_fonti'::regclass))
   = array['radar_aggiornamenti_procedura_id_fkey', 'radar_procedure_fonti_procedura_id_fkey']);
 select prova.verifica('0123: indice delle email PARZIALE (solo le righe con notifica_email)',
   (select indexdef from pg_indexes where schemaname = 'public' and indexname = 'radar_aggiornamenti_email_idx')
   = 'CREATE INDEX radar_aggiornamenti_email_idx ON public.radar_aggiornamenti USING btree (rilevato_il, id) WHERE notifica_email');
 select prova.verifica('0123: indice unico del registro INVARIATO (gli importatori scrivono con lo stesso on conflict)',
-  (select indexdef from pg_indexes where schemaname = 'public' and indexname = 'radar_aggiornamenti_unico_uidx') ~ '\(procedura_id, tipo, campo, id_fonte\)$');
+  (select indexdef from pg_indexes where schemaname = 'public' and indexname = 'radar_aggiornamenti_unico_uidx')
+  = 'CREATE UNIQUE INDEX radar_aggiornamenti_unico_uidx ON public.radar_aggiornamenti USING btree (procedura_id, tipo, campo, id_fonte) NULLS NOT DISTINCT');
 select prova.verifica('0123: permessi di TUTTE le tabelle invariati (anche PUBLIC); nessun permesso di colonna sulle colonne nuove',
   prova.elenco_differenze('prima_0123', 'dopo_0123', 'permesso') = '{}' and prova.elenco_differenze('prima_0123', 'dopo_0123', 'colonna') = '{}');
 select prova.verifica('0123: EXECUTE di tutte le funzioni, regole RLS e RLS invariati',

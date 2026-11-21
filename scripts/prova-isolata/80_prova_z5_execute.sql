@@ -23,7 +23,10 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
 select prova.atteso_errore('EXECUTE oggi: un cliente collegato non può chiamare direttamente radar_consegna_separazione()', $q$select public.radar_consegna_separazione()$q$, '0A000');
-select prova.atteso_errore('EXECUTE oggi: un cliente collegato non può chiamare direttamente radar_notifiche_persona_dell_impresa()', $q$select * from public.radar_notifiche_persona_dell_impresa()$q$, '0A000');
+select prova.atteso_errore('EXECUTE oggi: un cliente collegato non può chiamare direttamente radar_notifiche_persona_dell_impresa()', $q$select public.radar_notifiche_persona_dell_impresa()$q$, '0A000');
+-- la forma «select … from funzione()», quella con cui PostgREST chiama le funzioni (/rpc), è rifiutata già nell'analisi della richiesta
+select prova.atteso_errore('EXECUTE oggi: nella forma di PostgREST (select … from funzione()) la chiamata è rifiutata prima ancora di eseguire (tipo «trigger» non ammesso)', $q$select * from public.radar_notifiche_persona_dell_impresa()$q$, '42804');
+select prova.atteso_errore('EXECUTE oggi: idem per radar_consegna_separazione()', $q$select * from public.radar_consegna_separazione()$q$, '42804');
 reset role;
 select set_config('request.jwt.claim.sub', '', false);
 set role service_role;

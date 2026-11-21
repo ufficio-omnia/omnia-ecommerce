@@ -48,7 +48,13 @@ const dalCommit = (v) => {
 };
 const leggi = (nome) => fs.readFileSync(path.join(QUI, nome), "utf8");
 const T1 = "11111111-1111-4111-8111-111111111111", T2 = "22222222-2222-4222-8222-222222222222", M1 = "33333333-3333-4333-8333-333333333333";
-const M0128 = dalCommit("0128"), M0123 = dalCommit("0123");
+// SOLO per le prove di MUTAZIONE (i controlli devono accorgersi di uno SQL guastato): PROVA_Z5_MUTANTE_0128 / _0123 / _IGIENE = file con il
+// testo guastato. La prova vera legge SEMPRE dal commit e non imposta queste variabili.
+const mutante = (v) => process.env[`PROVA_Z5_MUTANTE_${v}`];
+for (const v of ["0128", "0123", "IGIENE"]) if (mutante(v)) console.log(`ATTENZIONE: prova di MUTAZIONE, ${v} letta da ${path.basename(mutante(v))} (NON dal commit)`);
+const M0128 = mutante("0128") ? fs.readFileSync(mutante("0128"), "utf8") : dalCommit("0128");
+const M0123 = mutante("0123") ? fs.readFileSync(mutante("0123"), "utf8") : dalCommit("0123");
+const IGIENE = mutante("IGIENE") ? fs.readFileSync(mutante("IGIENE"), "utf8") : null;
 
 // righe VERE degli importatori: la batteria dei connettori, senza rete, le scrive in un file temporaneo
 const lavoro = fs.mkdtempSync(path.join(os.tmpdir(), "z5-righe-"));
@@ -160,8 +166,8 @@ select prova.verifica('regressione: ogni gruppo annullato, nessuna riga rimasta 
   // ── EXECUTE delle funzioni dei trigger ──
   { etichetta: "EXECUTE: stato di oggi", testo: leggi("80_prova_z5_execute.sql") },
   { etichetta: "fotografia «prima_igiene»", testo: "select prova.fotografa('prima_igiene');" },
-  { etichetta: "proposta di igiene dei permessi", testo: leggi("85_proposta_igiene_permessi.sql"), unaTransazione: true },
-  { etichetta: "proposta di igiene di nuovo (idempotenza)", testo: leggi("85_proposta_igiene_permessi.sql"), unaTransazione: true },
+  { etichetta: "proposta di igiene dei permessi", testo: IGIENE ?? leggi("85_proposta_igiene_permessi.sql"), unaTransazione: true },
+  { etichetta: "proposta di igiene di nuovo (idempotenza)", testo: IGIENE ?? leggi("85_proposta_igiene_permessi.sql"), unaTransazione: true },
   { etichetta: "fotografia «dopo_igiene»", testo: "select prova.fotografa('dopo_igiene');" },
   { etichetta: "controlli dopo la proposta di igiene", testo: leggi("86_prova_z5_igiene.sql") },
 ];
