@@ -4,7 +4,7 @@
 // Uso: npx tsx scripts/verifica-radar-b4-db-connettori.ts   → codice 0 se tutto passa, 1 altrimenti.
 import fs from "fs";
 import path from "path";
-import { databaseInMemoria, type RigaMem } from "./lib/db-in-memoria";
+import { databaseInMemoria as databaseInMemoriaBase, type RigaMem } from "./lib/db-in-memoria";
 import { applicaPaginaBandi } from "../src/lib/radar/importa";
 import { cambiamentiTraVersioni, type RigaProcedura } from "../src/lib/radar/importa-calcoli";
 import { affidabilitaDi, documentiPerConfronto, evidenzaDellaRiga, oggettoPerConfronto, registroConEvidenza, rigaAvvisoSenzaCampi, stessaScadenza } from "../src/lib/radar/importa-evidenza";
@@ -23,6 +23,27 @@ import { cambiamentiDeiLotti, identificativoLottoStabile, unisciLotti, type Lott
 globalThis.fetch = (async () => {
   throw new Error("RETE VIETATA nella verifica dei connettori B4");
 }) as typeof fetch;
+
+// Z5 (documento 45): la batteria ricorda ogni database in memoria. Con RADAR_RIGHE_PER_POSTGRES=<file> scrive alla fine, in quel file, le
+// righe del registro dei cambiamenti e delle provenienze scritte dagli importatori (TED, PVL, Sintel, SardegnaCAT; dati sintetici e il
+// campione pubblico della PVL), che la prova isolata della 0123 inserisce in un Postgres vero con i vincoli della 0123.
+const memorie: ReturnType<typeof databaseInMemoriaBase>[] = [];
+const databaseInMemoria: typeof databaseInMemoriaBase = (iniziali, opzioni) => {
+  const m = databaseInMemoriaBase(iniziali, opzioni);
+  memorie.push(m);
+  return m;
+};
+function scriviRighePerPostgres(file: string): void {
+  const gruppi = memorie
+    .map((m, i) => ({
+      gruppo: i,
+      procedure: [...new Set([...(m.tabelle.radar_aggiornamenti ?? []), ...(m.tabelle.radar_procedure_fonti ?? [])].map((r) => String(r.procedura_id)))],
+      radar_procedure_fonti: m.tabelle.radar_procedure_fonti ?? [],
+      radar_aggiornamenti: m.tabelle.radar_aggiornamenti ?? [],
+    }))
+    .filter((g) => g.radar_aggiornamenti.length + g.radar_procedure_fonti.length > 0);
+  fs.writeFileSync(file, JSON.stringify({ scritto_il: new Date().toISOString(), gruppi }));
+}
 
 let ok = 0;
 const falliti: string[] = [];
@@ -271,6 +292,66 @@ function provaSardegna(): void {
   }
   const b = bandoDaAflink(letto as BandoAflink, "2026-11-12");
   controlla("SardegnaCAT: «Bando Rettificato» → dichiarazione «rettificato» nel bando regionale e nella provenienza", !!b && b.dichiarazione === "rettificato" && bandoUnificabileRegionale(b, ADESSO).motivoModifica === "rettificato", b?.dichiarazione);
+}
+
+// ═══════════ 3 bis. SardegnaCAT dall'IMPORTATORE, con l'evidenza accesa (Z5, documento 45): rettifica con proroga, revoca, «Procedura
+// Ripristinata». SardegnaCAT è una fonte nascosta ai clienti: ogni riga resta «parziale» e non è MAI notificabile per email ═══════════
+const ESECUZIONE_PROVA = "e5e5e5e5-0000-4000-8000-00000000000a";
+function elementoSardegna(oggetto: string, scadenza: string, modifica: string): Record<string, string> {
+  return {
+    link: `https://sardegnacat.regione.sardegna.it/portale/index.php/bandi?getdettaglio=yes&bando=900002&scadenzaBando=${scadenza}`,
+    Oggetto: oggetto,
+    Tipo: "Bando",
+    DenominazioneEnte: "COMUNE DI PROVASINTETICA",
+    Contratto: "Servizi",
+    a_base_asta: "1.900.000,00",
+    DtScadenzaBandoTecnical: scadenza,
+    CIG: "PRV0000099",
+    TipoProcedura: "Aperta",
+    statoFunzionale: "PresOfferte",
+    IdMsg: "900002",
+    TitoloDocumento: "Ristorazione (prova)",
+    dataUltimaModifica: modifica,
+    CPV: "55524000-9 - Servizi di ristorazione scolastica",
+    DtPubblicazioneTecnical: "2026-11-03T11:00:00",
+  };
+}
+async function giornoSardegna(mem: ReturnType<typeof databaseInMemoria>, elemento: Record<string, string>, oggi: string, evidenza = true): Promise<void> {
+  const adesso = new Date(`${oggi}T08:00:00Z`);
+  const letto = leggiElementoAflink("sardegnacat", elemento, adesso);
+  if (letto.tipo !== "bando") throw new Error(`elemento SardegnaCAT sintetico escluso: ${JSON.stringify(letto)}`);
+  const b = bandoDaAflink(letto as BandoAflink, oggi);
+  if (!b) throw new Error("elemento SardegnaCAT sintetico senza bando");
+  await applicaPaginaBandiRegionali(mem.client, [b], { fonte: "sardegnacat", modo: "incrementale", adesso, misure: misure(), stat: statisticheRegionaliVuote(), nascoste: new Set(), proponi: false, evidenza, esecuzioneId: evidenza ? ESECUZIONE_PROVA : undefined });
+}
+async function provaSardegnaImportatore(): Promise<void> {
+  const OGG = "Servizio di ristorazione scolastica (prova sintetica)";
+  const mem = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+  await giornoSardegna(mem, elementoSardegna(OGG, "2026-12-10T10:00:00", "2026-11-05T10:00:00"), "2026-11-10");
+  await giornoSardegna(mem, elementoSardegna(`<strong>Bando Rettificato - </strong>${OGG}`, "2026-12-17T10:00:00", "2026-11-11T09:00:00"), "2026-11-11");
+  const proroga = mem.tabelle.radar_aggiornamenti.find((a) => a.tipo === "proroga" && a.campo === "scadenza_offerte");
+  controlla("SardegnaCAT (importatore): «Bando Rettificato» con la scadenza spostata → proroga registrata con la dichiarazione della fonte e il giro, «parziale», MAI email",
+    !!proroga && proroga.fonte === "sardegnacat" && proroga.dichiarazione_fonte === "rettificato" && proroga.affidabilita === "parziale" && proroga.notifica_email === false
+    && proroga.esecuzione_id === ESECUZIONE_PROVA && proroga.valore_precedente === "2026-12-10T09:00:00.000Z" && proroga.valore_nuovo === "2026-12-17T09:00:00.000Z", mem.tabelle.radar_aggiornamenti);
+  controlla("SardegnaCAT (importatore): nessuna riga del registro è notificabile per email", mem.tabelle.radar_aggiornamenti.every((a) => a.notifica_email === false), righeRegistro(mem));
+  await giornoSardegna(mem, elementoSardegna(`<strong>Bando Revocato</strong> ${OGG}`, "2026-12-17T10:00:00", "2026-11-12T09:00:00"), "2026-11-12");
+  const revoca = mem.tabelle.radar_aggiornamenti.find((a) => a.tipo === "annullamento");
+  controlla("SardegnaCAT (importatore): «Bando Revocato» → annullamento registrato, gara annullata, MAI email",
+    !!revoca && revoca.notifica_email === false && revoca.affidabilita === "parziale" && mem.tabelle.radar_procedure[0]?.stato === "annullata", { revoca, stato: mem.tabelle.radar_procedure[0]?.stato });
+  const righePrimaDelRipristino = mem.tabelle.radar_aggiornamenti.length;
+  await giornoSardegna(mem, elementoSardegna(`<strong>Procedura Ripristinata</strong> - ${OGG}`, "2026-12-17T10:00:00", "2026-11-13T09:00:00"), "2026-11-13");
+  // COMPORTAMENTO ATTUALE (limite noto, non cambiato da Z5): una gara annullata non torna «aperta» per una versione successiva del bando
+  // (importa-calcoli.ts, stato precedente «annullata» conservato); il ripristino non scrive righe e non manda email
+  controlla("SardegnaCAT (importatore): «Procedura Ripristinata» dopo la revoca → la gara RESTA annullata, nessuna riga nuova, nessuna email (limite noto, comportamento di prima)",
+    mem.tabelle.radar_procedure[0]?.stato === "annullata" && mem.tabelle.radar_aggiornamenti.length === righePrimaDelRipristino && mem.tabelle.radar_aggiornamenti.every((a) => a.notifica_email === false),
+    { stato: mem.tabelle.radar_procedure[0]?.stato, righe: righeRegistro(mem) });
+  controlla("SardegnaCAT (importatore): l'avviso di stato non entra nell'oggetto della gara", mem.tabelle.radar_procedure[0]?.oggetto === OGG, mem.tabelle.radar_procedure[0]?.oggetto);
+  // stessa sequenza con l'evidenza SPENTA (com'è oggi): righe come prima, senza le colonne della 0123
+  const senza = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+  await giornoSardegna(senza, elementoSardegna(OGG, "2026-12-10T10:00:00", "2026-11-05T10:00:00"), "2026-11-10", false);
+  await giornoSardegna(senza, elementoSardegna(`<strong>Bando Rettificato - </strong>${OGG}`, "2026-12-17T10:00:00", "2026-11-11T09:00:00"), "2026-11-11", false);
+  controlla("SardegnaCAT (importatore) senza evidenza: proroga registrata come prima, senza le colonne della 0123",
+    senza.tabelle.radar_aggiornamenti.some((a) => a.tipo === "proroga") && senza.tabelle.radar_aggiornamenti.every((a) => !("notifica_email" in a) && !("affidabilita" in a) && !("esecuzione_id" in a)), righeRegistro(senza));
 }
 
 // ═══════════ 4. PVL: fotografia e rilevamento collegati all'importatore (A.5, L4) ═══════════
@@ -605,6 +686,7 @@ function provaTesto(): void {
 (async () => {
   await provaTed();
   provaSardegna();
+  await provaSardegnaImportatore();
   await provaPvl();
   await provaLottoTed();
   await provaLottoPvl();
@@ -613,6 +695,8 @@ function provaTesto(): void {
 })()
   .catch((e) => falliti.push(`eccezione: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`))
   .finally(() => {
+    const destinazione = process.env.RADAR_RIGHE_PER_POSTGRES;
+    if (destinazione) scriviRighePerPostgres(destinazione);
     console.log(`Verifica B4 connettori (correzioni ed evidenza): ${ok} ok, ${falliti.length} falliti`);
     for (const f of falliti) console.log(`  FALLITO: ${f}`);
     process.exit(falliti.length ? 1 : 0);

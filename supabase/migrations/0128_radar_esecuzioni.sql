@@ -31,10 +31,12 @@ create table if not exists public.radar_esecuzioni (
   gare_aggiornate integer not null default 0 check (gare_aggiornate >= 0),
   rettifiche integer not null default 0 check (rettifiche >= 0),
   conflitti integer not null default 0 check (conflitti >= 0),
-  -- allarmi accesi dal giro (giro_mancato, errori_ripetuti, risorse…): nomi brevi, al più 20
+  -- allarmi accesi dal giro (giro_mancato, errori_ripetuti, risorse…): nomi brevi, al più 20. L'ultima condizione vieta un nome che
+  -- contenga una virgola o sia vuoto: unito con le virgole, l'elenco deve dare tanti pezzi quanti sono i nomi (trovato dalla prova isolata)
   allarmi text[] not null default '{}'::text[] check (
     cardinality(allarmi) <= 20 and array_position(allarmi, null) is null
-    and array_to_string(allarmi, ',') ~ '^([a-z_]{2,40}(,[a-z_]{2,40})*)?$'),
+    and array_to_string(allarmi, ',') ~ '^([a-z_]{2,40}(,[a-z_]{2,40})*)?$'
+    and cardinality(string_to_array(array_to_string(allarmi, ','), ',')) = cardinality(allarmi)),
   -- errore RIPULITO (mai segreti, indirizzi o risposte intere), al più 500 caratteri
   errore text check (errore is null or (char_length(errore) between 1 and 500)),
   constraint radar_esecuzioni_tempi check (finito_il >= iniziato_il),
