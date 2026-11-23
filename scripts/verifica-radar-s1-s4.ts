@@ -5,8 +5,8 @@
 import fs from "fs";
 import path from "path";
 import { classificaPerArchivio } from "../src/lib/radar/classificazione-unita";
-import { colonnaDaRigheAttive, giaClassificata, isoDaEsecuzione, pianoGara, tracciaRiallineamento, type GaraArchivio } from "../src/lib/radar/riclassifica-settori";
-import { COLONNE_GARA_ARCHIVIO, riallineaSettoriGara } from "../src/lib/radar/riclassificazione";
+import { colonnaDaRigheAttive, giaClassificata, idEsecuzione, isoDaEsecuzione, pianoGara, tracciaRiallineamento, type GaraArchivio } from "../src/lib/radar/riclassifica-settori";
+import { COLONNE_GARA_ARCHIVIO, annullaEsecuzione, applicaPiani, riallineaSettoriGara } from "../src/lib/radar/riclassificazione";
 import {
   REGOLA_DA_VERIFICARE,
   casoDaRigaDaVerificare,
@@ -119,6 +119,7 @@ async function principale(): Promise<void> {
   controlla("suggerimenti: una gara «da_verificare» non si suggerisce mai, anche con una riga A", gareSuggeribili([{ procedura_id: "BIB", settore: "vigilanza_portierato", rilevanza: "A", attiva: true }], new Map([["BIB", { stato: "da_verificare" as const }]]), ["vigilanza_portierato"]).length === 0);
   controlla("motore delle notifiche: lo stato letto usa il tipo unico a 4 stati (StatoClassificazione), non un elenco suo", /leggiPer<\{ procedura_id: string; stato: StatoClassificazione \}>\("stato delle classificazioni"/.test(leggi("src/lib/radar/notifiche/motore.ts")));
 
+  await provaRipresaEAnnullamento();
   await provaRiallineamento(decisa);
   provaCasoDalMotivo();
 }
@@ -200,3 +201,34 @@ principale()
     for (const f of falliti) console.log(`  FALLITO: ${f}`);
     process.exit(falliti.length ? 1 : 0);
   });
+
+// ═════ ripresa e annullamento con una gara «da_verificare» (difetto trovato da B2 il 23/11, corretto dopo la riclassificazione) ═════
+async function provaRipresaEAnnullamento(): Promise<void> {
+  const es = idEsecuzione(ISO);
+  const gb = garaArchivio("BIB", BIBLIOTECA);
+  const piano = pianoGara({ gara: gb, lotti: [], attive: [], stato: null, esecuzione: es, adessoIso: ISO, nuovoId });
+  const mem = databaseInMemoria({ radar_procedure: [{ ...gb }], radar_lotti: [], radar_classificazioni: [], radar_classificazioni_stato: [], radar_aggiornamenti: [] }, { fonti: "0121" });
+  const a1 = await applicaPiani(mem.client, [piano], misure(), ISO);
+  const stato = () => mem.tabelle.radar_classificazioni_stato.find((s) => s.procedura_id === "BIB");
+  controlla("applicazione: la gara «biblioteca» va «da_verificare» con la riga «da_verificare»", a1.classificazioni.classificate === 1 && stato()?.stato === "da_verificare" && mem.tabelle.radar_classificazioni.some((r) => r.attiva && (r.regole as string[])[0] === REGOLA_DA_VERIFICARE), { a1, stato: stato() });
+  const w = mem.richiesteScrittura();
+  const a2 = await applicaPiani(mem.client, [piano], misure(), ISO);
+  controlla("ripresa con lo stesso diario: la gara «da_verificare» di questa esecuzione è GIÀ completata, nessuna scrittura", a2.giaCompletate === 1 && mem.richiesteScrittura() === w, { a2, scritture: mem.richiesteScrittura() - w });
+  const an = await annullaEsecuzione(mem.client, es, 10, misure(), "2026-11-23T13:00:00.000Z", nuovoId);
+  controlla("annullamento: anche la gara «da_verificare» di questa esecuzione torna «in attesa», le sue righe nuove si chiudono", stato()?.stato === "in_attesa" && an.statiInAttesa === 1 && !mem.tabelle.radar_classificazioni.some((r) => r.attiva && String(r.autore) === `riclassificazione:${es}`), { an, stato: stato() });
+
+  // una gara «da_verificare» cambiata DOPO la classificazione si ricalcola con la stessa versione: righe invariate (nessuna riga nuova),
+  // cambia solo lo stato. L'annullamento di quella esecuzione la deve trovare dallo STATO (non ci sono righe né tracce sue)
+  const m2 = databaseInMemoria({ radar_procedure: [{ ...gb }], radar_lotti: [], radar_classificazioni: [], radar_classificazioni_stato: [], radar_aggiornamenti: [] }, { fonti: "0121" });
+  await applicaPiani(m2.client, [piano], misure(), ISO);
+  const ISO2 = "2026-11-23T15:00:00.000Z", es2 = idEsecuzione(ISO2);
+  const cambiata = { ...gb, aggiornata_il: "2026-11-23T14:00:00.000Z" };
+  const attive2 = m2.tabelle.radar_classificazioni.filter((r) => r.attiva) as unknown as RigaClassificazione[];
+  const stato2 = m2.tabelle.radar_classificazioni_stato.find((s) => s.procedura_id === "BIB") as unknown as RigaStato;
+  const piano2 = pianoGara({ gara: cambiata, lotti: [], attive: attive2, stato: stato2, esecuzione: es2, adessoIso: ISO2, nuovoId });
+  await applicaPiani(m2.client, [piano2], misure(), ISO2);
+  const s2 = () => m2.tabelle.radar_classificazioni_stato.find((s) => s.procedura_id === "BIB");
+  controlla("ricalcolo con la stessa versione: righe invariate, stato «da_verificare» con il nuovo istante", piano2.righe?.inserisci.length === 0 && s2()?.stato === "da_verificare" && s2()?.classificata_il === ISO2, { righe: piano2.righe, stato: s2() });
+  await annullaEsecuzione(m2.client, es2, 10, misure(), "2026-11-23T16:00:00.000Z", nuovoId);
+  controlla("annullamento di quel ricalcolo: la gara «da_verificare» si trova dallo stato e torna «in attesa»", s2()?.stato === "in_attesa", s2());
+}
