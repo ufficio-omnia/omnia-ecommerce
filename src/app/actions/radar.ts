@@ -11,6 +11,7 @@ import { validaGaraAggiunta } from "@/lib/radar/aggiunte-calcoli";
 import { MESSAGGIO_RADAR_NON_DISPONIBILE, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { pianificaScadenzaRavvicinata } from "@/lib/radar/ingresso-lista";
+import { schedaGaraApribile } from "@/lib/radar/gara";
 
 // Azioni di Tender Intelligence nell'area riservata: salvare e monitorare una gara, aggiungere una gara a mano. Fase B1: solo titolare; fase B4
 // (grado 2): anche l'Ufficio Gare attivo dell'impresa, SOLO con RADAR_UFFICIO_GARE acceso (guardie-opportunita.ts). Dati sempre dell'impresa.
@@ -60,10 +61,10 @@ export async function aggiornaSalvataggio(_stato: StatoAzioneRadar, formData: Fo
     return { ok: true, messaggio: "Gara tolta dalle salvate." };
   }
 
-  if (proceduraId) {
-    const { data: esiste } = await createAdminClient().from("radar_procedure").select("id").eq("id", proceduraId).maybeSingle();
-    if (!esiste) return { errore: "Gara non trovata." };
-  }
+  // la gara deve esistere ED essere visibile al cliente (le regole della scheda: almeno una fonte conosciuta e visibile; una copia collegata
+  // vale per la gara che resta). Una gara con SOLO fonti nascoste ha la stessa risposta di una gara che non c'è: non si rivela che esiste
+  // (coordinamento 23/11, punto b). «Rimuovi» resta sempre ammesso: toglie solo un dato dell'impresa.
+  if (proceduraId && !(await schedaGaraApribile(createAdminClient(), proceduraId))) return { errore: "Gara non trovata." };
 
   const monitorata = azione === "monitora" ? true : azione === "non_monitorare" ? false : undefined;
   const adesso = new Date().toISOString();
@@ -106,8 +107,11 @@ export async function aggiungiGaraAMano(_stato: StatoAzioneRadar, formData: Form
 
   let destinazione: string | null = null;
   if (v.cig) {
-    const { data: lotto } = await createAdminClient().from("radar_lotti").select("procedura_id").eq("cig", v.cig).maybeSingle<{ procedura_id: string }>();
-    if (lotto) {
+    const admin = createAdminClient();
+    const { data: lotto } = await admin.from("radar_lotti").select("procedura_id").eq("cig", v.cig).maybeSingle<{ procedura_id: string }>();
+    // il CIG di una gara con SOLO fonti nascoste ai clienti vale come non ancora pubblicato: nasce la gara aggiunta a mano (dati
+    // dell'impresa), senza rivelare che la gara esiste; quando la fonte torna visibile la si trova come le altre aggiunte
+    if (lotto && (await schedaGaraApribile(admin, lotto.procedura_id))) {
       const { error: erroreArchivio } = await supabase.from("omnia_ai_radar_salvate").upsert(
         { user_id: g.contesto.accountId, procedura_id: lotto.procedura_id, monitorata: true, salvata_da: g.contesto.userId, ultimo_aggiornamento_visto_il: adesso, aggiornata_il: adesso },
         { onConflict: "user_id,procedura_id" },

@@ -33,11 +33,13 @@ export function aggiornamentoPerCliente(a: { campo: string | null; fonte: string
   return !(a.campo !== null && CAMPI_INTERNI_REGISTRO.includes(a.campo)) && !nascoste.has(a.fonte);
 }
 
-// Una gara si mostra ai clienti solo se almeno una delle sue fonti è visibile (controllo di accettazione 6 dell'utente). Le gare di prima
-// della 0120 hanno le fonti riempite dalla migrazione; in mancanza vale la fonte della chiave.
+// Una gara si mostra ai clienti solo se almeno una delle sue fonti è CONOSCIUTA e visibile (controllo di accettazione 6 dell'utente). Una
+// fonte che il codice non conosce ancora (fuori da FONTI_UNITE) vale come nascosta, come nella ricerca, che filtra sulle fonti visibili
+// (coordinamento 23/11, punto a). Le gare di prima della 0120 hanno le fonti riempite dalla migrazione; in mancanza vale la fonte della
+// chiave, anche lei solo se conosciuta.
 export function garaVisibileAiClienti(g: { fonti?: readonly string[] | null; chiave: string }, nascoste: ReadonlySet<string>): boolean {
   const fonti = g.fonti && g.fonti.length > 0 ? g.fonti : [g.chiave.split(":")[0]];
-  return fonti.some((f) => !nascoste.has(f));
+  return fonti.some((f) => eFonte(f) && !nascoste.has(f));
 }
 
 // Le fonti che il cliente può vedere: tutte meno quelle nascoste (radar_fonti_stato.nascosta_ai_clienti, migrazione 0120).

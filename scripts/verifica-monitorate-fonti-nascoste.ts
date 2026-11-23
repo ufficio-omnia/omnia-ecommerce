@@ -36,6 +36,7 @@ class DbProva {
   richieste: { tabella: string; metodo: string; colonne: string }[] = [];
   /** tabelle la cui lettura fallisce (guasto simulato) */
   guasti = new Set<string>();
+  contatore = 0;
   constructor(tabelle: Record<string, Riga[]>) {
     this.tabelle = structuredClone(tabelle);
   }
@@ -47,24 +48,50 @@ class DbProva {
 const confronta = (a: unknown, b: unknown) => String(a ?? "").localeCompare(String(b ?? ""));
 
 class QueryProva implements PromiseLike<Esito> {
-  private metodo: "select" | "update" = "select";
+  private metodo: "select" | "update" | "insert" | "upsert" | "delete" = "select";
   private colonne = "*";
   private filtri: ((r: Riga) => boolean)[] = [];
   private ordini: [string, boolean][] = [];
   private lim: number | null = null;
   private una = false;
+  private ritorna = false;
   private valori: Riga = {};
+  private nuove: Riga[] = [];
+  private conflitto: string[] = [];
   constructor(
     private db: DbProva,
     private tabella: string,
   ) {}
   select(c = "*") {
+    if (this.metodo !== "select") this.ritorna = true;
     this.colonne = c;
     return this;
   }
   update(v: Riga) {
     this.metodo = "update";
     this.valori = v;
+    return this;
+  }
+  insert(v: Riga | Riga[]) {
+    this.metodo = "insert";
+    this.nuove = Array.isArray(v) ? v : [v];
+    return this;
+  }
+  upsert(v: Riga | Riga[], o: { onConflict?: string } = {}) {
+    this.metodo = "upsert";
+    this.nuove = Array.isArray(v) ? v : [v];
+    this.conflitto = (o.onConflict ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return this;
+  }
+  delete() {
+    this.metodo = "delete";
+    return this;
+  }
+  single() {
+    this.una = true;
     return this;
   }
   eq(c: string, v: unknown) {
@@ -113,10 +140,30 @@ class QueryProva implements PromiseLike<Esito> {
     if (this.db.guasti.has(this.tabella)) return { data: null, error: { code: "08006", message: "guasto simulato" } };
     // le tabelle della 0121 (classificazioni) non esistono nel finto: una lettura incorporata fallisce come in PostgREST
     if (this.colonne.includes("(")) return { data: null, error: { code: "PGRST200", message: "relazione non trovata (tabelle della 0121 assenti nel finto)" } };
-    const righe = (this.db.tabelle[this.tabella] ??= []).filter((r) => this.filtri.every((f) => f(r)));
+    const tutte = (this.db.tabelle[this.tabella] ??= []);
+    const righe = tutte.filter((r) => this.filtri.every((f) => f(r)));
     if (this.metodo === "update") {
       for (const r of righe) Object.assign(r, this.valori);
       return { data: null, error: null };
+    }
+    if (this.metodo === "delete") {
+      this.db.tabelle[this.tabella] = tutte.filter((r) => !righe.includes(r));
+      return { data: null, error: null };
+    }
+    if (this.metodo === "insert" || this.metodo === "upsert") {
+      const scritte: Riga[] = [];
+      for (const v of this.nuove) {
+        const esistente = this.metodo === "upsert" && this.conflitto.length ? tutte.find((r) => this.conflitto.every((k) => r[k] === v[k])) : undefined;
+        if (esistente) scritte.push(Object.assign(esistente, v));
+        else {
+          const nuova = { id: id(7000 + ++this.db.contatore), ...v };
+          tutte.push(nuova);
+          scritte.push(nuova);
+        }
+      }
+      if (!this.ritorna) return { data: null, error: null };
+      const p = scritte.map((r) => (this.colonne.trim() === "*" ? { ...r } : Object.fromEntries(this.colonne.split(",").map((k) => [k.trim(), r[k.trim()] ?? null]))));
+      return { data: this.una ? (p[0] ?? null) : p, error: null };
     }
     let x = righe;
     for (const [c, asc] of [...this.ordini].reverse()) x = [...x].sort((a, b) => (asc ? 1 : -1) * confronta(a[c], b[c]));
@@ -140,7 +187,9 @@ class QueryProva implements PromiseLike<Esito> {
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const IMPRESA = id(9001);
 const G = { ted: id(1), pvl: id(2), mista: id(3), sintel: id(4), senzaProv: id(5), ignota: id(6), copia: id(7), copiaDiPvl: id(8), ted2: id(9), sardegna: id(10) };
-const A = { pvl: id(101), ted2: id(102), libera: id(103), copia: id(104), copiaPvl: id(105) };
+const A = { pvl: id(101), ted2: id(102), libera: id(103), copia: id(104), copiaPvl: id(105), ignota: id(106) };
+// CIG sintetici (10 caratteri) dei lotti: uno di una gara visibile, uno di una gara solo PVL
+const CIG = { ted: "SINT00001A", pvl: "SINT00002A" };
 const TITOLO: Record<keyof typeof G, string> = {
   ted: "[SINTETICO] Gara TED",
   pvl: "[SINTETICO] Gara solo PVL",
@@ -189,7 +238,7 @@ function gara(k: keyof typeof G, chiave: string, fonti: string[], unitaA: string
 const avviso = (k: keyof typeof G, fonte: string) => ({ procedura_id: G[k], fonte, id_fonte: `SINT-${k}-${fonte}`, url: null, pubblicato_il: "2026-11-10", tipo_avviso: null, rilevato_il: "2026-11-10T06:00:00Z", aggiornato_il: null });
 const aggiunta = (k: keyof typeof A, proceduraId: string | null) => ({
   id: A[k],
-  impresa_id: IMPRESA,
+  user_id: IMPRESA,
   cig: null,
   url: null,
   oggetto: `[SINTETICO] Gara scritta da me (${k})`,
@@ -207,7 +256,7 @@ const aggiunta = (k: keyof typeof A, proceduraId: string | null) => ({
 let n = 0;
 const salvata = (proceduraId: string | null, aggiuntaId: string | null, monitorata = false) => ({
   id: id(500 + ++n),
-  impresa_id: IMPRESA,
+  user_id: IMPRESA,
   procedura_id: proceduraId,
   aggiunta_id: aggiuntaId,
   monitorata,
@@ -231,7 +280,8 @@ const SALVATE = [
   salvata(null, A.libera, true),
   salvata(G.sardegna, null),
 ];
-const AGGIUNTE = [aggiunta("pvl", G.pvl), aggiunta("ted2", G.ted2), aggiunta("libera", null), aggiunta("copia", G.copia), aggiunta("copiaPvl", G.copiaDiPvl)];
+// l'aggiunta collegata alla gara di fonte sconosciuta non è tra le salvate: serve solo alla prova della sua pagina (sezione G)
+const AGGIUNTE = [aggiunta("pvl", G.pvl), aggiunta("ted2", G.ted2), aggiunta("libera", null), aggiunta("copia", G.copia), aggiunta("copiaPvl", G.copiaDiPvl), aggiunta("ignota", G.ignota)];
 
 function statoFonti(pvlNascosta: boolean): Riga[] {
   return [
@@ -259,7 +309,11 @@ function nuovoMondo(pvlNascosta: boolean) {
     ],
     radar_procedure_fonti: [avviso("ted", "ted"), avviso("pvl", "pvl"), avviso("mista", "pvl"), avviso("mista", "ted"), avviso("sintel", "sintel"), avviso("ignota", "nuova"), avviso("copia", "pvl"), avviso("copiaDiPvl", "ted"), avviso("ted2", "ted"), avviso("sardegna", "sardegnacat")],
     radar_aggiornamenti: [],
-    radar_lotti: [],
+    radar_lotti: [
+      { procedura_id: G.ted, numero_lotto: "1", cig: CIG.ted, oggetto: null, valore_stimato: null, cpv: null },
+      { procedura_id: G.pvl, numero_lotto: "1", cig: CIG.pvl, oggetto: null, valore_stimato: null, cpv: null },
+    ],
+    omnia_ai_radar_utilizzi: [],
   });
   const sessione = new DbProva({ omnia_ai_radar_salvate: SALVATE, omnia_ai_radar_gare_aggiunte: AGGIUNTE });
   return { admin, sessione };
@@ -279,10 +333,19 @@ const { RADICE_AREA } = richiedi(src("lib/omnia-ai-account-calcoli.ts")) as { RA
 const RADICE_OPPORTUNITA = `${RADICE_AREA}/opportunita`;
 sostituisci(src("lib/supabase/server.ts"), { createClient: async () => mondo.sessione });
 sostituisci(src("lib/supabase/admin.ts"), { createAdminClient: () => mondo.admin });
-sostituisci(src("lib/radar/guardie-opportunita.ts"), { richiediOpportunitaPagina: async () => ({ contesto: { accountId: IMPRESA, userId: IMPRESA } }) });
-sostituisci(src("lib/radar/area-cliente.ts"), { RADICE_OPPORTUNITA, dirittoRadarOppure404: async () => ({ diritto: { operativo: true, messaggioSolaLettura: "" } }) });
-// la cache dei dati di Next non esiste fuori da Next: la lettura delle fonti nascoste si esegue ogni volta (nessun ricordo tra gli scenari)
-sostituisci(richiedi.resolve("next/cache"), { ...(richiedi("next/cache") as Record<string, unknown>), unstable_cache: (f: unknown) => f });
+sostituisci(src("lib/radar/guardie-opportunita.ts"), {
+  richiediOpportunitaPagina: async () => ({ contesto: { accountId: IMPRESA, userId: IMPRESA } }),
+  richiediOpportunitaAzione: async () => ({ ok: true, user: { id: IMPRESA }, contesto: { accountId: IMPRESA, userId: IMPRESA } }),
+});
+sostituisci(src("lib/radar/area-cliente.ts"), {
+  RADICE_OPPORTUNITA,
+  MESSAGGIO_RADAR_NON_DISPONIBILE: "[prova] modulo non disponibile",
+  dirittoRadarOppure404: async () => ({ diritto: { operativo: true, messaggioSolaLettura: "" } }),
+});
+sostituisci(src("lib/radar/impostazioni.ts"), { leggiDirittoRadar: async () => ({ visibile: true, operativo: true, messaggioSolaLettura: "" }) });
+// la cache dei dati di Next non esiste fuori da Next: la lettura delle fonti nascoste si esegue ogni volta (nessun ricordo tra gli scenari);
+// lo svuotamento delle pagine delle azioni non fa nulla
+sostituisci(richiedi.resolve("next/cache"), { ...(richiedi("next/cache") as Record<string, unknown>), unstable_cache: (f: unknown) => f, revalidatePath: () => undefined, revalidateTag: () => undefined, updateTag: () => undefined });
 const dopo: unknown[] = [];
 sostituisci(richiedi.resolve("next/server"), { ...(richiedi("next/server") as Record<string, unknown>), after: (f: unknown) => void dopo.push(f) });
 
@@ -293,6 +356,8 @@ const PaginaAggiunta = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/oppor
 const RigaGara = (richiedi(src("components/omnia-ai/opportunita/riga-gara.tsx")) as { default: unknown }).default;
 const { leggiGaraPubblica } = richiedi(src("lib/radar/gara.ts")) as { leggiGaraPubblica: (admin: unknown, id: string) => Promise<unknown> };
 const calcoliFonti = richiedi(src("lib/radar/fonti-gara-calcoli.ts")) as Record<string, unknown>;
+type Azione = (stato: unknown, formData: FormData) => Promise<{ errore?: string; ok?: boolean; messaggio?: string }>;
+const azioniRadar = richiedi(src("app/actions/radar.ts")) as { aggiornaSalvataggio: Azione; aggiungiGaraAMano: Azione };
 const { FONTI_NASCOSTE_PREDEFINITE } = richiedi(src("lib/radar/fonti-nascoste.ts")) as { FONTI_NASCOSTE_PREDEFINITE: readonly string[] };
 
 function elementi(nodo: unknown, out: Elemento[] = []): Elemento[] {
@@ -378,8 +443,8 @@ async function principale(): Promise<void> {
   );
   // ogni riga che porta a una scheda deve aprirla (stessa lettura della pagina della gara)
   const schede = await Promise.all(a.righe.filter((r) => r.href.includes("/gara/")).map(async (r) => [r.href, (await leggiGaraPubblica(mondo.admin, r.href.split("/").pop()!)) !== null] as const));
-  // (la fonte sconosciuta qui non si controlla: la scheda la tratta come visibile, la ricerca no; segnalato a parte, fuori da questa correzione)
-  const nascosteSi = await Promise.all([G.pvl, G.sardegna].map(async (g) => (await leggiGaraPubblica(mondo.admin, g)) === null));
+  // (la fonte sconosciuta: dal punto a del coordinamento la scheda la tratta come «Cerca», vedi anche MN19 e MN20)
+  const nascosteSi = await Promise.all([G.pvl, G.sardegna, G.ignota].map(async (g) => (await leggiGaraPubblica(mondo.admin, g)) === null));
   controlla("MN6. Monitorate: ogni riga che porta alla scheda la apre (leggiGaraPubblica vera); le gare nascoste non si aprono", schede.length === 5 && schede.every(([, aperta]) => aperta) && nascosteSi.every(Boolean), { schede, nascosteSi });
   controlla(
     "MN7. Monitorate: nessun salvataggio cancellato o modificato; i salvataggi si leggono solo con la sessione (mai con la chiave di servizio)",
@@ -467,6 +532,104 @@ async function principale(): Promise<void> {
   const conRipiego = sorgenti.filter((f) => /\?\?\s*\[\s*["']ted["']\s*\]/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(RADICE, f));
   const pagine = ["cerca", "per-te", "monitorate"].map((p) => fs.readFileSync(src(`app/site-omnia-ai/dashboard/omnia-ai/opportunita/${p}/page.tsx`), "utf8"));
   controlla("MN17. nessun ripiego «?? [\"ted\"]» nel codice dell'app; Cerca, Per te e Monitorate usano etichettaFontiElenco", conRipiego.length === 0 && pagine.every((t) => /fonte: etichettaFontiElenco\(fontiGare\.get\((r|p)\.id\)\)/.test(t)), conRipiego);
+  // ═════ G. (coordinamento, 23/11, punto a) la scheda tratta una fonte sconosciuta come «Cerca»: non visibile ═════
+  const visibile = calcoliFonti.garaVisibileAiClienti as (g: { fonti?: readonly string[] | null; chiave: string }, nascoste: ReadonlySet<string>) => boolean;
+  const nessuna = new Set<string>();
+  const casi = [
+    visibile({ fonti: ["nuova"], chiave: "nuova:1" }, nessuna),
+    visibile({ fonti: [], chiave: "nuova:1" }, nessuna),
+    visibile({ fonti: null, chiave: "nuova:1" }, nessuna),
+    visibile({ fonti: ["nuova", "ted"], chiave: "nuova:1" }, nessuna),
+    visibile({ fonti: [], chiave: "ted:1" }, nessuna),
+    visibile({ fonti: ["pvl"], chiave: "pvl:1" }, new Set(["pvl"])),
+    visibile({ fonti: ["sintel"], chiave: "sintel:1" }, new Set(["pvl", "sardegnacat"])),
+  ];
+  controlla(
+    "MN19. garaVisibileAiClienti: una fonte che il codice non conosce vale come nascosta (anche dalla chiave); una fonte conosciuta e visibile basta",
+    JSON.stringify(casi) === JSON.stringify([false, false, false, true, true, false, true]),
+    casi,
+  );
+  mondo = nuovoMondo(false);
+  const schedaIgnota = await leggiGaraPubblica(mondo.admin, G.ignota);
+  const aggIgnota = await apriAggiunta(A.ignota);
+  controlla(
+    "MN20. la scheda di una gara di sola fonte sconosciuta non si apre (come in «Cerca»); l'aggiunta a mano collegata a lei mostra i dati dell'impresa",
+    schedaIgnota === null && aggIgnota.redirect === null && !aggIgnota.notFound && !aggIgnota.errore && aggIgnota.testi.includes("[SINTETICO] Gara scritta da me (ignota)"),
+    { schedaIgnota: schedaIgnota !== null, aggIgnota },
+  );
+
+  // ═════ H. (coordinamento, 23/11, punto b) «salva» e «monitora» rifiutano una gara con sole fonti nascoste come una gara che non c'è ═════
+  const modulo = (campi: Record<string, string>) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(campi)) fd.set(k, v);
+    return fd;
+  };
+  const salvataggio = (azione: string, proceduraId: string) => azioniRadar.aggiornaSalvataggio(undefined, modulo({ azione, proceduraId }));
+  mondo = nuovoMondo(true);
+  const salvatePrimaH = JSON.stringify(mondo.sessione.tabelle.omnia_ai_radar_salvate);
+  const dopoPrima = dopo.length;
+  const inesistente = id(999);
+  const esiti: Record<string, string> = {};
+  for (const azione of ["salva", "monitora", "non_monitorare"])
+    for (const [nome, gid] of [["inesistente", inesistente], ["solo PVL", G.pvl], ["solo SardegnaCAT", G.sardegna], ["fonte sconosciuta", G.ignota], ["copia di una gara solo PVL", G.copiaDiPvl]] as const)
+      esiti[`${azione} ${nome}`] = JSON.stringify(await salvataggio(azione, gid));
+  const attesoNonTrovata = JSON.stringify({ errore: "Gara non trovata." });
+  const diverse = Object.entries(esiti).filter(([, v]) => v !== attesoNonTrovata);
+  controlla(
+    "MN21. «salva», «monitora» e «non monitorare» di una gara con sole fonti nascoste (o sconosciute): stessa risposta di una gara che non c'è, nessuna scrittura né aggancio",
+    diverse.length === 0 &&
+      JSON.stringify(mondo.sessione.tabelle.omnia_ai_radar_salvate) === salvatePrimaH &&
+      !mondo.sessione.richieste.some((r) => r.metodo !== "select") &&
+      mondo.admin.tabelle.omnia_ai_radar_utilizzi.length === 0 &&
+      dopo.length === dopoPrima,
+    diverse,
+  );
+  const rimuoviNascosta = JSON.stringify(await salvataggio("rimuovi", G.pvl));
+  const rimuoviInesistente = JSON.stringify(await salvataggio("rimuovi", inesistente));
+  controlla("MN22. «rimuovi» resta sempre ammesso (dati dell'impresa), con la stessa risposta per una gara nascosta e una che non c'è", rimuoviNascosta === rimuoviInesistente && rimuoviNascosta.includes('"ok":true'), { rimuoviNascosta, rimuoviInesistente });
+  mondo = nuovoMondo(true);
+  const nuovaVisibile = await salvataggio("salva", G.ted2);
+  const copiaVisibile = await salvataggio("monitora", G.copia);
+  const salvataTed2 = mondo.sessione.tabelle.omnia_ai_radar_salvate.find((r) => r.procedura_id === G.ted2);
+  mondo = nuovoMondo(false);
+  const pvlVisibile = await salvataggio("monitora", G.pvl);
+  controlla(
+    "MN23. nessun rifiuto di troppo: gara visibile salvata, copia collegata di una gara visibile monitorata, gara solo PVL monitorata quando la PVL è visibile",
+    nuovaVisibile.ok === true && !!salvataTed2 && copiaVisibile.ok === true && pvlVisibile.ok === true,
+    { nuovaVisibile, copiaVisibile, pvlVisibile },
+  );
+  const aggiungi = async (cig: string) => {
+    try {
+      const r = await azioniRadar.aggiungiGaraAMano(undefined, modulo({ cig, url: "", oggetto: "", ente: "", scadenzaGiorno: "", scadenzaOra: "", importo: "" }));
+      return { redirect: null as string | null, risposta: r };
+    } catch (e) {
+      const digest = String((e as { digest?: unknown }).digest ?? "");
+      if (digest.startsWith("NEXT_REDIRECT")) return { redirect: digest.split(";")[2] ?? "", risposta: null };
+      return { redirect: null, risposta: { errore: e instanceof Error ? e.message : String(e) } };
+    }
+  };
+  mondo = nuovoMondo(true);
+  const aggiuntePrima = mondo.sessione.tabelle.omnia_ai_radar_gare_aggiunte.length;
+  const conCigNascosto = await aggiungi(CIG.pvl);
+  const nuovaAggiunta = mondo.sessione.tabelle.omnia_ai_radar_gare_aggiunte.find((a) => a.cig === CIG.pvl);
+  const salvataNascosta = mondo.sessione.tabelle.omnia_ai_radar_salvate.filter((r) => r.procedura_id === G.pvl).length;
+  controlla(
+    "MN24. «aggiungi a mano» con il CIG di una gara con sole fonti nascoste: il CIG vale come non ancora pubblicato (nasce un'aggiunta a mano, salvata), mai la scheda della gara nascosta",
+    !!nuovaAggiunta &&
+      mondo.sessione.tabelle.omnia_ai_radar_gare_aggiunte.length === aggiuntePrima + 1 &&
+      conCigNascosto.redirect === `${hrefA(String(nuovaAggiunta.id))}?da=aggiungi` &&
+      salvataNascosta === 1 &&
+      mondo.sessione.tabelle.omnia_ai_radar_salvate.some((r) => r.aggiunta_id === nuovaAggiunta.id),
+    { conCigNascosto, salvataNascosta },
+  );
+  mondo = nuovoMondo(true);
+  const conCigVisibile = await aggiungi(CIG.ted);
+  controlla(
+    "MN25. «aggiungi a mano» con il CIG di una gara visibile: come prima, la gara pubblica salvata e monitorata e la sua scheda",
+    conCigVisibile.redirect === `${hrefG(G.ted)}?da=aggiungi` && mondo.sessione.tabelle.omnia_ai_radar_salvate.some((r) => r.procedura_id === G.ted && r.monitorata === true) && !mondo.sessione.tabelle.omnia_ai_radar_gare_aggiunte.some((a) => a.cig === CIG.ted),
+    conCigVisibile,
+  );
+
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }
 
