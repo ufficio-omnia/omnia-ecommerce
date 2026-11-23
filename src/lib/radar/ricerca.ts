@@ -101,8 +101,8 @@ export async function cercaGare(
     if ((collegate ?? []).length) idDaCig = [...new Set(idDaCig.map((id) => collegate?.find((c) => c.id === id)?.unita_a ?? id))];
   }
 
-  // le gare collegate a un'altra (copie nascoste, 0117) non compaiono mai negli elenchi; né quelle che hanno SOLO fonti non ancora mostrabili
-  // ai clienti (0120: SardegnaCAT finché manca il parere legale)
+  // le gare collegate a un'altra (copie nascoste, 0117) non compaiono mai negli elenchi; né quelle che hanno SOLO fonti nascoste ai clienti
+  // (0120: una fonte si può nascondere dalla console; nessuna nascosta di base, decisione 48E)
   const visibili = fontiVisibiliDa(await (opzioni.fontiNascoste ?? fontiNascosteAiClienti)());
   const oggi = giornoIso(adesso);
   // fase B3: con le classificazioni accese, stato e righe attive della 0121 arrivano nella STESSA richiesta (nessuna lettura in più)

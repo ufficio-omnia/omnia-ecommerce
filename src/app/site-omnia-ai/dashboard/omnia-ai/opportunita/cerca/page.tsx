@@ -92,7 +92,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
 
   const [salvataggi, { data: righeFonti }, fontiGare] = await Promise.all([
     leggiSalvataggi(await createClient(), (risultato?.righe ?? []).map((r) => r.id)),
-    // solo le fonti mostrabili ai clienti (0120: SardegnaCAT nascosta finché manca il parere legale)
+    // solo le fonti mostrabili ai clienti (0120: una fonte si può nascondere dalla console; nessuna nascosta di base, decisione 48E)
     admin.from("radar_fonti_stato").select("fonte, attiva, dati_aggiornati_al, ultimo_successo_il").in("fonte", fontiVisibiliDa(await fontiNascosteAiClienti())).returns<{ fonte: StatoFontePubblica["fonte"]; attiva: boolean; dati_aggiornati_al: string | null; ultimo_successo_il: string | null }[]>(),
     leggiFontiGare(admin, (risultato?.righe ?? []).map((r) => r.id)),
   ]);

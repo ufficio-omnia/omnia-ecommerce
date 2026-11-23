@@ -316,7 +316,8 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
                 {f.ultimoSuccesso ? ` · ultimo giro riuscito il ${data(f.ultimoSuccesso)}` : ""} · procedure lette in archivio: {numero(f.procedure)}
               </p>
               {f.sospensione && !f.attiva && <p className="cn-nota">Sospesa dal connettore il {data(f.sospensione.il)}: {f.sospensione.motivo ?? "motivo non registrato"}. Si riaccende solo da qui, dopo averne verificato la causa.</p>}
-              {f.fonte === "sardegnacat" && f.nascosta && <p className="cn-nota">La licenza del feed non è dichiarata: la fonte resta nascosta ai clienti finché non c&apos;è il parere legale. I suoi dati non entrano nelle gare già visibili.</p>}
+              {/* decisione 48E dell'utente: SardegnaCAT visibile ai clienti come le altre fonti; nascondere una fonte resta possibile da qui */}
+              {f.nascosta && <p className="cn-nota">Nascosta ai clienti: le gare che hanno solo questa fonte non compaiono e i suoi dati non entrano nelle gare già visibili.</p>}
               <>
                 {f.accensioneConsentita || f.attiva ? (
                   <ModuloAzione azione={impostaFonteRegionale} etichetta={f.attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: f.attiva ? "spegni" : "accendi" }}>
@@ -332,11 +333,7 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
                 )}
                 {f.nascosta ? (
                   <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">
-                    {f.fonte === "sardegnacat" ? (
-                      <label className="cn-nota">
-                        <input type="checkbox" name="parere" value="si" /> C&apos;è il parere legale sulla licenza del feed
-                      </label>
-                    ) : null}
+                    {null}
                   </ModuloAzione>
                 ) : (
                   <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Nascondi ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "nascondi" }} variante="neutro">

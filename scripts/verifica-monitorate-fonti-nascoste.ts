@@ -527,7 +527,19 @@ sostituisci(src("lib/radar/area-cliente.ts"), {
 sostituisci(src("lib/radar/impostazioni.ts"), { leggiDirittoRadar: async () => ({ visibile: true, operativo: true, messaggioSolaLettura: "" }) });
 // la cache dei dati di Next non esiste fuori da Next: la lettura delle fonti nascoste si esegue ogni volta (nessun ricordo tra gli scenari);
 // lo svuotamento delle pagine delle azioni non fa nulla
-sostituisci(richiedi.resolve("next/cache"), { ...(richiedi("next/cache") as Record<string, unknown>), unstable_cache: (f: unknown) => f, revalidatePath: () => undefined, revalidateTag: () => undefined, updateTag: () => undefined });
+// lo svuotamento delle cache per etichetta si registra (la console delle fonti deve svuotare subito quella delle fonti visibili)
+const tagSvuotati: string[] = [];
+sostituisci(richiedi.resolve("next/cache"), {
+  ...(richiedi("next/cache") as Record<string, unknown>),
+  unstable_cache: (f: unknown) => f,
+  revalidatePath: () => undefined,
+  revalidateTag: (t: string) => void tagSvuotati.push(t),
+  updateTag: (t: string) => void tagSvuotati.push(t),
+});
+// la console: un amministratore sintetico (decisione 48E sulla visibilità di SardegnaCAT, sezione O)
+const AMMINISTRATORE = { userId: id(9100), email: "amministratore@prova.test", scadeIl: "2026-12-31T00:00:00Z" };
+let adminAutenticato = true;
+sostituisci(src("lib/console/accesso.ts"), { richiediAdminAzione: async () => (adminAutenticato ? AMMINISTRATORE : null) });
 const dopo: unknown[] = [];
 sostituisci(richiedi.resolve("next/server"), { ...(richiedi("next/server") as Record<string, unknown>), after: (f: unknown) => void dopo.push(f) });
 
@@ -543,6 +555,9 @@ const { leggiGaraPubblica } = richiedi(src("lib/radar/gara.ts")) as { leggiGaraP
 const calcoliFonti = richiedi(src("lib/radar/fonti-gara-calcoli.ts")) as Record<string, unknown>;
 type Azione = (stato: unknown, formData: FormData) => Promise<{ errore?: string; ok?: boolean; messaggio?: string }>;
 const azioniRadar = richiedi(src("app/actions/radar.ts")) as { aggiornaSalvataggio: Azione; aggiungiGaraAMano: Azione };
+type AzioneConsole = (stato: unknown, formData: FormData) => Promise<{ errore?: string; ok?: boolean; avviso?: string }>;
+const azioniConsole = richiedi(src("app/site-console/azioni/tender-intelligence.ts")) as { impostaVisibilitaFonte: AzioneConsole };
+const { TAG_FONTI_RADAR } = richiedi(src("lib/radar/fonti-nascoste.ts")) as { TAG_FONTI_RADAR: string };
 const { FONTI_NASCOSTE_PREDEFINITE } = richiedi(src("lib/radar/fonti-nascoste.ts")) as { FONTI_NASCOSTE_PREDEFINITE: readonly string[] };
 
 function elementi(nodo: unknown, out: Elemento[] = []): Elemento[] {
@@ -1054,6 +1069,74 @@ async function principale(): Promise<void> {
     "MT9. parametri: i tipi validi letti dall'indirizzo, senza doppioni né valori sconosciuti; l'indirizzo li riproduce; contano tra i filtri attivi",
     JSON.stringify(fT.tipi) === JSON.stringify(["candidature", "bandi"]) && /tipo=candidature/.test(rc.parametriDaFiltri(fT)) && /tipo=bandi/.test(rc.parametriDaFiltri(fT)) && rc.filtriAttivi(fT) === rc.filtriAttivi(rc.filtriDaParametri({})) + 2,
     { tipi: fT.tipi },
+  );
+
+  // ═════ O. decisione 48E dell'utente: SardegnaCAT visibile ai clienti SENZA aspettare il parere legale (console, azione vera) ═════
+  const mondoConsole = (sardegnaNascosta: boolean) => {
+    const admin = new DbProva({
+      radar_fonti_stato: statoFonti(false).map((r) => (r.fonte === "sardegnacat" ? { ...r, nascosta_ai_clienti: sardegnaNascosta } : r)),
+      radar_console_registro: [],
+    });
+    return { admin, sessione: new DbProva({}) };
+  };
+  const visibilita = async (campi: Record<string, string>) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(campi)) fd.set(k, v);
+    return azioniConsole.impostaVisibilitaFonte(undefined, fd);
+  };
+  const statoDi = (fonte: string) => mondo.admin.tabelle.radar_fonti_stato.find((r) => r.fonte === fonte)?.nascosta_ai_clienti;
+  const registro = () => mondo.admin.tabelle.radar_console_registro.map((r) => [r.oggetto, r.valore_precedente, r.valore_nuovo, r.autore_id === AMMINISTRATORE.userId, r.autore_email === AMMINISTRATORE.email]);
+  mondo = mondoConsole(true);
+  tagSvuotati.length = 0;
+  const mostra = await visibilita({ fonte: "sardegnacat", azione: "mostra" });
+  controlla(
+    "MV1. console: «Mostra ai clienti» per SardegnaCAT SENZA la casella del parere legale è accettato; riga visibile, registro 0112 con chi e prima/dopo, cache delle fonti svuotata",
+    mostra.ok === true && statoDi("sardegnacat") === false && JSON.stringify(registro()) === JSON.stringify([["fonte:sardegnacat:nascosta_ai_clienti", "true", "false", true, true]]) && tagSvuotati.includes(TAG_FONTI_RADAR),
+    { mostra, stato: statoDi("sardegnacat"), registro: registro(), tagSvuotati },
+  );
+  // da SardegnaCAT visibile (indipendente da MV1)
+  mondo = mondoConsole(false);
+  tagSvuotati.length = 0;
+  const nascondi = await visibilita({ fonte: "sardegnacat", azione: "nascondi" });
+  controlla(
+    "MV2. console: «Nascondi» sempre ammesso, senza conferme; registro e cache come per «mostra»",
+    nascondi.ok === true && statoDi("sardegnacat") === true && JSON.stringify(registro()) === JSON.stringify([["fonte:sardegnacat:nascosta_ai_clienti", "false", "true", true, true]]) && tagSvuotati.includes(TAG_FONTI_RADAR),
+    { nascondi, registro: registro() },
+  );
+  mondo = mondoConsole(true);
+  const conVecchiaCasella = await visibilita({ fonte: "sardegnacat", azione: "mostra", parere: "si" });
+  const sintelNascondi = await visibilita({ fonte: "sintel", azione: "nascondi" });
+  const sintelMostra = await visibilita({ fonte: "sintel", azione: "mostra" });
+  controlla(
+    "MV3. un modulo vecchio con la casella resta accettato; Sintel come prima (nascondi e mostra, ognuno nel registro)",
+    conVecchiaCasella.ok === true && statoDi("sardegnacat") === false && sintelNascondi.ok === true && sintelMostra.ok === true && statoDi("sintel") === false && registro().length === 3,
+    { conVecchiaCasella, sintelNascondi, sintelMostra, registro: registro() },
+  );
+  mondo = mondoConsole(true);
+  const rifiutate = [
+    await visibilita({ fonte: "ted", azione: "nascondi" }),
+    await visibilita({ fonte: "pvl", azione: "nascondi" }),
+    await visibilita({ fonte: "sardegnacat", azione: "altro" }),
+  ];
+  mondo.admin.guasti.add("radar_console_registro");
+  const senzaRegistro = await visibilita({ fonte: "sardegnacat", azione: "mostra" });
+  mondo.admin.guasti.delete("radar_console_registro");
+  adminAutenticato = false;
+  const nonAdmin = await visibilita({ fonte: "sardegnacat", azione: "mostra" });
+  adminAutenticato = true;
+  controlla(
+    "MV4. restano i rifiuti: TED e PVL non si nascondono dalla console, azione sconosciuta, registro assente (nessuna modifica senza registro), non amministratori",
+    rifiutate.every((r) => !!r.errore) && !!senzaRegistro.errore && nonAdmin.errore === "Non autorizzato." && statoDi("sardegnacat") === true && registro().length === 0 && !mondo.admin.richieste.some((r) => r.metodo === "update"),
+    { rifiutate, senzaRegistro, nonAdmin },
+  );
+  const testoAzioni = fs.readFileSync(src("app/site-console/azioni/tender-intelligence.ts"), "utf8");
+  const testoVista = fs.readFileSync(src("app/site-console/_componenti/tender-intelligence-vista.tsx"), "utf8");
+  const testoCerca = fs.readFileSync(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx"), "utf8");
+  const testoRicerca = fs.readFileSync(src("lib/radar/ricerca.ts"), "utf8");
+  controlla(
+    "MV5. nessun riferimento al parere legale nell'azione, nella vista della console (casella e nota), nel commento di «Cerca» e della ricerca",
+    ![testoAzioni, testoVista, testoCerca, testoRicerca].some((t) => /parere/i.test(t)) && !/name="parere"/.test(testoVista),
+    { azioni: /parere/i.test(testoAzioni), vista: /parere/i.test(testoVista), cerca: /parere/i.test(testoCerca), ricerca: /parere/i.test(testoRicerca) },
   );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);

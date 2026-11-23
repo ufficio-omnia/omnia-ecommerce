@@ -227,15 +227,14 @@ export async function impostaFonteRegionale(_stato: StatoAzioneTi, formData: For
   return { ok: true, avviso: attiva ? `Fonte ${NOME_REGIONALE[fonte]} accesa (solo staging). I giri programmati restano spenti; ogni giro sullo staging richiede un'autorizzazione registrata.` : `Fonte ${NOME_REGIONALE[fonte]} spenta.` };
 }
 
-// Mostra o nasconde ai clienti una fonte regionale (0120). Mostrare SardegnaCAT richiede il parere legale sulla licenza del feed: la console
-// chiede di confermarlo, la decisione è registrata. La cache delle fonti visibili si svuota subito.
+// Mostra o nasconde ai clienti una fonte regionale (0120). Decisione 48E dell'utente (23/11/2026): SardegnaCAT è visibile come le altre fonti,
+// senza conferme; «nascondi» è sempre ammesso. Ogni cambio va nel registro (0112) e la cache delle fonti visibili si svuota subito.
 export async function impostaVisibilitaFonte(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
   const fonte = fonteRegionale(formData.get("fonte"));
   const azione = String(formData.get("azione") ?? "");
   if (!fonte || (azione !== "mostra" && azione !== "nascondi")) return { errore: "Richiesta non valida." };
-  if (azione === "mostra" && fonte === "sardegnacat" && String(formData.get("parere") ?? "") !== "si") return { errore: "Per mostrare SardegnaCAT ai clienti serve il parere legale sulla licenza del feed: conferma di averlo." };
   const nascosta = azione === "nascondi";
   const admin = createAdminClient();
   if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };
