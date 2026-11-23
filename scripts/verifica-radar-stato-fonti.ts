@@ -106,6 +106,8 @@ function provaAllarmi(): void {
   const tetto = (modo: string) => codici(di(allarmiFonti([1, 2, 3].map((h) => riga("pvl", `2026-11-23T0${h}:00:00Z`, "ok", { modo, finestre: { giro_finito: false } })), stati(), ADESSO, { cronAttivi: new Set() }), "pvl"));
   controlla("tetto ripetuto: 3 giri incrementali di fila non finiti → avviso", tetto("incrementale").includes("tetto_ripetuto"));
   controlla("tetto ripetuto: nel recupero è normale → nessun avviso", !tetto("recupero").includes("tetto_ripetuto"));
+  const conFermata = codici(di(allarmiFonti([1, 2, 3].map((h) => riga("pvl", `2026-11-23T0${h}:00:00Z`, "ok", { finestre: { giro_finito: false }, allarmi: h === 3 ? ["fermata_dalla_console"] : [] })), stati(), ADESSO, { cronAttivi: new Set() }), "pvl"));
+  controlla("tetto ripetuto: un giro fermato dalla console (K7) non conta come rimasto a metà per il tetto", !conFermata.includes("tetto_ripetuto") && conFermata.includes("fermata_dalla_console"), conFermata);
 
   // giorni lavorativi senza bandi (lunedì 23/11: gli ultimi due lavorativi conclusi sono venerdì 20 e giovedì 19)
   const bandi = (n20: number | null, n19: number | null) => codici(di(allarmiFonti([...(n20 === null ? [] : [riga("pvl", "2026-11-20T07:06:00Z", "ok", { avvisi: { bandi: n20 } })]), ...(n19 === null ? [] : [riga("pvl", "2026-11-19T07:06:00Z", "ok", { avvisi: { bandi: n19 } })])], stati(), ADESSO, { cronAttivi: new Set() }), "pvl"));

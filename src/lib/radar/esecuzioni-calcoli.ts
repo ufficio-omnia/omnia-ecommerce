@@ -186,6 +186,7 @@ export type RisultatoTedPerRegistro =
       eseguita: true;
       fase: "recupero" | "incrementale";
       giroFinito: boolean;
+      fermata?: boolean;
       errore: string | null;
       totali: {
         pagine: number;
@@ -209,7 +210,8 @@ export function datiGiroTed(r: RisultatoTedPerRegistro): DatiGiro | null {
     db: { richieste: t.db.richiesteDb, ms: t.db.msDb },
     avvisi: { bandi: { letti: t.bandi.letti, invariati: t.bandi.invariati, annullati: t.bandi.annullate, esclusi: t.bandi.esclusi }, esiti: { letti: t.esiti.letti, applicati: t.esiti.applicati, senza_bando: t.esiti.senzaBando } },
     gare: { nuove: t.bandi.nuove, unite: t.bandi.unitePvl, aggiornate: t.bandi.aggiornate, rettifiche: t.bandi.rettifiche, conflitti: 0 },
-    allarmi: [],
+    // K7: fonte spenta dalla console a metà giro → esito «ok» più l'allarme (48C §3.6)
+    allarmi: r.fermata ? ["fermata_dalla_console"] : [],
   };
 }
 
@@ -220,6 +222,7 @@ export type RisultatoPvlPerRegistro =
       modo: "finestra" | "incrementale";
       giroFinito: boolean;
       sospesa: boolean;
+      fermata?: boolean;
       errore: string | null;
       statistiche: {
         pvl: { richieste: number; byte: number; ms: number; risposte: Record<string, number>; conteggioDichiarato: number | null };
@@ -257,7 +260,8 @@ export function datiGiroPvl(r: RisultatoPvlPerRegistro): DatiGiro | null {
       ...motivoSospensione(r.errore, r.sospesa),
     },
     gare: { nuove: s.bandi.nuoveNazionali + s.bandi.nuoveSopraSogliaSenzaTed, unite: s.bandi.giaPresentiTed, aggiornate: s.bandi.aggiornate, rettifiche: s.bandi.rettifiche, conflitti: s.bandi.conflitti },
-    allarmi: r.sospesa ? ["sospesa"] : [],
+    // K7: fonte spenta dalla console a metà giro → esito «ok» più l'allarme (48C §3.6)
+    allarmi: [...(r.sospesa ? ["sospesa"] : []), ...(r.fermata ? ["fermata_dalla_console"] : [])],
   };
 }
 

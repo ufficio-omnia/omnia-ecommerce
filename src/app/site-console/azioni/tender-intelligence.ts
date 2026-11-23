@@ -104,7 +104,7 @@ export async function eseguiGiroTed(): Promise<StatoAzioneTi> {
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const b = esito.totali.bandi;
-  const testo = `${esito.totali.pagine} pagine in ${Math.round(esito.durataMs / 1000)} s: ${b.nuove} gare nuove, ${b.aggiornate} aggiornate, ${b.rettifiche} con rettifiche, ${b.invariati} già note; ${esito.totali.esiti.applicati} esiti applicati.${esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
+  const testo = `${esito.totali.pagine} pagine in ${Math.round(esito.durataMs / 1000)} s: ${b.nuove} gare nuove, ${b.aggiornate} aggiornate, ${b.rettifiche} con rettifiche, ${b.invariati} già note; ${esito.totali.esiti.applicati} esiti applicati.${esito.fermata ? " Fermato a metà: la fonte è stata spenta dalla console." : esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
   return esito.errore ? { errore: `${testo} Interrotto: ${esito.errore}` } : { ok: true, avviso: testo };
 }
 
@@ -143,7 +143,7 @@ export async function eseguiGiroPvl(): Promise<StatoAzioneTi> {
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const s = esito.statistiche;
-  const testo = `${s.pvl.richieste} richieste alla PVL in ${Math.round(esito.durataMs / 1000)} s: ${s.avvisi.letti} avvisi letti, ${s.bandi.nuoveNazionali + s.bandi.nuoveSopraSogliaSenzaTed} gare nuove, ${s.bandi.giaPresentiTed} già presenti da TED, ${s.bandi.rettifiche} con rettifiche, ${s.bandi.invariati} già note; ${s.esiti.applicati} esiti applicati.${esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
+  const testo = `${s.pvl.richieste} richieste alla PVL in ${Math.round(esito.durataMs / 1000)} s: ${s.avvisi.letti} avvisi letti, ${s.bandi.nuoveNazionali + s.bandi.nuoveSopraSogliaSenzaTed} gare nuove, ${s.bandi.giaPresentiTed} già presenti da TED, ${s.bandi.rettifiche} con rettifiche, ${s.bandi.invariati} già note; ${s.esiti.applicati} esiti applicati.${esito.fermata ? " Fermato a metà: la fonte è stata spenta dalla console." : esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
   if (esito.sospesa) return { errore: `${testo} Fonte SOSPESA: ${esito.errore}` };
   return esito.errore ? { errore: `${testo} Interrotto: ${esito.errore}` } : { ok: true, avviso: testo };
 }

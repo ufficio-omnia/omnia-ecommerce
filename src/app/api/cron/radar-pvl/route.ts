@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   let risultato: unknown;
   try {
     const esito = await eseguiImportazionePvl(createAdminClient(), { modo: "incrementale", tempoMassimoMs: 240_000 });
-    risultato = esito.eseguita ? { eseguita: true, giroFinito: esito.giroFinito, sospesa: esito.sospesa, statistiche: esito.statistiche, durataMs: esito.durataMs, errore: esito.errore } : esito;
+    risultato = esito.eseguita ? { eseguita: true, giroFinito: esito.giroFinito, sospesa: esito.sospesa, fermata: esito.fermata, statistiche: esito.statistiche, durataMs: esito.durataMs, errore: esito.errore } : esito;
   } catch {
     risultato = { eseguita: false, motivo: "errore_imprevisto" };
   }

@@ -175,10 +175,11 @@ export function allarmiFonti(
       }
     }
 
-    // giro rimasto a metà per il tetto di richieste, più volte di fila (solo incrementale: nel recupero è normale)
+    // giro rimasto a metà per il tetto di richieste, più volte di fila (solo incrementale: nel recupero è normale; un giro fermato dalla
+    // console non è rimasto a metà per il tetto)
     let incompleti = 0;
     for (const r of veri) {
-      if (r.esito !== "ok" || r.modo === "recupero" || oggetto(r.finestre).giro_finito !== false) break;
+      if (r.esito !== "ok" || r.modo === "recupero" || oggetto(r.finestre).giro_finito !== false || (r.allarmi ?? []).includes("fermata_dalla_console")) break;
       incompleti++;
     }
     if (incompleti >= SOGLIE_ALLARMI.tettoRipetuto) aggiungi("tetto_ripetuto", "avviso", `Ultimi ${incompleti} giri fermati prima della fine (tetto di richieste o tempo): il giro successivo riprende, ma non riesce a finire`, veri[incompleti - 1]?.iniziato_il ?? null, { incompleti });

@@ -29,7 +29,8 @@ export type TotaliGiro = {
 
 export type RisultatoImportazioneTed =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
-  | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
+  // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7)
+  | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; fermata: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
 
 // origine: chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
 export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
@@ -91,6 +92,7 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
   const totali = totaliVuoti();
   const cpv = vociCpv().map((v) => v.cpv);
   let errore: string | null = null;
+  let fermata = false;
 
   try {
     while (cursore.inCorso && totali.pagine < opzioni.pagineMassime && ora().getTime() - inizio.getTime() < opzioni.tempoMassimoMs) {
@@ -107,11 +109,18 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
         somma(totali, null, await applicaPaginaEsiti(admin, pagina.avvisi.map(leggiEsitoTed).filter((e): e is EsitoTed => !!e), modo, adesso, totali.db));
       }
       totali.pagine++;
-      cursore = cursoreDopoPagina(cursore, pagina.avvisi.length, pagina.totale, AVVISI_PER_PAGINA, oggi);
-      // punto di ripresa dopo ogni pagina
-      const salvataggio = await admin.from("radar_fonti_stato").update({ cursore, aggiornata_il: ora().toISOString() }).eq("fonte", "ted");
+      const prossimo = cursoreDopoPagina(cursore, pagina.avvisi.length, pagina.totale, AVVISI_PER_PAGINA, oggi);
+      // punto di ripresa dopo ogni pagina, SOLO se la fonte è ancora accesa (K7, 48C §3.6): spenta dalla console a metà giro, il giro si
+      // ferma qui, senza richieste in più. Il punto salvato resta quello della pagina prima: la pagina appena scritta si rilegge alla
+      // riaccensione, senza effetti (le gare già scritte risultano invariate)
+      const salvataggio = await admin.from("radar_fonti_stato").update({ cursore: prossimo, aggiornata_il: ora().toISOString() }).eq("fonte", "ted").eq("attiva", true).select("fonte");
       totali.db.richiesteDb++;
       if (salvataggio.error) throw new Error(`salvataggio del punto di ripresa: ${salvataggio.error.message}`);
+      if ((salvataggio.data ?? []).length === 0) {
+        fermata = true;
+        break;
+      }
+      cursore = prossimo;
     }
   } catch (e) {
     errore = erroreDaConservare(e instanceof Error ? e.message : String(e));
@@ -122,7 +131,7 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
   const durataMs = fine.getTime() - inizio.getTime();
   const conteggi = {
     ...(fonte.conteggi ?? {}),
-    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, fase: faseIniziale, giro_finito: !cursore.inCorso, ...totali, errore },
+    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, fase: faseIniziale, giro_finito: !cursore.inCorso, fermata_dalla_console: fermata, ...totali, errore },
   };
   await admin
     .from("radar_fonti_stato")
@@ -136,5 +145,5 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
     })
     .eq("fonte", "ted");
 
-  return { eseguita: true, fase: faseIniziale, giroFinito: !cursore.inCorso, totali, durataMs, errore, cursore };
+  return { eseguita: true, fase: faseIniziale, giroFinito: !cursore.inCorso, fermata, totali, durataMs, errore, cursore };
 }

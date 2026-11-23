@@ -145,6 +145,12 @@ export class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | 
   gte(c: string, v: string) { this.filtri.push((r) => r[c] != null && confronta(r[c], v) >= 0); return this; }
   lt(c: string, v: string) { this.filtri.push((r) => r[c] != null && confronta(r[c], v) < 0); return this; }
   lte(c: string, v: string) { this.filtri.push((r) => r[c] != null && confronta(r[c], v) <= 0); return this; }
+  // LIKE di SQL: % = qualunque sequenza, _ = un carattere (sensibile alle maiuscole, come in Postgres)
+  like(c: string, schema: string) {
+    const re = new RegExp(`^${schema.split("").map((ch) => (ch === "%" ? ".*" : ch === "_" ? "." : ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("")}$`, "s");
+    this.filtri.push((r) => typeof r[c] === "string" && re.test(r[c] as string));
+    return this;
+  }
   in(c: string, vs: unknown[]) { const s = new Set(vs); this.filtri.push((r) => s.has(r[c])); return this; }
   is(c: string, v: null) { this.filtri.push((r) => (r[c] ?? null) === v); return this; }
   not(c: string, op: string, v: null) { if (op !== "is") throw new Error("not: solo «is»"); this.filtri.push((r) => (r[c] ?? null) !== v); return this; }
