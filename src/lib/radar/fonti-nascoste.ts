@@ -1,6 +1,6 @@
 // Fonti importate ma NON ancora mostrabili ai clienti (radar_fonti_stato.nascosta_ai_clienti, migrazione 0120): SardegnaCAT, finché manca
-// il parere legale sulla licenza del feed (controllo di accettazione 6 dell'utente), e la PVL per la decisione 7.14 (L5a). Si legge con la
-// cache dei dati di Next (5 minuti), come la voce «Opportunità» del menu; la console la svuota subito a ogni modifica (TAG_FONTI_RADAR).
+// il parere legale sulla licenza del feed (controllo di accettazione 6 dell'utente). La PVL è visibile (direttiva 48A, revoca della 7.14).
+// Si legge con la cache dei dati di Next (5 minuti), come la voce «Opportunità» del menu; la console la svuota subito a ogni modifica (TAG_FONTI_RADAR).
 // Qualunque errore = si nascondono le fonti che per default non sono autorizzate (prudenza: mai mostrare una fonte non autorizzata).
 // La regola (riga del database, altrimenti la predefinita) è UNA sola, pura, condivisa col motore delle notifiche: fonti-gara-calcoli.ts.
 import { unstable_cache } from "next/cache";

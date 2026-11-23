@@ -24,11 +24,11 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
 const eFonte = eFonteUnita;
 
 /**
- * Le fonti che, SENZA un'indicazione del database (riga mancante in radar_fonti_stato, o errore di lettura), restano nascoste ai clienti.
- * SardegnaCAT finché manca il parere sulla licenza del feed; la PVL per la decisione 7.14 (L5a del piano 36: nascosta durante sviluppo,
- * collaudi e primo deploy protetto). Una riga esplicita del database vale sempre di più (sullo staging la riga «pvl» è «nascosta» dal 23/11).
+ * Le fonti che, SENZA un'indicazione del database (riga mancante in radar_fonti_stato, o errore di lettura), restano nascoste ai clienti:
+ * SardegnaCAT finché manca il parere sulla licenza del feed. La PVL NO: la direttiva 48A dell'utente (23/11) ha revocato la decisione 7.14,
+ * e le gare PVL sono visibili come quelle delle altre fonti. Una riga esplicita del database vale sempre di più.
  */
-export const FONTI_NASCOSTE_PREDEFINITE: readonly FonteGara[] = ["sardegnacat", "pvl"];
+export const FONTI_NASCOSTE_PREDEFINITE: readonly FonteGara[] = ["sardegnacat"];
 
 /** LA regola unica delle fonti nascoste (pagine e motore delle notifiche): la riga del database se c'è, altrimenti la predefinita. */
 export function fontiNascosteDa(righe: readonly { fonte: string; nascosta_ai_clienti: boolean | null }[]): FonteGara[] {

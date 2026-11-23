@@ -96,9 +96,9 @@ export type DipendenzeMotore = {
   /** cursore delle «nuove» al primissimo giro (nessun giro precedente): di base 24 ore prima */
   cursoreNuoveIniziale?: (adesso: Date) => string;
   /**
-   * Fonti da trattare come NASCOSTE ai clienti in aggiunta a quelle che il database indica (radar_fonti_stato.nascosta_ai_clienti). Di
-   * base nessuna: la rotta e l'aggancio non la impostano. La usa il collaudo Z8 (documento 46) con «pvl», per rispettare la decisione
-   * 7.14 (PVL nascosta durante sviluppo e collaudi) finché la riga «pvl» dello staging dice «visibile» (L5a non ancora fatta).
+   * Fonti da trattare come NASCOSTE ai clienti in aggiunta a quelle che il database indica (radar_fonti_stato.nascosta_ai_clienti).
+   * FACOLTATIVO, di base nessuna: la rotta, l'aggancio e il giro del collaudo Z8 non lo impostano. Resta per le sole prove (la PVL
+   * nascosta del collaudo Z8 è superata dalla direttiva 48A: le gare PVL sono visibili come quelle delle altre fonti).
    */
   fontiNascosteAggiunte?: readonly string[];
 };

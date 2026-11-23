@@ -108,8 +108,8 @@ function mondo(opzioni: { parametri?: Partial<ParametriNotifiche>; copione?: Cop
     { impresa_id: I2, user_id: MB, ...tutte },
     { impresa_id: I3, user_id: I3, ...tutte },
   ];
-  // la PVL VISIBILE con una riga esplicita: senza riga sarebbe nascosta di base (L5a, FONTI_NASCOSTE_PREDEFINITE), e questo mondo prova
-  // anche i casi PVL (gara 2, proroga di un lotto PVL)
+  // la PVL VISIBILE con una riga esplicita (come lo staging dopo la 48B; senza riga sarebbe visibile lo stesso, direttiva 48A): questo
+  // mondo prova anche i casi PVL (gara 2, proroga di un lotto PVL)
   db.tabelle.radar_fonti_stato = [{ fonte: "sardegnacat", nascosta_ai_clienti: true }, { fonte: "ted", nascosta_ai_clienti: false }, { fonte: "pvl", nascosta_ai_clienti: false }];
   // archivio sintetico (giorni contati dal 20/10/2026, cambio dell'ora il 25/10/2026)
   db.tabelle.radar_procedure = [
@@ -338,6 +338,9 @@ async function principale(): Promise<void> {
   // ───── Z8 (documento 46): fonti nascoste in aggiunta al database (decisione 7.14 nel collaudo) ─────
   await provaFontiNascosteAggiunte();
 
+  // ───── 48A: la PVL di nuovo visibile nei promemoria, nei riepiloghi e nelle rettifiche ─────
+  await provaPvlVisibile();
+
   // ───── 15. testo dei file e rotta ─────
   provaTesto();
   await provaRotta();
@@ -360,27 +363,43 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
     JSON.stringify(eventi(con).map((e) => `${e.impresa_id}:${e.gara_chiave}:${e.tipo}`).sort()) === JSON.stringify(eventi(senza).filter((e) => e.gara_chiave !== chiavePvl && e.tipo !== "riepilogo_opportunita").concat(eventi(senza).filter((e) => e.tipo === "riepilogo_opportunita")).map((e) => `${e.impresa_id}:${e.gara_chiave}:${e.tipo}`).sort()));
   controlla("fonti nascoste aggiunte: nessuna richiesta in più al database", con.db.conta() <= senza.db.conta(), { con: con.db.conta(), senza: senza.db.conta() });
 
-  // L5a (decisione 7.14): la regola UNICA delle fonti nascoste (fonti-gara-calcoli.ts), la stessa delle pagine
-  controlla("L5a regola: nessuna riga → nascoste le predefinite (SardegnaCAT e PVL)", JSON.stringify(fontiNascosteDa([])) === JSON.stringify(["pvl", "sardegnacat"]));
-  controlla("L5a regola: la riga esplicita vince sulla predefinita (pvl visibile, ted nascosta)",
-    JSON.stringify(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: false }, { fonte: "ted", nascosta_ai_clienti: true }])) === JSON.stringify(["ted", "sardegnacat"]));
-  controlla("L5a regola: un valore nullo vale come riga mancante", JSON.stringify(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: null }])) === JSON.stringify(["pvl", "sardegnacat"]));
-  controlla("L5a regola: le predefinite sono ESATTAMENTE SardegnaCAT e PVL", JSON.stringify([...FONTI_NASCOSTE_PREDEFINITE].sort()) === JSON.stringify(["pvl", "sardegnacat"]));
+  // la regola UNICA delle fonti nascoste (fonti-gara-calcoli.ts), la stessa delle pagine. Direttiva 48A (23/11): la PVL è VISIBILE come
+  // le altre fonti (revoca della 7.14); resta nascosta di base solo SardegnaCAT
+  controlla("regola delle fonti: nessuna riga → nascosta di base SOLO SardegnaCAT (la PVL è visibile, 48A)", JSON.stringify(fontiNascosteDa([])) === JSON.stringify(["sardegnacat"]));
+  controlla("regola delle fonti: la riga esplicita vince sulla predefinita (sardegnacat visibile, ted nascosta)",
+    JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: false }, { fonte: "ted", nascosta_ai_clienti: true }])) === JSON.stringify(["ted"]));
+  controlla("regola delle fonti: un valore nullo vale come riga mancante", JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: null }])) === JSON.stringify(["sardegnacat"]));
+  controlla("regola delle fonti: le predefinite sono ESATTAMENTE SardegnaCAT", JSON.stringify([...FONTI_NASCOSTE_PREDEFINITE]) === JSON.stringify(["sardegnacat"]));
   const tipiPvl = async (righePvl: Riga[]) => {
     const m = mondo();
     m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "pvl"), ...righePvl];
     await eseguiPassaggio(m.d);
-    return { eventi: eventi(m).filter((e) => e.gara_chiave === chiavePvl || JSON.stringify(e.dati ?? {}).includes(U(102))).length, richieste: m.db.conta() };
+    return {
+      eventi: eventi(m).filter((e) => e.gara_chiave === chiavePvl || JSON.stringify(e.dati ?? {}).includes(U(102))).length,
+      consegne: consegne(m).filter((c) => eventi(m).some((e) => e.id === c.evento_id && e.gara_chiave === chiavePvl)).length,
+      letture: m.db.richieste.filter((r) => r.tabella === "radar_fonti_stato").length,
+    };
   };
   const assente = await tipiPvl([]);
   const nascosta = await tipiPvl([{ fonte: "pvl", nascosta_ai_clienti: true }]);
   const visibile = await tipiPvl([{ fonte: "pvl", nascosta_ai_clienti: false }]);
-  controlla("L5a motore: riga «pvl» ASSENTE → la gara solo PVL non dà eventi (nascosta di base)", assente.eventi === 0);
-  controlla("L5a motore: riga «pvl» nascosta (come lo staging dal 23/11) → nessun evento", nascosta.eventi === 0);
-  controlla("L5a motore: riga «pvl» visibile → il suo promemoria c'è (la riga vince)", visibile.eventi === 1);
-  controlla("L5a motore: la lettura delle fonti resta UNA richiesta (stesso numero di richieste con o senza la riga)", assente.richieste === nascosta.richieste);
+  controlla("48A motore: riga «pvl» ASSENTE → la gara solo PVL dà il suo promemoria con le consegne (visibile di base, come in produzione)", assente.eventi === 1 && assente.consegne > 0, assente);
+  controlla("48A motore: riga «pvl» visibile (come sarà lo staging dopo la 48B) → il suo promemoria c'è", visibile.eventi === 1 && visibile.consegne === assente.consegne);
+  controlla("48A motore: riga «pvl» nascosta (come lo staging oggi, fino alla 48B) → nessun evento", nascosta.eventi === 0);
+  controlla("regola delle fonti: la lettura delle fonti resta UNA richiesta per passaggio, con o senza la riga", assente.letture === nascosta.letture && assente.letture === visibile.letture);
+  // la predefinita conta anche nel motore: senza la riga «sardegnacat», la gara solo SardegnaCAT resta nascosta (come nelle pagine)
+  const eventiSardegna = async (righe: Riga[]) => {
+    const m = mondo();
+    m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "sardegnacat"), ...righe];
+    await eseguiPassaggio(m.d);
+    return eventi(m).filter((e) => e.gara_chiave === `p:${U(104)}`).length;
+  };
+  const sardegnaAssente = await eventiSardegna([]);
+  const sardegnaVisibile = await eventiSardegna([{ fonte: "sardegnacat", nascosta_ai_clienti: false }]);
+  controlla("48A motore: riga «sardegnacat» ASSENTE → la gara solo SardegnaCAT resta nascosta (predefinita), nessun evento", sardegnaAssente === 0, sardegnaAssente);
+  controlla("48A motore: riga «sardegnacat» visibile → la stessa gara dà eventi (la prova sopra non è vuota per caso)", sardegnaVisibile > 0, sardegnaVisibile);
   const pagine = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "fonti-nascoste.ts"), "utf8");
-  controlla("L5a pagine: fonti-nascoste.ts usa la STESSA regola (fontiNascosteDa) e, in caso di errore, le predefinite",
+  controlla("regola delle fonti: fonti-nascoste.ts usa la STESSA regola (fontiNascosteDa) e, in caso di errore, le predefinite",
     /return fontiNascosteDa\(data \?\? \[\]\);/.test(pagine) && (pagine.match(/return \[\.\.\.FONTI_NASCOSTE_PREDEFINITE\];/g) ?? []).length === 2);
 }
 
@@ -407,6 +426,52 @@ async function provaRotta(): Promise<void> {
     if (salvato.email === undefined) delete process.env.RADAR_NOTIFICHE_EMAIL;
     else process.env.RADAR_NOTIFICHE_EMAIL = salvato.email;
   }
+}
+
+// Direttiva 48A (23/11/2026, revoca della 7.14): le gare PVL tornano nei promemoria, nei riepiloghi e nelle rettifiche come quelle delle
+// altre fonti. Lo stesso scenario con la riga «pvl» visibile (lo staging dopo la 48B), assente (la produzione: nasce visibile) e nascosta
+// (lo staging di oggi): con la PVL nascosta la gara UNITA TED+PVL resta visibile (basta una fonte visibile), la sola PVL no.
+async function provaPvlVisibile(): Promise<void> {
+  const scenario = async (righePvl: Riga[]) => {
+    const m = mondo();
+    m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "pvl"), ...righePvl];
+    const soloPvl = gara(460, { chiave: "pvl:SINT-460", prima_rilevazione_il: "2026-10-19T09:00:00Z", scadenza_giorno: "2026-12-01" });
+    const unita = gara(461, { fonti: ["ted", "pvl"], prima_rilevazione_il: "2026-10-19T09:00:00Z", scadenza_giorno: "2026-12-01" });
+    m.db.t("radar_procedure").push(soloPvl, unita);
+    for (const g of [soloPvl, unita]) {
+      m.db.t("radar_classificazioni_stato").push({ procedura_id: g.id, stato: "classificata" });
+      m.db.t("radar_classificazioni").push({ procedura_id: g.id, settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true });
+    }
+    await eseguiPassaggio(m.d);
+    const riepilogo = new Set(((eventi(m).find((e) => e.tipo === "riepilogo_opportunita" && e.impresa_id === I1)?.dati as EventoRiepilogo | undefined)?.gare ?? []).map((g) => g.proceduraId));
+    const promemoria = eventi(m).filter((e) => e.gara_chiave === `p:${U(102)}` && String(e.tipo).startsWith("scadenza_"));
+    const consegnePromemoria = consegne(m).filter((c) => promemoria.some((e) => e.id === c.evento_id)).length;
+    // proroga arrivata dalla SOLA PVL sulla gara solo PVL (gara 2, nella lista dell'impresa 2)
+    const p2 = m.db.t("radar_procedure").find((p) => p.id === U(102))!;
+    Object.assign(p2, { scadenza_giorno: "2026-11-02", scadenza_offerte: "2026-11-02T11:00:00Z", scadenza_ora_indicata: true });
+    m.db.t("radar_aggiornamenti").push({ id: U(360), tipo: "proroga", fonte: "pvl", id_fonte: "pvl-avviso-60", avviso_ted: null, affidabilita: "confronto_versioni", rilevato_il: "2026-10-20T10:00:00Z", procedura_id: U(102), campo: "scadenza_offerte", valore_precedente: "2026-10-25T10:00:00Z", valore_nuovo: "2026-11-02T12:00:00+01:00", notificabile: true, notifica_email: true, avviso_url: "https://esempio.invalid/rettifica-pvl", avviso_pubblicato_il: "2026-10-20", dichiarazione_fonte: null });
+    // e una proroga dalla SOLA PVL sulla gara UNITA TED+PVL (gara 1, nella lista dell'impresa 1): la gara resta visibile per TED, ma la
+    // notizia viene da una fonte che, se nascosta, il cliente non vede
+    const p1 = m.db.t("radar_procedure").find((p) => p.id === U(101))!;
+    Object.assign(p1, { fonti: ["ted", "pvl"], scadenza_giorno: "2026-11-06", scadenza_offerte: "2026-11-06T11:00:00Z" });
+    m.db.t("radar_aggiornamenti").push({ id: U(361), tipo: "proroga", fonte: "pvl", id_fonte: "pvl-avviso-61", avviso_ted: null, affidabilita: "confronto_versioni", rilevato_il: "2026-10-20T10:00:00Z", procedura_id: U(101), campo: "scadenza_offerte", valore_precedente: "2026-10-30T11:00:00Z", valore_nuovo: "2026-11-06T12:00:00+01:00", notificabile: true, notifica_email: true, avviso_url: "https://esempio.invalid/rettifica-pvl-unita", avviso_pubblicato_il: "2026-10-20", dichiarazione_fonte: null });
+    m.ora.t = new Date("2026-10-21T05:30:00Z");
+    await eseguiPassaggio(m.d);
+    const proroghe = eventi(m).filter((e) => e.tipo === "proroga" && e.gara_chiave === `p:${U(102)}`);
+    const consegneProroga = consegne(m).filter((c) => proroghe.some((e) => e.id === c.evento_id)).length;
+    const prorogheUnita = eventi(m).filter((e) => e.tipo === "proroga" && e.gara_chiave === `p:${U(101)}`).length;
+    return { soloPvl: riepilogo.has(soloPvl.id), unita: riepilogo.has(unita.id), promemoria: promemoria.length, consegnePromemoria, proroghe: proroghe.length, consegneProroga, prorogheUnita };
+  };
+  const visibile = await scenario([{ fonte: "pvl", nascosta_ai_clienti: false }]);
+  const assente = await scenario([]);
+  const nascosta = await scenario([{ fonte: "pvl", nascosta_ai_clienti: true }]);
+  controlla("48A notifiche, PVL visibile: la gara solo PVL e quella unita TED+PVL entrano nel riepilogo", visibile.soloPvl && visibile.unita, visibile);
+  controlla("48A notifiche, PVL visibile: il promemoria della gara solo PVL, con le sue consegne", visibile.promemoria === 1 && visibile.consegnePromemoria > 0, visibile);
+  controlla("48A notifiche, PVL visibile: la proroga arrivata dalla sola PVL dà il suo evento e le consegne", visibile.proroghe === 1 && visibile.consegneProroga > 0, visibile);
+  controlla("48A notifiche, PVL visibile: la proroga dalla sola PVL sulla gara unita TED+PVL dà il suo evento", visibile.prorogheUnita > 0, visibile);
+  controlla("48A notifiche, riga «pvl» assente (produzione): esattamente come visibile", JSON.stringify(assente) === JSON.stringify(visibile), { assente, visibile });
+  controlla("48A notifiche, PVL nascosta: la sola PVL esce da riepilogo, promemoria e proroghe; l'unita TED+PVL resta nel riepilogo", !nascosta.soloPvl && nascosta.unita && nascosta.promemoria === 0 && nascosta.proroghe === 0, nascosta);
+  controlla("48A notifiche, PVL nascosta: la proroga arrivata dalla sola PVL non dà eventi nemmeno sulla gara unita (fonte non visibile)", nascosta.prorogheUnita === 0, nascosta);
 }
 
 async function provaRiepilogo(): Promise<void> {

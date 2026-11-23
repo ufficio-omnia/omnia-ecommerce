@@ -29,8 +29,8 @@ export const ETICHETTA = "SINTETICA — Z8";
 export const TETTI = { giri: 6, eventi: 12, consegne: 20, aggiunte: 3, salvate: 3 } as const;
 /** Le persone di prova delle due imprese del collaudo Z3 (parte locale dell'indirizzo @prova.test). */
 export const PERSONE = { titolareA: "titolare-benchmark", ufficioA: "ufficio-benchmark", titolareB: "ti-titolare" } as const;
-/** Fonti nascoste ai clienti in aggiunta al database (decisione 7.14: la PVL resta nascosta durante i collaudi). */
-export const FONTI_NASCOSTE_COLLAUDO = ["pvl"] as const;
+// Fonti nascoste in aggiunta al database: NESSUNA nel giro. La PVL nascosta del primo collaudo (decisione 7.14) è superata dalla direttiva
+// 48A dell'utente: le gare PVL sono visibili come quelle delle altre fonti. La prova può ancora nasconderne una per mostrare la differenza.
 
 export class FermoCollaudo extends Error {}
 
@@ -87,7 +87,7 @@ type Contesto = {
   richieste: () => number;
   cartella: string;
   cursoreNuoveIniziale?: (adesso: Date) => string;
-  /** SOLO nella prova, per mostrare la differenza: di base (e sempre nel giro) FONTI_NASCOSTE_COLLAUDO */
+  /** SOLO nella prova, per mostrare la differenza: fonti nascoste in più. Di base (e sempre nel giro) nessuna */
   fontiNascoste?: readonly string[];
   /** chiamata dalle guardie: il giro si ferma al primo controllo */
   fermo: { motivo: string | null };
@@ -220,7 +220,7 @@ export async function collaudo(c: Contesto): Promise<EsitoCollaudo> {
     attendi: c.attendi,
     ultimoPassaggio: ultimoPassaggioProgrammato,
     cursoreNuoveIniziale: c.cursoreNuoveIniziale,
-    fontiNascosteAggiunte: c.modo === "giro" ? FONTI_NASCOSTE_COLLAUDO : (c.fontiNascoste ?? FONTI_NASCOSTE_COLLAUDO),
+    fontiNascosteAggiunte: c.modo === "giro" ? undefined : c.fontiNascoste,
   };
   if (d.provider.nome !== "finto") return ferma("provider_non_finto");
   const r2 = c.richieste();
@@ -381,8 +381,8 @@ async function principale(): Promise<number> {
     const replica = JSON.parse(fs.readFileSync(file, "utf8")) as { tabelle: Record<string, Riga[]> };
     const adesso = new Date(argomento("--adesso") ?? new Date().toISOString());
     const giorni = argomento("--cursore-nuove-giorni");
-    // --pvl-visibile: SOLO per mostrare che cosa succederebbe senza la decisione 7.14 nel collaudo (mai nel giro)
-    const e = await prova(replica.tabelle, { adesso, cartella, cursoreNuoveGiorni: giorni ? Number(giorni) : undefined, fontiNascoste: process.argv.includes("--pvl-visibile") ? [] : undefined });
+    // --nascondi-pvl: SOLO nella prova, per mostrare la differenza con la PVL nascosta (mai nel giro)
+    const e = await prova(replica.tabelle, { adesso, cartella, cursoreNuoveGiorni: giorni ? Number(giorni) : undefined, fontiNascoste: process.argv.includes("--nascondi-pvl") ? ["pvl"] : undefined });
     fs.mkdirSync(cartella, { recursive: true });
     fs.writeFileSync(path.join(cartella, "esito.json"), JSON.stringify(e, null, 1));
     stampa(e);

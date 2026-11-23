@@ -107,7 +107,10 @@ function query(v, oscura, sql, solaLettura) {
   const lavoro = fs.mkdtempSync(path.join(os.tmpdir(), "z8p-"));
   fs.mkdirSync(path.join(lavoro, "supabase"));
   try {
-    const r = spawnSync(process.execPath, [CLI, "db", "query", ...(solaLettura ? ["--read-only"] : []), `--remote=${v.STAGING_DB_URL}`, "--workdir", lavoro, sql, "--output-format", "json"], { encoding: "utf8", timeout: 180_000, maxBuffer: 20 * 1024 * 1024 });
+    // la CLI, lanciata da un agente, NON esegue un'istruzione che modifica dati senza il consenso esplicito «--yes» (errore
+    // HostedMutationConsentRequiredError, «Nothing was changed»: primo lancio del 23/11 alle 10:33Z). Il consenso qui è l'autorizzazione
+    // registrata (controllaPorta) più la conferma dell'utente; le letture restano «--read-only».
+    const r = spawnSync(process.execPath, [CLI, "db", "query", ...(solaLettura ? ["--read-only"] : ["--yes"]), `--remote=${v.STAGING_DB_URL}`, "--workdir", lavoro, sql, "--output-format", "json"], { encoding: "utf8", timeout: 180_000, maxBuffer: 20 * 1024 * 1024 });
     return { codice: r.status, uscita: oscura(`${r.stdout ?? ""}${r.stderr ?? ""}`, v), dati: oscura(`${r.stdout ?? ""}`, v) };
   } finally { fs.rmSync(lavoro, { recursive: true, force: true }); }
 }
