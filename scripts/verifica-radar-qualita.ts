@@ -952,6 +952,16 @@ uguale("S1, elenco sintetico: «noleggio di tensostrutture, montaggio, sanificaz
 uguale("S1 non supera le esclusioni: raccolta dei rifiuti, spazzamento e pulizia resta fuori dalla pulizia", gara2b("Servizio di raccolta dei rifiuti, spazzamento, pulizia delle aree mercatali").settori, []);
 uguale("S1 non supera le esclusioni: il canile con «cattura, ricovero, pulizia, custodia» resta C «cura_degli_animali» (n. 25)", livelli(gara2b("INDIVIDUAZIONE DI CANILE SANITARIO E RIFUGIO CUI AFFIDARE IL SERVIZIO DI CATTURA, RICOVERO, PULIZIA, CUSTODIA E MANTENIMENTO DEI CANI RANDAGI", ["98380000"])), [["pulizia", "C", "cura_degli_animali"]]);
 uguale("S1, funzione: in elenco dopo un'attività sì, dopo un luogo no, con un oggetto che non è un ambiente no", [servizioInElenco("pulizia", BRIGATA), servizioInElenco("pulizia", "presso le scuole, pulizia degli uffici"), servizioInElenco("pulizia", "carenaggio, lavaggio, pulizia casse")], [true, false, false]);
+uguale(
+  "S1, funzione: senza virgola o «e» prima non è un elenco; dopo lavori o progettazione non è un'attività affidata",
+  [servizioInElenco("pulizia", "verifica e certificazione degli impianti pulizia"), servizioInElenco("pulizia", "Lavori di progettazione e realizzazione, pulizia dei locali")],
+  [false, false],
+);
+atteso(
+  "S1: una parola che può essere un luogo («mensa») resta citazione anche dopo un'attività elencata",
+  livelli(gara2b("Noleggio di moduli, montaggio, sanificazione e mensa per il personale")).some((v) => v[0] === "ristorazione" && v[1] === "C" && v[2] === "parola_chiave_citata"),
+  JSON.stringify(livelli(gara2b("Noleggio di moduli, montaggio, sanificazione e mensa per il personale"))),
+);
 
 // S3: manutenzione integrata di edifici e impianti = multiservizi B «gestione impianti», mai A da sola (caso guida n. 16, ASL Napoli 1)
 const ASL_NAPOLI =
@@ -964,6 +974,7 @@ uguale("S3, niente: manutenzione integrata di apparecchiature elettromedicali (n
 uguale("S3, niente: global service della rete stradale (n. 11)", gara2b("Procedura aperta per l’appalto misto di servizi e lavori - global service di gestione e manutenzione di parte della rete stradale", ["50230000"]).settori, []);
 uguale("S3, niente: manutenzione ordinaria degli edifici senza segnale di integrazione", gara2b("Servizio di manutenzione ordinaria degli edifici comunali").settori, []);
 uguale("S3, niente con i soli CPV dei lavori", gara2b("Servizi integrati di manutenzione degli immobili comunali", ["45453000"]).settori, []);
+uguale("S3 non aggiunge una seconda riga a un multiservizi già pertinente («global service di manutenzione integrata degli immobili»)", livelli(gara2b("Global service di manutenzione integrata degli immobili comunali")), [["multiservizi", "A", "parole_chiave"]]);
 uguale("S3 non abbassa le A: «manutenzione in global service delle strutture» resta multiservizi A", livelli(gara2b("Procedura aperta per l'affidamento di servizi di manutenzione in global service sulle strutture gestite dalla società, impianti elettrici e idrico sanitari")), [["multiservizi", "A", "parole_chiave"]]);
 
 // S2: trasporto con imballaggio, montaggio o movimentazione nella DESCRIZIONE = facchinaggio B (caso guida n. 33, MANN, TED 566d9123)
@@ -974,6 +985,7 @@ uguale("S2, caso guida n. 33 (MANN) con la descrizione: facchinaggio B «traspor
 uguale("S2: senza la descrizione resta C «trasporto_puro» (come oggi)", livelli(classificaGara(MANN)), [["facchinaggio", "C", "trasporto_puro"]]);
 uguale("S2: «escluso il montaggio» nella descrizione non basta", livelli(classificaGara({ ...MANN, descrizione: "Trasporto delle opere, escluso il montaggio e l'imballaggio" })), [["facchinaggio", "C", "trasporto_puro"]]);
 uguale("S2: trasporto interbibliotecario senza movimentazione resta C (n. 10)", livelli(classificaGara({ cpvPrincipale: "63100000", cpvTutti: ["63100000"], testo: "AFFIDAMENTO DEL SERVIZIO DI TRASPORTO INTERBIBLIOTECARIO", descrizione: "Trasporto settimanale dei libri tra le biblioteche del sistema" })), [["facchinaggio", "C", "trasporto_puro"]]);
+uguale("S2: imballaggio o montaggio senza trasporto nella descrizione non bastano", livelli(classificaGara({ ...MANN, descrizione: "Allestimento della mostra con montaggio e smontaggio delle opere" })), [["facchinaggio", "C", "trasporto_puro"]]);
 uguale("S2: la descrizione non aggiunge altri settori («vigilanza» nella descrizione di una pulizia)", classificaGara({ testo: "Servizio di pulizia degli uffici comunali", descrizione: "Il servizio comprende anche la vigilanza e il portierato degli accessi" }).settori, ["pulizia"]);
 
 // S4: tre casi senza descrizione utile = etichetta «da verificare» (dato puro: la riga resta quella di oggi)
@@ -988,11 +1000,9 @@ uguale("S4, niente: il canile resta C senza etichetta (n. 25)", gara2b("INDIVIDU
 uguale("S4, niente: concessione demaniale con un CPV di ristorazione (non è un immobile)", gara2b("Assentimento di n. 6 concessioni demaniali marittime ad uso commerciale, ludico, turistico ricreativo", ["55300000"]).daVerificare, undefined);
 uguale("S4, niente su una gara pertinente: biblioteca con il servizio di pulizia affidato", gara2b("Servizi integrati di biblioteca e servizio di pulizia dei locali").daVerificare, undefined);
 atteso("S4: il campo non c'è nelle classificazioni di sempre", !("daVerificare" in gara2b("Affidamento del servizio di pulizia degli uffici")) && !("daVerificare" in gara2b("Servizio di trasporto interbibliotecario", ["63100000"])));
-uguale(
-  "S4: un lotto che rende la gara pertinente toglie l'etichetta",
-  classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo, lotto 1 servizi di biblioteca, lotto 2 servizio di pulizia dei locali", lotti: [{ testo: "Servizi di biblioteca" }, { testo: "Servizio di pulizia dei locali delle biblioteche" }] }).daVerificare,
-  undefined,
-);
+const bibliotecaConLotti = classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo", lotti: [{ testo: "Servizi di biblioteca" }, { testo: "Servizio di pulizia dei locali delle biblioteche" }] });
+uguale("S4: un lotto che rende la gara pertinente toglie l'etichetta", [bibliotecaConLotti.settori, bibliotecaConLotti.daVerificare], [["pulizia"], undefined]);
+uguale("S4: senza quel lotto l'etichetta c'è", classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo" }).daVerificare?.map((d) => d.caso), ["biblioteca"]);
 
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
