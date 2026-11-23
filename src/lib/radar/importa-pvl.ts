@@ -24,7 +24,8 @@ import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 
 export type RisultatoImportazionePvl =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
-  | { eseguita: true; modo: CursorePvl["modo"]; giroFinito: boolean; sospesa: boolean; statistiche: StatistichePvl & { db: Misure }; durataMs: number; errore: string | null; cursore: CursorePvl };
+  // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7)
+  | { eseguita: true; modo: CursorePvl["modo"]; giroFinito: boolean; sospesa: boolean; fermata: boolean; statistiche: StatistichePvl & { db: Misure }; durataMs: number; errore: string | null; cursore: CursorePvl };
 
 export type OpzioniImportazionePvl = {
   modo: "finestra" | "incrementale";
@@ -96,6 +97,7 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
   const modoImportazione = cursore.modo === "incrementale" ? "incrementale" : "recupero";
   let errore: string | null = null;
   let sospesa = false;
+  let fermata = false;
 
   try {
     while (cursore.inCorso && ora().getTime() - inizio.getTime() < opzioni.tempoMassimoMs) {
@@ -126,10 +128,18 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
       await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
       // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
       const ultimaPerConteggio = pagina.count !== null && pagina.count < 1000 && (cursore.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;
-      cursore = cursoreDopoPagina(cursore, pagina.content.length, ultimaPerConteggio ? null : pagina.token, limiti.avvisiPerPagina);
-      const salvataggio = await admin.from("radar_fonti_stato").update({ cursore, aggiornata_il: ora().toISOString() }).eq("fonte", "pvl");
+      const prossimo = cursoreDopoPagina(cursore, pagina.content.length, ultimaPerConteggio ? null : pagina.token, limiti.avvisiPerPagina);
+      // punto di ripresa dopo ogni pagina, SOLO se la fonte è ancora accesa (K7, 48C §3.6): spenta dalla console a metà giro, il giro si
+      // ferma qui, senza richieste in più. Il punto salvato resta quello della pagina prima: la pagina appena scritta si rilegge alla
+      // riaccensione, senza effetti (le gare già scritte risultano invariate)
+      const salvataggio = await admin.from("radar_fonti_stato").update({ cursore: prossimo, aggiornata_il: ora().toISOString() }).eq("fonte", "pvl").eq("attiva", true).select("fonte");
       db.richiesteDb++;
       if (salvataggio.error) throw new Error(`salvataggio del punto di ripresa: ${salvataggio.error.message}`);
+      if ((salvataggio.data ?? []).length === 0) {
+        fermata = true;
+        break;
+      }
+      cursore = prossimo;
     }
   } catch (e) {
     if (e instanceof ErrorePvl && e.tetto) {
@@ -151,7 +161,7 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
   const conteggi = {
     ...(fonte.conteggi ?? {}),
     ...(sospesa ? { sospensione: { il: fine.toISOString(), motivo: errore } } : {}),
-    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, modo: cursore.modo, finestra: { da: cursore.da, a: cursore.a }, giro_finito: !cursore.inCorso, limiti, ...stat, db, errore },
+    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, modo: cursore.modo, finestra: { da: cursore.da, a: cursore.a }, giro_finito: !cursore.inCorso, fermata_dalla_console: fermata, limiti, ...stat, db, errore },
   };
   await admin
     .from("radar_fonti_stato")
@@ -165,5 +175,5 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
     })
     .eq("fonte", "pvl");
 
-  return { eseguita: true, modo: cursore.modo, giroFinito: !cursore.inCorso, sospesa, statistiche: { ...stat, db }, durataMs, errore, cursore };
+  return { eseguita: true, modo: cursore.modo, giroFinito: !cursore.inCorso, sospesa, fermata, statistiche: { ...stat, db }, durataMs, errore, cursore };
 }
