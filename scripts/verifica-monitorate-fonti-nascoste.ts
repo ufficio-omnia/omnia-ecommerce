@@ -1392,6 +1392,29 @@ async function principale(): Promise<void> {
     { rilevanza: campiDi("rilevanza").length, nota: campiDi("nota").length, sotto: campiDi("sottocategoria").length },
   );
 
+  // ═════ Q. guardia del caso ricavato dal settore (coordinamento, 23/11): la riga di B2 non scrive il caso, la console lo ricava dal settore
+  // candidato. Vale solo se nel classificatore ogni caso S4 ha un settore suo: il giorno in cui due casi condividono un settore, o un caso
+  // nuovo non è nella corrispondenza, questa prova cade. Si leggono i casi dal sorgente del classificatore (settori.ts): il tipo DaVerificare
+  // e le righe «out.push({ settore, caso, regola: "da_verificare" })» di casiDaVerificare.
+  const testoSettori = fs.readFileSync(src("lib/radar/settori.ts"), "utf8");
+  const tipoCasi = /export type DaVerificare = \{[\s\S]*?\n\s*caso: ([^;]+);/.exec(testoSettori)?.[1] ?? "";
+  const casiDelTipo = [...tipoCasi.matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]).sort();
+  const casiPrevisti = [...testoSettori.matchAll(/out\.push\(\{\s*settore:\s*"([a-z_]+)",\s*caso:\s*"([a-z0-9_]+)",\s*regola:\s*"da_verificare"/g)].map((m) => ({ settore: m[1], caso: m[2] }));
+  const calcoliConsole = richiedi(src("lib/console/gare-in-verifica-calcoli.ts")) as { CASO_DEL_SETTORE: Record<string, string>; CASO_LEGGIBILE: Record<string, string> };
+  const settoriDeiCasi = casiPrevisti.map((c) => c.settore);
+  const doppi = settoriDeiCasi.filter((s, i) => settoriDeiCasi.indexOf(s) !== i);
+  const daiCasi = Object.fromEntries([...casiPrevisti].sort((a, b) => a.settore.localeCompare(b.settore)).map((c) => [c.settore, c.caso]));
+  const mappa = Object.fromEntries(Object.entries(calcoliConsole.CASO_DEL_SETTORE).sort(([a], [b]) => a.localeCompare(b)));
+  controlla(
+    "MS11. guardia: ogni caso S4 del classificatore ha un settore candidato SUO (nessun settore con due casi), la corrispondenza della console è esattamente quella del classificatore, ogni caso ha il suo nome",
+    casiPrevisti.length > 0 &&
+      JSON.stringify(casiPrevisti.map((c) => c.caso).sort()) === JSON.stringify(casiDelTipo) &&
+      doppi.length === 0 &&
+      JSON.stringify(mappa) === JSON.stringify(daiCasi) &&
+      casiDelTipo.every((c) => !!calcoliConsole.CASO_LEGGIBILE[c]),
+    { casiDelTipo, casiPrevisti, doppi, mappa, daiCasi },
+  );
+
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }
 
