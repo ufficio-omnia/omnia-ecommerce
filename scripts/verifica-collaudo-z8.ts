@@ -80,21 +80,26 @@ async function principale(): Promise<void> {
   const c1 = cartella("base");
   const e = await prova(replica(), { adesso: ADESSO, cartella: c1 });
   controlla("base: nessun fermo, tutti i controlli interni superati", !e.fermo && tutti(e), { fermo: e.fermo, falliti: e.controlli.filter(([, x]) => !x) });
-  controlla("base: eventi attesi (A: due a 10 giorni e uno a 1 giorno; B: uno a 5 giorni)", JSON.stringify(Object.entries(e.eventi).sort()) === JSON.stringify(Object.entries({
-    [`${PERSONE.titolareA}|scadenza_10`]: 2, [`${PERSONE.titolareA}|scadenza_1`]: 1, [`${PERSONE.titolareB}|scadenza_5`]: 1 }).sort()), e.eventi);
+  controlla("base: eventi attesi (A: due a 10 giorni, uno a 5 per la gara PVL, uno a 1 giorno; B: uno a 5 giorni)", JSON.stringify(Object.entries(e.eventi).sort()) === JSON.stringify(Object.entries({
+    [`${PERSONE.titolareA}|scadenza_10`]: 2, [`${PERSONE.titolareA}|scadenza_5`]: 1, [`${PERSONE.titolareA}|scadenza_1`]: 1, [`${PERSONE.titolareB}|scadenza_5`]: 1 }).sort()), e.eventi);
   controlla("base: consegne SOLO a titolare e Ufficio Gare dell'impresa A (scadenze accese); il titolare B ha le scadenze spente: nessuna", JSON.stringify(Object.entries(e.consegne).sort()) === JSON.stringify(Object.entries({
-    [`${PERSONE.titolareA}|scadenza_10|inviata`]: 2, [`${PERSONE.ufficioA}|scadenza_10|inviata`]: 2, [`${PERSONE.titolareA}|scadenza_1|inviata`]: 1, [`${PERSONE.ufficioA}|scadenza_1|inviata`]: 1 }).sort()), e.consegne);
-  controlla("base: la gara SOLO PVL a 5 giorni NON dà eventi (decisione 7.14, PVL nascosta dal collaudo)", !Object.keys(e.eventi).some((k) => k === `${PERSONE.titolareA}|scadenza_5`));
-  controlla("base: 6 email scritte nella cartella, testo e HTML, solo @prova.test", e.email.length === 6 && e.email.every((m) => /@prova\.test$/.test(m.a)) && fs.readdirSync(path.join(c1, "email")).length === 12);
+    [`${PERSONE.titolareA}|scadenza_10|inviata`]: 2, [`${PERSONE.ufficioA}|scadenza_10|inviata`]: 2, [`${PERSONE.titolareA}|scadenza_5|inviata`]: 1, [`${PERSONE.ufficioA}|scadenza_5|inviata`]: 1,
+    [`${PERSONE.titolareA}|scadenza_1|inviata`]: 1, [`${PERSONE.ufficioA}|scadenza_1|inviata`]: 1 }).sort()), e.consegne);
+  controlla("base: la gara SOLO PVL a 5 giorni dà il suo promemoria come le altre (direttiva 48A: PVL visibile)", e.eventi[`${PERSONE.titolareA}|scadenza_5`] === 1);
+  controlla("base: 8 email scritte nella cartella, testo e HTML, solo @prova.test", e.email.length === 8 && e.email.every((m) => /@prova\.test$/.test(m.a)) && fs.readdirSync(path.join(c1, "email")).length === 16);
   controlla("base: secondo passaggio dello stesso giorno = 1 richiesta (O2), 0 righe nuove", e.richieste.passaggio2 === 1 && JSON.stringify(e.dopo1) === JSON.stringify(e.dopo2));
   controlla("base: dati sintetici = 2 richieste (gare aggiunte e salvate in blocco)", e.richieste.dati === 2);
   const totale = Object.values(e.richieste).reduce((a, b) => a + b, 0);
   controlla("base: richieste del giro intero contate (≤ 80)", totale > 0 && totale <= 80, e.richieste);
   console.log(`  richieste del collaudo sintetico: ${JSON.stringify(e.richieste)} = ${totale}`);
 
-  // ───── 2. la PVL «visibile» (com'è oggi la riga dello staging): la differenza che la decisione 7.14 evita ─────
-  const e2 = await prova(replica(), { adesso: ADESSO, cartella: cartella("pvl"), fontiNascoste: [] });
-  controlla("PVL visibile (solo prova): la gara solo PVL darebbe un promemoria in più a titolare e Ufficio Gare A", e2.eventi[`${PERSONE.titolareA}|scadenza_5`] === 1 && e2.consegne[`${PERSONE.ufficioA}|scadenza_5|inviata`] === 1, e2.eventi);
+  // ───── 2. una fonte nascosta in più (solo nella prova): la gara solo PVL sparirebbe, il resto identico ─────
+  const e2 = await prova(replica(), { adesso: ADESSO, cartella: cartella("pvl"), fontiNascoste: ["pvl"] });
+  controlla("PVL nascosta (solo prova, campo facoltativo): la gara solo PVL non dà eventi né consegne, il resto invariato",
+    !(`${PERSONE.titolareA}|scadenza_5` in e2.eventi) && e2.eventi[`${PERSONE.titolareA}|scadenza_10`] === 2 && e2.eventi[`${PERSONE.titolareB}|scadenza_5`] === 1 && e2.email.length === 6, e2.eventi);
+  // la PVL nascosta dal DATABASE (com'è la riga dello staging oggi, fino alla 48B): stesso effetto, senza il campo
+  const e2b = await prova(replica((t) => { t.radar_fonti_stato.find((r) => r.fonte === "pvl")!.nascosta_ai_clienti = true; }), { adesso: ADESSO, cartella: cartella("pvldb") });
+  controlla("PVL nascosta dal database (staging oggi): la gara solo PVL non dà eventi; dopo la 48B tornerà come il caso base", !(`${PERSONE.titolareA}|scadenza_5` in e2b.eventi) && e2b.email.length === 6, e2b.eventi);
 
   // ───── 3. arresti PRIMA di scrivere ─────
   const e3 = await prova(replica((t) => { t.auth_users[1].email = "ufficio@esempio.it"; }), { adesso: ADESSO, cartella: cartella("nonprova") });
@@ -180,7 +185,7 @@ async function principale(): Promise<void> {
   const testo = fs.readFileSync(path.join(__dirname, "collaudo-z8", "collaudo-motore-z8.ts"), "utf8");
   const corpoGiro = testo.slice(testo.indexOf("export async function giro("), testo.indexOf("export function installaOsservatore("));
   controlla("testo: nel giro l'autorizzazione si controlla PRIMA dell'osservatore e del client", corpoGiro.indexOf("controllaPorta(") > 0 && corpoGiro.indexOf("controllaPorta(") < corpoGiro.indexOf("installaOsservatore(") && corpoGiro.indexOf("installaOsservatore(") < corpoGiro.indexOf("createClient("));
-  controlla("testo: nel giro la PVL è SEMPRE nascosta (nessuna opzione la riapre)", /fontiNascosteAggiunte: c\.modo === "giro" \? FONTI_NASCOSTE_COLLAUDO :/.test(testo) && /FONTI_NASCOSTE_COLLAUDO = \["pvl"\] as const/.test(testo));
+  controlla("testo: il giro NON nasconde fonti in più (direttiva 48A: decide solo il database)", /fontiNascosteAggiunte: c\.modo === "giro" \? undefined : c\.fontiNascoste,/.test(testo) && !/FONTI_NASCOSTE_COLLAUDO/.test(testo));
   controlla("testo: nessun uso di Resend né di src/lib/email.ts", !/provider-resend|creaProviderResend|lib\/email["']/.test(testo));
   controlla("testo: righe con LF", !testo.includes("\r\n"));
 }

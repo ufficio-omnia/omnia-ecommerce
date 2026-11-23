@@ -360,27 +360,32 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
     JSON.stringify(eventi(con).map((e) => `${e.impresa_id}:${e.gara_chiave}:${e.tipo}`).sort()) === JSON.stringify(eventi(senza).filter((e) => e.gara_chiave !== chiavePvl && e.tipo !== "riepilogo_opportunita").concat(eventi(senza).filter((e) => e.tipo === "riepilogo_opportunita")).map((e) => `${e.impresa_id}:${e.gara_chiave}:${e.tipo}`).sort()));
   controlla("fonti nascoste aggiunte: nessuna richiesta in più al database", con.db.conta() <= senza.db.conta(), { con: con.db.conta(), senza: senza.db.conta() });
 
-  // L5a (decisione 7.14): la regola UNICA delle fonti nascoste (fonti-gara-calcoli.ts), la stessa delle pagine
-  controlla("L5a regola: nessuna riga → nascoste le predefinite (SardegnaCAT e PVL)", JSON.stringify(fontiNascosteDa([])) === JSON.stringify(["pvl", "sardegnacat"]));
-  controlla("L5a regola: la riga esplicita vince sulla predefinita (pvl visibile, ted nascosta)",
-    JSON.stringify(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: false }, { fonte: "ted", nascosta_ai_clienti: true }])) === JSON.stringify(["ted", "sardegnacat"]));
-  controlla("L5a regola: un valore nullo vale come riga mancante", JSON.stringify(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: null }])) === JSON.stringify(["pvl", "sardegnacat"]));
-  controlla("L5a regola: le predefinite sono ESATTAMENTE SardegnaCAT e PVL", JSON.stringify([...FONTI_NASCOSTE_PREDEFINITE].sort()) === JSON.stringify(["pvl", "sardegnacat"]));
+  // la regola UNICA delle fonti nascoste (fonti-gara-calcoli.ts), la stessa delle pagine. Direttiva 48A (23/11): la PVL è VISIBILE come
+  // le altre fonti (revoca della 7.14); resta nascosta di base solo SardegnaCAT
+  controlla("regola delle fonti: nessuna riga → nascosta di base SOLO SardegnaCAT (la PVL è visibile, 48A)", JSON.stringify(fontiNascosteDa([])) === JSON.stringify(["sardegnacat"]));
+  controlla("regola delle fonti: la riga esplicita vince sulla predefinita (sardegnacat visibile, ted nascosta)",
+    JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: false }, { fonte: "ted", nascosta_ai_clienti: true }])) === JSON.stringify(["ted"]));
+  controlla("regola delle fonti: un valore nullo vale come riga mancante", JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: null }])) === JSON.stringify(["sardegnacat"]));
+  controlla("regola delle fonti: le predefinite sono ESATTAMENTE SardegnaCAT", JSON.stringify([...FONTI_NASCOSTE_PREDEFINITE]) === JSON.stringify(["sardegnacat"]));
   const tipiPvl = async (righePvl: Riga[]) => {
     const m = mondo();
     m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "pvl"), ...righePvl];
     await eseguiPassaggio(m.d);
-    return { eventi: eventi(m).filter((e) => e.gara_chiave === chiavePvl || JSON.stringify(e.dati ?? {}).includes(U(102))).length, richieste: m.db.conta() };
+    return {
+      eventi: eventi(m).filter((e) => e.gara_chiave === chiavePvl || JSON.stringify(e.dati ?? {}).includes(U(102))).length,
+      consegne: consegne(m).filter((c) => eventi(m).some((e) => e.id === c.evento_id && e.gara_chiave === chiavePvl)).length,
+      letture: m.db.richieste.filter((r) => r.tabella === "radar_fonti_stato").length,
+    };
   };
   const assente = await tipiPvl([]);
   const nascosta = await tipiPvl([{ fonte: "pvl", nascosta_ai_clienti: true }]);
   const visibile = await tipiPvl([{ fonte: "pvl", nascosta_ai_clienti: false }]);
-  controlla("L5a motore: riga «pvl» ASSENTE → la gara solo PVL non dà eventi (nascosta di base)", assente.eventi === 0);
-  controlla("L5a motore: riga «pvl» nascosta (come lo staging dal 23/11) → nessun evento", nascosta.eventi === 0);
-  controlla("L5a motore: riga «pvl» visibile → il suo promemoria c'è (la riga vince)", visibile.eventi === 1);
-  controlla("L5a motore: la lettura delle fonti resta UNA richiesta (stesso numero di richieste con o senza la riga)", assente.richieste === nascosta.richieste);
+  controlla("48A motore: riga «pvl» ASSENTE → la gara solo PVL dà il suo promemoria con le consegne (visibile di base, come in produzione)", assente.eventi === 1 && assente.consegne > 0, assente);
+  controlla("48A motore: riga «pvl» visibile (come sarà lo staging dopo la 48B) → il suo promemoria c'è", visibile.eventi === 1 && visibile.consegne === assente.consegne);
+  controlla("48A motore: riga «pvl» nascosta (come lo staging oggi, fino alla 48B) → nessun evento", nascosta.eventi === 0);
+  controlla("regola delle fonti: la lettura delle fonti resta UNA richiesta per passaggio, con o senza la riga", assente.letture === nascosta.letture && assente.letture === visibile.letture);
   const pagine = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "fonti-nascoste.ts"), "utf8");
-  controlla("L5a pagine: fonti-nascoste.ts usa la STESSA regola (fontiNascosteDa) e, in caso di errore, le predefinite",
+  controlla("regola delle fonti: fonti-nascoste.ts usa la STESSA regola (fontiNascosteDa) e, in caso di errore, le predefinite",
     /return fontiNascosteDa\(data \?\? \[\]\);/.test(pagine) && (pagine.match(/return \[\.\.\.FONTI_NASCOSTE_PREDEFINITE\];/g) ?? []).length === 2);
 }
 
