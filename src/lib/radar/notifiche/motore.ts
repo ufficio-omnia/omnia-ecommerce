@@ -9,6 +9,7 @@
 // Gli indirizzi email non si salvano mai: si leggono con la funzione del database (0125) al momento della creazione e dell'invio.
 
 import { createHash } from "node:crypto";
+import { fontiNascosteDa } from "../fonti-gara-calcoli";
 import { profiloDaRiga, COLONNE_PROFILO, POSIZIONE_PROFILO, TABELLA_PROFILI, type RigaProfilo } from "../profilo-calcoli";
 import type { ProfiloRadar } from "../radar-personalizzato-contratto";
 import { aggiungiGiorni, giornoRoma, versioniAttive } from "./calendario";
@@ -220,8 +221,9 @@ async function leggiQuadro(d: DipendenzeMotore, soloImprese: readonly string[] |
 
 /** Le fonti nascoste ai clienti (0120): nessuna email da queste fonti. */
 async function leggiNascoste(d: DipendenzeMotore): Promise<Set<string>> {
-  const r = controlla<{ fonte: string }[]>("fonti nascoste", await d.admin.from(T.fonti).select("fonte").eq("nascosta_ai_clienti", true));
-  return new Set([...r.map((x) => x.fonte), ...(d.fontiNascosteAggiunte ?? [])]);
+  // la STESSA regola delle pagine (fonti-gara-calcoli.ts): la riga del database se c'è, altrimenti la predefinita (SardegnaCAT e PVL, L5a)
+  const r = controlla<{ fonte: string; nascosta_ai_clienti: boolean | null }[]>("fonti nascoste", await d.admin.from(T.fonti).select("fonte, nascosta_ai_clienti"));
+  return new Set<string>([...fontiNascosteDa(r), ...(d.fontiNascosteAggiunte ?? [])]);
 }
 
 /** Le liste delle imprese date (salvate ∪ monitorate) con le gare dell'archivio, i lotti e le gare aggiunte a mano. */
