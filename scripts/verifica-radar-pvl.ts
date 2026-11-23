@@ -131,7 +131,7 @@ async function principale() {
   uguale("URL pubblico dell'avviso", urlAvvisoPvl("abc"), "https://pubblicitalegale.anticorruzione.it/bandi/abc");
 
   // ───── 5. interrogazione ─────
-  uguale("i 56 codici CPV del file approvato, esatti (6 aggiunti il 17/11)", [cpvRicercaPvl().length, cpvRicercaPvl().every((c) => /^\d{8}$/.test(c))], [56, true]);
+  uguale("ricerca: i 56 codici CPV del file approvato (6 aggiunti il 17/11) e poi i 60 dell'elenco di ricerca (C2), esatti, senza ripetizioni", [cpvRicercaPvl().length, new Set(cpvRicercaPvl()).size, cpvRicercaPvl().every((c) => /^\d{8}$/.test(c))], [116, 116, true]);
   uguale("data nel formato della ricerca", dataPvl("2026-11-09"), "09/11/2026");
   const p1 = parametriRicercaPvl({ da: "2026-11-09", a: "2026-11-16", cpv: ["90910000", "55510000"], avvisiPerPagina: 100, token: null });
   uguale("parametri della prima pagina", p1, { pageSize: "100", dataPubblicazioneStart: "09/11/2026", dataPubblicazioneEnd: "16/11/2026", sortField: "dataPubblicazione", sortDirection: "asc", operatore: "AND", cpv: "90910000,55510000" });

@@ -3,7 +3,7 @@
 //
 // Dal K4 (48C) il cursore e le sue regole stanno in importa-pvl-cursore.ts (versione 2: incrementale, finestra controllata, recupero dei
 // 90 giorni, buchi, completezza); un cursore v1 salvato si converte da lì senza perdere nulla.
-import type { BandoPvl } from "./fonti/pvl-calcoli";
+import { attribuzioneRicercaPvl, type AvvisoPvlLetto, type BandoPvl } from "./fonti/pvl-calcoli";
 import { rigaDaBando, type RigaProcedura } from "./importa-calcoli";
 
 export const GIORNI_SOVRAPPOSIZIONE_PVL = 1;
@@ -93,10 +93,47 @@ export function rigaDaBandoPvl(b: BandoPvl, adesso: Date): RigaProcedura {
 
 // ───── statistiche di un giro (registrate in radar_fonti_stato.conteggi e mostrate in console) ─────
 
+// C2 (49C, R2): per un codice dell'elenco di ricerca, in un giro: avvisi letti, ammessi nell'archivio («bandi», comprese indagini ed elenchi
+// di C1) con il loro livello migliore (A o B), e scartati perché fuori dai settori. La potatura la decide l'utente (mai automatica).
+export type MisuraCodicePvl = { letti: number; bandi: number; a: number; b: number; fuori_settore: number };
+
+/** C2: aggiunge alla misura per codice gli avvisi di una pagina (stesso ordine di `letti`, cioè content.map(leggiAvvisoPvl)). */
+export function misuraPerCodicePvl(stat: StatistichePvl["avvisi"], avvisi: readonly Record<string, unknown>[], letti: readonly AvvisoPvlLetto[]): void {
+  avvisi.forEach((a, i) => {
+    const { codici, delFile } = attribuzioneRicercaPvl(a);
+    if (codici.length === 0) {
+      if (!delFile) stat.nonAttribuiti++;
+      return;
+    }
+    const l = letti[i];
+    for (const c of codici) {
+      const m = (stat.perCodice[c] ??= { letti: 0, bandi: 0, a: 0, b: 0, fuori_settore: 0 });
+      m.letti++;
+      if (l?.tipo === "bando") {
+        m.bandi++;
+        if (l.livello === "A") m.a++;
+        else m.b++;
+      } else if (l?.tipo === "esclusione" && l.motivo === "fuori_settore") m.fuori_settore++;
+    }
+  });
+}
+
 export type StatistichePvl = {
   pvl: { richieste: number; byte: number; ms: number; risposte: Record<string, number>; conteggioDichiarato: number | null };
   // sostituiti = avvisi che la PVL dichiara superati da un avviso nuovo (rettifiche, annullamenti), per tipo; non attivi = ritirati
-  avvisi: { letti: number; perScheda: Record<string, number>; bandi: number; esiti: number; esclusi: Record<string, number>; sostituiti: Record<string, number>; nonAttivi: number };
+  avvisi: {
+    letti: number;
+    perScheda: Record<string, number>;
+    bandi: number;
+    esiti: number;
+    esclusi: Record<string, number>;
+    sostituiti: Record<string, number>;
+    nonAttivi: number;
+    // C2 (49C, R2): per ogni codice dell'elenco di ricerca, gli avvisi letti e che cosa ne è nato; «non attribuiti» = avvisi che non si
+    // riconducono a nessun codice (né dell'elenco né del file di classificazione), per esempio i 14 codici ancora senza descrizione
+    perCodice: Record<string, MisuraCodicePvl>;
+    nonAttribuiti: number;
+  };
   bandi: {
     invariati: number;
     // gare nuove nell'archivio: nazionali (senza avviso TED) e sopra soglia non ancora arrivate da TED
@@ -128,7 +165,7 @@ export type StatistichePvl = {
 export function statistichePvlVuote(): StatistichePvl {
   return {
     pvl: { richieste: 0, byte: 0, ms: 0, risposte: {}, conteggioDichiarato: null },
-    avvisi: { letti: 0, perScheda: {}, bandi: 0, esiti: 0, esclusi: {}, sostituiti: {}, nonAttivi: 0 },
+    avvisi: { letti: 0, perScheda: {}, bandi: 0, esiti: 0, esclusi: {}, sostituiti: {}, nonAttivi: 0, perCodice: {}, nonAttribuiti: 0 },
     bandi: {
       invariati: 0,
       nuoveNazionali: 0,
