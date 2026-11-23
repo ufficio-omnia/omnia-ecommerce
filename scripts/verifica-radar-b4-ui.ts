@@ -130,7 +130,7 @@ atteso("P10 la riga di un'altra impresa non diventa il profilo di questa", profi
 // ───── F. Profilo → filtri della ricerca ─────
 
 const PROFILO: ProfiloRadar = { impresaId: IMPRESA, settori: ["pulizia"], sottocategorie: { pulizia: ["sanificazione"] }, procedure: ["aperta"], regioni: ["lombardia"], importoMin: 100000, importoMax: null, vedereCorrelate: false };
-uguale("F1 filtri dal profilo: solo aperte, nessun testo né date", filtriDaProfilo(PROFILO, "scadenza", 2), { q: "", settori: ["pulizia"], regioni: ["lombardia"], importoMin: 100000, importoMax: null, scadenzaEntroGiorni: null, pubblicataNegliUltimiGiorni: null, procedure: ["aperta"], stato: "aperte", ordina: "scadenza", pagina: 2 });
+uguale("F1 filtri dal profilo: solo aperte, nessun testo né date", filtriDaProfilo(PROFILO, "scadenza", 2), { q: "", settori: ["pulizia"], regioni: ["lombardia"], importoMin: 100000, importoMax: null, scadenzaEntroGiorni: null, pubblicataNegliUltimiGiorni: null, procedure: ["aperta"], tipi: [], stato: "aperte", ordina: "scadenza", pagina: 2 });
 uguale("F2 regioni: del profilo OPPURE luogo non indicato", condizioneRegioniOSenzaLuogo(["lombardia", "veneto"]), "luogo_regioni.ov.{lombardia,veneto},luogo_regioni.eq.{}");
 uguale("F2 regioni non valide (anche tentativi di iniezione) non entrano nella condizione", condizioneRegioniOSenzaLuogo(["lombardia}),stato.eq.chiusa", "lombardia"]), "luogo_regioni.ov.{lombardia},luogo_regioni.eq.{}");
 uguale("F3 in memoria solo settori e sottocategorie (regioni, procedure, importi li fa il database)", soloSettori(PROFILO), { ...PROFILO, regioni: [], procedure: [], importoMin: null, importoMax: null });
