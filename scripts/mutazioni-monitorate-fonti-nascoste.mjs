@@ -17,6 +17,8 @@ const RIC = "src/lib/radar/ricerca.ts";
 const TG = "src/lib/radar/tipo-gara-calcoli.ts";
 const RC = "src/lib/radar/ricerca-calcoli.ts";
 const RG = "src/components/omnia-ai/opportunita/riga-gara.tsx";
+const CA = "src/app/site-console/azioni/tender-intelligence.ts";
+const CV = "src/app/site-console/_componenti/tender-intelligence-vista.tsx";
 
 const MUTAZIONI = [
   // 1. Monitorate: filtro delle fonti nelle due letture
@@ -98,6 +100,38 @@ const MUTAZIONI = [
   { nome: "MM56 scheda: riga «Come si partecipa» assente", file: GS, cerca: '{tipo === "preinformazione" && <Dato etichetta="Come si partecipa"', con: '{false && <Dato etichetta="Come si partecipa"', richiede: "MT8." },
   { nome: "MM57 scheda: niente ripiego sul tipo dell'avviso", file: GS, cerca: "const tipo = tipoDellaGara(g);", con: "const tipo = tipoDellaGara({ tipo_opportunita: g.tipo_opportunita, tipo_avviso: null });", richiede: "MT8." },
   { nome: "MM58 liste: il tipo non è nella lettura", file: RIC, cerca: "unita_a, tipo_opportunita, tipo_avviso\"", con: "unita_a\"", richiede: "MT1." },
+  // decisione 48E: SardegnaCAT visibile senza parere; nascondi sempre ammesso; registro e cache
+  {
+    nome: "MM59 console: torna la casella del parere per «mostra» SardegnaCAT",
+    file: CA,
+    cerca: '  if (!fonte || (azione !== "mostra" && azione !== "nascondi")) return { errore: "Richiesta non valida." };\n  const nascosta = azione === "nascondi";',
+    con: '  if (!fonte || (azione !== "mostra" && azione !== "nascondi")) return { errore: "Richiesta non valida." };\n  if (azione === "mostra" && fonte === "sardegnacat" && String(formData.get("parere") ?? "") !== "si") return { errore: "parere" };\n  const nascosta = azione === "nascondi";',
+    richiede: "MV1.",
+  },
+  {
+    nome: "MM60 console: «nascondi» chiede una conferma",
+    file: CA,
+    cerca: '  if (!fonte || (azione !== "mostra" && azione !== "nascondi")) return { errore: "Richiesta non valida." };\n  const nascosta = azione === "nascondi";',
+    con: '  if (!fonte || (azione !== "mostra" && azione !== "nascondi")) return { errore: "Richiesta non valida." };\n  if (azione === "nascondi" && String(formData.get("conferma") ?? "") !== "si") return { errore: "conferma" };\n  const nascosta = azione === "nascondi";',
+    richiede: "MV2.",
+  },
+  { nome: "MM61 console: cambio di visibilità non scritto nel registro", file: CA, cerca: "  await registra(admin, [{ oggetto: `fonte:${fonte}:nascosta_ai_clienti`, valore_precedente: String(riga.nascosta_ai_clienti), valore_nuovo: String(nascosta) }], sessione);\n", con: "", richiede: "MV1." },
+  { nome: "MM62 console: cache delle fonti visibili non svuotata", file: CA, cerca: "  updateTag(TAG_FONTI_RADAR);\n", con: "", richiede: "MV1." },
+  {
+    nome: "MM63 console: senza registro si salva lo stesso",
+    file: CA,
+    cerca: '  const nascosta = azione === "nascondi";\n  const admin = createAdminClient();\n  if (!(await registroDisponibile(admin)))',
+    con: '  const nascosta = azione === "nascondi";\n  const admin = createAdminClient();\n  if (false && !(await registroDisponibile(admin)))',
+    richiede: "MV4.",
+  },
+  { nome: "MM64 console: anche TED e PVL si possono nascondere", file: CA, cerca: "return (FONTI_REGIONALI as readonly string[]).includes(s) ? (s as FonteRegionale) : null;", con: "return s ? (s as FonteRegionale) : null;", richiede: "MV4." },
+  {
+    nome: "MM65 vista: torna la casella del parere",
+    file: CV,
+    cerca: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n                    {null}',
+    con: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n                    <input type="checkbox" name="parere" value="si" />',
+    richiede: "MV5.",
+  },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
