@@ -292,7 +292,8 @@ function metaPvl(a: Avviso, numeroTed: string | null): MetaPvl | null {
   };
 }
 
-function motivoScheda(scheda: string): MotivoEsclusionePvl {
+/** Il motivo di esclusione di una scheda PVL che non è né bando né esito (esportata per gli allarmi delle fonti, C7). */
+export function motivoScheda(scheda: string): MotivoEsclusionePvl {
   if (/^P7/.test(scheda) || /^P8$/.test(scheda)) return "indagine_o_negoziata";
   if (/^(AD|A3|A4|A7|P3|P5|P6)/.test(scheda)) return "affidamento";
   if (/^M\d/.test(scheda)) return "modifica_contrattuale";

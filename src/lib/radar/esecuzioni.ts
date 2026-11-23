@@ -7,6 +7,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { scrittureRadarConsentite } from "./ambiente";
 import { GIORNI_CONSERVAZIONE_ESECUZIONI, rigaEsecuzione, type DatiGiro, type FonteEsecuzione, type OrigineGiro, type RigaEsecuzione } from "./esecuzioni-calcoli";
+import { cronAttiviDa } from "./programmazione-calcoli";
+import { COLONNE_ESECUZIONI_ALLARMI, COLONNE_STATO_FONTI, allarmiFonti, type RigaEsecuzioneLetta, type RigaStatoFonte, type SituazioneFonte } from "./stato-fonti-calcoli";
 
 export type EsitoRegistro =
   | { scritta: true; id: string; cancellate: number | null; erroreCancellazione?: string }
@@ -72,4 +74,26 @@ export async function giroRegistrato<R extends object>(
   const finito = ora();
   const esecuzione = await scriviEsecuzione(admin, rigaEsecuzione({ id, fonte, origine, iniziato, finito, ...dati }), finito);
   return { ...risultato, esecuzione };
+}
+
+// ───── lettura per la pagina «Fonti» della console (B1): stato calcolato e allarmi delle quattro fonti (K3) ─────
+
+export const GIORNI_REGISTRO_CONSOLE = 30;
+
+export type SituazioneFonti = { situazioni: SituazioneFonte[]; registroAssente: boolean; errore: string | null };
+
+/**
+ * Lo stato calcolato e gli allarmi delle quattro fonti, per la console: radar_fonti_stato più il registro dei giri degli ultimi 30 giorni
+ * (al più 2.000 righe, le più recenti). Due letture, nessuna scrittura. Senza la tabella del registro (0128 non applicata) lo stato si
+ * calcola lo stesso, senza gli allarmi che ne hanno bisogno (registroAssente). Un errore di lettura dello stato è un errore (situazioni
+ * vuote), mai uno stato inventato. `env` decide quali cron sono accesi (cronAttiviDa).
+ */
+export async function leggiSituazioneFonti(db: SupabaseClient, adesso: Date = new Date(), env: Record<string, string | undefined> = process.env): Promise<SituazioneFonti> {
+  const s = await db.from("radar_fonti_stato").select(COLONNE_STATO_FONTI).returns<RigaStatoFonte[]>();
+  if (s.error) return { situazioni: [], registroAssente: false, errore: `stato delle fonti: ${s.error.message}` };
+  const dal = new Date(adesso.getTime() - GIORNI_REGISTRO_CONSOLE * 86_400_000).toISOString();
+  const r = await db.from("radar_esecuzioni").select(COLONNE_ESECUZIONI_ALLARMI).gte("iniziato_il", dal).order("iniziato_il", { ascending: false }).limit(2000).returns<RigaEsecuzioneLetta[]>();
+  const assente = !!r.error && (r.error.code === "42P01" || r.error.code === "PGRST205" || /does not exist|schema cache/i.test(r.error.message ?? ""));
+  if (r.error && !assente) return { situazioni: allarmiFonti([], s.data ?? [], adesso, { cronAttivi: cronAttiviDa(env) }), registroAssente: false, errore: `registro dei giri: ${r.error.message}` };
+  return { situazioni: allarmiFonti(r.data ?? [], s.data ?? [], adesso, { cronAttivi: cronAttiviDa(env) }), registroAssente: assente, errore: null };
 }
