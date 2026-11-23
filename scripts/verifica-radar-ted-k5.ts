@@ -32,9 +32,11 @@ function tedFinta(stato = 200) {
   const richieste: Richiesta[] = [];
   const fetchFn = (async (_url: string | URL, init?: RequestInit) => {
     const corpo = String(init?.body ?? "");
-    const date = corpo.match(/(\d{8})/g) ?? [];
+    // le date della finestra stanno nella condizione «publication-date>=AAAAMMGG … publication-date<=AAAAMMGG» (fonti/ted-calcoli.ts)
+    const da = corpo.match(/publication-date>=(\d{8})/)?.[1];
+    const a = corpo.match(/publication-date<=(\d{8})/)?.[1];
     const g = (x?: string) => (x ? `${x.slice(0, 4)}-${x.slice(4, 6)}-${x.slice(6, 8)}` : "?");
-    richieste.push({ da: g(date[0]), a: g(date[1]), tipo: /notice-type|BT-02|result|can-/i.test(corpo) && /can-standard|result|award/i.test(corpo) ? "esito" : "bando" });
+    richieste.push({ da: g(da), a: g(a), tipo: /notice-type IN \(can-/.test(corpo) ? "esito" : "bando" });
     if (stato !== 200) return new Response(JSON.stringify({ message: "negato" }), { status: stato, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({ notices: [], totalNoticeCount: 0 }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
@@ -55,7 +57,8 @@ async function provaGiri(): Promise<void> {
   const f = tedFinta();
   const r = await giro(db, f.fetchFn);
   const c = stato(db).cursore as { fase?: string; ultimoGiorno?: string; recuperoCompletatoIl?: string; inCorso?: boolean };
-  controlla("recupero di 90 giorni da zero: 6 richieste (3 finestre di bandi, 3 di esiti), dal 25/08 a oggi", f.richieste.length === 6 && r.eseguita && r.giroFinito && !r.errore, { n: f.richieste.length, r });
+  const attese = ["2026-08-25/2026-09-24", "2026-09-25/2026-10-25", "2026-10-26/2026-11-23"];
+  controlla("recupero di 90 giorni da zero: 6 richieste, le 3 finestre di 31 giorni dal 25/08 a oggi, prima per i bandi poi per gli esiti", JSON.stringify(f.richieste.map((x) => `${x.da}/${x.a}`)) === JSON.stringify([...attese, ...attese]) && f.richieste.map((x) => x.tipo).join() === "bando,bando,bando,esito,esito,esito" && r.eseguita && r.giroFinito && !r.errore, { richieste: f.richieste, r });
   controlla("dopo il recupero: completato oggi, ultimo giorno = oggi, si passa alla sincronizzazione", c.recuperoCompletatoIl === "2026-11-23" && c.ultimoGiorno === "2026-11-23" && c.inCorso === false && c.fase === "incrementale", c);
   // ripresa: tetto di 2 pagine per giro → il recupero riprende dal punto salvato
   const dbR = mondo();
