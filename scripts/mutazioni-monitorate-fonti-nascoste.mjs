@@ -240,6 +240,20 @@ const MUTAZIONI = [
   { nome: "MC10 pagina TI: casella non obbligatoria", file: CV, cerca: '<input type="checkbox" name="conferma" value="si" required /> Confermo: accendo {nome}', con: '<input type="checkbox" name="conferma" value="si" /> Confermo: accendo {nome}', richiede: "FS10." },
   { nome: "MC11 pagina TI: casella senza il valore «si»", file: CV, cerca: '<input type="checkbox" name="conferma" value="si" required /> Confermo: accendo {nome}', con: '<input type="checkbox" name="conferma" required /> Confermo: accendo {nome}', richiede: "FS10." },
   { nome: "MC12 pagina TI: casella anche per spegnere TED", file: CV, cerca: '{tedAttiva ? null : confermaAccensione("TED")}', con: '{confermaAccensione("TED")}', richiede: "FS10." },
+  // orari, interruttori e righe cron dei giri SOLO da programmazione-calcoli.ts (K1 di B2, 51 §9)
+  { nome: "MG1 orari senza i giorni", file: FC, cerca: "`${ore.join(\", \")} ${GIORNI_LEGGIBILI[giorni]}`", con: "`${ore.join(\", \")}`", richiede: "FS11." },
+  { nome: "MG2 feriali detti «tutti i giorni»", file: FC, cerca: 'feriali: "dal lunedì al venerdì"', con: 'feriali: "tutti i giorni"', richiede: "FS11." },
+  { nome: "MG3 regionali senza il vecchio interruttore", file: FC, cerca: "? [INTERRUTTORI_CRON[fonte], INTERRUTTORE_REGIONALI_VECCHIO]", con: "? [INTERRUTTORI_CRON[fonte]]", richiede: "FS11." },
+  { nome: "MG4 TED coi giri sempre accesi (regola di prima del K1)", file: FC, cerca: "    attivi: cronAttiviDa(env).has(fonte),", con: '    attivi: fonte === "ted" || cronAttiviDa(env).has(fonte),', richiede: "FS3." },
+  { nome: "MG5 giri spenti senza le righe cron proposte", file: FC, cerca: '${g.cronProposti.length === 1 ? "la riga" : "le righe"} «${g.cronProposti.join("», «")}» in vercel.json', con: "la riga in vercel.json", richiede: "FS11." },
+  { nome: "MG6 pagina «Fonti» senza la frase dei giri", file: FV, cerca: '        <p className="cn-nota">{testoGiriProgrammati(f.giriProgrammati)}</p>\n', con: "", richiede: "FS11." },
+  { nome: "MG7 prossimo giro senza guardare l'interruttore", file: "src/lib/console/fonti.ts", cerca: "prossimoGiro(x.fonte, x.attiva, giri.attivi, adesso)", con: "prossimoGiro(x.fonte, x.attiva, true, adesso)", richiede: "FS3." },
+  { nome: "MG8 scheda PVL con gli orari vecchi scritti a mano", file: CV, cerca: "{testoGiri(giri, attiva)}", con: '<p className="cn-nota">Giri programmati alle 8:00, 13:00, 18:00 ora italiana.</p>', richiede: "FS12." },
+  { nome: "MG9 scheda regionali col solo vecchio interruttore", file: CV, cerca: "{testoGiri(giri[f.fonte], f.attiva)}", con: '<p className="cn-nota">Giri programmati: servono la riga in vercel.json e RADAR_REGIONALI_CRON=attivo.</p>', richiede: "FS12." },
+  { nome: "MG10 scheda TED con le 9:15 UTC", file: CV, cerca: "{testoGiriProgrammati(dati.giriProgrammati.ted)} I giri partono solo con la fonte accesa.", con: "Importazione automatica nei giorni feriali alle 9:15 UTC (cron), solo con la fonte accesa.", richiede: "FS12." },
+  { nome: "MG11 messaggio TED dopo l'accensione scritto a mano", file: CA, cerca: '`Fonte TED accesa. ${testoGiriProgrammati(giriProgrammatiFonte("ted", process.env, new Date()))} Un giro subito: «Esegui un giro adesso».`', con: "\"Fonte TED accesa: l'importazione partirà al prossimo giro (giorni feriali, 9:15 UTC).\"", richiede: "FS12." },
+  { nome: "MG12 messaggio PVL con gli orari di TED", file: CA, cerca: 'testoGiriProgrammati(giriProgrammatiFonte("pvl", process.env, new Date()))', con: 'testoGiriProgrammati(giriProgrammatiFonte("ted", process.env, new Date()))', richiede: "FS12." },
+  { nome: "MG13 dati della console con un interruttore scritto a mano", file: CL, cerca: "const giriProgrammati = giriProgrammatiTutti(process.env, new Date());", con: 'const giriProgrammati = giriProgrammatiTutti({ ...process.env, RADAR_TED_CRON: "attivo" }, new Date());', richiede: "FS12." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
