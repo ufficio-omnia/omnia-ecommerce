@@ -22,7 +22,7 @@ import { erroreAncoraAttuale } from "../src/lib/console/tender-intelligence-calc
 import { ATTRIBUZIONE_FONTE, fontiVisibili, garaVisibileAiClienti, riepilogoFonti } from "../src/lib/radar/fonti-gara-calcoli";
 import { ATTRIBUZIONE_SINTEL } from "../src/lib/radar/fonti/sintel-calcoli";
 import { ISTANZE_AFLINK } from "../src/lib/radar/fonti/aflink-calcoli";
-import { PRECEDENZA_FONTI, unisciVersione } from "../src/lib/radar/unione-calcoli";
+import { PRECEDENZA_FONTI, unisciLotti, unisciVersione, type LottoUnito } from "../src/lib/radar/unione-calcoli";
 import { scrittureRadarConsentite } from "../src/lib/radar/ambiente";
 import { eseguiImportazioneTed } from "../src/lib/radar/importa-ted";
 import { eseguiImportazionePvl } from "../src/lib/radar/importa-pvl";
@@ -229,6 +229,31 @@ async function principale() {
     uguale("3. annullamento senza perdita di dati", fotografia(mem), prima);
     const e2 = await collegaGare(mem.client, [{ a: "S", b: "T", motivo: "di nuovo", traccia: "piattaforma:sardegnacat:700001", fonte: "sardegnacat" }], ISO, misure());
     uguale("3. dopo l'annullamento la stessa unione automatica viene rifiutata", [e2.collegate, e2.saltate], [0, { annullato_a_mano: 1 }]);
+  }
+
+  // ═════ 3 bis. difetto del C8 (23/11/2026): Sintel unita PER CIG a una gara TED o PVL con la scadenza con l'ora, stesso giorno ═════
+  // Sullo staging 5 gare avevano perso l'ora sul LOTTO (la gara era protetta). Una fonte solo-giorno non toglie l'ora dello stesso giorno.
+  {
+    const conOra = { scadenza_giorno: "2026-12-15", scadenza_offerte: "2026-12-15T11:00:00.000Z", scadenza_ora_indicata: true, scadenza_fonte: "2026-12-15T12:00:00+01:00" };
+    const mem = databaseInMemoria({ radar_procedure: [garaTed("C", { ...conOra, luogo_regioni: ["lombardia"], sa_regione: "lombardia" })], radar_lotti: [lottoTed("C", { ...conOra, cig: "PRV0000001" })], radar_procedure_fonti: [provTed("C", "700009-2026")], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
+    const s = await importa(mem, [bandoSintel()], { proponi: false });
+    const lotto = mem.tabelle.radar_lotti.find((l) => l.procedura_id === "C") as RigaMem;
+    uguale("3 bis. Sintel (solo giorno) unita per CIG lo STESSO giorno: la gara e il lotto tengono l'ora", [s.suGaraEsistente, gara(mem, "C").scadenza_offerte, gara(mem, "C").scadenza_ora_indicata, lotto.scadenza_offerte, lotto.scadenza_ora_indicata, lotto.scadenza_fonte], [{ cig: 1 }, conOra.scadenza_offerte, true, conOra.scadenza_offerte, true, conOra.scadenza_fonte]);
+    uguale("3 bis. nessuna riga di scadenza nel registro (l'ora che sparirebbe nello stesso giorno non è una modifica)", mem.tabelle.radar_aggiornamenti.filter((a) => String(a.campo ?? "").startsWith("scadenza")).length, 0);
+    // un giorno DIVERSO pubblicato da Sintel vale (proroga), anche senza ora: sulla gara e sul lotto
+    await importa(mem, [bandoSintel({ data_fine_negoziazione: "2026-12-22T00:00:00.000Z" }, "2026-11-18")], { adesso: new Date("2026-11-18T12:00:00Z"), proponi: false });
+    const lotto2 = mem.tabelle.radar_lotti.find((l) => l.procedura_id === "C") as RigaMem;
+    uguale("3 bis. un giorno DIVERSO da Sintel (proroga) vale anche senza ora, sulla gara e sul lotto", [gara(mem, "C").scadenza_giorno, gara(mem, "C").scadenza_ora_indicata, lotto2.scadenza_giorno, lotto2.scadenza_offerte, lotto2.scadenza_ora_indicata], ["2026-12-22", false, "2026-12-22", null, false]);
+  }
+  {
+    // la regola pura dei lotti (unisciLotti), caso per caso
+    const l = (giorno: string | null, ora: string | null): LottoUnito => ({ numero_lotto: "LOT-0001", cig: null, oggetto: null, cpv_principale: null, cpv_tutti: [], valore_stimato: 100, durata_mesi: null, scadenza_giorno: giorno, scadenza_offerte: ora, scadenza_ora_indicata: !!ora, scadenza_fonte: ora ?? giorno, url_documenti: null });
+    const scad = (x: LottoUnito) => [x.scadenza_giorno, x.scadenza_offerte, x.scadenza_ora_indicata];
+    uguale("lotti: stesso giorno, la versione nuova senza ora NON toglie l'ora", scad(unisciLotti([l("2026-12-15", "2026-12-15T11:00:00.000Z")], [l("2026-12-15", null)], "sintel", true).lotti[0]), ["2026-12-15", "2026-12-15T11:00:00.000Z", true]);
+    uguale("lotti: stesso giorno, una versione più recente CON un'ora diversa la sostituisce (rettifica dell'ora)", scad(unisciLotti([l("2026-12-15", "2026-12-15T11:00:00.000Z")], [l("2026-12-15", "2026-12-15T15:00:00.000Z")], "ted", true).lotti[0]), ["2026-12-15", "2026-12-15T15:00:00.000Z", true]);
+    uguale("lotti: stesso giorno senza ora prima, la versione nuova con l'ora la aggiunge", scad(unisciLotti([l("2026-12-15", null)], [l("2026-12-15", "2026-12-15T11:00:00.000Z")], "ted", true).lotti[0]), ["2026-12-15", "2026-12-15T11:00:00.000Z", true]);
+    uguale("lotti: giorno diverso senza ora (proroga) vale", scad(unisciLotti([l("2026-12-15", "2026-12-15T11:00:00.000Z")], [l("2026-12-22", null)], "sintel", true).lotti[0]), ["2026-12-22", null, false]);
+    uguale("lotti: versione più vecchia, nessun cambio", scad(unisciLotti([l("2026-12-15", "2026-12-15T11:00:00.000Z")], [l("2026-12-22", null)], "sintel", false).lotti[0]), ["2026-12-15", "2026-12-15T11:00:00.000Z", true]);
   }
 
   // ═════ 4. rettifiche e proroghe propagate da qualunque fonte alla gara che resta ═════

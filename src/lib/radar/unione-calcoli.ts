@@ -352,7 +352,11 @@ export function unisciLotti(esistenti: readonly LottoUnito[], nuovi: readonly Lo
     sostituisci("cpv_principale", false);
     sostituisci("valore_stimato", versioneNuovaPiuRecente);
     sostituisci("durata_mesi", versioneNuovaPiuRecente);
-    if (n.scadenza_giorno && (!e.scadenza_giorno || versioneNuovaPiuRecente || (pvl && !e.scadenza_offerte && n.scadenza_offerte))) {
+    // difetto del C8 (23/11/2026, 5 gare dello staging): una scadenza SOLO GIORNO (Sintel) non sostituisce una scadenza con l'ora dello
+    // STESSO giorno: l'ora scritta da una fonte ufficiale per quel giorno resta, come per la gara (unisciVersione). Un giorno DIVERSO
+    // (proroga o rettifica) vale sempre, anche senza ora
+    const perderebbeOra = n.scadenza_giorno === e.scadenza_giorno && e.scadenza_ora_indicata && !!e.scadenza_offerte && !n.scadenza_ora_indicata;
+    if (n.scadenza_giorno && !perderebbeOra && (!e.scadenza_giorno || versioneNuovaPiuRecente || (pvl && !e.scadenza_offerte && n.scadenza_offerte))) {
       out.scadenza_giorno = n.scadenza_giorno;
       out.scadenza_offerte = n.scadenza_offerte;
       out.scadenza_ora_indicata = n.scadenza_ora_indicata;
