@@ -16,7 +16,24 @@ import { cpvRicercaPvl, leggiAvvisoPvl, limitiPvl, limitiPvlDaRighe, type BandoP
 import { ErrorePvl, SessionePvl } from "./fonti/pvl";
 import type { Misure } from "./importa";
 import { applicaEsitiPvl, applicaPaginaBandiPvl } from "./importa-pvl-pagina";
-import { aggiungi, conteggioAnomalo, cursoreDopoPagina, cursoreFinestra, cursoreIncrementale, statistichePvlVuote, type CursorePvl, type StatistichePvl } from "./importa-pvl-calcoli";
+import { aggiungi, conteggioAnomalo, statistichePvlVuote, type StatistichePvl } from "./importa-pvl-calcoli";
+import {
+  CONTEGGIO_ATTENDIBILE,
+  RICHIESTE_RECUPERO_PER_GIRO,
+  allarmiCursorePvl,
+  bloccoDaLeggere,
+  conFinestra,
+  conIncrementale,
+  cursorePvlDaSalvato,
+  dopoPaginaFinestra,
+  dopoPaginaIncrementale,
+  dopoPaginaRecupero,
+  giorniNeiBuchi,
+  giorniObiettivoResidui,
+  type CursorePvlV2,
+  type EsitoPaginaRecupero,
+  type LetturaPvl,
+} from "./importa-pvl-cursore";
 import { giornoIso } from "./importa-ted-calcoli";
 import { erroreDaConservare } from "./lavori-calcoli";
 import { datiGiroPvl, type OrigineGiro } from "./esecuzioni-calcoli";
@@ -26,7 +43,29 @@ import { eDoppioRichiamo } from "./programmazione-calcoli";
 export type RisultatoImportazionePvl =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7)
-  | { eseguita: true; modo: CursorePvl["modo"]; giroFinito: boolean; sospesa: boolean; fermata: boolean; statistiche: StatistichePvl & { db: Misure }; durataMs: number; errore: string | null; cursore: CursorePvl };
+  // letta: la finestra principale del giro (incrementale o controllata) e le pagine lette; recupero e allarmi: K4 (cursore v2)
+  | {
+      eseguita: true;
+      modo: "finestra" | "incrementale";
+      giroFinito: boolean;
+      sospesa: boolean;
+      fermata: boolean;
+      statistiche: StatistichePvl & { db: Misure };
+      durataMs: number;
+      errore: string | null;
+      cursore: CursorePvlV2;
+      letta: { da: string; a: string; pagine: number } | null;
+      recupero: StatisticheRecuperoPvl;
+      allarmi: string[];
+    };
+
+export type StatisticheRecuperoPvl = {
+  richieste: number;
+  blocchi: { da: string; a: string; esito: EsitoPaginaRecupero; letti: number; dichiarati: number | null }[];
+  giorniBuchi: number;
+  giorniObiettivo: number;
+  fermo: boolean;
+};
 
 export type OpzioniImportazionePvl = {
   modo: "finestra" | "incrementale";
@@ -78,18 +117,23 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
   if ((presa.data ?? []).length === 0) return { eseguita: false, motivo: "occupata" };
 
   const oggi = giornoIso(inizio);
-  let cursore: CursorePvl;
+  const modo = opzioni.modo;
+  let cursore: CursorePvlV2;
+  // un fermo scoperto in questo giro (periodo entrato nei buchi): l'allarme va nel registro anche se il recupero lo chiude subito
+  let nuovoBuco = false;
   try {
-    cursore = opzioni.modo === "finestra" ? cursoreFinestra(opzioni.da ?? oggi, opzioni.a ?? oggi, fonte.cursore) : cursoreIncrementale(fonte.cursore, oggi);
+    // cursore v2 (K4): un cursore v1 salvato si converte senza perdere l'ultimo giorno letto né la lettura a metà
+    const base = cursorePvlDaSalvato(fonte.cursore, oggi);
+    cursore = modo === "finestra" ? conFinestra(base, opzioni.da ?? oggi, opzioni.a ?? oggi) : conIncrementale(base, oggi, inizio.toISOString());
+    nuovoBuco = giorniNeiBuchi(cursore) > giorniNeiBuchi(base);
   } catch (e) {
     await admin.from("radar_fonti_stato").update({ blocco_fino_a: null }).eq("fonte", "pvl");
     return { eseguita: false, motivo: "errore_lettura", dettaglio: e instanceof Error ? e.message : String(e) };
   }
-  // una finestra controllata riprende il proprio punto se è la stessa finestra interrotta
-  const salvato = fonte.cursore as Partial<CursorePvl> | null;
-  if (opzioni.modo === "finestra" && salvato?.inCorso && salvato.modo === "finestra" && salvato.da === cursore.da && salvato.a === cursore.a && typeof salvato.token === "string") {
-    cursore = { ...cursore, token: salvato.token, pagine: Number(salvato.pagine) || 0 };
-  }
+  // la lettura principale del giro: l'incrementale (sempre per prima) o la finestra controllata
+  const principale = (): LetturaPvl | null => (modo === "finestra" ? cursore.finestra : cursore.incrementale);
+  const iniziale = principale();
+  const letta = iniziale ? { da: iniziale.da, a: iniziale.a, pagine: 0 } : null;
 
   // limiti di cortesia: quelli della console (entro gli intervalli ammessi), poi quelli passati dallo script per una prova più prudente
   const { data: righeLimiti } = await admin.from("console_impostazioni").select("chiave, valore").like("chiave", "radar_pvl_%").returns<{ chiave: string; valore: string }[]>();
@@ -98,52 +142,78 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
   const stat = statistichePvlVuote();
   const db: Misure = { richiesteDb: 0, msDb: 0 };
   const cpv = cpvRicercaPvl();
-  const modoImportazione = cursore.modo === "incrementale" ? "incrementale" : "recupero";
+  const recupero: StatisticheRecuperoPvl = { richieste: 0, blocchi: [], giorniBuchi: 0, giorniObiettivo: 0, fermo: false };
   let errore: string | null = null;
   let sospesa = false;
   let fermata = false;
 
+  // una pagina: lettura dalla PVL (con il controllo del conteggio), scrittura nell'archivio; restituisce quello che serve al cursore
+  const leggiEScrivi = async (l: LetturaPvl, modoImportazione: "incrementale" | "recupero") => {
+    const pagina = await sessione.leggiPagina({ da: l.da, a: l.a, cpv, token: l.token });
+    if (stat.pvl.conteggioDichiarato === null) stat.pvl.conteggioDichiarato = pagina.count;
+    if (conteggioAnomalo(pagina.count, l)) throw new ErrorePvl(`Numero di avvisi anomalo (${pagina.count}) per la finestra ${l.da} – ${l.a}: connettore sospeso finché non si verifica`, 200, true);
+    const letti = pagina.content.map(leggiAvvisoPvl);
+    // il «tipo» dell'avviso (rettifica dichiarata) sta solo nell'avviso grezzo: serve alla fotografia della versione (fase B4)
+    const grezzi = new Map<string, unknown>();
+    if (evidenza) pagina.content.forEach((g, i) => { const x = letti[i]; if (x.tipo === "bando") grezzi.set(x.meta.idAvviso, g); });
+    stat.avvisi.letti += letti.length;
+    const bandi: BandoPvl[] = [];
+    const esiti: EsitoPvl[] = [];
+    for (const x of letti) {
+      if (x.meta) {
+        aggiungi(stat.avvisi.perScheda, x.meta.scheda);
+        if (x.meta.sostituitoDa || x.meta.tipoSostituzione) aggiungi(stat.avvisi.sostituiti, x.meta.tipoSostituzione ?? "senza_tipo");
+        if (!x.meta.attivo) stat.avvisi.nonAttivi++;
+      }
+      if (x.tipo === "bando") bandi.push(x);
+      else if (x.tipo === "esito") esiti.push(x);
+      else aggiungi(stat.avvisi.esclusi, x.motivo);
+    }
+    stat.avvisi.bandi += bandi.length;
+    stat.avvisi.esiti += esiti.length;
+    const adesso = ora();
+    await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni, evidenza, grezzi, esecuzioneId });
+    await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
+    // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
+    const ultimaPerConteggio = pagina.count !== null && pagina.count < CONTEGGIO_ATTENDIBILE && (l.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;
+    return { letti: pagina.content.length, dichiarati: pagina.count, token: ultimaPerConteggio ? null : pagina.token };
+  };
+  // punto di ripresa dopo ogni pagina, SOLO se la fonte è ancora accesa (K7, 48C §3.6): spenta dalla console a metà giro, il giro si
+  // ferma qui, senza richieste in più. Il punto salvato resta quello della pagina prima: la pagina appena scritta si rilegge alla
+  // riaccensione, senza effetti (le gare già scritte risultano invariate)
+  const salva = async (prossimo: CursorePvlV2): Promise<boolean> => {
+    const salvataggio = await admin.from("radar_fonti_stato").update({ cursore: prossimo, aggiornata_il: ora().toISOString() }).eq("fonte", "pvl").eq("attiva", true).select("fonte");
+    db.richiesteDb++;
+    if (salvataggio.error) throw new Error(`salvataggio del punto di ripresa: ${salvataggio.error.message}`);
+    if ((salvataggio.data ?? []).length === 0) {
+      fermata = true;
+      return false;
+    }
+    cursore = prossimo;
+    return true;
+  };
+  const neltempo = () => ora().getTime() - inizio.getTime() < opzioni.tempoMassimoMs;
+
   try {
-    while (cursore.inCorso && ora().getTime() - inizio.getTime() < opzioni.tempoMassimoMs) {
-      const pagina = await sessione.leggiPagina({ da: cursore.da, a: cursore.a, cpv, token: cursore.token });
-      if (stat.pvl.conteggioDichiarato === null) stat.pvl.conteggioDichiarato = pagina.count;
-      if (conteggioAnomalo(pagina.count, cursore)) throw new ErrorePvl(`Numero di avvisi anomalo (${pagina.count}) per la finestra ${cursore.da} – ${cursore.a}: connettore sospeso finché non si verifica`, 200, true);
-      const letti = pagina.content.map(leggiAvvisoPvl);
-      // il «tipo» dell'avviso (rettifica dichiarata) sta solo nell'avviso grezzo: serve alla fotografia della versione (fase B4)
-      const grezzi = new Map<string, unknown>();
-      if (evidenza) pagina.content.forEach((g, i) => { const l = letti[i]; if (l.tipo === "bando") grezzi.set(l.meta.idAvviso, g); });
-      stat.avvisi.letti += letti.length;
-      const bandi: BandoPvl[] = [];
-      const esiti: EsitoPvl[] = [];
-      for (const l of letti) {
-        if (l.meta) {
-          aggiungi(stat.avvisi.perScheda, l.meta.scheda);
-          if (l.meta.sostituitoDa || l.meta.tipoSostituzione) aggiungi(stat.avvisi.sostituiti, l.meta.tipoSostituzione ?? "senza_tipo");
-          if (!l.meta.attivo) stat.avvisi.nonAttivi++;
-        }
-        if (l.tipo === "bando") bandi.push(l);
-        else if (l.tipo === "esito") esiti.push(l);
-        else aggiungi(stat.avvisi.esclusi, l.motivo);
-      }
-      stat.avvisi.bandi += bandi.length;
-      stat.avvisi.esiti += esiti.length;
-      const adesso = ora();
-      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni, evidenza, grezzi, esecuzioneId });
-      await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
-      // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
-      const ultimaPerConteggio = pagina.count !== null && pagina.count < 1000 && (cursore.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;
-      const prossimo = cursoreDopoPagina(cursore, pagina.content.length, ultimaPerConteggio ? null : pagina.token, limiti.avvisiPerPagina);
-      // punto di ripresa dopo ogni pagina, SOLO se la fonte è ancora accesa (K7, 48C §3.6): spenta dalla console a metà giro, il giro si
-      // ferma qui, senza richieste in più. Il punto salvato resta quello della pagina prima: la pagina appena scritta si rilegge alla
-      // riaccensione, senza effetti (le gare già scritte risultano invariate)
-      const salvataggio = await admin.from("radar_fonti_stato").update({ cursore: prossimo, aggiornata_il: ora().toISOString() }).eq("fonte", "pvl").eq("attiva", true).select("fonte");
-      db.richiesteDb++;
-      if (salvataggio.error) throw new Error(`salvataggio del punto di ripresa: ${salvataggio.error.message}`);
-      if ((salvataggio.data ?? []).length === 0) {
-        fermata = true;
-        break;
-      }
-      cursore = prossimo;
+    // 1. la lettura principale, pagina per pagina
+    for (let l = principale(); l && neltempo(); l = principale()) {
+      const p = await leggiEScrivi(l, modo === "incrementale" ? "incrementale" : "recupero");
+      if (letta) letta.pagine++;
+      const prossimo = modo === "finestra" ? dopoPaginaFinestra(cursore, p.letti, p.dichiarati, p.token, limiti.avvisiPerPagina) : dopoPaginaIncrementale(cursore, p.letti, p.dichiarati, p.token, limiti.avvisiPerPagina);
+      if (!(await salva(prossimo))) break;
+    }
+    // 2. recupero (prima i buchi, poi l'obiettivo dei 90 giorni, dal più recente): solo dopo un incrementale FINITO, al massimo 5 richieste
+    //    per giro e mai oltre il tetto di richieste del giro (L1, 48C §3.3)
+    while (modo === "incrementale" && !fermata && !cursore.incrementale && recupero.richieste < RICHIESTE_RECUPERO_PER_GIRO && sessione.richieste < limiti.richiesteMassime && neltempo()) {
+      const blocco = bloccoDaLeggere(cursore);
+      if (!blocco) break;
+      const p = await leggiEScrivi(blocco, "recupero");
+      recupero.richieste++;
+      const { cursore: prossimo, esito, bloccoLetto } = dopoPaginaRecupero(cursore, blocco, p.letti, p.dichiarati, p.token, limiti.avvisiPerPagina, ora().toISOString());
+      if (!(await salva(prossimo))) break;
+      if (bloccoLetto || esito === "dimezzato") recupero.blocchi.push({ da: blocco.da, a: blocco.a, esito, letti: bloccoLetto?.letti ?? p.letti, dichiarati: bloccoLetto?.dichiarati ?? p.dichiarati });
+      // un blocco incompleto si ritenta al giro dopo; un recupero fermo aspetta un'azione esplicita
+      if (esito === "incompleto" || esito === "fermo") break;
     }
   } catch (e) {
     if (e instanceof ErrorePvl && e.tetto) {
@@ -159,13 +229,19 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
   stat.pvl.byte = sessione.byte;
   stat.pvl.ms = sessione.ms;
   for (const r of sessione.registro) aggiungi(stat.pvl.risposte, r.stato === null ? "rete" : String(r.stato));
+  recupero.giorniBuchi = giorniNeiBuchi(cursore);
+  recupero.giorniObiettivo = giorniObiettivoResidui(cursore);
+  recupero.fermo = cursore.recupero.fermo !== null;
+  const allarmi = [...new Set([...allarmiCursorePvl(cursore), ...(nuovoBuco ? ["buco_in_recupero"] : [])])];
+  // giro finito = la lettura principale è arrivata in fondo (il recupero è lavoro di fondo, non conta)
+  const giroFinito = principale() === null;
 
   const fine = ora();
   const durataMs = fine.getTime() - inizio.getTime();
   const conteggi = {
     ...(fonte.conteggi ?? {}),
     ...(sospesa ? { sospensione: { il: fine.toISOString(), motivo: errore } } : {}),
-    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, modo: cursore.modo, finestra: { da: cursore.da, a: cursore.a }, giro_finito: !cursore.inCorso, fermata_dalla_console: fermata, limiti, ...stat, db, errore },
+    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, modo, finestra: letta, giro_finito: giroFinito, fermata_dalla_console: fermata, recupero, allarmi, limiti, ...stat, db, errore },
   };
   await admin
     .from("radar_fonti_stato")
@@ -174,10 +250,11 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
       conteggi,
       aggiornata_il: fine.toISOString(),
       ...(sospesa ? { attiva: false } : {}),
-      ...(errore ? { ultimo_errore: errore, ultimo_errore_il: fine.toISOString() } : { ultimo_successo_il: fine.toISOString() }),
+      // S3 (48C §3.3): un giro fermato dal tetto o dal tempo è «ok» ma incompleto; l'ultimo successo si aggiorna solo a giro FINITO
+      ...(errore ? { ultimo_errore: errore, ultimo_errore_il: fine.toISOString() } : giroFinito ? { ultimo_successo_il: fine.toISOString() } : {}),
       ...(cursore.ultimoGiorno ? { dati_aggiornati_al: `${cursore.ultimoGiorno}T12:00:00Z` } : {}),
     })
     .eq("fonte", "pvl");
 
-  return { eseguita: true, modo: cursore.modo, giroFinito: !cursore.inCorso, sospesa, fermata, statistiche: { ...stat, db }, durataMs, errore, cursore };
+  return { eseguita: true, modo, giroFinito, sospesa, fermata, statistiche: { ...stat, db }, durataMs, errore, cursore, letta, recupero, allarmi };
 }

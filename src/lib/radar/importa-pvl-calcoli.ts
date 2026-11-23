@@ -1,22 +1,18 @@
-// Importazione dalla PVL di ANAC (fase B1-bis, SOLO STAGING): punto di ripresa, finestre, orari dei giri programmati, riga della gara
-// costruita da un avviso. Logica pura, provata da scripts/verifica-radar-pvl.ts.
+// Importazione dalla PVL di ANAC: costanti delle finestre, validazione del cursore v1 (solo per la conversione), orari dei giri, riga della
+// gara costruita da un avviso. Logica pura, provata da scripts/verifica-radar-pvl.ts.
 //
-// Giri:
-//   - FINESTRA (prima importazione controllata, dalla console o dallo script dello staging): un intervallo di giorni scelto, senza notifiche;
-//   - INCREMENTALE (giri programmati 8:00, 13:00, 18:00 ora italiana, configurati ma NON attivi): dall'ultimo giorno letto meno uno
-//     (sovrapposizione: un avviso pubblicato a fine giornata può comparire in ritardo) fino a oggi.
-// In entrambi i casi il punto di ripresa (token della paginazione) si salva dopo ogni pagina: un giro interrotto riparte da lì; i doppioni
-// li scartano le impronte (stesso avviso letto due volte = nessuna scrittura).
+// Dal K4 (48C) il cursore e le sue regole stanno in importa-pvl-cursore.ts (versione 2: incrementale, finestra controllata, recupero dei
+// 90 giorni, buchi, completezza); un cursore v1 salvato si converte da lì senza perdere nulla.
 import type { BandoPvl } from "./fonti/pvl-calcoli";
-import { aggiungiGiorni } from "./importa-ted-calcoli";
 import { rigaDaBando, type RigaProcedura } from "./importa-calcoli";
 
 export const GIORNI_SOVRAPPOSIZIONE_PVL = 1;
-// Finestra massima di un giro programmato (dopo un fermo lungo non si recupera tutto in un colpo: serve una finestra concordata).
+// Finestra massima di un giro incrementale: dopo un fermo più lungo il resto entra nei buchi e lo legge il recupero (importa-pvl-cursore.ts).
 export const GIORNI_MASSIMI_INCREMENTALE = 7;
 // Oltre questi avvisi per giorno di finestra la risposta è anomala: il giro si ferma e la console lo segnala.
 export const AVVISI_ANOMALI_PER_GIORNO = 400;
 
+// Cursore versione 1 (fino al K4): resta solo per leggere e convertire quello salvato.
 export type CursorePvl = {
   versione: 1;
   modo: "finestra" | "incrementale";
@@ -41,29 +37,6 @@ export function cursorePvlValido(v: unknown): CursorePvl | null {
   if (!Number.isInteger(c.pagine) || (c.pagine as number) < 0) return null;
   if (c.ultimoGiorno !== null && !g(c.ultimoGiorno)) return null;
   return c as CursorePvl;
-}
-
-export function cursoreFinestra(da: string, a: string, salvato: unknown): CursorePvl {
-  if (!GIORNO.test(da) || !GIORNO.test(a) || da > a) throw new Error("Finestra non valida");
-  return { versione: 1, modo: "finestra", inCorso: true, da, a, token: null, pagine: 0, ultimoGiorno: cursorePvlValido(salvato)?.ultimoGiorno ?? null };
-}
-
-// Il giro programmato da fare adesso: un giro incrementale interrotto continua; altrimenti parte dall'ultimo giorno letto meno la
-// sovrapposizione (al massimo GIORNI_MASSIMI_INCREMENTALE indietro). Senza un giorno letto: solo ieri e oggi.
-export function cursoreIncrementale(salvato: unknown, oggi: string): CursorePvl {
-  const c = cursorePvlValido(salvato);
-  if (c && c.inCorso && c.modo === "incrementale") return c;
-  const minimo = aggiungiGiorni(oggi, -GIORNI_MASSIMI_INCREMENTALE);
-  const base = c?.ultimoGiorno ? aggiungiGiorni(c.ultimoGiorno, -GIORNI_SOVRAPPOSIZIONE_PVL) : aggiungiGiorni(oggi, -1);
-  const da = base < minimo ? minimo : base > oggi ? oggi : base;
-  return { versione: 1, modo: "incrementale", inCorso: true, da, a: oggi, token: null, pagine: 0, ultimoGiorno: c?.ultimoGiorno ?? null };
-}
-
-// Una pagina più corta del massimo è l'ultima: nessuna richiesta in più alla fonte (la PVL dopo l'ultima pagina risponde senza risultati).
-export function cursoreDopoPagina(c: CursorePvl, avvisiLetti: number, token: string | null, avvisiPerPagina: number): CursorePvl {
-  if (avvisiLetti >= avvisiPerPagina && token) return { ...c, token, pagine: c.pagine + 1 };
-  const ultimo = c.modo === "incrementale" || !c.ultimoGiorno || c.a > c.ultimoGiorno ? c.a : c.ultimoGiorno;
-  return { ...c, inCorso: false, token: null, pagine: c.pagine + 1, ultimoGiorno: c.modo === "incrementale" ? c.a : ultimo };
 }
 
 export function giorniFinestra(c: Pick<CursorePvl, "da" | "a">): number {
