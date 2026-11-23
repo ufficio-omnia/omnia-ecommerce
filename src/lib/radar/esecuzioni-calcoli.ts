@@ -163,7 +163,7 @@ export function rigaEsecuzione(x: { id: string; fonte: FonteEsecuzione; origine:
 
 // ───────────────────────── dai risultati dei tre importatori ─────────────────────────
 
-type UscitaAnticipata = { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string };
+type UscitaAnticipata = { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string };
 
 /**
  * Le uscite prima del giro vero. MAI una riga se l'ambiente non è consentito (sarebbe una scrittura proprio dove non si deve scrivere) né
@@ -173,6 +173,8 @@ export function datiUscita(r: UscitaAnticipata, modo: DatiGiro["modo"]): DatiGir
   if (r.motivo === "ambiente_non_consentito" || r.motivo === "schema_assente") return null;
   if (r.motivo === "fonte_spenta") return { modo, esito: "inerte" };
   if (r.motivo === "occupata") return { modo, esito: "occupata" };
+  // doppio richiamo di un giro programmato già riuscito (K1, 48C §3.1 punto 7): nessuna chiamata alla fonte
+  if (r.motivo === "gia_eseguito") return { modo, esito: "gia_eseguito" };
   return { modo, esito: "errore", errore: `lettura dello stato della fonte non riuscita${r.dettaglio ? `: ${r.dettaglio}` : ""}` };
 }
 

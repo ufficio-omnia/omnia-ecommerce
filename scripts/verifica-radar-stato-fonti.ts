@@ -29,7 +29,7 @@ function provaOrari(): void {
   controlla("finestra: inizio escluso, fine compresa", orariPrevisti("pvl", t, new Date(t.getTime() + 1)).length === 0 && orariPrevisti("pvl", new Date(t.getTime() - 1), t).length === 1);
   controlla("feriali: lunedì–venerdì", eFeriale("2026-11-23") && eFeriale("2026-11-27") && !eFeriale("2026-11-28") && !eFeriale("2026-11-29"));
   const c = cronAttiviDa({ RADAR_PVL_CRON: "attivo" });
-  controlla("cron accesi dall'ambiente: TED sempre (oggi senza interruttore), PVL con RADAR_PVL_CRON, regionali con RADAR_REGIONALI_CRON", c.has("ted") && c.has("pvl") && !c.has("sintel") && cronAttiviDa({ RADAR_REGIONALI_CRON: "attivo" }).has("sardegnacat") && !cronAttiviDa({}).has("pvl"));
+  controlla("cron accesi dall'ambiente (K1): ognuno col suo interruttore (TED con RADAR_TED_CRON), le regionali anche col vecchio RADAR_REGIONALI_CRON; nulla di base", !c.has("ted") && c.has("pvl") && !c.has("sintel") && cronAttiviDa({ RADAR_TED_CRON: "attivo" }).has("ted") && cronAttiviDa({ RADAR_REGIONALI_CRON: "attivo" }).has("sardegnacat") && cronAttiviDa({ RADAR_REGIONALI_CRON: "attivo" }).has("sintel") && cronAttiviDa({ RADAR_SINTEL_CRON: "attivo" }).size === 1 && cronAttiviDa({}).size === 0);
 }
 
 // ═════ stato calcolato (L2) ═════
