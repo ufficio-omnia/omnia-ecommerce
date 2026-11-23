@@ -71,12 +71,16 @@ export function eCategoriaTipo(x: string): x is CategoriaTipo {
 const PREINFORMAZIONI_PVL = `(${SCHEDE_PREINFORMAZIONE_PVL.join(",")})`;
 const PREINFORMAZIONE = `or(tipo_avviso.like.${PREFISSO_PREINFORMAZIONE_TED}*,tipo_avviso.in.${PREINFORMAZIONI_PVL})`;
 const NON_PREINFORMAZIONE = `or(tipo_avviso.is.null,and(tipo_avviso.not.like.${PREFISSO_PREINFORMAZIONE_TED}*,tipo_avviso.not.in.${PREINFORMAZIONI_PVL}))`;
-// opportunitaDaTipoAvviso: «cn-*», «pin-cfc-*» e le schede PVL «P1_*», «P2_*» = bando; «qu-sy» = iscrizione
+// opportunitaDaTipoAvviso (di B2): «cn-*», «pin-cfc-*» e le schede PVL «P1_*», «P2_*» = bando; «qu-sy» = iscrizione; C1 (23/11): la scheda
+// PVL «P7_1_3» (avvio dell'indagine di mercato) = indagine di mercato, cioè una candidatura; «P7_3» (costituzione di un elenco) = iscrizione.
+// Filtro nel database ed etichetta restano concordi (prova MT6)
 const BANDO_DALL_AVVISO = `or(tipo_avviso.like.cn-*,tipo_avviso.like.${PREFISSO_PREINFORMAZIONE_TED}*,tipo_avviso.match.^P[12]_)`;
+const CANDIDATURE_DALL_AVVISO = "P7_1_3";
+const ISCRIZIONI_DALL_AVVISO = "(qu-sy,P7_3)";
 const CONDIZIONE_TIPO: Record<CategoriaTipo, string> = {
   bandi: `and(tipo_opportunita.eq.bando,${NON_PREINFORMAZIONE}),and(tipo_opportunita.is.null,${BANDO_DALL_AVVISO},${NON_PREINFORMAZIONE})`,
-  candidature: `tipo_opportunita.in.(manifestazione_interesse,indagine_mercato),and(tipo_opportunita.eq.bando,${PREINFORMAZIONE}),and(tipo_opportunita.is.null,${PREINFORMAZIONE})`,
-  iscrizioni: `tipo_opportunita.eq.sistema_qualificazione,and(tipo_opportunita.is.null,tipo_avviso.eq.qu-sy)`,
+  candidature: `tipo_opportunita.in.(manifestazione_interesse,indagine_mercato),and(tipo_opportunita.eq.bando,${PREINFORMAZIONE}),and(tipo_opportunita.is.null,${PREINFORMAZIONE}),and(tipo_opportunita.is.null,tipo_avviso.eq.${CANDIDATURE_DALL_AVVISO})`,
+  iscrizioni: `tipo_opportunita.eq.sistema_qualificazione,and(tipo_opportunita.is.null,tipo_avviso.in.${ISCRIZIONI_DALL_AVVISO})`,
 };
 
 export function condizioneTipi(categorie: readonly CategoriaTipo[]): string {
