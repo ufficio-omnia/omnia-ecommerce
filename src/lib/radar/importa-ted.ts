@@ -12,7 +12,7 @@ import { classificazioniAttive, scrittureRadarConsentite } from "./ambiente";
 import { registroConEvidenza } from "./importa-evidenza";
 import { vociCpv } from "./settori";
 import { AVVISI_PER_PAGINA, leggiBandoTed, leggiEsitoTed, type EsitoTed } from "./fonti/ted-calcoli";
-import { leggiPaginaTed } from "./fonti/ted";
+import { ErroreTed, leggiPaginaTed } from "./fonti/ted";
 import { applicaPaginaBandi, applicaPaginaEsiti, type EsitoPaginaBandi, type EsitoPaginaEsiti, type Misure } from "./importa";
 import { cursoreAllAvvio, cursoreDopoPagina, cursoreIniziale, finestraCorrente, giornoIso, serveNuovoRecupero, type CursoreTed } from "./importa-ted-calcoli";
 import { erroreDaConservare } from "./lavori-calcoli";
@@ -30,11 +30,13 @@ export type TotaliGiro = {
 
 export type RisultatoImportazioneTed =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
-  // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7)
-  | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; fermata: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
+  // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7); sospesa: TED ha risposto 401 o
+  // 403 (K5): la fonte si spegne da sola e si riaccende solo dalla console
+  | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; fermata: boolean; sospesa: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
 
 // origine: chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
-export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
+// giorniRecupero: giorni del recupero iniziale (K5; 90 di base, tra 1 e 365)
+export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; giorniRecupero?: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
 
 function totaliVuoti(): TotaliGiro {
   return {
@@ -90,13 +92,14 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
   if ((presa.data ?? []).length === 0) return { eseguita: false, motivo: "occupata" };
 
   const oggi = giornoIso(inizio);
-  let cursore = cursoreAllAvvio(fonte.cursore, oggi);
-  if (serveNuovoRecupero(cursore, oggi)) cursore = cursoreIniziale(oggi);
+  let cursore = cursoreAllAvvio(fonte.cursore, oggi, opzioni.giorniRecupero);
+  if (serveNuovoRecupero(cursore, oggi)) cursore = cursoreIniziale(oggi, opzioni.giorniRecupero);
   const faseIniziale = cursore.fase;
   const totali = totaliVuoti();
   const cpv = vociCpv().map((v) => v.cpv);
   let errore: string | null = null;
   let fermata = false;
+  let sospesa = false;
 
   try {
     while (cursore.inCorso && totali.pagine < opzioni.pagineMassime && ora().getTime() - inizio.getTime() < opzioni.tempoMassimoMs) {
@@ -128,6 +131,9 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
     }
   } catch (e) {
     errore = erroreDaConservare(e instanceof Error ? e.message : String(e));
+    // K5: TED è l'API ufficiale; nessuna sospensione automatica nuova (gli errori ripetuti li segnala l'allarme), SALVO 401 e 403: accesso
+    // negato, la fonte si spegne e si riaccende solo dalla console. 429 e 5xx: solo errore (TED li ritenta già nella stessa lettura)
+    sospesa = e instanceof ErroreTed && (e.stato === 401 || e.stato === 403);
     console.error("Tender Intelligence: importazione TED interrotta", errore);
   }
 
@@ -135,6 +141,7 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
   const durataMs = fine.getTime() - inizio.getTime();
   const conteggi = {
     ...(fonte.conteggi ?? {}),
+    ...(sospesa ? { sospensione: { il: fine.toISOString(), motivo: errore } } : {}),
     ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, fase: faseIniziale, giro_finito: !cursore.inCorso, fermata_dalla_console: fermata, ...totali, errore },
   };
   await admin
@@ -143,11 +150,12 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
       blocco_fino_a: null,
       conteggi,
       aggiornata_il: fine.toISOString(),
+      ...(sospesa ? { attiva: false } : {}),
       ...(errore ? { ultimo_errore: errore, ultimo_errore_il: fine.toISOString() } : { ultimo_successo_il: fine.toISOString() }),
       // «avvisi letti fino al giorno X»: conta il giorno, l'ora salvata (mezzogiorno UTC, sempre lo stesso giorno a Roma) non si mostra
       ...(cursore.ultimoGiorno ? { dati_aggiornati_al: `${cursore.ultimoGiorno}T12:00:00Z` } : {}),
     })
     .eq("fonte", "ted");
 
-  return { eseguita: true, fase: faseIniziale, giroFinito: !cursore.inCorso, fermata, totali, durataMs, errore, cursore };
+  return { eseguita: true, fase: faseIniziale, giroFinito: !cursore.inCorso, fermata, sospesa, totali, durataMs, errore, cursore };
 }
