@@ -93,7 +93,11 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
   const fonti = [...new Set([...fontiDellaGara(g.chiave, g.provenienza_campi), ...perFonte.map((f) => f.fonte)])].sort() as ReturnType<typeof fontiDellaGara>;
   // fonti mostrate nella sintesi: quelle degli avvisi visibili al cliente (le fonti nascoste sono già escluse)
   const fontiMostrate = perFonte.length ? perFonte.map((f) => f.fonte) : fontiDellaGara(g.chiave, g.provenienza_campi);
-  const fonteDi = (gruppo: string) => NOME_FONTE[fonteDelDato(g.provenienza_campi, gruppo, g.chiave)];
+  // una fonte non riconosciuta non diventa mai «TED» per ripiego (segnalazione di B1, 23/11)
+  const fonteDi = (gruppo: string) => {
+    const f = fonteDelDato(g.provenienza_campi, gruppo, g.chiave);
+    return f ? NOME_FONTE[f] : "fonte non riconosciuta";
+  };
   const adesso = new Date();
   // aperta la scheda, le novità di una gara salvata risultano viste (dopo la risposta, senza rallentare la pagina)
   if (salvataggio) {
