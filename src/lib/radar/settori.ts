@@ -1397,8 +1397,9 @@ const CONCESSIONE_DI_IMMOBILE = /\bconcession\w* (in gestione |in uso |d uso )?(
 const STABULARI = /\b(stabular\w*|stabiliment\w* utilizzator\w*|animal\w* (da |per )?(laboratorio|sperimentazion\w*|ricerca))\b/;
 const BIBLIOTECA = /\b(servizi\w* (integrat\w* )?(di |della |delle |dei )?bibliotec\w*|servizi\w* bibliotecar\w*|gestione (della |delle |dei )?bibliotec\w*)\b/;
 
+// Si chiama solo per una gara senza A né B (ultimo ritorno di classificaSenzaLotti: tutte le valutazioni sono C o non ce ne sono)
 function casiDaVerificare(t: string, valutazioni: readonly Valutazione[], settoriDeiCpv: readonly SettoreRadar[]): DaVerificare[] {
-  if (!t || valutazioni.some((v) => v.livello !== "C")) return [];
+  if (!t) return [];
   const esclusaDa = (s: SettoreRadar, regola: string) => valutazioni.some((v) => v.settore === s && v.livello === "C" && v.regole.includes(regola));
   const out: DaVerificare[] = [];
   if (esclusaDa("ristorazione", "concessione_di_immobili") && settoriDeiCpv.includes("ristorazione") && CONCESSIONE_DI_IMMOBILE.test(t)) {
