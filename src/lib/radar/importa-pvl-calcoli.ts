@@ -3,7 +3,7 @@
 //
 // Dal K4 (48C) il cursore e le sue regole stanno in importa-pvl-cursore.ts (versione 2: incrementale, finestra controllata, recupero dei
 // 90 giorni, buchi, completezza); un cursore v1 salvato si converte da lì senza perdere nulla.
-import { attribuzioneRicercaPvl, type AvvisoPvlLetto, type BandoPvl } from "./fonti/pvl-calcoli";
+import { attribuzioneRicercaPvl, descrizioniDaRaccogliere, type AvvisoPvlLetto, type BandoPvl } from "./fonti/pvl-calcoli";
 import { rigaDaBando, type RigaProcedura } from "./importa-calcoli";
 
 export const GIORNI_SOVRAPPOSIZIONE_PVL = 1;
@@ -96,13 +96,23 @@ export function rigaDaBandoPvl(b: BandoPvl, adesso: Date): RigaProcedura {
 // C2 (49C, R2): per un codice dell'elenco di ricerca, in un giro: avvisi letti, ammessi nell'archivio («bandi», comprese indagini ed elenchi
 // di C1) con il loro livello migliore (A o B), e scartati perché fuori dai settori. La potatura la decide l'utente (mai automatica).
 export type MisuraCodicePvl = { letti: number; bandi: number; a: number; b: number; fuori_settore: number };
+// R4: al più tante voci nuove per giro, per non gonfiare il registro
+export const MASSIMO_DESCRIZIONI_RACCOLTE = 50;
 
 /** C2: aggiunge alla misura per codice gli avvisi di una pagina (stesso ordine di `letti`, cioè content.map(leggiAvvisoPvl)). */
 export function misuraPerCodicePvl(stat: StatistichePvl["avvisi"], avvisi: readonly Record<string, unknown>[], letti: readonly AvvisoPvlLetto[]): void {
   avvisi.forEach((a, i) => {
     const { codici, delFile } = attribuzioneRicercaPvl(a);
+    // R4: coppie certe da qualunque avviso; descrizioni sconosciute solo dagli avvisi che non si attribuiscono
+    const { coppie, sconosciute } = descrizioniDaRaccogliere(a);
+    const daCompletare = (stat.descrizioniDaCompletare ??= {});
+    for (const [c, t] of Object.entries(coppie)) if (!(c in daCompletare) && Object.keys(daCompletare).length < MASSIMO_DESCRIZIONI_RACCOLTE) daCompletare[c] = t;
     if (codici.length === 0) {
-      if (!delFile) stat.nonAttribuiti++;
+      if (!delFile) {
+        stat.nonAttribuiti++;
+        const ignote = (stat.descrizioniSconosciute ??= {});
+        for (const t of sconosciute) if (t in ignote || Object.keys(ignote).length < MASSIMO_DESCRIZIONI_RACCOLTE) ignote[t] = (ignote[t] ?? 0) + 1;
+      }
       return;
     }
     const l = letti[i];
@@ -133,6 +143,10 @@ export type StatistichePvl = {
     // riconducono a nessun codice (né dell'elenco né del file di classificazione), per esempio i 14 codici ancora senza descrizione
     perCodice: Record<string, MisuraCodicePvl>;
     nonAttribuiti: number;
+    // R4 (decisione dell'utente del 23/11): coppie codice → descrizione scritte dalla PVL per i codici dell'elenco ancora senza
+    // descrizione, e descrizioni sconosciute degli avvisi non attribuiti (con quante volte). Solo testo del CPV, al più 50 voci
+    descrizioniDaCompletare: Record<string, string>;
+    descrizioniSconosciute: Record<string, number>;
   };
   bandi: {
     invariati: number;
@@ -165,7 +179,7 @@ export type StatistichePvl = {
 export function statistichePvlVuote(): StatistichePvl {
   return {
     pvl: { richieste: 0, byte: 0, ms: 0, risposte: {}, conteggioDichiarato: null },
-    avvisi: { letti: 0, perScheda: {}, bandi: 0, esiti: 0, esclusi: {}, sostituiti: {}, nonAttivi: 0, perCodice: {}, nonAttribuiti: 0 },
+    avvisi: { letti: 0, perScheda: {}, bandi: 0, esiti: 0, esclusi: {}, sostituiti: {}, nonAttivi: 0, perCodice: {}, nonAttribuiti: 0, descrizioniDaCompletare: {}, descrizioniSconosciute: {} },
     bandi: {
       invariati: 0,
       nuoveNazionali: 0,

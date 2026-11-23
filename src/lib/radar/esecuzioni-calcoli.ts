@@ -233,7 +233,7 @@ export type RisultatoPvlPerRegistro =
       errore: string | null;
       statistiche: {
         pvl: { richieste: number; byte: number; ms: number; risposte: Record<string, number>; conteggioDichiarato: number | null };
-        avvisi: { letti: number; perScheda: Record<string, number>; bandi: number; esiti: number; esclusi: Record<string, number>; sostituiti: Record<string, number>; nonAttivi: number; perCodice?: Record<string, { letti: number; bandi: number; a: number; b: number; fuori_settore: number }>; nonAttribuiti?: number };
+        avvisi: { letti: number; perScheda: Record<string, number>; bandi: number; esiti: number; esclusi: Record<string, number>; sostituiti: Record<string, number>; nonAttivi: number; perCodice?: Record<string, { letti: number; bandi: number; a: number; b: number; fuori_settore: number }>; nonAttribuiti?: number; descrizioniDaCompletare?: Record<string, string>; descrizioniSconosciute?: Record<string, number> };
         bandi: { invariati: number; nuoveNazionali: number; nuoveSopraSogliaSenzaTed: number; giaPresentiTed: number; nuoveVersioni: number; aggiornate: number; rettifiche: number; annullate: number; conflitti: number };
         esiti: { letti: number; applicati: number; senzaGara: number };
         db: { richiesteDb: number; msDb: number };
@@ -277,6 +277,9 @@ export function datiGiroPvl(r: RisultatoPvlPerRegistro): DatiGiro | null {
       // C2 (49C, R2): solo i codici con avvisi letti nel giro
       per_codice: s.avvisi.perCodice ?? {},
       non_attribuiti: s.avvisi.nonAttribuiti ?? 0,
+      // R4: solo testo del CPV, e solo se il giro ne ha trovato
+      ...(Object.keys(s.avvisi.descrizioniDaCompletare ?? {}).length ? { descrizioni_da_completare: s.avvisi.descrizioniDaCompletare } : {}),
+      ...(Object.keys(s.avvisi.descrizioniSconosciute ?? {}).length ? { descrizioni_sconosciute: s.avvisi.descrizioniSconosciute } : {}),
       esclusi: s.avvisi.esclusi,
       sostituiti: s.avvisi.sostituiti,
       invariati: s.bandi.invariati,

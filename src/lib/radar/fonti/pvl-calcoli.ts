@@ -216,6 +216,31 @@ export function attribuzioneRicercaPvl(a: Avviso): { codici: string[]; delFile: 
   return { codici: [...codici].sort(), delFile };
 }
 
+// R4 (decisione dell'utente del 23/11: «Dagli avvisi PVL nel collaudo», nessun download del vocabolario CPV): le descrizioni dei codici
+// dell'elenco che ancora non ce l'hanno si prendono dagli avvisi veri. Qualche lotto scrive il CPV come «90911200_Servizi di pulizia di
+// edifici» (codice e descrizione insieme: 4 lotti su 101 negli avvisi salvati del 9–16/11): quella è una COPPIA certa. Gli altri scrivono
+// solo la descrizione: se non è riconosciuta, è una descrizione SCONOSCIUTA da far guardare a una persona (il codice non si indovina).
+// Solo il testo del CPV, mai dati della gara. Il file dell'elenco si completa con un commit, dopo la verifica.
+const SENZA_DESCRIZIONE = new Set(CPV_RICERCA_PVL.filter((r) => !r.descrizione).map((r) => r.cpv));
+export const LUNGHEZZA_DESCRIZIONE_RACCOLTA = 200;
+
+export function descrizioniDaRaccogliere(a: Avviso): { coppie: Record<string, string>; sconosciute: string[] } {
+  const coppie: Record<string, string> = {};
+  const sconosciute = new Set<string>();
+  for (const e of sezioni(a).elementi) {
+    const t = testoPvl(e.cpv);
+    if (!t) continue;
+    const conCodice = t.match(/^(\d{8})(?:-\d(?!\d))?[\s_:\-–]*(.*)$/);
+    if (conCodice) {
+      const testo = conCodice[2].trim().slice(0, LUNGHEZZA_DESCRIZIONE_RACCOLTA);
+      if (SENZA_DESCRIZIONE.has(conCodice[1]) && testo && !(conCodice[1] in coppie)) coppie[conCodice[1]] = testo;
+      continue;
+    }
+    if (cpvDaDescrizione(t) === null && !RICERCA_PER_DESCRIZIONE.has(nomeDiConfronto(t))) sconosciute.add(t.slice(0, LUNGHEZZA_DESCRIZIONE_RACCOLTA));
+  }
+  return { coppie, sconosciute: [...sconosciute].sort() };
+}
+
 const FMT_ORA_ROMA = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 
 // Scadenza di un lotto. Regole (mai un'ora presunta):
