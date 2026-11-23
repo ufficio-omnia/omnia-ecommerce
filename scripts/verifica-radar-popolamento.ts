@@ -214,6 +214,53 @@ async function principale() {
     uguale("B. idempotenza: già classificata con queste regole e non cambiata dopo → nessun calcolo", pianoGara({ gara: g1, lotti: [], attive: [], stato, esecuzione: es, adessoIso: ISO, nuovoId }).tipo, "gia_classificata");
     uguale("B. regole diverse, o gara cambiata dopo la classificazione → si ricalcola", [giaClassificata({ ...stato, versione_regole: "2026-11-17e" }, g1.aggiornata_il), giaClassificata(stato, "2026-11-03T00:00:00.000Z"), giaClassificata({ ...stato, stato: "fallita" }, g1.aggiornata_il), giaClassificata({ ...stato, stato: "in_attesa" }, null)], [false, false, false, false]);
     uguale("B. categorie della gara: A, B, misti, C, nessun settore", [categoriaGara([{ rilevanza: "A" }]), categoriaGara([{ rilevanza: "B" }]), categoriaGara([{ rilevanza: "A" }, { rilevanza: "B" }]), categoriaGara([{ rilevanza: "C" }]), categoriaGara([])], ["A", "B", "misti", "C", "nessun_settore"]);
+
+    // 49C §6.3 (difetto trovato dalla sessione PVL): le righe «non_riconosciuto» di una riclassificazione PRECEDENTE non si perdono con
+    // una versione nuova delle regole. Gara uscita dal multiservizi il 18/11: colonna già vuota, riga C «non_riconosciuto» attiva (18e)
+    const vecchia = (settore: string, x: Partial<RigaClassificazione> = {}): RigaClassificazione => ({
+      id: `vecchia-${settore}`,
+      procedura_id: "G9",
+      settore: settore as RigaClassificazione["settore"],
+      rilevanza: "C",
+      sottocategorie: [],
+      regole: [REGOLA_NON_RICONOSCIUTO],
+      motivi: [MOTIVO_NON_RICONOSCIUTO],
+      da: "parole_chiave",
+      cpv: [],
+      versione_regole: "2026-11-18e",
+      origine: "riclassificazione",
+      fonti: ["ted"],
+      per_fonte: { ted: "C" },
+      ambigua: false,
+      nota: null,
+      autore: "riclassificazione:20261118T120000000Z",
+      attiva: true,
+      valida_dal: "2026-11-18T12:00:00.000Z",
+      sostituita_il: null,
+      sostituita_da: null,
+      ...x,
+    });
+    const g9 = comeArchivio(gara("G9", { oggetto: "Servizi integrati di gestione documentale (prova sintetica)", cpv_principale: "79999100", cpv_tutti: null, settori: [], metodo_settore: null }));
+    const stato18 = { procedura_id: "G9", stato: "classificata" as const, versione_regole: "2026-11-18e", classificata_il: "2026-11-18T12:00:00.000Z", tentativi: 1, tentativo_il: "2026-11-18T12:00:00.000Z", errore: null, aggiornata_il: "2026-11-18T12:00:00.000Z" };
+    const p9 = pianoGara({ gara: g9, lotti: [], attive: [vecchia("multiservizi")], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    const nr9 = p9.calcolate.find((r) => r.settore === "multiservizi");
+    uguale("B. 49C §6.3: la riga «non_riconosciuto» di prima RESTA con le regole correnti (C, motivo, versione nuova), la gara resta «C» e non «nessun settore»",
+      [nr9?.rilevanza, nr9?.regole, nr9?.motivi, nr9?.versione_regole, nr9?.da, categoriaGara(p9.calcolate), p9.cambiaSettori, p9.righe?.disattiva.length, p9.righe?.inserisci.length],
+      ["C", [REGOLA_NON_RICONOSCIUTO], [MOTIVO_NON_RICONOSCIUTO], VERSIONE_REGOLE_SETTORI, "parole_chiave", "C", false, 1, 1]);
+    const senza = pianoGara({ gara: g9, lotti: [], attive: [], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    uguale("B. 49C §6.3: senza una riga di prima nessuna riga inventata (gara senza settori considerati)", [senza.calcolate.length, categoriaGara(senza.calcolate)], [0, "nessun_settore"]);
+    const inattiva = pianoGara({ gara: g9, lotti: [], attive: [vecchia("multiservizi", { attiva: false })], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    uguale("B. 49C §6.3: una riga NON attiva (storica) non si rigenera", inattiva.calcolate.length, 0);
+    const altraRegola = pianoGara({ gara: g9, lotti: [], attive: [vecchia("multiservizi", { regole: ["forniture_di_beni"], motivi: ["Fornitura di beni"] })], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    uguale("B. 49C §6.3: solo le righe «non_riconosciuto» restano (una C con un'altra regola la decide il ricalcolo)", altraRegola.calcolate.length, 0);
+    const daAdmin = pianoGara({ gara: g9, lotti: [], attive: [vecchia("multiservizi", { origine: "amministratore", autore: "admin@prova.test" })], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    uguale("B. 49C §6.3: una decisione dell'amministratore non si rigenera mai come «non_riconosciuto» e resta attiva (mai chiusa)", [daAdmin.calcolate.some((r) => r.regole.includes(REGOLA_NON_RICONOSCIUTO)), daAdmin.righe?.disattiva.some((d) => d.id === "vecchia-multiservizi")], [false, false]);
+    // la gara torna nel multiservizi (S3 delle regole 23a: manutenzione integrata degli immobili) → vale il calcolo, non la riga di prima
+    const torna = pianoGara({ gara: comeArchivio(gara("G9", { oggetto: "Servizi integrati di manutenzione degli immobili comunali (prova sintetica)", cpv_principale: "50700000", cpv_tutti: null, settori: [], metodo_settore: null })), lotti: [], attive: [vecchia("multiservizi")], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    const rt = torna.calcolate.find((r) => r.settore === "multiservizi");
+    uguale("B. 49C §6.3: se le regole vedono di nuovo il settore, vale il calcolo (pertinente, senza «non_riconosciuto»)", [rt?.rilevanza === "A" || rt?.rilevanza === "B", rt?.regole.includes(REGOLA_NON_RICONOSCIUTO), torna.ric?.dopo.settori], [true, false, ["multiservizi"]]);
+    const altroSettore = pianoGara({ gara: comeArchivio(gara("G9", { oggetto: MENSA, cpv_principale: "55524000", settori: ["ristorazione"], metodo_settore: "cpv" })), lotti: [], attive: [vecchia("multiservizi")], stato: stato18, esecuzione: es, adessoIso: ISO, nuovoId });
+    uguale("B. 49C §6.3: con un altro settore pertinente la riga di prima resta lo stesso (spiega perché la gara non è nel multiservizi)", altroSettore.calcolate.map((r) => `${r.settore}=${r.rilevanza}`).sort(), ["multiservizi=C", "ristorazione=A"]);
   }
 
   // ═════ C. script sul database in memoria ═════
