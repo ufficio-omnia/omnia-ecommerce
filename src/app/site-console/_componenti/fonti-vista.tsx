@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { DatiFontiConsole, FonteConsole } from "@/lib/console/fonti";
-import { GRAVITA_CONSOLE, STATO_FONTE_CONSOLE, esitoLeggibile, modoLeggibile } from "@/lib/console/fonti-calcoli";
+import { GRAVITA_CONSOLE, STATO_FONTE_CONSOLE, esitoLeggibile, modoLeggibile, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
 import { impostaFontePvl, impostaFonteRegionale, impostaFonteTed } from "../azioni/tender-intelligence";
 import { Badge, Pannello } from "./elementi";
 import ModuloAzione from "./modulo-azione";
@@ -68,6 +68,7 @@ function sezioneFonte(f: FonteConsole) {
         </p>
         <p className="cn-nota">{`Ultimo successo: ${data(f.ultimoSuccesso)}`}</p>
         <p className="cn-nota">{`Prossimo giro: ${f.prossimoGiro ? data(f.prossimoGiro) : !f.attiva ? "nessuno (fonte spenta)" : "nessuno (giri programmati spenti in questo ambiente)"}`}</p>
+        <p className="cn-nota">{testoGiriProgrammati(f.giriProgrammati)}</p>
         {f.allarmi.length > 0 ? (
           <ul className="cn-elenco">
             {f.allarmi.map((a, i) => (

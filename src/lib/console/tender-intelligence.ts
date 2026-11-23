@@ -11,7 +11,9 @@ import { condizioneAperte } from "@/lib/radar/ricerca-calcoli";
 import { giornoIso } from "@/lib/radar/importa-ted-calcoli";
 import { ambienteDb, scrittureRadarConsentite } from "@/lib/radar/ambiente";
 import { limitiPvlDaRighe, type LimitiPvl } from "@/lib/radar/fonti/pvl-calcoli";
-import { CRON_PVL_PROPOSTO, ORE_GIRI_PVL, prossimoGiroPvl, type StatistichePvl } from "@/lib/radar/importa-pvl-calcoli";
+import type { StatistichePvl } from "@/lib/radar/importa-pvl-calcoli";
+import type { FonteEsecuzione } from "@/lib/radar/esecuzioni-calcoli";
+import { giriProgrammatiTutti, type GiriProgrammatiConsole } from "./fonti-calcoli";
 import { FONTI_REGIONALI, type FonteRegionale, type StatisticheRegionali } from "@/lib/radar/importa-regionali-calcoli";
 import { leggiProposteAperte } from "@/lib/radar/collegamenti";
 import { CAMPO_CLASSIFICAZIONE_AMBIGUA } from "@/lib/radar/fonti-gara-calcoli";
@@ -52,6 +54,8 @@ export type DatiTenderIntelligenceConsole = {
   regionali: DatiRegionaliConsole | null;
   // schema S4 (49C §4.2, migrazione 0133): gare «da verificare», decise a mano da un amministratore
   gareInVerifica: GaraInVerificaConsole[] | null;
+  // giri programmati delle quattro fonti (K1 di B2): orari, interruttori e righe cron SOLO da programmazione-calcoli.ts
+  giriProgrammati: Record<FonteEsecuzione, GiriProgrammatiConsole>;
 };
 
 export type UltimoGiroPvl = StatistichePvl & {
@@ -74,7 +78,6 @@ export type DatiPvlConsole = {
   ultimoGiorno: string | null;
   ultimoGiro: UltimoGiroPvl | null;
   limiti: LimitiPvl;
-  giriProgrammati: { attivi: boolean; orari: string; cronProposto: string; prossimo: string };
   archivio: { avvisi: number | null; gareNateDallaPvl: number | null; avvisiCheCitanoTed: number | null; cambiamentiPvl: number | null };
   // gare doppie collegate in modo reversibile (0117): le più recenti, con la gara che resta
   collegamenti: { totale: number; elenco: { id: string; titolo: string; resta: string; il: string | null; motivo: string | null }[] } | null;
@@ -123,8 +126,9 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     return { ...f, db: r ? { attiva: r.attiva, ultimo_successo_il: r.ultimo_successo_il, ultimo_errore: r.ultimo_errore, ultimo_errore_il: r.ultimo_errore_il, dati_aggiornati_al: r.dati_aggiornati_al } : null };
   });
 
+  const giriProgrammati = giriProgrammatiTutti(process.env, new Date());
   if (!schemaPresente) {
-    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, gareCollegate: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null, gareInVerifica: null };
+    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, gareCollegate: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null, gareInVerifica: null, giriProgrammati };
   }
 
   // conteggio con un filtro di uguaglianza facoltativo; null = conteggio non riuscito
@@ -185,6 +189,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     pvl,
     regionali,
     gareInVerifica,
+    giriProgrammati,
     schemaPresente,
     parametri,
     fonti,
@@ -224,7 +229,6 @@ async function leggiDatiPvl(admin: ReturnType<typeof createAdminClient>): Promis
   const cursore = riga.cursore ?? null;
   const sospensione = riga.conteggi?.sospensione as { il: string; motivo: string | null } | undefined;
   const ambiente = ambienteDb(process.env.NEXT_PUBLIC_SUPABASE_URL);
-  const attivi = process.env.RADAR_PVL_CRON === "attivo";
   return {
     accensioneConsentita: scrittureRadarConsentite("pvl", process.env).ok,
     ambiente,
@@ -233,7 +237,6 @@ async function leggiDatiPvl(admin: ReturnType<typeof createAdminClient>): Promis
     ultimoGiorno: typeof cursore?.ultimoGiorno === "string" ? cursore.ultimoGiorno : null,
     ultimoGiro: (riga.conteggi?.ultimo_giro as UltimoGiroPvl | undefined) ?? null,
     limiti: limitiPvlDaRighe(righeLimiti.data ?? []),
-    giriProgrammati: { attivi, orari: ORE_GIRI_PVL.map((o) => `${o}:00`).join(", "), cronProposto: CRON_PVL_PROPOSTO, prossimo: prossimoGiroPvl(new Date()).toISOString() },
     archivio: { avvisi, gareNateDallaPvl, avvisiCheCitanoTed, cambiamentiPvl },
     collegamenti: collegateRaw.error
       ? null
@@ -262,7 +265,7 @@ export type PropostaConsole = { a: ProvaGaraConsole; b: ProvaGaraConsole; motivo
 // classificazioni diverse tra le fonti della stessa gara (classificazione-unita.ts): si vedono, non si decidono da sole
 export type ClassificazioneDaVerificareConsole = SegnalazioneClassificazioneConsole & { gara: { id: string; titolo: string }; motivo: string | null; il: string };
 
-export type DatiRegionaliConsole = { fonti: DatiFonteRegionaleConsole[]; proposte: PropostaConsole[] | null; classificazioni: ClassificazioneDaVerificareConsole[] | null; giriProgrammati: boolean };
+export type DatiRegionaliConsole = { fonti: DatiFonteRegionaleConsole[]; proposte: PropostaConsole[] | null; classificazioni: ClassificazioneDaVerificareConsole[] | null };
 
 async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): Promise<DatiRegionaliConsole | null> {
   const { data: righe, error } = await admin
@@ -350,6 +353,5 @@ async function leggiDatiRegionali(admin: ReturnType<typeof createAdminClient>): 
     }),
     proposte,
     classificazioni,
-    giriProgrammati: process.env.RADAR_REGIONALI_CRON === "attivo",
   };
 }

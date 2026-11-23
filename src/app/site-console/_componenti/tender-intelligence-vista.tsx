@@ -17,6 +17,7 @@ import {
 } from "../azioni/tender-intelligence";
 import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-calcoli";
 import { ETICHETTE_LIMITI_PVL, erroreAncoraAttuale } from "@/lib/console/tender-intelligence-calcoli";
+import { testoGiriProgrammati, type GiriProgrammatiConsole } from "@/lib/console/fonti-calcoli";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
 import ModuloAzione from "./modulo-azione";
 import GareInVerifica from "./gare-in-verifica";
@@ -131,7 +132,18 @@ function confermaAccensione(nome: string) {
   );
 }
 
-function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceConsole["pvl"]>; attiva: boolean }) {
+// Giri programmati di una fonte (K1): orari, interruttori e righe cron SOLO da programmazione-calcoli.ts (testoGiriProgrammati); il prossimo
+// orario come «prossimo giro» se fonte e giri sono accesi, altrimenti come «sarebbe»
+function testoGiri(giri: GiriProgrammatiConsole, fonteAccesa: boolean) {
+  return (
+    <p className="cn-nota">
+      {testoGiriProgrammati(giri)}
+      {giri.prossimoOrario ? ` ${giri.attivi && fonteAccesa ? "Prossimo giro" : "Con fonte e giri accesi, il prossimo giro sarebbe"} il ${data(giri.prossimoOrario)}.` : ""}
+    </p>
+  );
+}
+
+function SezionePvl({ pvl, attiva, giri }: { pvl: NonNullable<DatiTenderIntelligenceConsole["pvl"]>; attiva: boolean; giri: GiriProgrammatiConsole }) {
   const g = pvl.ultimoGiro;
   return (
     <>
@@ -160,19 +172,7 @@ function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceCo
               <span className="cn-nota">Dall&apos;ultimo giorno letto meno uno a oggi, entro il tetto di richieste qui sotto.</span>
             </ModuloAzione>
           )}
-          <p className="cn-nota">
-            Giri programmati alle {pvl.giriProgrammati.orari} ora italiana (ora legale compresa):{" "}
-            {pvl.giriProgrammati.attivi ? (
-              <>
-                <strong>attivi</strong>, prossimo il {data(pvl.giriProgrammati.prossimo)}
-              </>
-            ) : (
-              <>
-                <strong>configurati ma non attivi</strong> (servono l&apos;autorizzazione operativa, la riga «{pvl.giriProgrammati.cronProposto}» in vercel.json e RADAR_PVL_CRON=attivo). Se attivi, il prossimo sarebbe il {data(pvl.giriProgrammati.prossimo)}
-              </>
-            )}
-            .
-          </p>
+          {testoGiri(giri, attiva)}
           <p className="cn-nota">
             Archivio: {numero(pvl.archivio.avvisi)} avvisi letti dalla PVL, {numero(pvl.archivio.gareNateDallaPvl)} gare arrivate prima (o solo) dalla PVL, {numero(pvl.archivio.avvisiCheCitanoTed)} avvisi che citano un avviso TED (stessa gara, nessun doppione), {numero(pvl.archivio.cambiamentiPvl)} rettifiche, proroghe, annullamenti ed esiti registrati dalla PVL.
           </p>
@@ -315,7 +315,7 @@ function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceCo
 
 const NOME_REGIONALE: Record<string, string> = { sintel: "Sintel (dati aperti della Regione Lombardia)", sardegnacat: "SardegnaCAT (feed pubblico dei bandi)" };
 
-function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderIntelligenceConsole["regionali"]> }) {
+function SezioneRegionali({ regionali, giri }: { regionali: NonNullable<DatiTenderIntelligenceConsole["regionali"]>; giri: DatiTenderIntelligenceConsole["giriProgrammati"] }) {
   return (
     <>
       {regionali.fonti.map((f) => {
@@ -354,7 +354,7 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
                   </ModuloAzione>
                 )}
               </>
-              <p className="cn-nota">Giri programmati: {regionali.giriProgrammati ? <strong>attivi</strong> : <strong>configurati ma non attivi</strong>} (servono l&apos;autorizzazione operativa, la riga in vercel.json e RADAR_REGIONALI_CRON=attivo).</p>
+              {testoGiri(giri[f.fonte], f.attiva)}
               {g && (
                 <p className="cn-nota">
                   Ultimo giro del {data(g.iniziato_il)}, {secondi(g.durata_ms)}: {g.invariata_alla_fonte ? "dati invariati alla fonte" : `${numero(g.fonte.richieste)} richieste (${(g.fonte.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB); ${numero(g.letti)} procedure lette, ${numero(g.nuove)} gare nuove, ${numero(g.aggiornate)} aggiornate, ${numero(g.invariati)} invariate, ${numero(g.rettifiche)} con rettifiche o proroghe, ${numero(g.collegateDoppie)} gare doppie unite, ${numero(g.proposte)} suggerimenti, ${numero(g.nonApplicateNascosta)} versioni non applicate perché la fonte è nascosta; esclusioni: ${Object.entries(g.esclusi).map(([k, n]) => `${k} ${n}`).join(", ") || "nessuna"}`}
@@ -532,7 +532,7 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
               {dati.ted?.ultimoGiorno ? ` · avvisi letti fino al ${data(dati.ted.ultimoGiorno)}` : ""}
             </p>
             <ModuloAzione azione={impostaFonteTed} etichetta={tedAttiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ azione: tedAttiva ? "spegni" : "accendi" }}>
-              <span className="cn-nota">Importazione automatica nei giorni feriali alle 9:15 UTC (cron), solo con la fonte accesa.</span>
+              <span className="cn-nota">{testoGiriProgrammati(dati.giriProgrammati.ted)} I giri partono solo con la fonte accesa.</span>
               {tedAttiva ? null : confermaAccensione("TED")}
             </ModuloAzione>
             {tedAttiva && (
@@ -585,9 +585,9 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
         </div>
       )}
 
-      {dati.pvl && <SezionePvl pvl={dati.pvl} attiva={dati.fonti.find((f) => f.id === "pvl")?.db?.attiva === true} />}
+      {dati.pvl && <SezionePvl pvl={dati.pvl} attiva={dati.fonti.find((f) => f.id === "pvl")?.db?.attiva === true} giri={dati.giriProgrammati.pvl} />}
 
-      {dati.regionali && <SezioneRegionali regionali={dati.regionali} />}
+      {dati.regionali && <SezioneRegionali regionali={dati.regionali} giri={dati.giriProgrammati} />}
       {dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}
 
       <div className="cn-sezione">

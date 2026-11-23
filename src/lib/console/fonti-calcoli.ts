@@ -2,7 +2,7 @@
 // per l'elenco. Logica pura, provata da scripts/verifica-monitorate-fonti-nascoste.ts (sezione S). Lo stato e gli allarmi li calcola B2
 // (stato-fonti-calcoli.ts, K3): qui solo come si mostrano.
 import type { FonteEsecuzione } from "@/lib/radar/esecuzioni-calcoli";
-import { orariPrevisti } from "@/lib/radar/programmazione-calcoli";
+import { CRON_PROPOSTI, INTERRUTTORE_REGIONALI_VECCHIO, INTERRUTTORI_CRON, ORARI_GIRI, cronAttiviDa, orariPrevisti, type GiorniGiro } from "@/lib/radar/programmazione-calcoli";
 import type { GravitaAllarme, RigaEsecuzioneLetta, StatoFonte } from "@/lib/radar/stato-fonti-calcoli";
 
 export type TonoConsole = "neutro" | "ok" | "avviso" | "errore";
@@ -42,6 +42,59 @@ export function accensioneConfermata(dati: FormData): boolean {
 
 export const GIRI_PER_FONTE = 10;
 const GIORNI_PROSSIMO_GIRO = 8;
+
+// ───── giri programmati (K1 di B2): orari, interruttori e righe cron vengono SOLO da programmazione-calcoli.ts, mai scritti a mano qui né
+// nelle viste e nelle azioni della console (la prova FS12 lo controlla sui sorgenti) ─────
+
+const GIORNI_LEGGIBILI: Record<GiorniGiro, string> = { tutti: "tutti i giorni", feriali: "dal lunedì al venerdì", fine_settimana: "il sabato e la domenica" };
+
+/** Gli orari di Roma dei giri programmati di una fonte (ORARI_GIRI), in chiaro: «08:05, 13:05, 18:05 tutti i giorni». */
+export function orariLeggibili(fonte: FonteEsecuzione): string {
+  const gruppi = new Map<GiorniGiro, string[]>();
+  for (const o of ORARI_GIRI[fonte]) gruppi.set(o.giorni, [...(gruppi.get(o.giorni) ?? []), o.ora]);
+  return [...gruppi].map(([giorni, ore]) => `${ore.join(", ")} ${GIORNI_LEGGIBILI[giorni]}`).join("; ");
+}
+
+export type GiriProgrammatiConsole = {
+  fonte: FonteEsecuzione;
+  // accesi in questo ambiente (cronAttiviDa: l'interruttore della fonte; per Sintel e SardegnaCAT anche il vecchio delle regionali)
+  attivi: boolean;
+  // il proprio interruttore per primo, poi l'eventuale vecchio interruttore ancora valido
+  interruttori: string[];
+  orari: string;
+  cronProposti: string[];
+  // il prossimo orario dei giri programmati, accesi o no (la pagina «Fonti» lo mostra come prossimo giro solo con fonte e giri accesi)
+  prossimoOrario: string | null;
+};
+
+export function giriProgrammatiFonte(fonte: FonteEsecuzione, env: Record<string, string | undefined>, adesso: Date): GiriProgrammatiConsole {
+  return {
+    fonte,
+    attivi: cronAttiviDa(env).has(fonte),
+    interruttori: fonte === "sintel" || fonte === "sardegnacat" ? [INTERRUTTORI_CRON[fonte], INTERRUTTORE_REGIONALI_VECCHIO] : [INTERRUTTORI_CRON[fonte]],
+    orari: orariLeggibili(fonte),
+    cronProposti: [...CRON_PROPOSTI[fonte]],
+    prossimoOrario: orariPrevisti(fonte, adesso, new Date(adesso.getTime() + GIORNI_PROSSIMO_GIRO * 86_400_000))[0]?.toISOString() ?? null,
+  };
+}
+
+export function giriProgrammatiTutti(env: Record<string, string | undefined>, adesso: Date): Record<FonteEsecuzione, GiriProgrammatiConsole> {
+  return { ted: giriProgrammatiFonte("ted", env, adesso), pvl: giriProgrammatiFonte("pvl", env, adesso), sintel: giriProgrammatiFonte("sintel", env, adesso), sardegnacat: giriProgrammatiFonte("sardegnacat", env, adesso) };
+}
+
+/** «RADAR_SINTEL_CRON=attivo (o il vecchio RADAR_REGIONALI_CRON=attivo)» */
+export function interruttoriLeggibili(g: GiriProgrammatiConsole): string {
+  const [proprio, ...vecchi] = g.interruttori;
+  return `${proprio}=attivo${vecchi.length ? ` (o il vecchio ${vecchi.map((n) => `${n}=attivo`).join(", ")})` : ""}`;
+}
+
+/** La frase dei giri programmati per la console e per gli esiti delle azioni: orari di Roma, accesi o spenti, che cosa serve per accenderli. */
+export function testoGiriProgrammati(g: GiriProgrammatiConsole): string {
+  const orari = `Giri programmati alle ${g.orari} (ora di Roma)`;
+  return g.attivi
+    ? `${orari}: accesi in questo ambiente (${interruttoriLeggibili(g)}).`
+    : `${orari}: spenti in questo ambiente; per accenderli servono l'autorizzazione operativa, ${g.cronProposti.length === 1 ? "la riga" : "le righe"} «${g.cronProposti.join("», «")}» in vercel.json e ${interruttoriLeggibili(g)}.`;
+}
 
 /** Il prossimo giro previsto: solo per una fonte accesa con i giri programmati accesi in questo ambiente; altrimenti null. */
 export function prossimoGiro(fonte: FonteEsecuzione, attiva: boolean, cronAttivo: boolean, adesso: Date): string | null {

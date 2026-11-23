@@ -1570,9 +1570,16 @@ async function principale(): Promise<void> {
   type DatiFontiProva = { fonti: FonteConsoleProva[]; registroAssente: boolean; errore: string | null };
   const leggiDatiFonti = moduloFonti.leggiDatiFonti as ((admin: unknown, adesso?: Date, env?: Record<string, string | undefined>) => Promise<DatiFontiProva>) | undefined;
   const { leggiSituazioneFonti } = richiedi(src("lib/radar/esecuzioni.ts")) as { leggiSituazioneFonti: (db: unknown, adesso: Date, env: Record<string, string | undefined>) => Promise<{ situazioni: { fonte: string; stato: string; attiva: boolean; allarmi: { codice: string; messaggio: string }[] }[]; registroAssente: boolean; errore: string | null }> };
-  const { orariPrevisti } = richiedi(src("lib/radar/programmazione-calcoli.ts")) as { orariPrevisti: (f: string, da: Date, a: Date) => Date[] };
-  // PVL e regionali coi giri programmati accesi (TED li ha sempre): una fonte spenta non ha comunque un prossimo giro
-  const ENV_F = { RADAR_PVL_CRON: "attivo", RADAR_REGIONALI_CRON: "attivo" };
+  const { orariPrevisti, INTERRUTTORI_CRON, INTERRUTTORE_REGIONALI_VECCHIO, ORARI_GIRI, CRON_PROPOSTI } = richiedi(src("lib/radar/programmazione-calcoli.ts")) as {
+    orariPrevisti: (f: string, da: Date, a: Date) => Date[];
+    INTERRUTTORI_CRON: Record<string, string>;
+    INTERRUTTORE_REGIONALI_VECCHIO: string;
+    ORARI_GIRI: Record<string, { ora: string; giorni: string }[]>;
+    CRON_PROPOSTI: Record<string, string[]>;
+  };
+  // K1 di B2: ogni fonte ha il suo interruttore (INTERRUTTORI_CRON, TED compreso); qui tutti accesi. Una fonte spenta non ha comunque un
+  // prossimo giro
+  const ENV_F: Record<string, string> = Object.fromEntries(Object.values(INTERRUTTORI_CRON).map((n) => [n, "attivo"]));
   mondo = mondoFonti();
   const rif = await leggiSituazioneFonti(mondo.admin, ADESSO_F, ENV_F);
   mondo = mondoFonti();
@@ -1612,15 +1619,71 @@ async function principale(): Promise<void> {
       JSON.stringify(gravitaPaginaTed) === JSON.stringify(gravitaRifTed),
     { messaggiPagina, messaggiRif, gravitaRifTed, gravitaPaginaTed },
   );
-  const prossimoPvl = orariPrevisti("pvl", ADESSO_F, new Date(ADESSO_F.getTime() + 8 * 86_400_000))[0]?.toISOString() ?? null;
-  // la PVL accesa ma coi giri programmati spenti in questo ambiente: nessun prossimo giro
+  const primoOrario = (f: string) => orariPrevisti(f, ADESSO_F, new Date(ADESSO_F.getTime() + 8 * 86_400_000))[0]?.toISOString() ?? null;
+  const prossimoPvl = primoOrario("pvl");
+  // stesse fonti con interruttori diversi: nessuno; solo quello della PVL (TED non ha più il cron «sempre acceso»); regionali accese col
+  // proprio interruttore o col vecchio RADAR_REGIONALI_CRON
+  const prossimiCon = async (env: Record<string, string>, regionaliAccese = false) => {
+    mondo = mondoFonti();
+    if (regionaliAccese) for (const r of mondo.admin.tabelle.radar_fonti_stato) if (r.fonte === "sintel" || r.fonte === "sardegnacat") Object.assign(r, { attiva: true, conteggi: {} });
+    const d = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, env) : null;
+    return d?.fonti.map((f) => f.prossimoGiro) ?? [];
+  };
+  const pNessuno = await prossimiCon({});
+  const pSoloPvl = await prossimiCon({ [INTERRUTTORI_CRON.pvl]: "attivo" });
+  const pRegVecchio = await prossimiCon({ [INTERRUTTORE_REGIONALI_VECCHIO]: "attivo" }, true);
+  const pSoloSintel = await prossimiCon({ [INTERRUTTORI_CRON.sintel]: "attivo" }, true);
   mondo = mondoFonti();
   const datiSenzaCron = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, {}) : null;
+  const tuttiNull = (xs: (string | null)[]) => xs.length === 4 && xs.every((x) => x === null);
   controlla(
-    "FS3. prossimo giro: dagli orari di B2 per una fonte accesa col cron acceso (PVL 13:05 di Roma); nessuno per una fonte spenta o col cron spento; ultimo giro e ultimo successo nella pagina",
-    !!datiF && datiF.fonti[1].prossimoGiro === prossimoPvl && prossimoPvl === "2026-11-25T12:05:00.000Z" && datiF.fonti[2].prossimoGiro === null && datiF.fonti[3].prossimoGiro === null && datiSenzaCron?.fonti[1].prossimoGiro === null && typeof datiSenzaCron?.fonti[0].prossimoGiro === "string" &&
+    "FS3. prossimo giro: dagli orari di B2 solo per una fonte accesa col SUO interruttore acceso (K1: TED con RADAR_TED_CRON, regionali col proprio o col vecchio RADAR_REGIONALI_CRON; PVL 13:05 di Roma); nessuno per una fonte spenta o coi giri spenti; ultimo giro e ultimo successo nella pagina",
+    !!datiF &&
+      prossimoPvl === "2026-11-25T12:05:00.000Z" &&
+      JSON.stringify(datiF.fonti.map((f) => f.prossimoGiro)) === JSON.stringify([primoOrario("ted"), prossimoPvl, null, null]) &&
+      typeof primoOrario("ted") === "string" &&
+      tuttiNull(pNessuno) &&
+      JSON.stringify(pSoloPvl) === JSON.stringify([null, prossimoPvl, null, null]) &&
+      JSON.stringify(pRegVecchio) === JSON.stringify([null, null, primoOrario("sintel"), primoOrario("sardegnacat")]) &&
+      JSON.stringify(pSoloSintel) === JSON.stringify([null, null, primoOrario("sintel"), null]) &&
+      typeof primoOrario("sintel") === "string" &&
       testiPannello(1).some((t) => /Ultimo giro/.test(t)) && testiPannello(1).some((t) => /Ultimo successo/.test(t)) && testiPannello(1).some((t) => /Prossimo giro/.test(t)),
-    { prossimi: datiF?.fonti.map((f) => f.prossimoGiro), prossimoPvl },
+    { prossimi: datiF?.fonti.map((f) => f.prossimoGiro), pNessuno, pSoloPvl, pRegVecchio, pSoloSintel },
+  );
+  // orari, interruttori e righe cron di ogni fonte nella pagina, dalla sola programmazione-calcoli.ts (K1). Il riferimento è scritto qui a
+  // partire da ORARI_GIRI; la PVL anche per esteso, come chiesto (08:05, 13:05, 18:05 di Roma, tutti i giorni)
+  const GIORNI_ATTESI: Record<string, string> = { tutti: "tutti i giorni", feriali: "dal lunedì al venerdì", fine_settimana: "il sabato e la domenica" };
+  const orariAttesi = (f: string) => {
+    const gruppi: [string, string[]][] = [];
+    for (const o of ORARI_GIRI[f] ?? []) {
+      const g = gruppi.find((x) => x[0] === o.giorni);
+      if (g) g[1].push(o.ora);
+      else gruppi.push([o.giorni, [o.ora]]);
+    }
+    return gruppi.map(([g, ore]) => `${ore.join(", ")} ${GIORNI_ATTESI[g]}`).join("; ");
+  };
+  const FONTI_ORDINE = ["ted", "pvl", "sintel", "sardegnacat"];
+  const albSenzaCron = vistaFonti && datiSenzaCron ? vistaFonti({ dati: datiSenzaCron }) : null;
+  const pannelliSenzaCron = elementi(albSenzaCron).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT"].some((n) => String(e.props.titolo).startsWith(n)));
+  const fraseGiri = (pannello: { props: Record<string, unknown> } | undefined) => testi(pannello?.props.children).find((t) => t.startsWith("Giri programmati alle ")) ?? "";
+  const giriAccesi = FONTI_ORDINE.map((_, i) => fraseGiri(pannelli[i]));
+  const giriSpenti = FONTI_ORDINE.map((_, i) => fraseGiri(pannelliSenzaCron[i]));
+  const regionale = (f: string) => f === "sintel" || f === "sardegnacat";
+  controlla(
+    "FS11. pagina «Fonti»: per ogni fonte gli orari di Roma da ORARI_GIRI (PVL 08:05, 13:05, 18:05 tutti i giorni), il suo interruttore (INTERRUTTORI_CRON; per le regionali anche RADAR_REGIONALI_CRON) e, coi giri spenti, le righe cron proposte (CRON_PROPOSTI)",
+    orariAttesi("pvl") === "08:05, 13:05, 18:05 tutti i giorni" &&
+      FONTI_ORDINE.every(
+        (f, i) =>
+          giriAccesi[i].startsWith(`Giri programmati alle ${orariAttesi(f)} (ora di Roma): accesi`) &&
+          giriAccesi[i].includes(`${INTERRUTTORI_CRON[f]}=attivo`) &&
+          giriAccesi[i].includes(INTERRUTTORE_REGIONALI_VECCHIO) === regionale(f) &&
+          giriSpenti[i].startsWith(`Giri programmati alle ${orariAttesi(f)} (ora di Roma): spenti`) &&
+          (CRON_PROPOSTI[f] ?? []).length > 0 &&
+          (CRON_PROPOSTI[f] ?? []).every((riga) => giriSpenti[i].includes(`«${riga}»`)) &&
+          giriSpenti[i].includes(`${INTERRUTTORI_CRON[f]}=attivo`) &&
+          giriSpenti[i].includes(INTERRUTTORE_REGIONALI_VECCHIO) === regionale(f),
+      ),
+    { giriAccesi, giriSpenti },
   );
   const giriTed = datiF?.fonti[0].giri ?? [];
   controlla(
@@ -1759,7 +1822,8 @@ async function principale(): Promise<void> {
   // la pagina Tender Intelligence: i moduli «Accendi la fonte» di TED, PVL e regionali hanno la casella di conferma obbligatoria (altrimenti
   // il server li rifiuterebbe sempre); «Spegni la fonte» no. Vista vera con dati minimi sintetici, sezioni PVL e regionali disegnate
   const VistaTi = (richiedi(src("app/site-console/_componenti/tender-intelligence-vista.tsx")) as { default: (p: unknown) => unknown }).default;
-  const datiTi = (accese: boolean) => ({
+  const { giriProgrammatiTutti } = richiedi(src("lib/console/fonti-calcoli.ts")) as { giriProgrammatiTutti?: (env: Record<string, string>, adesso: Date) => unknown };
+  const datiTi = (accese: boolean, env: Record<string, string> = {}) => ({
     schemaPresente: true,
     parametri: { attivo: false, costi: {}, limiti: {} },
     fonti: ["ted", "pvl"].map((id) => ({ id, nome: id.toUpperCase(), stato: "attiva", limiti: [], licenza: "[prova]", copertura: "[prova]", aggiornamento: "[prova]", db: { attiva: accese } })),
@@ -1789,18 +1853,23 @@ async function principale(): Promise<void> {
       fonti: ["sintel", "sardegnacat"].map((fonte) => ({ fonte, attiva: accese, nascosta: false, accensioneConsentita: true, sospensione: null, ultimoSuccesso: null, datiAl: null, ultimoGiro: null, procedure: null })),
       proposte: null,
       classificazioni: null,
-      giriProgrammati: false,
     },
     gareInVerifica: null,
+    // i giri programmati come li calcola la console (fonti-calcoli.ts, dalla sola programmazione-calcoli.ts)
+    giriProgrammati: giriProgrammatiTutti ? giriProgrammatiTutti(env, ADESSO_F) : undefined,
   });
+  // la vista della console con le sezioni PVL e regionali disegnate (sono componenti: qui si chiamano a mano)
+  const alberoTi = (accese: boolean, env: Record<string, string> = {}) => {
+    const alb = VistaTi({ dati: datiTi(accese, env) });
+    const sezioni = elementi(alb)
+      .filter((e) => typeof e.type === "function" && ["SezionePvl", "SezioneRegionali"].includes((e.type as { name: string }).name))
+      .map((e) => (e.type as (p: unknown) => unknown)(e.props));
+    return [alb, ...sezioni];
+  };
   const moduliAccensioneTi = (accese: boolean) => {
     try {
-      const alb = VistaTi({ dati: datiTi(accese) });
-      const sezioni = elementi(alb)
-        .filter((e) => typeof e.type === "function" && ["SezionePvl", "SezioneRegionali"].includes((e.type as { name: string }).name))
-        .map((e) => (e.type as (p: unknown) => unknown)(e.props));
       const azioni = [azioniTi.impostaFonteTed, azioniTi.impostaFontePvl, azioniTi.impostaFonteRegionale];
-      return elementi([alb, ...sezioni])
+      return elementi(alberoTi(accese))
         .filter((e) => e.type === ModuloAzioneConsole && azioni.includes(e.props.azione))
         .map((m) => {
           const c = elementi(m.props.children).find((e) => e.type === "input" && e.props.name === "conferma");
@@ -1816,6 +1885,76 @@ async function principale(): Promise<void> {
     "FS10. pagina Tender Intelligence: «Accendi la fonte» di TED, PVL, Sintel e SardegnaCAT con la casella di conferma obbligatoria («si»); «Spegni la fonte» senza",
     tiSpente.length === 4 && tiSpente.every((m) => m.azione === "accendi" && m.conferma) && tiAccese.length === 4 && tiAccese.every((m) => m.azione === "spegni" && !m.casella),
     { tiSpente, tiAccese },
+  );
+
+  // orari dei giri nella console: SOLO da programmazione-calcoli.ts. (1) schede TED, PVL, Sintel e SardegnaCAT della pagina Tender
+  // Intelligence; (2) messaggi delle azioni dopo l'accensione (FS9); (3) guardia sui sorgenti: nessun orario, riga cron o interruttore
+  // scritto a mano, nessun resto dei vecchi orari della PVL (ORE_GIRI_PVL, CRON_PVL_PROPOSTO, prossimoGiroPvl)
+  const frasiGiriTi = (accese: boolean, env: Record<string, string>) => {
+    try {
+      return testi(alberoTi(accese, env)).filter((t) => t.startsWith("Giri programmati alle "));
+    } catch (e) {
+      return [`eccezione: ${e instanceof Error ? e.message : String(e)}`];
+    }
+  };
+  const tiGiriSpenti = frasiGiriTi(false, {});
+  const tiGiriAccesi = frasiGiriTi(true, ENV_F);
+  const testiTi = (() => {
+    try {
+      return testi(alberoTi(false, {}));
+    } catch {
+      return [] as string[];
+    }
+  })();
+  const fraseDi = (frasi: string[], f: string, stato: "accesi" | "spenti") => frasi.filter((t) => t.startsWith(`Giri programmati alle ${orariAttesi(f)} (ora di Roma): ${stato}`) && t.includes(`${INTERRUTTORI_CRON[f]}=attivo`));
+  const avvisiAccensione = conConferma.map((x) => x.esito.avviso ?? "");
+  const SORGENTI_CONSOLE = [
+    "app/site-console/_componenti/tender-intelligence-vista.tsx",
+    "app/site-console/_componenti/fonti-vista.tsx",
+    "app/site-console/azioni/tender-intelligence.ts",
+    "app/site-console/(app)/tender-intelligence/fonti/page.tsx",
+    "lib/console/tender-intelligence.ts",
+    "lib/console/fonti.ts",
+    "lib/console/fonti-calcoli.ts",
+  ];
+  // i commenti non contano (possono citare un orario come esempio); contano stringhe, JSX e codice
+  const senzaCommenti = (s: string) =>
+    s
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .filter((r) => !/^\s*\/\//.test(r))
+      .join("\n");
+  const scrittoAMano = SORGENTI_CONSOLE.flatMap((rel) => {
+    const codice = senzaCommenti(fs.readFileSync(src(rel), "utf8"));
+    const trovati: string[] = [];
+    for (const [nome, re] of [
+      ["orario", /\b([01]?\d|2[0-3])[:.][0-5]\d\b/],
+      ["riga cron", /\*\s+\*\s+\*/],
+      ["interruttore", /RADAR_[A-Z_]*CRON/],
+      ["vecchi orari PVL", /ORE_GIRI_PVL|CRON_PVL_PROPOSTO|prossimoGiroPvl/],
+      ["UTC", /\bUTC\b/],
+    ] as [string, RegExp][]) {
+      const m = codice.match(re);
+      if (m) trovati.push(`${rel}: ${nome} «${m[0]}»`);
+    }
+    return trovati;
+  });
+  controlla(
+    "FS12. orari dei giri SOLO da programmazione-calcoli.ts: schede TED, PVL, Sintel e SardegnaCAT della pagina Tender Intelligence (orari, interruttore per fonte, RADAR_REGIONALI_CRON per compatibilità, righe cron coi giri spenti); messaggi dopo l'accensione; nei sorgenti della console nessun orario, riga cron o interruttore scritto a mano",
+    tiGiriSpenti.length === 4 &&
+      tiGiriAccesi.length === 4 &&
+      FONTI_ORDINE.every(
+        (f) =>
+          fraseDi(tiGiriSpenti, f, "spenti").length === 1 &&
+          fraseDi(tiGiriSpenti, f, "spenti")[0].includes(INTERRUTTORE_REGIONALI_VECCHIO) === regionale(f) &&
+          (CRON_PROPOSTI[f] ?? []).every((riga) => fraseDi(tiGiriSpenti, f, "spenti")[0].includes(`«${riga}»`)) &&
+          fraseDi(tiGiriAccesi, f, "accesi").length === 1,
+      ) &&
+      !testiTi.some((t) => /\b(8:00|9:15|13:00|18:00)\b|ora italiana/.test(t)) &&
+      avvisiAccensione.length === 4 &&
+      FONTI_ORDINE.every((f, i) => avvisiAccensione[i].includes(`Giri programmati alle ${orariAttesi(f)} (ora di Roma)`) && avvisiAccensione[i].includes(`${INTERRUTTORI_CRON[f]}=attivo`)) &&
+      scrittoAMano.length === 0,
+    { tiGiriSpenti, tiGiriAccesi, avvisiAccensione: avvisiAccensione.map((a) => a.slice(0, 120)), scrittoAMano },
   );
   // la pagina vera: guardia degli amministratori, lettura e vista; il collegamento dalla pagina Tender Intelligence
   const paginaFonti = ((): (() => Promise<unknown>) | null => {

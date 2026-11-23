@@ -17,7 +17,7 @@ import { decisioneAmministratore, erroriRiga, type RigaClassificazione } from "@
 import { VERSIONE_REGOLE_SETTORI, nomeSettore } from "@/lib/radar/settori";
 import { candidatoDaRighe, testoRiallineamento, validaDecisione } from "@/lib/console/gare-in-verifica-calcoli";
 import { riallineaSettoriGara } from "@/lib/radar/riclassificazione";
-import { ERRORE_CONFERMA_ACCENSIONE, accensioneConfermata } from "@/lib/console/fonti-calcoli";
+import { ERRORE_CONFERMA_ACCENSIONE, accensioneConfermata, giriProgrammatiFonte, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
 
 // Console «Tender Intelligence» (fasi B1 e B1-bis): interruttori, costi e limiti; fonti TED e PVL; imprese abilitate; giri manuali.
 // Ogni azione parte da richiediAdminAzione() (solo amministratori), valida nel server e registra in radar_console_registro chi ha cambiato
@@ -93,7 +93,7 @@ export async function impostaFonteTed(_stato: StatoAzioneTi, formData: FormData)
   if (error) return { errore: "Salvataggio non riuscito." };
   await registra(admin, [{ oggetto: "fonte:ted:attiva", valore_precedente: String(fonte.attiva), valore_nuovo: String(attiva) }], sessione);
   ricarica();
-  return { ok: true, avviso: attiva ? "Fonte TED accesa: l'importazione partirà al prossimo giro (giorni feriali, 9:15 UTC) o con «Esegui un giro adesso»." : "Fonte TED spenta: nessuna importazione finché non la riaccendi." };
+  return { ok: true, avviso: attiva ? `Fonte TED accesa. ${testoGiriProgrammati(giriProgrammatiFonte("ted", process.env, new Date()))} Un giro subito: «Esegui un giro adesso».` : "Fonte TED spenta: nessuna importazione finché non la riaccendi." };
 }
 
 // Un giro di importazione subito (al massimo 50 secondi e 10 pagine; se resta lavoro, riprende al giro successivo dal punto salvato).
@@ -134,7 +134,7 @@ export async function impostaFontePvl(_stato: StatoAzioneTi, formData: FormData)
   if (error) return { errore: "Salvataggio non riuscito." };
   await registra(admin, [{ oggetto: "fonte:pvl:attiva", valore_precedente: String(fonte.attiva), valore_nuovo: String(attiva) }], sessione);
   ricarica();
-  return { ok: true, avviso: attiva ? "Fonte PVL accesa (solo staging). I giri programmati restano spenti: un giro parte solo con «Esegui un giro adesso»." : "Fonte PVL spenta: nessuna lettura finché non la riaccendi." };
+  return { ok: true, avviso: attiva ? `Fonte PVL accesa (solo staging). ${testoGiriProgrammati(giriProgrammatiFonte("pvl", process.env, new Date()))} Un giro subito: «Esegui un giro adesso».` : "Fonte PVL spenta: nessuna lettura finché non la riaccendi." };
 }
 
 // Un giro PVL subito (incrementale: dall'ultimo giorno letto meno uno a oggi; al massimo 50 secondi e il tetto di richieste della console).
@@ -233,7 +233,7 @@ export async function impostaFonteRegionale(_stato: StatoAzioneTi, formData: For
   if (error) return { errore: "Salvataggio non riuscito." };
   await registra(admin, [{ oggetto: `fonte:${fonte}:attiva`, valore_precedente: String(riga.attiva), valore_nuovo: String(attiva) }], sessione);
   ricarica();
-  return { ok: true, avviso: attiva ? `Fonte ${NOME_REGIONALE[fonte]} accesa (solo staging). I giri programmati restano spenti; ogni giro sullo staging richiede un'autorizzazione registrata.` : `Fonte ${NOME_REGIONALE[fonte]} spenta.` };
+  return { ok: true, avviso: attiva ? `Fonte ${NOME_REGIONALE[fonte]} accesa (solo staging). ${testoGiriProgrammati(giriProgrammatiFonte(fonte, process.env, new Date()))} Ogni giro sullo staging richiede un'autorizzazione registrata.` : `Fonte ${NOME_REGIONALE[fonte]} spenta.` };
 }
 
 // Mostra o nasconde ai clienti una fonte regionale (0120). Decisione 48E dell'utente (23/11/2026): SardegnaCAT è visibile come le altre fonti,

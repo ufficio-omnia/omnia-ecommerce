@@ -4,10 +4,9 @@
 // scrittura: accendere e spegnere restano le azioni esistenti della console.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { GIORNI_REGISTRO_CONSOLE, leggiSituazioneFonti } from "@/lib/radar/esecuzioni";
-import { cronAttiviDa } from "@/lib/radar/programmazione-calcoli";
 import { COLONNE_ESECUZIONI_ALLARMI, type Allarme, type RigaEsecuzioneLetta, type StatoFonte } from "@/lib/radar/stato-fonti-calcoli";
 import type { FonteEsecuzione } from "@/lib/radar/esecuzioni-calcoli";
-import { GIRI_PER_FONTE, NOME_FONTE_CONSOLE, giroConsole, giriPerFonte, prossimoGiro, type GiroConsole } from "./fonti-calcoli";
+import { GIRI_PER_FONTE, NOME_FONTE_CONSOLE, giroConsole, giriPerFonte, giriProgrammatiFonte, prossimoGiro, type GiriProgrammatiConsole, type GiroConsole } from "./fonti-calcoli";
 
 export type FonteConsole = {
   fonte: FonteEsecuzione;
@@ -18,7 +17,8 @@ export type FonteConsole = {
   ultimoGiro: GiroConsole | null;
   ultimoSuccesso: string | null;
   allarmi: Allarme[];
-  giriProgrammati: boolean;
+  // orari, interruttori e righe cron dei giri programmati (programmazione-calcoli.ts, K1)
+  giriProgrammati: GiriProgrammatiConsole;
   prossimoGiro: string | null;
   giri: GiroConsole[];
 };
@@ -50,24 +50,26 @@ export async function leggiDatiFonti(admin: SupabaseClient, adesso: Date = new D
     if (r.error) erroreGiri = `ultimi giri: ${r.error.message}`;
     else righe = r.data ?? [];
   }
-  const cron = cronAttiviDa(env);
   return {
     adesso: adesso.toISOString(),
     registroAssente: s.registroAssente,
     errore: s.errore,
     erroreGiri,
-    fonti: s.situazioni.map((x) => ({
-      fonte: x.fonte,
-      nome: NOME_FONTE_CONSOLE[x.fonte] ?? x.fonte,
-      stato: x.stato,
-      attiva: x.attiva,
-      erroriConsecutivi: x.erroriConsecutivi,
-      ultimoGiro: x.ultimoGiro ? giroConsole(x.ultimoGiro) : null,
-      ultimoSuccesso: x.ultimoSuccesso,
-      allarmi: x.allarmi,
-      giriProgrammati: cron.has(x.fonte),
-      prossimoGiro: prossimoGiro(x.fonte, x.attiva, cron.has(x.fonte), adesso),
-      giri: giriPerFonte(righe, x.fonte),
-    })),
+    fonti: s.situazioni.map((x) => {
+      const giri = giriProgrammatiFonte(x.fonte, env, adesso);
+      return {
+        fonte: x.fonte,
+        nome: NOME_FONTE_CONSOLE[x.fonte] ?? x.fonte,
+        stato: x.stato,
+        attiva: x.attiva,
+        erroriConsecutivi: x.erroriConsecutivi,
+        ultimoGiro: x.ultimoGiro ? giroConsole(x.ultimoGiro) : null,
+        ultimoSuccesso: x.ultimoSuccesso,
+        allarmi: x.allarmi,
+        giriProgrammati: giri,
+        prossimoGiro: prossimoGiro(x.fonte, x.attiva, giri.attivi, adesso),
+        giri: giriPerFonte(righe, x.fonte),
+      };
+    }),
   };
 }
