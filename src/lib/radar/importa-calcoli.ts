@@ -167,6 +167,8 @@ function stessoValore(a: number | null, b: number | null): boolean {
 export function cambiamentiTraVersioni(prima: RigaProcedura, dopo: RigaProcedura): Cambiamento[] {
   const c: Cambiamento[] = [];
   if (dopo.stato === "annullata" && prima.stato !== "annullata") c.push({ tipo: "annullamento", campo: "stato", prima: prima.stato, dopo: "annullata" });
+  // ripristino dopo un annullamento (SardegnaCAT «Procedura Ripristinata», 23/11): una rettifica dello stato, con il valore di prima e di dopo
+  if (prima.stato === "annullata" && dopo.stato !== "annullata") c.push({ tipo: "rettifica", campo: "stato", prima: "annullata", dopo: dopo.stato });
   const s = cambioDiScadenza({ giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte }, { giorno: dopo.scadenza_giorno, iso: dopo.scadenza_offerte }, "scadenza_offerte");
   if (s) c.push(s);
   if (!stessoValore(prima.valore_stimato, dopo.valore_stimato)) c.push({ tipo: "rettifica", campo: "valore_stimato", prima: testo(prima.valore_stimato), dopo: testo(dopo.valore_stimato) });

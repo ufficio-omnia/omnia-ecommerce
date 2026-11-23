@@ -294,6 +294,15 @@ function provaSardegna(): void {
   }
   const b = bandoDaAflink(letto as BandoAflink, "2026-11-12");
   controlla("SardegnaCAT: «Bando Rettificato» → dichiarazione «rettificato» nel bando regionale e nella provenienza", !!b && b.dichiarazione === "rettificato" && bandoUnificabileRegionale(b, ADESSO).motivoModifica === "rettificato", b?.dichiarazione);
+  // «Procedura Ripristinata» (23/11, scelta (a)): dichiarazione «ripristinato», che prevale su «rettificato» se l'oggetto le porta tutte e due
+  const dich = (oggetto: string) => {
+    const l = leggiElementoAflink("sardegnacat", { ...elemento, Oggetto: oggetto }, ADESSO);
+    const r = l.tipo === "bando" ? bandoDaAflink(l as BandoAflink, "2026-11-12") : null;
+    return [r?.dichiarazione ?? null, r ? bandoUnificabileRegionale(r, ADESSO).motivoModifica : null];
+  };
+  const dichiarazioni = [dich("<strong>Procedura Ripristinata</strong> - Mensa"), dich("<strong>Procedura Ripristinata</strong> - Bando Rettificato - Mensa"), dich("Mensa scolastica")];
+  controlla("SardegnaCAT: «Procedura Ripristinata» → dichiarazione «ripristinato» (prevale su «rettificato»); oggetto senza avviso → nessuna",
+    JSON.stringify(dichiarazioni) === JSON.stringify([["ripristinato", "ripristinato"], ["ripristinato", "ripristinato"], [null, null]]), dichiarazioni);
 }
 
 // ═══════════ 3 bis. SardegnaCAT dall'IMPORTATORE, con l'evidenza accesa (Z5, documento 45): rettifica con proroga, revoca, «Procedura
@@ -342,11 +351,25 @@ async function provaSardegnaImportatore(): Promise<void> {
     !!revoca && revoca.notifica_email === false && revoca.affidabilita === "parziale" && mem.tabelle.radar_procedure[0]?.stato === "annullata", { revoca, stato: mem.tabelle.radar_procedure[0]?.stato });
   const righePrimaDelRipristino = mem.tabelle.radar_aggiornamenti.length;
   await giornoSardegna(mem, elementoSardegna(`<strong>Procedura Ripristinata</strong> - ${OGG}`, "2026-12-17T10:00:00", "2026-11-13T09:00:00"), "2026-11-13");
-  // COMPORTAMENTO ATTUALE (limite noto, non cambiato da Z5): una gara annullata non torna «aperta» per una versione successiva del bando
-  // (importa-calcoli.ts, stato precedente «annullata» conservato); il ripristino non scrive righe e non manda email
-  controlla("SardegnaCAT (importatore): «Procedura Ripristinata» dopo la revoca → la gara RESTA annullata, nessuna riga nuova, nessuna email (limite noto, comportamento di prima)",
-    mem.tabelle.radar_procedure[0]?.stato === "annullata" && mem.tabelle.radar_aggiornamenti.length === righePrimaDelRipristino && mem.tabelle.radar_aggiornamenti.every((a) => a.notifica_email === false),
-    { stato: mem.tabelle.radar_procedure[0]?.stato, righe: righeRegistro(mem) });
+  // DECISIONE DELL'UTENTE del 23/11 (scelta (a), «torna allo stato nuovo»): «Procedura Ripristinata» SOLO di SardegnaCAT, su una versione più
+  // recente di una gara che viene solo da SardegnaCAT, riporta la gara allo stato della versione nuova. Una sola riga nuova nel registro: rettifica
+  // del campo stato (annullata → aperta), con la dichiarazione della fonte «ripristinato», «parziale», MAI email (fonte nascosta)
+  const nuoveRighe = mem.tabelle.radar_aggiornamenti.slice(righePrimaDelRipristino);
+  const rip = nuoveRighe[0];
+  controlla("SardegnaCAT (importatore): «Procedura Ripristinata» dopo la revoca → la gara torna «aperta», UNA riga nuova (rettifica dello stato annullata → aperta, dichiarazione «ripristinato», parziale, giro), nessuna email",
+    mem.tabelle.radar_procedure[0]?.stato === "aperta" && nuoveRighe.length === 1 && !!rip && rip.tipo === "rettifica" && rip.campo === "stato"
+    && rip.valore_precedente === "annullata" && rip.valore_nuovo === "aperta" && rip.dichiarazione_fonte === "ripristinato" && rip.fonte === "sardegnacat"
+    && rip.affidabilita === "parziale" && rip.notifica_email === false && rip.esecuzione_id === ESECUZIONE_PROVA
+    && mem.tabelle.radar_aggiornamenti.every((a) => a.notifica_email === false),
+    { stato: mem.tabelle.radar_procedure[0]?.stato, nuove: nuoveRighe });
+  controlla("SardegnaCAT (importatore): dopo il ripristino la scadenza resta quella della rettifica (17/12) e la provenienza registra il motivo «ripristinato»",
+    mem.tabelle.radar_procedure[0]?.scadenza_offerte === "2026-12-17T09:00:00.000Z" && mem.tabelle.radar_procedure_fonti.some((f) => f.fonte === "sardegnacat" && f.motivo_modifica === "ripristinato"),
+    { scadenza: mem.tabelle.radar_procedure[0]?.scadenza_offerte, fonti: mem.tabelle.radar_procedure_fonti });
+  // lo stesso giro ripetuto (stessa versione) non riscrive nulla
+  const righeDopo = mem.tabelle.radar_aggiornamenti.length;
+  await giornoSardegna(mem, elementoSardegna(`<strong>Procedura Ripristinata</strong> - ${OGG}`, "2026-12-17T10:00:00", "2026-11-13T09:00:00"), "2026-11-13");
+  controlla("SardegnaCAT (importatore): lo stesso «Procedura Ripristinata» riletto → nessuna riga nuova, gara ancora aperta",
+    mem.tabelle.radar_aggiornamenti.length === righeDopo && mem.tabelle.radar_procedure[0]?.stato === "aperta", righeRegistro(mem));
   controlla("SardegnaCAT (importatore): l'avviso di stato non entra nell'oggetto della gara", mem.tabelle.radar_procedure[0]?.oggetto === OGG, mem.tabelle.radar_procedure[0]?.oggetto);
   // stessa sequenza con l'evidenza SPENTA (com'è oggi): righe come prima, senza le colonne della 0123
   const senza = databaseInMemoria({ radar_procedure: [], radar_lotti: [], radar_procedure_fonti: [], radar_aggiornamenti: [], omnia_ai_radar_gare_aggiunte: [] });
