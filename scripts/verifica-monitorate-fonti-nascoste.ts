@@ -1539,7 +1539,8 @@ async function principale(): Promise<void> {
         statoF("sardegnacat", false),
       ],
       radar_esecuzioni: [
-        giro("ted", "2026-11-25T09:15:00Z", "ok"),
+        // ultimo giro TED pesante (avviso «risorse») e con due allarmi suoi: uno «avviso», uno «informazione» (fermata dalla console, K7)
+        giro("ted", "2026-11-25T09:15:00Z", "ok", { db_richieste: 400, allarmi: ["fermata_dalla_console", "buco_possibile"] }),
         giro("ted", "2026-11-24T15:15:00Z", "ok", { gare_nuove: 40, modo: "manuale" }),
         giro("pvl", "2026-11-25T07:05:00Z", "errore"),
         giro("pvl", "2026-11-24T17:05:00Z", "errore"),
@@ -1595,10 +1596,21 @@ async function principale(): Promise<void> {
   );
   const messaggiRif = rif.situazioni.map((s) => s.allarmi.map((a) => a.messaggio));
   const messaggiPagina = (datiF?.fonti ?? []).map((_, i) => testiPannello(i).filter((t) => messaggiRif.flat().includes(t)));
+  // TED: tre allarmi con due gravità diverse da «errore» (risorse e buco possibile «avviso», fermata dalla console «informazione»); la
+  // gravità in pagina è il testo dei bollini degli allarmi, nell'ordine
+  const gravitaRifTed = rif.situazioni[0]?.allarmi.map((a) => (a as { gravita?: string }).gravita) ?? [];
+  const gravitaPaginaTed = elementi(pannelli[0]?.props.children)
+    .filter((e) => typeof e.props.tono === "string" && ["errore", "avviso", "informazione"].includes(e.props.children as string))
+    .map((e) => e.props.children as string);
   controlla(
-    "FS2. allarmi: per ogni fonte quelli di B2, con il loro messaggio e nello stesso ordine (per gravità); la PVL con due giri di fila in errore ha «errori_ripetuti»",
-    JSON.stringify(messaggiPagina) === JSON.stringify(messaggiRif) && rif.situazioni[1].allarmi.some((a) => a.codice === "errori_ripetuti") && messaggiRif.flat().length >= 2,
-    { messaggiPagina, messaggiRif },
+    "FS2. allarmi: per ogni fonte quelli di B2, con il loro messaggio, la loro gravità e nello stesso ordine (per gravità), anche quelli non gravi («avviso», «informazione» della fermata dalla console); la PVL con due giri di fila in errore ha «errori_ripetuti»",
+    JSON.stringify(messaggiPagina) === JSON.stringify(messaggiRif) &&
+      rif.situazioni[1].allarmi.some((a) => a.codice === "errori_ripetuti") &&
+      messaggiRif.flat().length >= 2 &&
+      JSON.stringify(gravitaRifTed) === JSON.stringify(["avviso", "avviso", "informazione"]) &&
+      rif.situazioni[0].allarmi.some((a) => a.codice === "fermata_dalla_console") &&
+      JSON.stringify(gravitaPaginaTed) === JSON.stringify(gravitaRifTed),
+    { messaggiPagina, messaggiRif, gravitaRifTed, gravitaPaginaTed },
   );
   const prossimoPvl = orariPrevisti("pvl", ADESSO_F, new Date(ADESSO_F.getTime() + 8 * 86_400_000))[0]?.toISOString() ?? null;
   // la PVL accesa ma coi giri programmati spenti in questo ambiente: nessun prossimo giro
@@ -1657,6 +1669,22 @@ async function principale(): Promise<void> {
     "FS6. accendi e spegni con le azioni esistenti (TED, PVL, regionali con la fonte) e una casella di conferma obbligatoria; una fonte sospesa si «riaccende» solo da qui",
     conferme.every(Boolean) && testiPannello(2).some((t) => /Riaccendi/.test(t)),
     conferme,
+  );
+  // Sintel e SardegnaCAT si fermano solo dal giro successivo (TED e PVL a metà giro, K7 di B2): la nota accanto a «Spegni» delle sole due
+  // regionali accese. Vista con SardegnaCAT accesa (stessi dati, solo «attiva»)
+  const NOTA_GIRO_SUCCESSIVO = /si ferma dal giro successivo/;
+  const datiRegAccesa = datiF ? { ...datiF, fonti: datiF.fonti.map((f) => (f.fonte === "sardegnacat" ? { ...f, attiva: true, stato: "ok" } : f)) } : null;
+  const albRegAccesa = vistaFonti && datiRegAccesa ? vistaFonti({ dati: datiRegAccesa }) : null;
+  const pannelliRegAccesa = elementi(albRegAccesa).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT"].some((n) => String(e.props.titolo).startsWith(n)));
+  const notaNelModulo = (pannello: { props: Record<string, unknown> } | undefined) =>
+    elementi(pannello?.props.children)
+      .filter((e) => e.type === ModuloAzioneConsole)
+      .some((m) => testi(m.props.children).some((t) => NOTA_GIRO_SUCCESSIVO.test(t)));
+  const note = { sardegnacatAccesa: notaNelModulo(pannelliRegAccesa[3]), ted: notaNelModulo(pannelli[0]), pvl: notaNelModulo(pannelli[1]), sintelSpenta: notaNelModulo(pannelli[2]), sardegnacatSpenta: notaNelModulo(pannelli[3]) };
+  controlla(
+    "FS8. «Spegni» di Sintel e SardegnaCAT accese dice che la fonte si ferma dal giro successivo; non lo dice per TED e PVL (si fermano a metà giro) né per una fonte già spenta",
+    pannelliRegAccesa.length === 4 && note.sardegnacatAccesa && testi(pannelliRegAccesa[3]?.props.children).some((t) => /^SardegnaCAT si ferma dal giro successivo/.test(t)) && !note.ted && !note.pvl && !note.sintelSpenta && !note.sardegnacatSpenta,
+    note,
   );
   // la pagina vera: guardia degli amministratori, lettura e vista; il collegamento dalla pagina Tender Intelligence
   const paginaFonti = ((): (() => Promise<unknown>) | null => {

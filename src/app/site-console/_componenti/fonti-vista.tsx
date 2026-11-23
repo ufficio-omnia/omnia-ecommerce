@@ -39,9 +39,11 @@ function accendiSpegni(f: FonteConsole) {
         {conferma}
       </ModuloAzione>
     );
+  // Sintel e SardegnaCAT non controllano la fonte durante il giro (TED e PVL sì, dal K7 di B2): lo spegnimento vale dal giro successivo
   return (
     <ModuloAzione azione={impostaFonteRegionale} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione }}>
       {conferma}
+      {f.attiva ? <p className="cn-nota">{`${f.nome} si ferma dal giro successivo: un giro già in corso arriva alla fine.`}</p> : null}
     </ModuloAzione>
   );
 }
