@@ -177,7 +177,7 @@ const giroVuoto = datiGiroPvl({ eseguita: true, modo: "incrementale", giroFinito
 uguale("R4: il registro dei giri porta le due raccolte solo se ci sono", [avvisiGiro(giroR4).descrizioni_da_completare, avvisiGiro(giroR4).descrizioni_sconosciute, "descrizioni_da_completare" in avvisiGiro(giroVuoto), "descrizioni_sconosciute" in avvisiGiro(giroVuoto)],
   [{ "90460000": "Servizi di pulizia di pozzi neri" }, { "Servizi di sgombero neve": 2 }, false, false]);
 const misuraR4 = misuraCodiciRicercaPvl([
-  { fonte: "pvl", esito: "ok", iniziato_il: "2026-11-20T08:00:00Z", avvisi: { per_codice: {}, descrizioni_da_completare: { "90460000": "Prima vista", "85311000": "Già nel file" }, descrizioni_sconosciute: { "Servizi di sgombero neve": 1, "Altro": 3 } } },
+  { fonte: "pvl", esito: "ok", iniziato_il: "2026-11-20T08:00:00Z", avvisi: { per_codice: {}, descrizioni_da_completare: { "90460000": "Prima vista", "85311000": "Già nel file" }, descrizioni_sconosciute: { "Altro": 3, "Servizi di sgombero neve": 1 } } },
   { fonte: "pvl", esito: "ok", iniziato_il: "2026-11-22T08:00:00Z", avvisi: { per_codice: {}, descrizioni_da_completare: { "90460000": "Vista dopo", "50225000": "Servizi di manutenzione" }, descrizioni_sconosciute: { "Servizi di sgombero neve": 4 } } },
 ], ADESSO);
 uguale("R4: per la console la prima coppia vista per ogni codice ancora senza descrizione; le sconosciute sommate, dalla più frequente",
