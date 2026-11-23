@@ -143,7 +143,10 @@ export type EsitoUnione = {
  * La gara dopo aver letto una versione di una fonte. «nuova» è la riga costruita SOLO da quella versione (rigaDaBando o rigaDaBandoPvl),
  * «precedente» quella in archivio con la sua provenienza per campo (vuota per le gare importate prima della B1-bis).
  */
-export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrecedente: ProvenienzaCampi | null, nuova: RigaProcedura, versione: VersioneFonte, adessoIso: string): EsitoUnione {
+/** Opzioni dell'unione. ripristino: la versione nuova dichiara «Procedura Ripristinata» (solo SardegnaCAT; 23/11, scelta (a) dell'utente). */
+export type OpzioniUnione = { ripristino?: boolean };
+
+export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrecedente: ProvenienzaCampi | null, nuova: RigaProcedura, versione: VersioneFonte, adessoIso: string, opzioni: OpzioniUnione = {}): EsitoUnione {
   const pv = provenienzaDa(versione);
   if (!precedente) {
     const provenienza: ProvenienzaCampi = { _versione: pv };
@@ -240,6 +243,13 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
   // stato: l'annullamento vale se arriva da una versione non più vecchia dell'ultima applicata; gli esiti già registrati non tornano «aperta»
   if (nuova.stato === "annullata" && precedente.stato !== "annullata" && confrontoUltima >= 0) {
     riga.stato = "annullata";
+    conCambio.add("stato");
+  }
+  // «Procedura Ripristinata» di SardegnaCAT (decisione dell'utente del 23/11, scelta (a)): una versione STRETTAMENTE più recente della stessa
+  // gara, che dichiara il ripristino e non è revocata, riporta la gara dallo stato «annullata» allo stato della versione nuova. Solo se la
+  // gara viene SOLO da SardegnaCAT: l'annullamento di un'altra fonte non si scavalca. Senza il segnale esplicito resta annullata (come prima)
+  if (opzioni.ripristino && versione.fonte === "sardegnacat" && precedente.stato === "annullata" && nuova.stato !== "annullata" && confrontoUltima > 0 && unaSolaFonte) {
+    riga.stato = nuova.stato;
     conCambio.add("stato");
   }
   // la data di pubblicazione della gara resta quella del primo avviso, da qualunque fonte

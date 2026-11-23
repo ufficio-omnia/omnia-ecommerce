@@ -94,7 +94,8 @@ export function bandoDaAflink(b: BandoAflink, oggi: string): BandoRegionale | nu
     pubblicatoIl: b.record.dataPubblicazione,
     mancanti: b.mancanti,
     // il segnale «Bando Rettificato / In Rettifica» del feed non si perde più: arriva al registro come dichiarazione della fonte
-    dichiarazione: b.rettificato ? "rettificato" : null,
+    // «Procedura Ripristinata» (23/11, scelta (a) dell'utente): arriva all'unione, che può riportare la gara dallo stato «annullata»
+    dichiarazione: b.ripristinato ? "ripristinato" : b.rettificato ? "rettificato" : null,
   };
 }
 

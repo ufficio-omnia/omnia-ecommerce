@@ -299,6 +299,41 @@ async function principale() {
     uguale("4. stesso giorno senza ora da un'altra fonte: l'ora indicata resta", [u.riga.scadenza_offerte, u.cambiamenti.length], ["2026-12-10T09:00:00.000Z", 0]);
   }
   {
+    // «Procedura Ripristinata» di SardegnaCAT (decisione dell'utente del 23/11, scelta (a)), unione PURA: torna allo stato della versione nuova
+    // SOLO con il segnale esplicito, SOLO per SardegnaCAT, SOLO da «annullata», SOLO con una versione strettamente più recente, SOLO se la gara
+    // viene solo da SardegnaCAT. Ogni caso sotto toglie UNA sola di queste condizioni.
+    type Prec = Parameters<typeof unisciVersione>[0] & object;
+    type Prov = NonNullable<Parameters<typeof unisciVersione>[1]>;
+    type Ver = Parameters<typeof unisciVersione>[3];
+    const base = (stato: string, fonte = "sardegnacat") => ({ ...(garaTed("S", { chiave: `${fonte}:700001`, fonti: [fonte], stato }) as unknown as Prec) });
+    const prov = (fonte = "sardegnacat", fonteScadenza = fonte): Prov => {
+      const p = (f: string) => ({ f, id: "700001", g: "2026-11-12", t: "2026-11-12T09:00:00", ted: null });
+      return { _versione: p(fonte), scadenza: p(fonteScadenza) } as unknown as Prov;
+    };
+    const ver = (istante: string, fonte = "sardegnacat"): Ver => ({ fonte, id: "700001", giorno: istante.slice(0, 10), istante, ted: null }) as unknown as Ver;
+    const NUOVA = "2026-11-13T09:00:00";
+    const esito = (prec: Prec, p: Prov, statoNuovo: string, v: Ver, ripristino: boolean | undefined) => {
+      const u = unisciVersione(prec, p, { ...prec, stato: statoNuovo } as Prec, v, ISO, ripristino === undefined ? undefined : { ripristino });
+      return [u.riga.stato, u.cambiamenti.filter((c) => c.campo === "stato").map((c) => `${c.tipo}:${c.prima}>${c.dopo}`)];
+    };
+    uguale("R. «Procedura Ripristinata» (SardegnaCAT, più recente, solo SardegnaCAT): la gara annullata torna «aperta», UNA rettifica dello stato",
+      esito(base("annullata"), prov(), "aperta", ver(NUOVA), true), ["aperta", ["rettifica:annullata>aperta"]]);
+    uguale("R. senza il segnale (opzione assente o falsa): la gara resta annullata, nessun cambiamento dello stato",
+      [esito(base("annullata"), prov(), "aperta", ver(NUOVA), undefined), esito(base("annullata"), prov(), "aperta", ver(NUOVA), false)], [["annullata", []], ["annullata", []]]);
+    uguale("R. stessa versione (stesso istante): la gara resta annullata",
+      esito(base("annullata"), prov(), "aperta", ver("2026-11-12T09:00:00"), true), ["annullata", []]);
+    uguale("R. versione più vecchia: la gara resta annullata",
+      esito(base("annullata"), prov(), "aperta", ver("2026-11-11T09:00:00"), true), ["annullata", []]);
+    uguale("R. gara anche di un'altra fonte (scadenza da TED): la gara resta annullata, l'annullamento non si scavalca",
+      esito(base("annullata"), prov("sardegnacat", "ted"), "aperta", ver(NUOVA), true), ["annullata", []]);
+    uguale("R. un'altra fonte con il segnale (Sintel, sola fonte della gara): la gara resta annullata",
+      esito(base("annullata", "sintel"), prov("sintel"), "aperta", ver(NUOVA, "sintel"), true), ["annullata", []]);
+    uguale("R. la versione nuova è ancora revocata: la gara resta annullata, nessun cambiamento dello stato",
+      esito(base("annullata"), prov(), "annullata", ver(NUOVA), true), ["annullata", []]);
+    uguale("R. gara non annullata (aperta / aggiudicata): lo stato non cambia, nessun cambiamento dello stato",
+      [esito(base("aperta"), prov(), "aperta", ver(NUOVA), true), esito(base("aggiudicata"), prov(), "aperta", ver(NUOVA), true)], [["aperta", []], ["aggiudicata", []]]);
+  }
+  {
     // TED (scrittura di B1, importa.ts): una gara TED assorbita da un'altra gara TED (stessa gara pubblicata due volte, unita per CIG).
     // La nuova versione e l'esito della sua procedura vanno alla gara che resta, come nella scrittura unica (rilievo C1); la copia non cambia.
     const avviso = (numero: string, p: Record<string, unknown> = {}): Record<string, unknown> => ({

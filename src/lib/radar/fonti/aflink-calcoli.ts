@@ -232,6 +232,8 @@ export type BandoAflink = {
   record: RecordProcedura;
   opportunita: Opportunita;
   rettificato: boolean;
+  // «Procedura Ripristinata» nell'oggetto del feed (dopo una revoca): decisione dell'utente del 23/11, scelta (a)
+  ripristinato: boolean;
   settori: SettoreRadar[];
   metodoSettore: "cpv" | "parole_chiave";
   // regione dell'ENTE (il feed non indica il luogo di esecuzione)
@@ -329,6 +331,7 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
     record,
     opportunita: opp,
     rettificato: ogg.rettificato,
+    ripristinato: ogg.ripristinato,
     settori: settoriTenuti,
     metodoSettore: classificazione.metodo ?? "cpv",
     regioni: [desc.regione],

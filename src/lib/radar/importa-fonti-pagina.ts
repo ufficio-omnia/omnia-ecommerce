@@ -287,7 +287,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
     const rigaPrima = s.riga;
     const provenienzaPrima = s.provenienza;
     const lottiPrima = s.lotti;
-    const u = unisciVersione(s.riga, s.provenienza, v.riga, v.versione, iso);
+    const u = unisciVersione(s.riga, s.provenienza, v.riga, v.versione, iso, { ripristino: v.motivoModifica === "ripristinato" });
     if (u.campiPresi.length > 0 || u.ultima || !s.riga) s.cambiata = true;
     s.cambiamenti.push(...u.cambiamenti.map((c) => ({ ...c, idFonte: v.idCambiamento })));
     if (u.piuRecente) s.versioneLotti = v.idCambiamento;
