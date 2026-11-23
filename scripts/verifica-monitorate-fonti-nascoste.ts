@@ -474,7 +474,9 @@ let mondo = nuovoMondo(true);
 
 // ═══════════════════════ mondo dei TIPI di opportunità (analisi 49 §4-§5: C4, C5, C11) ═══════════════════════
 // tipo_opportunita vuoto come sullo staging (C4: il tipo si ricava dal tipo dell'avviso), oppure già scritto dal motore; atteso = il tipo
-// mostrato; categoria = il gruppo del filtro di «Cerca». P7_1_3 oggi non ha tipo (C1 è di B2): nessuna etichetta e in nessun filtro di tipo.
+// mostrato; categoria = il gruppo del filtro di «Cerca». C1 di B2 (decisione dell'utente del 23/11): la scheda PVL P7_1_3 (avvio
+// dell'indagine di mercato) è un'indagine di mercato, cioè una candidatura, mai una gara aperta; P7_3 (costituzione di un elenco) è
+// un'iscrizione.
 type CasoTipo = { k: string; id: string; tipoOpp: string | null; avviso: string | null; fonte: string; atteso: string | null; categoria: string | null };
 const TIPI: CasoTipo[] = [
   ["cn", null, "cn-standard", "ted", "bando", "bandi"],
@@ -490,7 +492,8 @@ const TIPI: CasoTipo[] = [
   ["bandoPin", "bando", "pin-cfc-social", "ted", "preinformazione", "candidature"],
   ["bandoSintel", "bando", null, "sintel", "bando", "bandi"],
   ["ignoto", null, null, "ted", null, null],
-  ["p713", null, "P7_1_3", "pvl", null, null],
+  ["p713", null, "P7_1_3", "pvl", "indagine_mercato", "candidature"],
+  ["p73", null, "P7_3", "pvl", "sistema_qualificazione", "iscrizioni"],
 ].map(([k, tipoOpp, avviso, fonte, atteso, categoria], i) => ({ k: k as string, id: id(300 + i), tipoOpp, avviso, fonte: fonte as string, atteso, categoria }));
 const ETICHETTE_ATTESE: Record<string, string> = {
   bando: "Bando di gara",
