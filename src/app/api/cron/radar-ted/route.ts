@@ -2,11 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cronAutorizzato } from "@/lib/cron-autorizzato";
 import { eseguiImportazioneTed } from "@/lib/radar/importa-ted";
+import { portaGiroProgrammato } from "@/lib/radar/giro-programmato";
 
-// Tender Intelligence: importazione quotidiana da TED (giorni feriali, dopo l'uscita della Gazzetta europea; vedi vercel.json).
-// Non fa NULLA finché la fonte TED è spenta dalla console (radar_fonti_stato.attiva) o le migrazioni 0109–0113 mancano: in produzione,
-// prima di quelle, ogni chiamata finisce subito con «schema_assente». Un giro dura al massimo 4 minuti e 40 pagine; se non basta (recupero
-// dello storico) riprende al giro dopo dal punto salvato. La risposta contiene solo numeri e motivi. Stessa autenticazione degli altri cron.
+// Tender Intelligence: giri programmati da TED alle 10:15 e alle 16:15 ora di Roma, nei giorni feriali (piano 48C §3.2, D2 dell'utente).
+// Guardie in quest'ordine (48C §3.1), le prime tre PRIMA di qualunque lettura del database:
+//   1. segreto del cron; 2. RADAR_TED_CRON=attivo (spento di base, K1); 3. porta oraria di Roma (vercel.json chiama entrambe le ore UTC
+//   possibili, CRON_PROPOSTI in programmazione-calcoli.ts, e passa solo quella giusta); poi nell'importatore: ambiente consentito, fonte
+//   accesa dalla console, doppio richiamo, un giro alla volta.
+// Un giro dura al massimo 4 minuti e 40 pagine; se non basta (recupero) riprende al giro dopo dal punto salvato. La risposta contiene solo
+// numeri e motivi.
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -14,6 +18,8 @@ export async function GET(request: NextRequest) {
   if (!cronAutorizzato(request.headers.get("authorization"), process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const porta = portaGiroProgrammato("ted", process.env, new Date());
+  if (!porta.passa) return NextResponse.json({ eseguita: false, motivo: porta.motivo }, { headers: { "Cache-Control": "no-store" } });
   let risultato: unknown;
   try {
     const esito = await eseguiImportazioneTed(createAdminClient(), { tempoMassimoMs: 240_000, pagineMassime: 40 });

@@ -103,7 +103,7 @@ export async function eseguiGiroTed(): Promise<StatoAzioneTi> {
   const esito = await eseguiImportazioneTed(createAdminClient(), { tempoMassimoMs: 50_000, pagineMassime: 10, origine: "console" });
   ricarica();
   if (!esito.eseguita) {
-    const motivi = { ambiente_non_consentito: "scritture non consentite in questo database", fonte_spenta: "la fonte TED è spenta", occupata: "un altro giro è già in corso", schema_assente: "le tabelle non esistono ancora", errore_lettura: "lettura dello stato non riuscita" } as const;
+    const motivi = { ambiente_non_consentito: "scritture non consentite in questo database", fonte_spenta: "la fonte TED è spenta", occupata: "un altro giro è già in corso", gia_eseguito: "un giro programmato è appena riuscito", schema_assente: "le tabelle non esistono ancora", errore_lettura: "lettura dello stato non riuscita" } as const;
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const b = esito.totali.bandi;
@@ -144,7 +144,7 @@ export async function eseguiGiroPvl(): Promise<StatoAzioneTi> {
   const esito = await eseguiImportazionePvl(createAdminClient(), { modo: "incrementale", tempoMassimoMs: 50_000, origine: "console" });
   ricarica();
   if (!esito.eseguita) {
-    const motivi = { ambiente_non_consentito: "la PVL è autorizzata solo sullo staging", fonte_spenta: "la fonte PVL è spenta o sospesa", occupata: "un altro giro è già in corso", schema_assente: "le tabelle non esistono ancora", errore_lettura: "lettura dello stato non riuscita" } as const;
+    const motivi = { ambiente_non_consentito: "la PVL è autorizzata solo sullo staging", fonte_spenta: "la fonte PVL è spenta o sospesa", occupata: "un altro giro è già in corso", gia_eseguito: "un giro programmato è appena riuscito", schema_assente: "le tabelle non esistono ancora", errore_lettura: "lettura dello stato non riuscita" } as const;
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const s = esito.statistiche;
@@ -272,7 +272,7 @@ export async function eseguiGiroRegionale(_stato: StatoAzioneTi, formData: FormD
   await registra(admin, [{ oggetto: `fonte:${fonte}:giro`, valore_precedente: null, valore_nuovo: esito.eseguita ? (esito.errore ? `interrotto: ${esito.errore}` : "eseguito") : `non eseguito: ${esito.motivo}` }], sessione);
   ricarica();
   if (!esito.eseguita) {
-    const motivi = { ambiente_non_consentito: "le fonti regionali sono autorizzate solo sullo staging", fonte_spenta: "la fonte è spenta o sospesa", occupata: "un altro giro è in corso o il semaforo del coordinamento è chiuso", schema_assente: "manca la migrazione 0120", errore_lettura: "lettura dello stato non riuscita" } as const;
+    const motivi = { ambiente_non_consentito: "le fonti regionali sono autorizzate solo sullo staging", fonte_spenta: "la fonte è spenta o sospesa", occupata: "un altro giro è in corso o il semaforo del coordinamento è chiuso", gia_eseguito: "un giro programmato è appena riuscito", schema_assente: "manca la migrazione 0120", errore_lettura: "lettura dello stato non riuscita" } as const;
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const s = esito.statistiche;
