@@ -1,11 +1,14 @@
 // Avanzamento dell'importazione TED (cursore salvato in radar_fonti_stato.cursore). Logica pura, provata da scripts/verifica-radar-b1.ts.
 //
-// 1) RECUPERO dello storico (una volta): gli ultimi 12 mesi, a finestre di 31 giorni, prima tutti i bandi poi tutti gli esiti. Il cursore
+// 1) RECUPERO dello storico (una volta): gli ultimi 90 giorni (D3 del 48C, coerente con la 48A; un parametro, al più 365), a finestre di 31 giorni, prima tutti i bandi poi tutti gli esiti. Il cursore
 //    si salva dopo OGNI pagina (punto di ripresa): un'interruzione riparte dalla pagina successiva; i doppioni li scartano chiavi e impronte.
 // 2) SINCRONIZZAZIONE quotidiana: dall'ultimo giorno letto meno 3 giorni (sovrapposizione: TED può indicizzare in ritardo) fino a oggi,
 //    bandi poi esiti, tutte le pagine. Un giro interrotto riprende dal suo punto.
 
-export const GIORNI_RECUPERO = 365;
+// Recupero iniziale di TED (K5): 90 giorni di base (D3 dell'utente, 23/11). Chi lancia il giro può chiedere altro, tra 1 e 365 giorni.
+export const GIORNI_RECUPERO = 90;
+export const GIORNI_RECUPERO_MASSIMI = 365;
+export const giorniRecuperoValidi = (g: number | undefined): number => (g !== undefined && Number.isInteger(g) && g >= 1 && g <= GIORNI_RECUPERO_MASSIMI ? g : GIORNI_RECUPERO);
 export const GIORNI_FINESTRA = 31;
 export const GIORNI_SOVRAPPOSIZIONE = 3;
 
@@ -34,8 +37,8 @@ export function aggiungiGiorni(giorno: string, giorni: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function cursoreIniziale(oggi: string): CursoreTed {
-  const da = aggiungiGiorni(oggi, -GIORNI_RECUPERO);
+export function cursoreIniziale(oggi: string, giorni: number = GIORNI_RECUPERO): CursoreTed {
+  const da = aggiungiGiorni(oggi, -giorniRecuperoValidi(giorni));
   return { versione: 1, fase: "recupero", inCorso: true, da, a: oggi, tipo: "bando", finestraDa: da, pagina: 1, ultimoGiorno: null, recuperoCompletatoIl: null };
 }
 
@@ -54,9 +57,9 @@ export function cursoreValido(v: unknown): CursoreTed | null {
 }
 
 // Il giro da fare adesso: un recupero (o un giro) in corso continua; altrimenti parte una sincronizzazione dall'ultimo giorno letto.
-export function cursoreAllAvvio(salvato: unknown, oggi: string): CursoreTed {
+export function cursoreAllAvvio(salvato: unknown, oggi: string, giorniRecupero: number = GIORNI_RECUPERO): CursoreTed {
   const c = cursoreValido(salvato);
-  if (!c) return cursoreIniziale(oggi);
+  if (!c) return cursoreIniziale(oggi, giorniRecupero);
   if (c.inCorso) return c;
   const base = c.ultimoGiorno ?? oggi;
   const da = aggiungiGiorni(base, -GIORNI_SOVRAPPOSIZIONE);

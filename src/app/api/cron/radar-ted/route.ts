@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   let risultato: unknown;
   try {
     const esito = await eseguiImportazioneTed(createAdminClient(), { tempoMassimoMs: 240_000, pagineMassime: 40 });
-    risultato = esito.eseguita ? { eseguita: true, fase: esito.fase, giroFinito: esito.giroFinito, fermata: esito.fermata, totali: esito.totali, durataMs: esito.durataMs, errore: esito.errore } : esito;
+    risultato = esito.eseguita ? { eseguita: true, fase: esito.fase, giroFinito: esito.giroFinito, fermata: esito.fermata, sospesa: esito.sospesa, totali: esito.totali, durataMs: esito.durataMs, errore: esito.errore } : esito;
   } catch {
     risultato = { eseguita: false, motivo: "errore_imprevisto" };
   }

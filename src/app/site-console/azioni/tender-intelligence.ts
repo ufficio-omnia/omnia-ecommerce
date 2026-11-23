@@ -108,6 +108,7 @@ export async function eseguiGiroTed(): Promise<StatoAzioneTi> {
   }
   const b = esito.totali.bandi;
   const testo = `${esito.totali.pagine} pagine in ${Math.round(esito.durataMs / 1000)} s: ${b.nuove} gare nuove, ${b.aggiornate} aggiornate, ${b.rettifiche} con rettifiche, ${b.invariati} già note; ${esito.totali.esiti.applicati} esiti applicati.${esito.fermata ? " Fermato a metà: la fonte è stata spenta dalla console." : esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
+  if (esito.sospesa) return { errore: `${testo} Fonte SOSPESA (TED ha negato l'accesso): ${esito.errore}` };
   return esito.errore ? { errore: `${testo} Interrotto: ${esito.errore}` } : { ok: true, avviso: testo };
 }
 

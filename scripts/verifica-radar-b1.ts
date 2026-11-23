@@ -184,7 +184,8 @@ uguale("stesso giorno, ora più tarda: proroga", cambiamentiTraVersioni(riga1, r
 atteso("condizioni «aperte» e «storico» sul giorno, senza ore presunte", condizioneAperte("2026-11-16", adesso.toISOString()) === "scadenza_giorno.is.null,scadenza_giorno.gt.2026-11-16,and(scadenza_giorno.eq.2026-11-16,or(scadenza_offerte.is.null,scadenza_offerte.gt.2026-11-16T10:00:00.000Z))" && condizioneStorico("2026-11-16", adesso.toISOString()).startsWith("stato.neq.aperta,scadenza_giorno.lt.2026-11-16,"));
 
 // ───── 3. punto di ripresa dell'importazione ─────
-const c0 = cursoreIniziale("2026-11-16");
+// dal K5 la durata del recupero è un parametro (90 giorni di base, provati in verifica-radar-ted-k5.ts): qui si provano le finestre con 365
+const c0 = cursoreIniziale("2026-11-16", 365);
 uguale("recupero: ultimi 12 mesi, prima i bandi", [c0.fase, c0.inCorso, c0.da, c0.a, c0.tipo, c0.pagina], ["recupero", true, "2025-11-16", "2026-11-16", "bando", 1]);
 uguale("recupero: finestre di 31 giorni", finestraCorrente(c0), { da: "2025-11-16", a: "2025-12-16" });
 uguale("pagina piena: si passa alla pagina successiva", cursoreDopoPagina(c0, 250, 600, 250, "2026-11-16").pagina, 2);
