@@ -101,6 +101,8 @@ uguale("attribuzione: CPV scritto come descrizione di un codice dell'elenco", at
 uguale("attribuzione: CPV del file di classificazione → nessun codice dell'elenco, «del file»", attribuzioneRicercaPvl(campione.avvisi[nazionaleRistorazione]), { codici: [], delFile: true });
 uguale("attribuzione: codice scritto in cifre (anche con la cifra di controllo)", attribuzioneRicercaPvl(con(nazionaleRistorazione, (a) => { elementi(a)[0].cpv = "55000000-0 Servizi alberghieri"; })), { codici: ["55000000"], delFile: false });
 uguale("attribuzione: più lotti con codici diversi → tutti, in ordine, senza ripetizioni", attribuzioneRicercaPvl(con(0, (a) => { const e = elementi(a); e[0].cpv = "Servizi cimiteriali"; e[1].cpv = "Servizi di assistenza sociale con alloggio"; e[2].cpv = "Servizi cimiteriali"; })), { codici: ["85311000", "98371110"], delFile: false });
+uguale("attribuzione: tre codici in disordine nei lotti → in ordine crescente", attribuzioneRicercaPvl(con(0, (a) => { const e = elementi(a); e[0].cpv = "Servizi di assistenza sociale con alloggio"; e[1].cpv = "Servizi cimiteriali"; e[2].cpv = "Servizi di istruzione prescolastica"; })).codici, ["80110000", "85311000", "98371110"]);
+uguale("attribuzione: un codice del FILE scritto in cifre non è un codice dell'elenco, ma è «del file»", attribuzioneRicercaPvl(con(nazionaleRistorazione, (a) => { elementi(a)[0].cpv = `${FILE_56[0]}-8 Servizi`; })), { codici: [], delFile: true });
 uguale("attribuzione: descrizione sconosciuta (per esempio uno dei 14 codici senza descrizione) → nessun codice, mai indovinato", attribuzioneRicercaPvl(con(nazionaleRistorazione, (a) => { elementi(a)[0].cpv = "Servizi di sterilizzazione di biancheria"; })), { codici: [], delFile: false });
 
 // ───── 6. R2: misura per codice di un giro ─────
@@ -134,13 +136,13 @@ uguale("R3: l'allarme elenca i codici di divisione oltre soglia, in ordine", det
 const rigaMisura = (giorniFa: number, perCodice: Record<string, unknown>, nonAttribuiti = 0) => ({ fonte: "pvl", esito: "ok", iniziato_il: new Date(ADESSO.getTime() - giorniFa * 86_400_000).toISOString(), avvisi: { per_codice: perCodice, non_attribuiti: nonAttribuiti } });
 const misura = misuraCodiciRicercaPvl([
   rigaMisura(29, { "98371110": { letti: 40 } }), // più vecchia di 4 settimane: rende la misura completa, ma non si somma
-  rigaMisura(20, { "98371110": { letti: 30 }, "80110000": { letti: 51 }, "85311000": { letti: 60, bandi: 1, a: 0, b: 1 } }, 2),
+  rigaMisura(20, { "98371110": { letti: 30 }, "80110000": { letti: 51 }, "85311000": { letti: 60, bandi: 1, a: 0, b: 1 }, "75251110": { letti: 50 } }, 2),
   rigaMisura(5, { "98371110": { letti: 21 }, "99999999": { letti: 500 } }, 1),
   { fonte: "ted", esito: "ok", iniziato_il: ADESSO.toISOString(), avvisi: { per_codice: { "80110000": { letti: 999 } } } },
 ], ADESSO);
 const di = (c: string) => misura.codici.find((x) => x.cpv === c);
 uguale("R2: somme degli ultimi 28 giorni, solo PVL, solo codici dell'elenco; tutti i 60 codici nella tabella", [misura.completa, misura.giri, misura.nonAttribuiti, misura.codici.length, di("98371110")?.letti, di("80110000")?.letti, di("85311000")?.b], [true, 2, 3, 60, 51, 51, 1]);
-uguale("R2: da valutare SOLO i codici con 0 gare A o B e più di 50 avvisi letti", misura.daValutare, ["80110000", "98371110"]);
+uguale("R2: da valutare SOLO i codici con 0 gare A o B e PIÙ di 50 avvisi letti (50 esatti no)", [misura.daValutare, di("75251110")?.letti], [["80110000", "98371110"], 50]);
 uguale("R3: i codici di divisione sono segnati a parte nella tabella", misura.codici.filter((c) => c.divisione).map((c) => c.cpv), ["55000000", "85000000", "50000000", "63000000", "79000000"]);
 const incompleta = misuraCodiciRicercaPvl([rigaMisura(10, { "80110000": { letti: 300 } })], ADESSO);
 uguale("R2: prima delle 4 settimane nessun codice da valutare", [incompleta.completa, incompleta.daValutare, incompleta.codici.find((c) => c.cpv === "80110000")?.letti], [false, [], 300]);
