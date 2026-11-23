@@ -18,6 +18,8 @@ import type { RigaClassificazione, RigaStato } from "./classificazioni-calcoli";
 import { FONTE_REGISTRO, colonnaDaRigheAttive, isoDaEsecuzione, pianoGara, statoDaRegistro, tracciaRiallineamento, type GaraArchivio, type LottoDaRiclassificare, type PianoGara, type StatoSettori } from "./riclassifica-settori";
 
 const PAGINA = 1000;
+// stati di una gara «chiusa» da un'esecuzione: classificata, oppure da verificare (S4, 0133) con la stessa versione e lo stesso istante
+const STATI_CHIUSI: readonly string[] = ["classificata", "da_verificare"];
 export const COLONNE_GARA_ARCHIVIO = "id, chiave, oggetto, descrizione, cpv_principale, cpv_tutti, settori, metodo_settore, natura_contratto, fonti, aggiornata_il, unita_a";
 
 async function tutte<T>(db: SupabaseClient, tabella: string, colonne: string, ordine: string, misure: Misure, soloAttive = false): Promise<{ righe: T[]; assente: boolean }> {
@@ -116,7 +118,7 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
       if (schemaAssente(error)) break;
       throw new Error(`stato delle classificazioni: ${error.message}`);
     }
-    for (const s of data ?? []) if (s.stato === "classificata" && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(adessoIso)) complete.add(s.procedura_id);
+    for (const s of data ?? []) if (STATI_CHIUSI.includes(s.stato) && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(adessoIso)) complete.add(s.procedura_id);
   }
   const consentite: PianoGara[] = [];
   for (const p of daFare) {
@@ -210,7 +212,7 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
   misure.richiesteDb++;
   if (e3) throw new Error(`classificazioni chiuse dall'esecuzione: ${e3.message}`);
   // gare ancora classificate da questa esecuzione (anche se le loro righe sono già state chiuse da un annullamento interrotto)
-  const { data: classificateQui, error: e4 } = await db.from("radar_classificazioni_stato").select("procedura_id").eq("stato", "classificata").eq("classificata_il", istante).returns<{ procedura_id: string }[]>();
+  const { data: classificateQui, error: e4 } = await db.from("radar_classificazioni_stato").select("procedura_id").in("stato", [...STATI_CHIUSI]).eq("classificata_il", istante).returns<{ procedura_id: string }[]>();
   misure.richiesteDb++;
   if (e4) throw new Error(`stato delle classificazioni: ${e4.message}`);
   const gare = [...new Set([...(tracce ?? []).map((t) => t.procedura_id), ...(nuove ?? []).map((r) => r.procedura_id), ...(chiuse ?? []).map((r) => r.procedura_id), ...(classificateQui ?? []).map((r) => r.procedura_id)])];
@@ -320,7 +322,7 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
     const { data, error: eStati } = await db.from("radar_classificazioni_stato").select("procedura_id, stato, classificata_il").in("procedura_id", b).returns<{ procedura_id: string; stato: string; classificata_il: string | null }[]>();
     misure.richiesteDb++;
     if (eStati) throw new Error(`stato delle classificazioni: ${eStati.message}`);
-    for (const s of data ?? []) if (s.stato === "classificata" && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(istante)) daRimettere.push(s.procedura_id);
+    for (const s of data ?? []) if (STATI_CHIUSI.includes(s.stato) && s.classificata_il && Date.parse(s.classificata_il) === Date.parse(istante)) daRimettere.push(s.procedura_id);
   }
   for (const b of blocchi(daRimettere, 200)) {
     const { error } = await db.from("radar_classificazioni_stato").upsert(b.map((procedura_id) => ({ procedura_id, stato: "in_attesa", errore: null, aggiornata_il: adessoIso })), { onConflict: "procedura_id" });
