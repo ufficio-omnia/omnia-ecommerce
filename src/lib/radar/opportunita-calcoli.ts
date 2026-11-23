@@ -46,11 +46,15 @@ export function perArchivio(o: Opportunita | null): OpportunitaArchivio | null {
 }
 
 // TED e PVL: il tipo dell'avviso già letto in B1 e B1-bis. TED: bandi («cn-*») e preinformazioni che indicono la gara («pin-cfc-*») =
-// bando; sistemi di qualificazione («qu-sy») = iscrizione. PVL: schede di bando P1 e P2 = bando. Altri tipi → non indicato.
+// bando; sistemi di qualificazione («qu-sy») = iscrizione. PVL: schede di bando P1 e P2 = bando; C1 (decisione dell'utente del 23/11):
+// P7_1_3 (avvio dell'indagine di mercato sotto soglia) = indagine di mercato, cioè una candidatura; P7_3 (avviso di costituzione di un
+// elenco) = iscrizione. Altri tipi → non indicato.
 export function opportunitaDaTipoAvviso(tipoAvviso: string | null | undefined): OpportunitaArchivio | null {
   const t = (tipoAvviso ?? "").trim();
   if (/^cn-|^pin-cfc-|^P[12]_/.test(t)) return { tipo: "bando", partecipazione: "libera" };
   if (/^qu-sy$/.test(t)) return { tipo: "sistema_qualificazione", partecipazione: "iscrizione" };
+  if (/^P7_1_3$/.test(t)) return { tipo: "indagine_mercato", partecipazione: "libera" };
+  if (/^P7_3$/.test(t)) return { tipo: "sistema_qualificazione", partecipazione: "iscrizione" };
   return null;
 }
 

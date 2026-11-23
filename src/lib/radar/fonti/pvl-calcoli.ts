@@ -224,6 +224,11 @@ export function scadenzaPvl(dataScadenza: unknown, termine: unknown): ScadenzaTe
 // Schede ammesse come bandi (gare a cui si può partecipare): bandi e avvisi di indizione, UE (P1) e nazionali (P2), compresi i settori
 // speciali e la difesa (P*_18: mense e pulizie delle caserme). Esclusi: concorsi di progettazione (23, 24), sistemi di qualificazione (15).
 export const SCHEDE_BANDO_PVL = /^P[12]_(1[0-4]|1[6-9]|2[01])$/;
+// C1 (decisione dell'utente del 23/11, «Sì, ammetterle»; analisi 49 §3.4 e §5): entrano anche le indagini di mercato sotto soglia (P7_1_3,
+// «avvio dell'indagine di mercato per procedura negoziata senza bando sottosoglia»: una CANDIDATURA, mai una gara aperta) e gli avvisi di
+// costituzione di elenchi (P7_3: un'ISCRIZIONE). Il tipo dell'opportunità lo dà opportunitaDaTipoAvviso dal codice della scheda. Restano
+// escluse P7_1_1, P7_1_2, P7_2 e P8 (negoziate senza bando e adesioni: riservate agli invitati).
+export const SCHEDE_CANDIDATURA_ISCRIZIONE_PVL = /^P7_(1_3|3)$/;
 // Esiti che cambiano lo stato di una gara già in archivio: aggiudicazioni (A1, A2) e mancata aggiudicazione sotto soglia (NAG).
 export const SCHEDE_ESITO_PVL = /^(A[12]_(29|3[0-5])|NAG)$/;
 const SCHEDE_SETTORI_SPECIALI = /^P[12]_(11|13|17|21)$/;
@@ -233,7 +238,7 @@ export type MotivoEsclusionePvl =
   | "oscurato"
   | "fuori_settore"
   | "senza_oggetto"
-  | "indagine_o_negoziata" // P7: indagini di mercato e negoziate senza bando (non sono bandi pubblici)
+  | "indagine_o_negoziata" // P7 tranne P7_1_3 e P7_3 (ammesse con C1), e P8: negoziate senza bando e adesioni, riservate agli invitati
   | "affidamento" // AD*, A3*, P3*, P5*, P6*: affidamenti diretti, esclusi, adesioni
   | "modifica_contrattuale" // M*
   | "altra_scheda"; // esecuzione, subappalti, elenchi, PPP…
@@ -370,7 +375,7 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
     const cig = [...new Set(elementi.map((e) => cigPvl(e.cig)).filter((c): c is string => !!c))];
     return { tipo: "esito", meta, stato: meta.scheda === "NAG" ? "chiusa_senza_aggiudicazione" : "aggiudicata", cig };
   }
-  if (!SCHEDE_BANDO_PVL.test(meta.scheda)) return { tipo: "esclusione", meta, motivo: motivoScheda(meta.scheda) };
+  if (!SCHEDE_BANDO_PVL.test(meta.scheda) && !SCHEDE_CANDIDATURA_ISCRIZIONE_PVL.test(meta.scheda)) return { tipo: "esclusione", meta, motivo: motivoScheda(meta.scheda) };
 
   const lottiGrezzi = elementi.some((e) => testoPvl(e.tipo_oggetto) === "lotto") ? elementi.filter((e) => testoPvl(e.tipo_oggetto) === "lotto") : elementi;
   const titolo = testoPvl(metadata.titolo) ?? testoPvl(metadata.descrizione) ?? (lottiGrezzi.length === 1 ? testoPvl(lottiGrezzi[0].descrizione) : null);
@@ -391,7 +396,9 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
   const settoriTenuti = settoriDopoNatura(classificazione, natura);
   if (settoriTenuti.length === 0) return { tipo: "esclusione", meta, motivo: "fuori_settore" };
 
-  const lottiScadenze = lottiGrezzi.map((e) => scadenzaPvl(a.dataScadenza, e.termine_ricezione));
+  // le indagini P7_1_3 hanno il termine delle candidature in «termine_invito» (5 avvisi reali del 9–16/11: sempre con l'ora e uguale a
+  // «dataScadenza»); per P7_3 vale lo stesso ordine (nessun avviso reale ancora visto: senza termine, la regola di «dataScadenza»)
+  const lottiScadenze = lottiGrezzi.map((e) => scadenzaPvl(a.dataScadenza, e.termine_ricezione ?? e.termine_invito));
   const scadenzaProc = lottiScadenze.filter((s): s is ScadenzaTed => !!s).sort(confrontaScadenze)[0] ?? scadenzaPvl(a.dataScadenza, null);
   if (!scadenzaProc) mancanti.push("scadenza");
 

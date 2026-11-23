@@ -18,7 +18,7 @@
 import { aperta as apertaArchivio, ETICHETTA_STATO, scadenzaDaValore, type StatoProcedura } from "../importa-calcoli";
 import { fonteAutorizzata } from "../ambiente";
 import { garaVisibileAiClienti, NOME_FONTE_ESTESO, type FonteGara } from "../fonti-gara-calcoli";
-import { ETICHETTA_OPPORTUNITA, type TipoOpportunita } from "../opportunita-calcoli";
+import { ETICHETTA_TIPO, tipoDellaGara } from "../tipo-gara-calcoli";
 import { nomeRegione } from "../territorio";
 import { eSettore } from "../settori-catalogo";
 import { nomeSettore, type SettoreRadar } from "../settori";
@@ -54,7 +54,7 @@ import {
 
 /** Colonne di radar_procedure lette per le gare delle liste e per le nuove del riepilogo. */
 export const COLONNE_GARA: string =
-  "id, chiave, oggetto, sa_denominazione, luogo_regioni, tipo_opportunita, tipo_procedura, valore_stimato, data_pubblicazione, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, stato, unita_a, url_avviso, url_documenti, prima_rilevazione_il, ultima_rilevazione_il, fonti";
+  "id, chiave, oggetto, sa_denominazione, luogo_regioni, tipo_opportunita, tipo_avviso, tipo_procedura, valore_stimato, data_pubblicazione, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, stato, unita_a, url_avviso, url_documenti, prima_rilevazione_il, ultima_rilevazione_il, fonti";
 export type RigaGara = {
   id: string;
   chiave: string;
@@ -62,6 +62,8 @@ export type RigaGara = {
   sa_denominazione: string | null;
   luogo_regioni: string[] | null;
   tipo_opportunita: string | null;
+  // il tipo dell'avviso della fonte: serve a tipoDellaGara quando la colonna tipo_opportunita è vuota (C4) e per le preinformazioni (C11)
+  tipo_avviso?: string | null;
   tipo_procedura: string | null;
   valore_stimato: number | string | null;
   data_pubblicazione: string | null;
@@ -163,7 +165,9 @@ export function garaEmailDaArchivio(r: RigaGara, lotti: readonly RigaLotto[], na
     "fonte",
   );
   const regioni = (r.luogo_regioni ?? []).map((x) => nomeRegione(x)).filter((x): x is string => !!x);
-  const tipo = r.tipo_opportunita && r.tipo_opportunita in ETICHETTA_OPPORTUNITA ? ETICHETTA_OPPORTUNITA[r.tipo_opportunita as TipoOpportunita] : null;
+  // lo stesso tipo delle liste e della scheda (C1, coordinamento 23/11): un'indagine di mercato non si presenta mai come bando
+  const mostrato = tipoDellaGara(r);
+  const tipo = mostrato ? ETICHETTA_TIPO[mostrato] : null;
   return {
     chiave,
     proceduraId: r.id,

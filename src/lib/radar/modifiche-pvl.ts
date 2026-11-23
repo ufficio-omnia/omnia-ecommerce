@@ -8,7 +8,8 @@
 //   - stessa procedura = stesso «idAppalto»; ogni versione è un avviso nuovo («idAvviso»);
 //   - la versione nuova di una rettifica ha «tipo» = "rettifica" (gli avvisi normali "avviso"): il connettore oggi non lo legge, qui sì;
 //   - la versione vecchia, se riletta, ha «nuovoAvviso» (l'avviso che la sostituisce), «tipoNuovoAvviso» = "rettifica" e «attivo» = false;
-//   - la scadenza: «termine_ricezione» per lotto e «dataScadenza» dell'avviso (regole di scadenzaPvl: mai un'ora presunta);
+//   - la scadenza: «termine_ricezione» per lotto («termine_invito» per le indagini P7_1_3) e «dataScadenza» dell'avviso (regole di
+//     scadenzaPvl: mai un'ora presunta);
 //   - i documenti: SOLO il collegamento alla piattaforma («documenti_di_gara_link»), mai l'elenco dei file: documenti nuovi o sostitutivi
 //     NON si rilevano dalla PVL;
 //   - i requisiti di partecipazione non ci sono (stanno nel disciplinare): NON si rilevano dalla PVL.

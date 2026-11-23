@@ -68,9 +68,9 @@ async function principale() {
 
   // ───── 2. lettura degli avvisi reali ─────
   uguale(
-    "tipi riconosciuti: 9 bandi (P1_16, P1_17, P2_16, P2_19), 2 esiti, indagine, modifica, affidamento esclusi",
+    "tipi riconosciuti: 9 bandi (P1_16, P1_17, P2_16, P2_19), 2 esiti, l'indagine P7_1_3 ammessa (C1, letta come le schede di bando), modifica e affidamento esclusi",
     letti.map((l) => (l.tipo === "esclusione" ? `x:${l.motivo}` : l.tipo)),
-    ["bando", "bando", "bando", "bando", "bando", "bando", "bando", "bando", "bando", "esito", "esito", "x:indagine_o_negoziata", "x:modifica_contrattuale", "x:affidamento"],
+    ["bando", "bando", "bando", "bando", "bando", "bando", "bando", "bando", "bando", "esito", "esito", "bando", "x:modifica_contrattuale", "x:affidamento"],
   );
   const genova = bando(0);
   uguale("bando UE a tre lotti: chiave della procedura PVL", genova.record.chiaveProcedura, "pvl:194486c3-4660-4b96-b881-4b583af44acc");
