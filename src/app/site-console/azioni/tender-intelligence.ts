@@ -17,7 +17,8 @@ import { decisioneAmministratore, erroriRiga, type RigaClassificazione } from "@
 import { VERSIONE_REGOLE_SETTORI, nomeSettore } from "@/lib/radar/settori";
 import { candidatoDaRighe, testoRiallineamento, validaDecisione } from "@/lib/console/gare-in-verifica-calcoli";
 import { riallineaSettoriGara } from "@/lib/radar/riclassificazione";
-import { ERRORE_CONFERMA_ACCENSIONE, accensioneConfermata, giriProgrammatiFonte, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
+import { ERRORE_CONFERMA_ACCENSIONE, ERRORE_CONFERMA_RIPRESA, TESTO_MOTIVO_RIPRESA, accensioneConfermata, giornoLeggibile, giriProgrammatiFonte, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
+import { riprendiRecuperoPvl } from "@/lib/radar/recupero-pvl";
 
 // Console «Tender Intelligence» (fasi B1 e B1-bis): interruttori, costi e limiti; fonti TED e PVL; imprese abilitate; giri manuali.
 // Ogni azione parte da richiediAdminAzione() (solo amministratori), valida nel server e registra in radar_console_registro chi ha cambiato
@@ -151,6 +152,26 @@ export async function eseguiGiroPvl(): Promise<StatoAzioneTi> {
   const testo = `${s.pvl.richieste} richieste alla PVL in ${Math.round(esito.durataMs / 1000)} s: ${s.avvisi.letti} avvisi letti, ${s.bandi.nuoveNazionali + s.bandi.nuoveSopraSogliaSenzaTed} gare nuove, ${s.bandi.giaPresentiTed} già presenti da TED, ${s.bandi.rettifiche} con rettifiche, ${s.bandi.invariati} già note; ${s.esiti.applicati} esiti applicati.${esito.fermata ? " Fermato a metà: la fonte è stata spenta dalla console." : esito.giroFinito ? "" : " Resta lavoro: riprende al prossimo giro."}`;
   if (esito.sospesa) return { errore: `${testo} Fonte SOSPESA: ${esito.errore}` };
   return esito.errore ? { errore: `${testo} Interrotto: ${esito.errore}` } : { ok: true, avviso: testo };
+}
+
+// «Riprendi il recupero» della PVL (pagina «Fonti»): dopo 3 tentativi incompleti dello stesso blocco il recupero è fermo (K4 di B2). Solo
+// amministratori, conferma controllata qui, registro 0112 obbligatorio. riprendiRecuperoPvl fa UNA scrittura condizionata del cursore e
+// nessuna richiesta alla PVL: il blocco si ritenta al prossimo giro.
+export async function riprendiRecuperoPvlConsole(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+  if (!accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_RIPRESA };
+  const admin = createAdminClient();
+  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };
+  const esito = await riprendiRecuperoPvl(admin, `console:${sessione.email}`);
+  if (!esito.ok) {
+    if (esito.motivo === "errore_lettura" || esito.motivo === "errore_scrittura") console.error("Console Tender Intelligence: ripresa del recupero PVL non riuscita", esito.motivo, esito.dettaglio ?? "");
+    return { errore: `Recupero non ripreso: ${TESTO_MOTIVO_RIPRESA[esito.motivo]}.` };
+  }
+  const { da, a } = esito.blocco;
+  const registrato = await registra(admin, [{ oggetto: "fonte:pvl:ripresa_recupero", valore_precedente: `fermo sul blocco ${da}..${a}`, valore_nuovo: `ripreso: blocco ${da}..${a} da ritentare al prossimo giro` }], sessione);
+  ricarica();
+  return { ok: true, avviso: `Recupero della PVL ripreso: il blocco dal ${giornoLeggibile(da)} al ${giornoLeggibile(a)} si ritenta al prossimo giro.${registrato ? "" : " ATTENZIONE: il registro non è stato scritto."}` };
 }
 
 // Annulla il collegamento di una gara doppia (0117): la gara torna visibile, nulla si cancella, e il collegamento con quella gara non si rifà
