@@ -42,6 +42,7 @@ async function main() {
     da: modo === "finestra" ? a1 : undefined,
     a: modo === "finestra" ? a2 : undefined,
     tempoMassimoMs: 10 * 60_000,
+    origine: "script",
     limiti: Number.isInteger(richieste) && richieste > 0 ? { richiesteMassime: richieste } : undefined,
   });
   console.log(JSON.stringify(esito, null, 1));

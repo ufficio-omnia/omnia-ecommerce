@@ -16,6 +16,8 @@ import { leggiPaginaTed } from "./fonti/ted";
 import { applicaPaginaBandi, applicaPaginaEsiti, type EsitoPaginaBandi, type EsitoPaginaEsiti, type Misure } from "./importa";
 import { cursoreAllAvvio, cursoreDopoPagina, cursoreIniziale, finestraCorrente, giornoIso, serveNuovoRecupero, type CursoreTed } from "./importa-ted-calcoli";
 import { erroreDaConservare } from "./lavori-calcoli";
+import { datiGiroTed, type OrigineGiro } from "./esecuzioni-calcoli";
+import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 
 export type TotaliGiro = {
   pagine: number;
@@ -29,7 +31,8 @@ export type RisultatoImportazioneTed =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
 
-export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number; env?: Record<string, string | undefined> };
+// origine: chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
+export type OpzioniImportazione = { tempoMassimoMs: number; pagineMassime: number; adesso?: () => Date; fetchFn?: typeof fetch; pausaMs?: number; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
 
 function totaliVuoti(): TotaliGiro {
   return {
@@ -51,7 +54,12 @@ function somma(t: TotaliGiro, b: EsitoPaginaBandi | null, e: EsitoPaginaEsiti | 
 
 type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
-export async function eseguiImportazioneTed(admin: SupabaseClient, opzioni: OpzioniImportazione): Promise<RisultatoImportazioneTed> {
+/** Un giro TED, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere (esecuzioni.ts). */
+export function eseguiImportazioneTed(admin: SupabaseClient, opzioni: OpzioniImportazione): Promise<RisultatoImportazioneTed & { esecuzione: EsitoRegistro }> {
+  return giroRegistrato(admin, "ted", opzioni, (esecuzioneId) => giroTed(admin, opzioni, esecuzioneId), datiGiroTed);
+}
+
+async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esecuzioneId: string): Promise<RisultatoImportazioneTed> {
   // protezione contro le scritture accidentali in produzione (ambiente.ts): prima di qualunque lettura o scrittura
   const permesso = scrittureRadarConsentite("ted", opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
@@ -94,7 +102,7 @@ export async function eseguiImportazioneTed(admin: SupabaseClient, opzioni: Opzi
       totali.ted.ms += pagina.ms;
       const adesso = ora();
       if (cursore.tipo === "bando") {
-        somma(totali, await applicaPaginaBandi(admin, pagina.avvisi.map(leggiBandoTed), modo, adesso, totali.db, { classificazioni, evidenza }), null);
+        somma(totali, await applicaPaginaBandi(admin, pagina.avvisi.map(leggiBandoTed), modo, adesso, totali.db, { classificazioni, evidenza, esecuzioneId }), null);
       } else {
         somma(totali, null, await applicaPaginaEsiti(admin, pagina.avvisi.map(leggiEsitoTed).filter((e): e is EsitoTed => !!e), modo, adesso, totali.db));
       }

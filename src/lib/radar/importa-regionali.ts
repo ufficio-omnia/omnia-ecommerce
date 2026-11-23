@@ -19,12 +19,15 @@ import { giornoDiRoma } from "./fonti/ted-calcoli";
 import type { Misure } from "./importa";
 import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
 import { bandoDaAflink, bandoDaSintel, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
+import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
+import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 
 export type RisultatoImportazioneRegionale =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   | { eseguita: true; fonte: FonteRegionale; invariataAllaFonte: boolean; sospesa: boolean; statistiche: StatisticheRegionali & { fonte: { richieste: number; byte: number; ms: number }; db: Misure }; durataMs: number; errore: string | null };
 
-export type OpzioniImportazioneRegionale = { tempoMassimoMs?: number; adesso?: () => Date; fetchFn?: typeof fetch; limiti?: Partial<LimitiFonte>; env?: Record<string, string | undefined> };
+// origine: chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
+export type OpzioniImportazioneRegionale = { tempoMassimoMs?: number; adesso?: () => Date; fetchFn?: typeof fetch; limiti?: Partial<LimitiFonte>; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
 
 type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
@@ -35,7 +38,12 @@ function schemaAssente(e: { message: string; code?: string }): boolean {
   return e.code === "42703" || e.code === "PGRST204" || /column .* does not exist|nascosta_ai_clienti/.test(e.message);
 }
 
-export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale> {
+/** Un giro di Sintel o SardegnaCAT, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere. */
+export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
+  return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
+}
+
+async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale, esecuzioneId: string): Promise<RisultatoImportazioneRegionale> {
   const permesso = scrittureRadarConsentite(fonte, opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
@@ -109,7 +117,7 @@ export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: 
     }
     // la scrittura usa il motore di unione unico; a blocchi di 200 bandi
     for (let i = 0; i < bandi.length; i += 200) {
-      await applicaPaginaBandiRegionali(admin, bandi.slice(i, i + 200), { fonte, modo: "incrementale", adesso: inizio, misure, stat, nascoste, proponi: fonte === "sintel", classificazioni, evidenza });
+      await applicaPaginaBandiRegionali(admin, bandi.slice(i, i + 200), { fonte, modo: "incrementale", adesso: inizio, misure, stat, nascoste, proponi: fonte === "sintel", classificazioni, evidenza, esecuzioneId });
     }
     bandi = [];
     if (datiDel) cursore = { ...cursore, datiDel };
