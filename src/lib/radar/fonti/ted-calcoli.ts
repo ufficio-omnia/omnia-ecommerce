@@ -382,9 +382,10 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
   const cpvLotti = perLotto(n["main-classification-lot"], (x) => normalizzaCpv(typeof x === "string" ? x : null));
 
   // Settore: CPV del file approvato su qualunque CPV; parole chiave solo sull'oggetto (procedura e lotti), mai sulla descrizione. I lotti
-  // (titolo e CPV di ciascuno) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori.
+  // (titolo e CPV di ciascuno) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori. La
+  // descrizione la legge SOLO la regola S2 (trasporto con imballaggio, montaggio o movimentazione → facchinaggio B; 49C §5).
   const testoOggetto = [titolo, ...titoliLotti].filter(Boolean).join(" ");
-  const classificazione = classificaGara({ cpvPrincipale, cpvTutti, testo: testoOggetto, lotti: idLotti.map((_, i) => ({ testo: titoliLotti[i], cpv: [cpvLotti[i]] })) });
+  const classificazione = classificaGara({ cpvPrincipale, cpvTutti, testo: testoOggetto, lotti: idLotti.map((_, i) => ({ testo: titoliLotti[i], cpv: [cpvLotti[i]] })), descrizione: descrizione && descrizione !== titolo ? descrizione : null });
   const natura = naturaTed(n["contract-nature-main-proc"]);
   if (classificazione.settori.length === 0) return { meta, motivo: "fuori_settore" };
   // trovata solo per parola chiave: deve essere un servizio (o natura mista o non dichiarata), per non prendere lavori e forniture che

@@ -18,7 +18,7 @@ import type { RigaClassificazione, RigaStato } from "./classificazioni-calcoli";
 import { FONTE_REGISTRO, isoDaEsecuzione, pianoGara, statoDaRegistro, type GaraArchivio, type LottoDaRiclassificare, type PianoGara } from "./riclassifica-settori";
 
 const PAGINA = 1000;
-export const COLONNE_GARA_ARCHIVIO = "id, chiave, oggetto, cpv_principale, cpv_tutti, settori, metodo_settore, natura_contratto, fonti, aggiornata_il, unita_a";
+export const COLONNE_GARA_ARCHIVIO = "id, chiave, oggetto, descrizione, cpv_principale, cpv_tutti, settori, metodo_settore, natura_contratto, fonti, aggiornata_il, unita_a";
 
 async function tutte<T>(db: SupabaseClient, tabella: string, colonne: string, ordine: string, misure: Misure, soloAttive = false): Promise<{ righe: T[]; assente: boolean }> {
   const righe: T[] = [];
@@ -163,7 +163,7 @@ export async function applicaPiani(db: SupabaseClient, piani: readonly PianoGara
   }
   // righe e stato, a blocchi di gare (letture e inserimenti raggruppati)
   for (const b of blocchi(consentite, 100)) {
-    const e = await scriviClassificazioni(db, b.map((p) => ({ proceduraId: p.proceduraId, versione: p.ric?.classificazione.versione ?? "", calcolate: p.calcolate })), misure, adessoIso);
+    const e = await scriviClassificazioni(db, b.map((p) => ({ proceduraId: p.proceduraId, versione: p.ric?.classificazione.versione ?? "", calcolate: p.calcolate, casiDaVerificare: p.ric?.classificazione.daVerificare ?? null })), misure, adessoIso);
     if (e.saltata) {
       esito.classificazioni.saltata = true;
       break;

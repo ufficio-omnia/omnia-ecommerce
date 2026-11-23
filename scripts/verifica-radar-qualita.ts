@@ -1018,7 +1018,8 @@ uguale("S4: senza quel lotto l'etichetta c'è", classificaGara({ testo: "Servizi
     "notify pgrst, 'reload schema'",
   ]);
   const statiDelCodice = [...(fs.readFileSync(path.join(__dirname, "..", "src/lib/radar/classificazioni-calcoli.ts"), "utf8").match(/export type StatoClassificazione = ([^;]+);/)?.[1] ?? "").matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
-  atteso("0133: il vincolo nuovo ammette tutti gli stati del codice di oggi", statiDelCodice.length === 3 && statiDelCodice.every((s) => istruzioni[1].includes(`'${s}'`)), statiDelCodice.join(","));
+  // B2, 23/11: dal pacchetto S1–S4 il codice ha anche «da_verificare» (4 stati); il controllo resta lo stesso: TUTTI ammessi dalla 0133
+  atteso("0133: il vincolo nuovo ammette tutti gli stati del codice di oggi", statiDelCodice.length === 4 && statiDelCodice.includes("da_verificare") && statiDelCodice.every((s) => istruzioni[1].includes(`'${s}'`)), statiDelCodice.join(","));
 }
 
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);

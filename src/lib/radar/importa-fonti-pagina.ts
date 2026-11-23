@@ -589,7 +589,7 @@ export async function applicaPaginaBandiFonte(admin: SupabaseClient, bandi: read
       const id = ids.get(s.chiaveGruppo);
       if (!id || !s.classificazione) return [];
       const fonti = [...(s.iniziale ? [...fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi), ...(s.iniziale.fonti ?? [])] : []), fonte];
-      return [{ proceduraId: id, versione: s.classificazione.unita.versione, calcolate: righeImportate(s.classificazione, { proceduraId: id, fonti, fonte, adessoIso: iso, nuovoId }) }];
+      return [{ proceduraId: id, versione: s.classificazione.unita.versione, calcolate: righeImportate(s.classificazione, { proceduraId: id, fonti, fonte, adessoIso: iso, nuovoId }), casiDaVerificare: s.classificazione.unita.daVerificare ?? null }];
     });
     try {
       esito.classificazioni = await scriviClassificazioni(admin, voci, misure, iso);

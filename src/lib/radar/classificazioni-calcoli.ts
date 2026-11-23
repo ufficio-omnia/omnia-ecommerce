@@ -47,7 +47,11 @@ export type RigaClassificazione = {
   sostituita_da: string | null;
 };
 
-export type StatoClassificazione = "in_attesa" | "classificata" | "fallita";
+// «da_verificare» (S4 del 49A/49C, migrazione 0133): una gara che le regole non sanno decidere senza una descrizione utile. Le righe C
+// restano; non è mai «non pertinente» né «fuori dai settori», non entra nei suggerimenti né nelle notifiche (tutti vogliono «classificata»);
+// l'amministratore la decide dalla console (decisioneAmministratore) e lo stato torna «classificata».
+export type StatoClassificazione = "in_attesa" | "classificata" | "fallita" | "da_verificare";
+export const REGOLA_DA_VERIFICARE = "da_verificare";
 export type RigaStato = {
   procedura_id: string;
   stato: StatoClassificazione;
@@ -277,13 +281,24 @@ export type SituazioneGara =
   | { tipo: "non_classificata" } // nessuna riga di stato: mai valutata con le regole correnti
   | { tipo: "in_attesa" }
   | { tipo: "fallita"; errore: string }
+  // S4: mai «non pertinente» né «fuori dai settori»; candidati = i settori delle righe «da_verificare» (o, senza regole, delle righe C)
+  | { tipo: "da_verificare"; versione: string; candidati: SettoreRadar[] }
   | { tipo: "classificata"; versione: string; pertinenti: SettoreRadar[]; correlati: SettoreRadar[]; nonPertinenti: SettoreRadar[]; fuoriDaiSettori: boolean };
 
 /** Che cosa si sa della rilevanza di una gara: lo stato decide, le righe dicono i settori. L'assenza di righe NON vale mai C. */
-export function situazioneGara(stato: Pick<RigaStato, "stato" | "versione_regole" | "errore"> | null, righeAttive: readonly Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva">[]): SituazioneGara {
+export function situazioneGara(
+  stato: Pick<RigaStato, "stato" | "versione_regole" | "errore"> | null,
+  righeAttive: readonly (Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva"> & Partial<Pick<RigaClassificazione, "regole">>)[],
+): SituazioneGara {
   if (!stato) return { tipo: "non_classificata" };
   if (stato.stato === "in_attesa") return { tipo: "in_attesa" };
   if (stato.stato === "fallita") return { tipo: "fallita", errore: stato.errore ?? "classificazione non riuscita" };
+  if (stato.stato === "da_verificare") {
+    const c = righeAttive.filter((r) => r.attiva && r.rilevanza === "C");
+    const conRegola = c.filter((r) => (r.regole ?? []).includes(REGOLA_DA_VERIFICARE));
+    return { tipo: "da_verificare", versione: stato.versione_regole ?? "", candidati: [...new Set((conRegola.length ? conRegola : c).map((r) => r.settore))].sort() };
+  }
+  if (stato.stato !== "classificata") return { tipo: "non_classificata" };
   const attive = righeAttive.filter((r) => r.attiva);
   const di = (l: Rilevanza) => attive.filter((r) => r.rilevanza === l).map((r) => r.settore).sort();
   const pertinenti = di("A");
@@ -304,6 +319,8 @@ export function etichettaRilevanza(s: SituazioneGara): string | null {
     return null;
   }
   if (s.tipo === "fallita") return "Classificazione da verificare";
+  // S4: diverso da «fallita» (testo proposto nel 49C §4.2)
+  if (s.tipo === "da_verificare") return "Classificazione in verifica";
   return null;
 }
 
@@ -323,10 +340,29 @@ export function gareSuggeribili(
   return [...new Set(righeAttive.filter((r) => r.attiva && r.rilevanza === "A" && settori.has(r.settore) && !collegate.has(r.procedura_id) && stati.get(r.procedura_id)?.stato === "classificata").map((r) => r.procedura_id))].sort();
 }
 
-/** Lo stato dopo un tentativo: riuscito (versione e data della classificazione) o fallito (errore pieno, righe precedenti intatte). */
-export function statoDopoTentativo(prima: Pick<RigaStato, "versione_regole" | "classificata_il" | "tentativi"> | null, esito: { ok: true; versione: string } | { ok: false; errore: string }, proceduraId: string, adessoIso: string): RigaStato {
+/**
+ * LA regola unica di S4 (popolamento, riclassificazione e importatori): una gara va «da_verificare» se le regole hanno casi da verificare,
+ * nessuna riga (calcolata o decisa dall'amministratore) è A o B, e l'amministratore non ha già deciso uno dei settori candidati: la sua
+ * decisione chiude il caso e lo stato resta «classificata» (49C §4.2).
+ */
+export function eDaVerificare(
+  casi: readonly { settore: string }[] | null | undefined,
+  calcolate: readonly Pick<RigaClassificazione, "rilevanza">[],
+  attive: readonly Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva" | "origine">[],
+): boolean {
+  if (!casi?.length) return false;
+  const decise = attive.filter((a) => a.attiva && a.origine === "amministratore");
+  if (casi.some((c) => decise.some((d) => d.settore === c.settore))) return false;
+  return ![...calcolate, ...decise].some((r) => r.rilevanza === "A" || r.rilevanza === "B");
+}
+
+/**
+ * Lo stato dopo un tentativo: riuscito (versione e data della classificazione) o fallito (errore pieno, righe precedenti intatte). Riuscito
+ * con `daVerificare` (S4): stato «da_verificare», con versione e date come una classificata ed errore nullo (vincoli della 0121 e 0133).
+ */
+export function statoDopoTentativo(prima: Pick<RigaStato, "versione_regole" | "classificata_il" | "tentativi"> | null, esito: { ok: true; versione: string; daVerificare?: boolean } | { ok: false; errore: string }, proceduraId: string, adessoIso: string): RigaStato {
   const tentativi = (prima?.tentativi ?? 0) + 1;
-  if (esito.ok) return { procedura_id: proceduraId, stato: "classificata", versione_regole: esito.versione, classificata_il: adessoIso, tentativi, tentativo_il: adessoIso, errore: null, aggiornata_il: adessoIso };
+  if (esito.ok) return { procedura_id: proceduraId, stato: esito.daVerificare ? "da_verificare" : "classificata", versione_regole: esito.versione, classificata_il: adessoIso, tentativi, tentativo_il: adessoIso, errore: null, aggiornata_il: adessoIso };
   const errore = pieno(esito.errore) ? esito.errore.trim().slice(0, 1000) : "Classificazione non riuscita";
   return { procedura_id: proceduraId, stato: "fallita", versione_regole: prima?.versione_regole ?? null, classificata_il: prima?.classificata_il ?? null, tentativi, tentativo_il: adessoIso, errore, aggiornata_il: adessoIso };
 }

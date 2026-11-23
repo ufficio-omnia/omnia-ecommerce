@@ -19,12 +19,14 @@
 //   - tutte e tre le classificazioni usano le regole CORRENTI, mai la colonna salvata: una differenza dovuta solo al cambio delle regole
 //     non è un'ambiguità tra fonti (se ne occupa la riclassificazione autorizzata);
 //   - rileggere le stesse versioni non duplica la segnalazione (chiave con la versione delle regole e un'impronta del confronto).
-import { classificaGara, nomeSettore, VERSIONE_REGOLE_SETTORI, type Livello, type SettoreRadar } from "./settori";
+import { classificaGara, nomeSettore, VERSIONE_REGOLE_SETTORI, type DaVerificare, type Livello, type SettoreRadar } from "./settori";
 import { CAMPO_CLASSIFICAZIONE_AMBIGUA, NOME_FONTE } from "./fonti-gara-calcoli";
 import type { FonteUnita } from "./unione-calcoli";
 import { settoriDopoNatura } from "./fonti/natura-contratto";
 
-export type DatiDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null; natura_contratto: string | null };
+// descrizione (facoltativa, radar_procedure.descrizione dalla 0109): la legge SOLO la regola S2 di settori.ts (trasporto con imballaggio,
+// montaggio o movimentazione → facchinaggio B), mai per riconoscere settori o altri livelli (49C §5)
+export type DatiDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null; natura_contratto: string | null; descrizione?: string | null };
 export type LottoDaClassificare = { oggetto: string | null; cpv_principale: string | null; cpv_tutti: readonly string[] | null };
 
 // Per settore: livello e, dall'interfaccia della PVL del 17/11 (additiva), PIÙ sottocategorie, regole, motivi e CPV. Finché classificaGara
@@ -50,7 +52,24 @@ export type ClassificazioneArchivio = {
   perSettore: Partial<Record<SettoreRadar, ValutazioneSettore>>;
   // versione delle regole che l'ha prodotta
   versione: string;
+  // S4 (49C): casi che le regole non sanno decidere senza una descrizione utile. Solo per una gara senza A né B, mai vuoto: lo stato della
+  // classificazione diventa «da_verificare» e per ogni settore candidato c'è una riga C che comincia con la regola «da_verificare»
+  daVerificare?: DaVerificare[];
 };
+
+/** S4: per ogni settore candidato una valutazione C che comincia con «da_verificare» e il suo motivo, più la regola C di oggi se c'era. */
+function conDaVerificare(perSettore: Partial<Record<SettoreRadar, ValutazioneSettore>>, casi: readonly DaVerificare[]): Partial<Record<SettoreRadar, ValutazioneSettore>> {
+  const out = { ...perSettore };
+  for (const d of casi) {
+    const v = out[d.settore];
+    if (v && v.livello !== "C") continue;
+    if (v && v.regole[0] === d.regola) continue;
+    out[d.settore] = v
+      ? { ...v, regola: d.regola, regole: [d.regola, ...v.regole], motivi: [d.motivo, ...v.motivi] }
+      : { livello: "C", sottocategoria: null, regola: d.regola, sottocategorie: [], regole: [d.regola], motivi: [d.motivo], da: "parole_chiave", cpv: [] };
+  }
+  return out;
+}
 
 // Lo stesso calcolo di riclassifica-settori.ts (la prova lo confronta su tutti i casi).
 export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly LottoDaClassificare[]): ClassificazioneArchivio {
@@ -60,6 +79,8 @@ export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly Lot
     testo: [g.oggetto, ...lotti.map((l) => l.oggetto ?? "")].join(" "),
     // come riclassifica-settori.ts: i lotti riconoscono un servizio AUTONOMO (lotto dedicato); cambiano il livello, mai i settori
     lotti: lotti.map((l) => ({ testo: l.oggetto, cpv: [l.cpv_principale, ...(l.cpv_tutti ?? [])] })),
+    // S2 (49C §5): la descrizione dell'avviso, letta SOLO dalla regola del trasporto con movimentazione
+    descrizione: g.descrizione ?? null,
   });
   // la regola della natura del contratto, la stessa dei connettori di tutte le fonti (fonti/natura-contratto.ts, con l'eccezione D2 dei
   // buoni pasto del 18/11)
@@ -78,6 +99,9 @@ export function classificaPerArchivio(g: DatiDaClassificare, lotti: readonly Lot
     if (tenuti.length === 0) return { settori: [], metodo: null, livello: Object.keys(perSettore).length ? "C" : null, perSettore, versione };
     return { settori: tenuti, metodo: c.metodo, livello: tenuti.some((s) => perSettore[s]?.livello === "A") ? "A" : "B", perSettore, versione };
   }
+  // S4: solo una gara senza A né B (classificaGara lo garantisce già: l'etichetta c'è solo senza settori)
+  const casi = c.settori.length === 0 && c.daVerificare?.length ? c.daVerificare : null;
+  if (casi) return { settori: [], metodo: null, livello: "C", perSettore: conDaVerificare(perSettore, casi), versione, daVerificare: [...casi] };
   return { settori: c.settori.length ? [...c.settori] : [], metodo: c.settori.length ? c.metodo : null, livello: c.livello, perSettore, versione };
 }
 
