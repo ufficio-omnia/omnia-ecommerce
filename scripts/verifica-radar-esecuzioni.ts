@@ -223,6 +223,13 @@ function provaRighe(): void {
     ["fonte sconosciuta", { ...t, fonte: "manuale" as FonteEsecuzione }],
   ];
   controlla("il controllo dei vincoli rifiuta 6 righe sbagliate apposta", sbagliate.every(([, x]) => violazioni0128(x).length > 0), sbagliate.map(([n, x]) => [n, violazioni0128(x)]));
+  // per la prova su Postgres isolato (esegui-prova-esecuzioni.mjs): le righe VERE, con un identificativo ciascuna, e i byte calcolati qui
+  const file = process.env.RADAR_RIGHE_ESECUZIONI;
+  if (file) {
+    const esportate = righe.map((x, i) => ({ ...x, id: `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}` }));
+    const sbagliateEsportate = sbagliate.map(([nome, x], i) => ({ nome, riga: { ...x, id: `00000000-0000-4000-9000-${String(i + 1).padStart(12, "0")}` } }));
+    fs.writeFileSync(file, JSON.stringify({ righe: esportate, byte: esportate.map((x) => ({ id: x.id, finestre: byteJsonb(x.finestre), avvisi: byteJsonb(x.avvisi), risposte: byteJsonb(x.fonte_risposte) })), sbagliate: sbagliateEsportate }));
+  }
 }
 
 // ───────────────── il giro registrato, su un database in memoria ─────────────────
