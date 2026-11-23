@@ -179,8 +179,9 @@ async function principale() {
     atteso("A. lo STESSO trigger della 0120 aggiornato sul posto (create or replace) con un evento in più, la cancellazione", /create or replace trigger radar_procedure_fonti_aggiunge_fonte\s+after insert or update of procedura_id, fonte or delete on public\.radar_procedure_fonti\s+for each row execute function public\.radar_aggiungi_fonte_alla_gara\(\);/.test(codice) && (codice.match(/create (or replace )?trigger/gi) ?? []).length === 1);
     atteso("A. migrazione NON distruttiva: nessun DROP di alcun tipo, nessuna cancellazione o troncamento di dati", !/\bdrop\b/i.test(codice) && !/\bdelete from\b|\btruncate\b/i.test(codice));
     const migrazioni = fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01[2-9]\d_/.test(f));
-    // fase B4 (19/11): dopo la 0121 solo le B4 0122–0125 del 26B; Z5 (21/11): più la 0128 (registro dei giri), esattamente queste
-    uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo), poi le sole B4 0122–0125 e la 0128", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql", "0122_radar_profili_per_te.sql", "0123_radar_aggiornamenti_evidenza.sql", "0124_radar_avvisi_preferenze.sql", "0125_radar_avvisi_eventi_coda.sql", "0128_radar_esecuzioni.sql"]);
+    // fase B4 (19/11): dopo la 0121 solo le B4 0122–0125 del 26B; Z5 (21/11): più la 0128 (registro dei giri); 49A (23/11, sessione PVL):
+    // più la 0133 (stato «da_verificare», schema S4, numero assegnato dal coordinamento), esattamente queste
+    uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo), poi le sole B4 0122–0125, la 0128 e la 0133", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql", "0122_radar_profili_per_te.sql", "0123_radar_aggiornamenti_evidenza.sql", "0124_radar_avvisi_preferenze.sql", "0125_radar_avvisi_eventi_coda.sql", "0128_radar_esecuzioni.sql", "0133_radar_classificazioni_da_verificare.sql"]);
   }
 
   // ═════ A bis. strumenti della prova su un Postgres isolato (si eseguono solo dopo l'approvazione dell'utente) ═════

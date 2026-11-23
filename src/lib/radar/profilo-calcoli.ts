@@ -189,6 +189,8 @@ export function filtriDaProfilo(p: ProfiloRadar, ordina: Ordinamento, pagina: nu
     scadenzaEntroGiorni: null,
     pubblicataNegliUltimiGiorni: null,
     procedure: p.procedure.filter((x): x is ProceduraRicerca => ID_PROCEDURE.has(x)),
+    // «Per te» mostra tutti i tipi, ognuno con la sua etichetta (C5)
+    tipi: [],
     stato: "aperte",
     ordina,
     pagina,

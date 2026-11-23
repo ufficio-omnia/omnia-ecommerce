@@ -13,8 +13,9 @@ import { fileURLToPath } from "node:url";
 const RADICE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RAMO_B2 = process.argv[2] || "feature/tender-intelligence-b4-db";
 const FILE = "src/lib/radar/notifiche/tipi.ts";
-// impronta del contratto, VERSIONE 2, di B2 (punta 4b03fb9), verificata dal coordinamento il 19/11/2026 (la v1 era 4b36014c…)
-const IMPRONTA_VERIFICATA = "2c3feca6289492494afd12cd12aea1ca86a2ba1815270b1fea90edcb6947bded";
+// impronta del contratto, VERSIONE 2 con il campo FACOLTATIVO «rilevanza» (N4), di B2 (e2aa826, Fase A fino a ad8f70c, integrazione 5360705),
+// verificata dal coordinamento il 20/11/2026 e coincidente con quella dichiarata da B2 (prima: v2 del 19/11 2c3feca6…, v1 4b36014c…)
+const IMPRONTA_VERIFICATA = "806d988b135d1d1a6f3bebdf76fa7ef63efaa00453b44fa8cab09be03592864c";
 
 function git(...argomenti) {
   return spawnSync("git", ["-c", "core.autocrlf=false", ...argomenti], { cwd: RADICE, encoding: "utf8" });

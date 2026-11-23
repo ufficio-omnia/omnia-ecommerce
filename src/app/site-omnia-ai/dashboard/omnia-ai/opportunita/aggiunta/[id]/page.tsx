@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { schedaGaraApribile } from "@/lib/radar/gara";
 import { richiediOpportunitaPagina } from "@/lib/radar/guardie-opportunita";
 import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { distanzaScadenza, euro, scadenzaLeggibile, giorniAllaScadenza } from "@/lib/radar/sintesi-calcoli";
@@ -29,7 +31,9 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
     supabase.from("omnia_ai_radar_salvate").select("id, monitorata").eq("aggiunta_id", id).maybeSingle<{ id: string; monitorata: boolean }>(),
   ]);
   if (!a) notFound();
-  if (a.procedura_id) redirect(`${RADICE_OPPORTUNITA}/gara/${a.procedura_id}`);
+  // collegata a una gara pubblica: si passa alla scheda solo se si apre per il cliente; una gara con SOLO fonti nascoste ai clienti (0120, la
+  // PVL dopo la L5a) non esiste per il cliente, e allora restano i dati scritti dall'impresa (documento 47 §3.1)
+  if (a.procedura_id && (await schedaGaraApribile(createAdminClient(), a.procedura_id))) redirect(`${RADICE_OPPORTUNITA}/gara/${a.procedura_id}`);
   if (salvata) {
     after(async () => {
       await supabase.from("omnia_ai_radar_salvate").update({ ultimo_aggiornamento_visto_il: new Date().toISOString() }).eq("id", salvata.id);

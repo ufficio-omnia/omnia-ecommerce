@@ -76,6 +76,13 @@ export function etichettaFonti(fonti: readonly FonteGara[]): string {
   return fonti.map((f) => NOME_FONTE[f]).join(" e ");
 }
 
+// Etichetta delle fonti di una gara negli elenchi (Cerca, Per te, Monitorate): SOLO le fonti visibili lette dagli avvisi (leggiFontiGare).
+// Senza fonti lette «Fonte non indicata»: una fonte sconosciuta o nascosta non si indica mai come TED (difetto del 23/11, documento 47 §3.1).
+export const FONTE_NON_INDICATA = "Fonte non indicata";
+export function etichettaFontiElenco(fonti: readonly FonteGara[] | undefined): string {
+  return fonti && fonti.length > 0 ? etichettaFonti(fonti) : FONTE_NON_INDICATA;
+}
+
 // Da quale fonte viene un dato (gruppo di unione-calcoli.ts); per le gare di prima della 0115 la sola fonte della gara. null = nessuna
 // fonte riconosciuta (mai TED per ripiego).
 export function fonteDelDato(provenienza: ProvenienzaCampi | null | undefined, gruppo: string, chiave: string): FonteGara | null {

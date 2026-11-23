@@ -446,6 +446,41 @@ export function affidamentoEsplicito(settore: SettoreRadar, parole: RegExp, test
   return migliore;
 }
 
+// S1 (decisione dell'utente del 23/11, documento 49A): il servizio del settore è UNA DELLE ATTIVITÀ ELENCATE come affidate, in un elenco
+// che il riconoscimento dell'affidamento non lega a una testa («servizio di noleggio … di container, gruppi elettrogeni, certificazione
+// impianto elettrico, sanificazione/disinfestazione e derattizzazione», Brigata aeromobile, TED e30a5e91): correlata (B), non citazione (C).
+// Resta citazione (C) quando la parola:
+//   - può essere un luogo o un oggetto («mensa», «bar», «reception», «pasti»): vale solo per le parole che sono sempre un'attività;
+//   - non è in un elenco (nessuna virgola o «e» subito prima), o la voce che la precede non è un'attività («presso le scuole, pulizia…»);
+//   - ha subito dopo un oggetto che non è un ambiente («pulizia casse» delle navi, Agenzia Industrie Difesa, TED 04ceaec1: manutenzione navale).
+const ELENCO = /^(,|e|ed|nonche)$/;
+const ATTIVITA_GENERICA = /(zion[ei]|aggio|aggi)$/;
+const AMBIENTI = /^(locali|ambienti|uffici|edifici|edificio|immobili|sedi|aree|spazi|strutture|reparti|bagni|servizi|scuole|plessi|palestre)$/;
+
+export function servizioInElenco(settore: SettoreRadar, testo: string | null | undefined): boolean {
+  const p = paroleDelTesto(testo);
+  const unito = p.join(" ");
+  const inizi: number[] = [];
+  let pos = 0;
+  for (const w of p) {
+    inizi.push(pos);
+    pos += w.length + 1;
+  }
+  for (const m of unito.matchAll(new RegExp(paroleDelServizio(settore).source, "g"))) {
+    const i = inizi.indexOf(m.index ?? -1);
+    if (i < 0 || !SERVIZIO_PURO.test(p[i])) continue;
+    const dopo = p[i + 1];
+    if (dopo && dopo !== "|" && !ELENCO.test(dopo) && !PREPOSIZIONI.test(dopo) && !ARTICOLI.test(dopo) && !SERVIZIO_PURO.test(dopo) && !AMBIENTI.test(dopo)) continue;
+    let j = i - 1;
+    while (j >= 0 && (ARTICOLI.test(p[j]) || DI.test(p[j]))) j--;
+    if (j < 0 || !ELENCO.test(p[j])) continue;
+    const voce: string[] = [];
+    for (let x = j - 1; x >= 0 && p[x] !== "|" && !ELENCO.test(p[x]); x--) voce.push(p[x]);
+    if (voce.some((w) => SERVIZIO_PURO.test(w) || (ATTIVITA_GENERICA.test(w) && !BENI_E_LAVORI.test(w)))) return true;
+  }
+  return false;
+}
+
 // ───── rilevanza: livelli A, B, C e sottocategorie (decisione definitiva dell'utente, 17/11/2026) ─────
 //
 // Per ogni settore che i CPV o le parole chiave indicano, la classificazione dice il livello, con la regola e il motivo:
@@ -1135,9 +1170,35 @@ const MOTIVO_ACCESSORIO = "Il servizio è compreso come accessorio in un affidam
 // decisione dell'utente del 18/11: una parola solo citata (riferimento, luogo, destinazione) è C, non B
 const MOTIVO_CITATO = "L'oggetto cita il servizio (come riferimento, luogo o destinazione) ma non lo affida: una parola chiave da sola non basta";
 const MOTIVO_COMPONENTE = "Il servizio è una componente di un servizio integrato di un'altra attività prevalente, senza CPV né lotto propri";
+// S1, decisione dell'utente del 23/11 (49A)
+const MOTIVO_IN_ELENCO = "Il servizio è una delle attività elencate come affidate in un appalto più ampio: correlata, non una semplice citazione";
+// S3, decisione dell'utente del 23/11 (49A): «servizi integrati, gestionali ed operativi di manutenzione da eseguirsi presso gli immobili»
+// (ASL Napoli 1, TED 69298aba). Servono il segnale dell'integrazione (servizi integrati, gestione integrata, global service, manutenzione
+// integrata, multiservizi), la manutenzione e gli edifici: la manutenzione di apparecchiature, strade o centrali non è qui
+const EDIFICI = "(immobil\\w*|edific\\w*|fabbricat\\w*|stabil[ei]|plessi|patrimonio (immobiliare|edilizio))";
+const MANUTENZIONE_INTEGRATA_EDIFICI = new RegExp(
+  `\\b((servizi\\w* integrat\\w*|gestione integrata|global service|multiservizi)( \\w+){0,8} manutenzion\\w*|manutenzion\\w* integrat\\w*)( \\w+){0,10} ${EDIFICI}\\b`,
+);
+const MOTIVO_MANUTENZIONE_INTEGRATA = "Manutenzione integrata di edifici e impianti: gestione degli edifici correlata al multiservizi, mai pertinente da sola";
+// S2, decisione dell'utente del 23/11 (49A): «servizio di trasporto di opere d'arte» con, nella DESCRIZIONE, «comprensivo di imballaggio e
+// disimballaggio, montaggio e smontaggio» (MANN, TED 566d9123). Solo quando la regola «trasporto_puro» escluderebbe la gara: un oggetto che
+// nomina già la movimentazione non è mai «puro trasporto» (salvo della regola)
+const MOVIMENTAZIONE_AFFIDATA = /\b(imballagg\w*|disimballagg\w*|montaggi\w*|smontaggi\w*|movimentazion\w*|facchinagg\w*|carico e scarico)\b/;
+// la negazione vale anche per le voci coordinate dopo («escluso il montaggio e l'imballaggio»)
+const NEGAZIONE_PRIMA = /\b(esclus\w*|senza|non (compres\w*|inclus\w*|comprend\w*))( \w+){0,5} $/;
+const MOTIVO_TRASPORTO_CON_MOVIMENTAZIONE = "Trasporto con imballaggio, montaggio o movimentazione affidati (dalla descrizione dell'avviso): correlata al facchinaggio, non puro trasporto";
+
+export function trasportoConMovimentazione(descrizione: string | null | undefined): boolean {
+  const d = testoPerConfronto(descrizione);
+  if (!/\btrasport\w*/.test(d)) return false;
+  for (const m of d.matchAll(new RegExp(MOVIMENTAZIONE_AFFIDATA.source, "g"))) {
+    if (!NEGAZIONE_PRIMA.test(d.slice(Math.max(0, (m.index ?? 0) - 60), m.index))) return true;
+  }
+  return false;
+}
 
 // Livello, sottocategorie, regole e motivi di un settore. Per le parole chiave conta come l'oggetto affida il servizio (fase B2b).
-function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, da: "cpv" | "parole_chiave", affidamento: Affidamento | null = null): Valutazione {
+function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, da: "cpv" | "parole_chiave", affidamento: Affidamento | null = null, inElenco = false): Valutazione {
   const cpvDelSettore = da === "cpv" ? contesto.delSettore : [];
   const escluse = regoleDiEsclusione(settore, t, contesto);
   // una regola che «cede alle correlazioni» esclude solo se nessuna correlazione vale (vedi sotto: B invece di C)
@@ -1178,6 +1239,7 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
   if (da === "parole_chiave") {
     if (affidamento === "principale" || affidamento === "integrato") return valutazione(settore, "A", sottocategorie, [{ id: "parole_chiave", motivo: MOTIVO_AFFIDATO }], da, []);
     if (affidamento === "accessorio") return valutazione(settore, "B", sottocategorie, [{ id: "servizio_accessorio", motivo: MOTIVO_ACCESSORIO }], da, []);
+    if (inElenco) return valutazione(settore, "B", sottocategorie, [{ id: "servizio_in_elenco", motivo: MOTIVO_IN_ELENCO }], da, []);
     return valutazione(settore, "C", [], [{ id: "parola_chiave_citata", motivo: MOTIVO_CITATO }], da, []);
   }
   if (contesto.principale && principale?.settore !== settore && !haNucleo && !daTesto.length) {
@@ -1216,7 +1278,13 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // «2026-11-18e»: controllo del coordinamento sulla 18d. «parte/parti» è accessorio solo coordinato dopo un altro servizio affidato («e per
 // alcune parti di»), non da solo («affidamento di parte del servizio di pulizia» resta A); il «salvo» di «acque_e_coste» vale anche per gli
 // edifici coordinati («pulizia delle spiagge e dei servizi igienici»). Nessuna gara dell'archivio cambia rispetto alla 18d.
-export const VERSIONE_REGOLE_SETTORI = "2026-11-18e";
+// «2026-11-23a»: decisione dell'utente del 23/11 sui quattro schemi del documento 49A (revisione delle gare C). S1: il servizio elencato tra
+// le attività affidate è correlato (B «servizio_in_elenco»), non citato. S3: la manutenzione integrata di edifici e impianti è multiservizi
+// B («manutenzione_integrata_edifici», gestione impianti), mai A da sola. S4: tre casi senza descrizione utile hanno l'etichetta «da
+// verificare» (dato puro, nessuna riga cambia finché non si decide la rappresentazione). S2: trasporto con imballaggio, montaggio o
+// movimentazione nella descrizione = facchinaggio B («trasporto_con_movimentazione»); vale solo con la descrizione nei dati (campo facoltativo
+// «descrizione», che importatori e popolamento oggi non passano).
+export const VERSIONE_REGOLE_SETTORI = "2026-11-23a";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
@@ -1306,7 +1374,45 @@ export type Classificazione = {
   livello: Livello | null;
   // i settori esclusi (livello C), con la regola e il motivo (esclusione, non cancellazione)
   esclusioni: Esclusione[];
+  // S4 (23/11): solo per una gara senza A né B, i casi senza descrizione utile da far decidere a un amministratore. Il campo c'è solo se non
+  // è vuoto (le classificazioni di sempre restano identiche)
+  daVerificare?: DaVerificare[];
 };
+
+// S4 (decisione dell'utente del 23/11, documento 49A): casi senza una descrizione utile. Né C né B in automatico, ma un'etichetta «da
+// verificare» con la decisione a mano dell'amministratore in console. Qui c'è solo il DATO, puro: come rappresentarlo nel database (le
+// righe della 0121 ammettono solo A, B e C) è da decidere con il coordinamento; finché non c'è, la riga resta quella calcolata (C) e nessuna
+// gara cambia. Tre casi, quelli del 49A:
+//   - concessione di un immobile con un CPV di ristorazione e nessuna descrizione del servizio (casone «Paduli», Comune di Accadia);
+//   - appalto misto per stabulari con «pulizie» tra le attività (Università di Torino: pulizia dei locali o cura degli animali?);
+//   - servizi di biblioteca senza descrizione (Università di Chieti: apertura, accoglienza e custodia delle sale = correlata di portierato?).
+export type DaVerificare = {
+  settore: SettoreRadar;
+  caso: "immobile_con_cpv_ristorazione" | "stabulari" | "biblioteca";
+  regola: "da_verificare";
+  motivo: string;
+};
+
+const CONCESSIONE_DI_IMMOBILE = /\bconcession\w* (in gestione |in uso |d uso )?(del|dello|della|dell|di) (casone|stabile|immobil\w*|fabbricat\w*|local\w*|rifugi\w*|compendio)\b/;
+const STABULARI = /\b(stabular\w*|stabiliment\w* utilizzator\w*|animal\w* (da |per )?(laboratorio|sperimentazion\w*|ricerca))\b/;
+const BIBLIOTECA = /\b(servizi\w* (integrat\w* )?(di |della |delle |dei )?bibliotec\w*|servizi\w* bibliotecar\w*|gestione (della |delle |dei )?bibliotec\w*)\b/;
+
+// Si chiama solo per una gara senza A né B (ultimo ritorno di classificaSenzaLotti: tutte le valutazioni sono C o non ce ne sono)
+function casiDaVerificare(t: string, valutazioni: readonly Valutazione[], settoriDeiCpv: readonly SettoreRadar[]): DaVerificare[] {
+  if (!t) return [];
+  const esclusaDa = (s: SettoreRadar, regola: string) => valutazioni.some((v) => v.settore === s && v.livello === "C" && v.regole.includes(regola));
+  const out: DaVerificare[] = [];
+  if (esclusaDa("ristorazione", "concessione_di_immobili") && settoriDeiCpv.includes("ristorazione") && CONCESSIONE_DI_IMMOBILE.test(t)) {
+    out.push({ settore: "ristorazione", caso: "immobile_con_cpv_ristorazione", regola: "da_verificare", motivo: "Concessione di un immobile con un CPV di ristorazione, senza una descrizione del servizio: da verificare sull'avviso (punto ristoro o solo immobile)" });
+  }
+  if (esclusaDa("pulizia", "cura_degli_animali") && STABULARI.test(t) && /\bpulizi\w*/.test(t)) {
+    out.push({ settore: "pulizia", caso: "stabulari", regola: "da_verificare", motivo: "Appalto misto per stabulari con le «pulizie» tra le attività: da verificare nei documenti (pulizia dei locali o cura degli animali)" });
+  }
+  if (BIBLIOTECA.test(t) && !valutazioni.some((v) => v.settore === "vigilanza_portierato")) {
+    out.push({ settore: "vigilanza_portierato", caso: "biblioteca", regola: "da_verificare", motivo: "Servizi di biblioteca senza descrizione: da verificare se comprendono apertura, accoglienza e custodia delle sale (correlata di portierato)" });
+  }
+  return out;
+}
 
 function livelloMigliore(v: readonly Valutazione[]): Livello | null {
   return v.some((x) => x.livello === "A") ? "A" : v.some((x) => x.livello === "B") ? "B" : v.length ? "C" : null;
@@ -1321,6 +1427,9 @@ export type DatiGara = {
   // rende quel settore AUTONOMO nella gara: A invece di B (per esempio un lotto «servizi di catering» in un appalto di eventi). Senza i
   // lotti il risultato non cambia
   lotti?: readonly { testo?: string | null; cpv?: readonly (string | null | undefined)[] }[];
+  // FACOLTATIVA (23/11, S2): la descrizione dell'avviso. La usa SOLO la regola S2 (trasporto con imballaggio, montaggio o movimentazione =
+  // facchinaggio B): non riconosce settori e non alza altri livelli. Senza la descrizione il risultato non cambia
+  descrizione?: string | null;
 };
 
 const MOTIVO_LOTTO_AUTONOMO = "Un lotto della gara è dedicato al servizio del settore: è autonomo, non accessorio";
@@ -1366,8 +1475,11 @@ export function classificaGara(dati: DatiGara): Classificazione {
   const tutte = [...valutazioni, ...nuove];
   const settori = tutte.filter((v) => v.livello !== "C").map((v) => v.settore);
   const cpvNuovi = [...new Set(tutte.filter((v) => v.livello !== "C" && !c.settori.includes(v.settore)).flatMap((v) => v.cpv))];
+  // S4: un lotto che rende la gara pertinente toglie l'etichetta «da verificare» (vale solo per le gare senza A né B)
+  const { daVerificare, ...resto } = c;
   return {
-    ...c,
+    ...resto,
+    ...(daVerificare && !settori.length ? { daVerificare } : {}),
     settori,
     settorePrincipale: c.settorePrincipale && settori.includes(c.settorePrincipale) ? c.settorePrincipale : (tutte.find((v) => v.livello === "A")?.settore ?? settori[0] ?? null),
     metodo: c.metodo ?? (settori.length ? (tutte.find((v) => v.livello !== "C")?.da ?? null) : null),
@@ -1396,6 +1508,11 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   const contesto = (s: SettoreRadar): ContestoCpv => ({ principale, tutti, delSettore: voci.filter((v) => v.settore === s).map((v) => v.cpv) });
 
   const valutazioniCpv = [...new Set(voci.map((v) => v.settore))].map((s) => valutaSettore(s, t, contesto(s), "cpv"));
+  // S2 (23/11): «puro trasporto» per l'oggetto, ma la descrizione affida anche imballaggio, montaggio o movimentazione → facchinaggio B
+  const trasporto = valutazioniCpv.findIndex((v) => v.settore === "facchinaggio" && v.livello === "C" && v.regole.length === 1 && v.regole[0] === "trasporto_puro");
+  if (trasporto >= 0 && trasportoConMovimentazione(dati.descrizione)) {
+    valutazioniCpv[trasporto] = valutazione("facchinaggio", "B", ["facchinaggio_movimentazione"], [{ id: "trasporto_con_movimentazione", motivo: MOTIVO_TRASPORTO_CON_MOVIMENTAZIONE }], "cpv", valutazioniCpv[trasporto].cpv);
+  }
   const esclusioni: Esclusione[] = valutazioniCpv.filter((v) => v.livello === "C").map((v) => ({ settore: v.settore, regola: v.regola, motivo: v.motivo }));
   const tenute = valutazioniCpv.filter((v) => v.livello !== "C");
 
@@ -1456,7 +1573,19 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   // nessun CPV del file, oppure tutti i loro settori esclusi dall'oggetto: decidono le parole chiave, come per ogni altra gara
   // i settori che il CPV ha già escluso (C) non si rivalutano per parola: la stessa esclusione vale anche lì
   const daParole = settoriParole.filter((s) => !valutazioniCpv.some((v) => v.settore === s));
-  const valutazioniParole = daParole.length > 0 && !cpvSoloDiAltriMestieri(tutti) ? daParole.map((s) => valutaSettore(s, t, contesto(s), "parole_chiave", affidamento(s))) : [];
+  const valutazioniParole =
+    daParole.length > 0 && !cpvSoloDiAltriMestieri(tutti)
+      ? daParole.map((s) => {
+          const a = affidamento(s);
+          // S1: una parola non affidata ma elencata tra le attività affidate è correlata (B), non citata (C)
+          return valutaSettore(s, t, contesto(s), "parole_chiave", a, !a && servizioInElenco(s, dati.testo));
+        })
+      : [];
+  // S3 (decisione dell'utente del 23/11, 49A): la manutenzione integrata di edifici e impianti è multiservizi B («gestione impianti»), mai A
+  // da sola; solo se il multiservizi non è già valutato dal CPV o dalle parole chiave (le sue esclusioni restano)
+  if (!cpvSoloDiAltriMestieri(tutti) && ![...valutazioniCpv, ...valutazioniParole].some((v) => v.settore === "multiservizi") && MANUTENZIONE_INTEGRATA_EDIFICI.test(t)) {
+    valutazioniParole.push(valutazione("multiservizi", "B", ["gestione_impianti"], [{ id: "manutenzione_integrata_edifici", motivo: MOTIVO_MANUTENZIONE_INTEGRATA }], "parole_chiave", []));
+  }
   const valutazioni = [...valutazioniCpv, ...valutazioniParole];
   // anche quando le parole chiave sono escluse (somministrazione di lavoro) il motivo resta scritto
   const tutteLeEsclusioni = [...esclusioni, ...valutazioniParole.filter((v) => v.livello === "C").map((v) => ({ settore: v.settore, regola: v.regola, motivo: v.motivo }))];
@@ -1475,5 +1604,17 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
     };
   }
 
-  return { versione: VERSIONE_REGOLE_SETTORI, settori: [], settorePrincipale: null, metodo: null, motivi: [], cpvRiconosciuti: [], valutazioni, livello: livelloMigliore(valutazioni), esclusioni: tutteLeEsclusioni };
+  const daVerificare = casiDaVerificare(t, valutazioni, voci.map((v) => v.settore));
+  return {
+    versione: VERSIONE_REGOLE_SETTORI,
+    settori: [],
+    settorePrincipale: null,
+    metodo: null,
+    motivi: [],
+    cpvRiconosciuti: [],
+    valutazioni,
+    livello: livelloMigliore(valutazioni),
+    esclusioni: tutteLeEsclusioni,
+    ...(daVerificare.length ? { daVerificare } : {}),
+  };
 }

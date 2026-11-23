@@ -17,7 +17,7 @@ import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvatag
 import ClassificazioneGara from "@/components/omnia-ai/opportunita/classificazione-gara";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
-import { ETICHETTA_OPPORTUNITA } from "@/lib/radar/opportunita-calcoli";
+import { COME_SI_PARTECIPA_PREINFORMAZIONE, ETICHETTA_TIPO, tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 
 // Scheda di una gara del Radar (fase B1): «In sintesi» con le quattro informazioni chiave, panoramica senza modello (solo i dati
 // dell'avviso), lotti, soglia UE spiegata, fonti verificabili (avviso ufficiale, versioni lette, date di verifica), cambiamenti rilevati.
@@ -99,6 +99,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     return f ? NOME_FONTE[f] : "fonte non riconosciuta";
   };
   const adesso = new Date();
+  // C4/C11 (analisi 49): il tipo della gara, ricavato dal tipo dell'avviso quando la colonna è vuota
+  const tipo = tipoDellaGara(g);
   // aperta la scheda, le novità di una gara salvata risultano viste (dopo la risposta, senza rallentare la pagina)
   if (salvataggio) {
     after(async () => {
@@ -128,9 +130,11 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     scadenza: g.scadenza_offerte,
     scadenzaGiorno: g.scadenza_giorno,
     // fase B2a: con più fonti si elencano tutte quelle visibili al cliente (le nascoste sono già fuori da «perFonte»)
-    fonte: fontiMostrate.length > 1 ? etichettaFonti(fontiMostrate) : fontiMostrate[0] === "pvl" || (!fontiMostrate.length && primoAvviso?.fonte === "pvl") ? "PVL di ANAC" : fontiMostrate[0] && fontiMostrate[0] !== "ted" ? NOME_FONTE[fontiMostrate[0]] : "TED",
-    // il numero dell'avviso si cita solo per una gara di sola fonte TED (gli identificativi delle altre fonti sono interni)
-    numeroAvviso: fontiMostrate.length > 1 || (primoAvviso && primoAvviso.fonte !== "ted") ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.includes(":") ? null : g.ultima_versione_id)),
+    // senza nessuna fonte riconosciuta, «fonte non riconosciuta» come in fonteDi (mai «TED» per ripiego, 23/11)
+    fonte: fontiMostrate.length > 1 ? etichettaFonti(fontiMostrate) : fontiMostrate[0] === "pvl" || (!fontiMostrate.length && primoAvviso?.fonte === "pvl") ? "PVL di ANAC" : fontiMostrate[0] ? NOME_FONTE[fontiMostrate[0]] : "fonte non riconosciuta",
+    // il numero dell'avviso si cita solo per una gara di sola fonte TED (gli identificativi delle altre fonti sono interni); senza fonti
+    // riconosciute nessun numero (un identificativo di fonte non riconosciuta non è un avviso TED)
+    numeroAvviso: fontiMostrate.length !== 1 || (primoAvviso && primoAvviso.fonte !== "ted") ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.includes(":") ? null : g.ultima_versione_id)),
     dataPubblicazione: primoAvviso?.pubblicato_il ?? g.data_pubblicazione,
   });
   const soglia = sogliaApplicabile({
@@ -181,7 +185,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
               g.valore_stimato !== null ? `dato ${fonteDi("valore_stimato")}: il valore stimato comprende di solito opzioni e rinnovi, non è la base di gara` : null,
               // fase B2a: le piattaforme regionali indicano la base d'asta, non il valore stimato complessivo
               g.valore_stimato !== null && g.valore_base !== null ? `base d'asta ${euro(g.valore_base)} (dato ${fonteDi("valore_base")})` : g.valore_stimato === null && g.valore_base !== null ? `dato ${fonteDi("valore_base")}, come indicato dalla piattaforma` : null,
-              g.tipo_opportunita && g.tipo_opportunita !== "bando" ? ETICHETTA_OPPORTUNITA[g.tipo_opportunita as keyof typeof ETICHETTA_OPPORTUNITA] : null,
+              // C4/C11: il tipo anche quando la colonna è vuota (dal tipo dell'avviso); un bando resta senza etichetta, come prima
+              tipo && tipo !== "bando" ? ETICHETTA_TIPO[tipo] : null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -197,6 +202,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
                   : undefined
             }
           />
+          {/* C11 (nome deciso dall'utente): per una preinformazione che indice la gara si presenta prima la candidatura o la domanda */}
+          {tipo === "preinformazione" && <Dato etichetta="Come si partecipa" valore={COME_SI_PARTECIPA_PREINFORMAZIONE} />}
           <Dato etichetta="Stato" valore={ETICHETTA_STATO[stato]} />
           <Dato etichetta="Requisiti" valore="Non ancora analizzati" nota="L'analisi dei requisiti sui documenti di gara arriverà nelle prossime fasi." />
           <Dato
@@ -221,7 +228,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
                   ))}
                 </ul>
               ) : (
-                etichettaFonti(fonti)
+                etichettaFonti(fonti) || "Fonte non riconosciuta"
               )
             }
             nota={`Prima rilevazione ${giorno(g.prima_rilevazione_il)} · dati aggiornati il ${giorno(g.ultima_rilevazione_il)}${fonti.length > 1 ? " · stessa gara pubblicata su più fonti: un'unica scheda" : ""}`}
@@ -372,7 +379,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           </>
         )}
         <p className="omnia-opp-nota">
-          Fonti: {fonti.map((f) => ATTRIBUZIONE_FONTE[f]).join("; ")}. Fa fede solo l&apos;avviso ufficiale.
+          Fonti: {fonti.map((f) => ATTRIBUZIONE_FONTE[f]).join("; ") || "non riconosciuta"}. Fa fede solo l&apos;avviso ufficiale.
         </p>
       </section>
     </div>

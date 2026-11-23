@@ -25,7 +25,8 @@ const F = {
 
 const MUTAZIONI = [
   { nome: "M1 interruttore acceso con qualunque valore", file: F.interruttori, cerca: 'return env[nome] === "attivo" && ambienteDb', con: "return !!env[nome] && ambienteDb" },
-  // (dal grado 3 la stessa coda compare anche in invioEmailDichiaratoAcceso: il punto da mutare comprende «return env[nome]»)
+  // (dal grado 3 all'A9 del 20/11 la stessa coda compariva anche in invioEmailDichiaratoAcceso, oggi delegata a B2: il punto da mutare
+  // comprende comunque «return env[nome]»)
   { nome: "M2 interruttore valido anche fuori dallo staging", file: F.interruttori, cerca: 'return env[nome] === "attivo" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";', con: 'return env[nome] === "attivo";' },
   { nome: "M3 pagine di Opportunità aperte all'Ufficio Gare a interruttore spento", file: F.guardie, cerca: "? richiediAccountPagina() : richiediTitolarePagina();", con: "? richiediAccountPagina() : richiediAccountPagina();" },
   { nome: "M4 azioni di Opportunità aperte all'Ufficio Gare a interruttore spento", file: F.guardie, cerca: "? richiediAccountAzione() : richiediTitolareAzione();", con: "? richiediAccountAzione() : richiediAccountAzione();" },

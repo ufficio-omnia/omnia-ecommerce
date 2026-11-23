@@ -8,7 +8,8 @@ import { COLONNA_RIGHE_ATTIVE, type ConClassificazioni } from "@/lib/radar/class
 import { etichettaRicerca, etichettaStatoClassificazione, settoriDellaRiga } from "@/lib/radar/ricerca-calcoli";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { leggiFontiGare } from "@/lib/radar/gara";
-import { etichettaFonti, type FonteGara } from "@/lib/radar/fonti-gara-calcoli";
+import { etichettaFontiElenco, type FonteGara } from "@/lib/radar/fonti-gara-calcoli";
+import { tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 import { statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
 import { giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
@@ -71,14 +72,17 @@ export default async function MonitoratePage() {
   const resta = new Map((collegateRaw ?? []).map((c) => [c.id, c.unita_a]));
   const mostrata = (id: string | null | undefined) => (id ? (resta.get(id) ?? id) : undefined);
   const idProcedure = [...new Set(idSalvati.map((id) => resta.get(id) ?? id))];
+  // fonti non ancora mostrabili ai clienti (0120; la PVL dopo la L5a): come in «Cerca», una gara che ha SOLO fonti nascoste non si legge e
+  // quindi non compare (documento 47 §3.1). Il salvataggio resta nel database, intatto: la gara ricompare quando la fonte torna visibile.
+  const visibili = fontiVisibiliDa(await fontiNascosteAiClienti());
   // fase B3: con le classificazioni accese, stato e righe attive della 0121 nella STESSA richiesta delle gare (nessuna lettura in più)
   const conClassificazioni = classificazioniAttive(process.env);
   const leggiProcedure = async () => {
-    const q = admin.from("radar_procedure").select(colonneElenco(conClassificazioni)).in("id", idProcedure);
+    const q = admin.from("radar_procedure").select(colonneElenco(conClassificazioni)).in("id", idProcedure).overlaps("fonti", visibili);
     const letta = await (conClassificazioni ? q.eq(COLONNA_RIGHE_ATTIVE, true) : q).returns<(RigaRisultato & ConClassificazioni)[]>();
     if (!letta.error || !conClassificazioni) return { data: (letta.data ?? []).map((p) => (conClassificazioni ? conRilevanza(p) : p)) };
-    // tabelle della 0121 non leggibili: le gare come prima
-    return admin.from("radar_procedure").select(colonneElenco(false)).in("id", idProcedure).returns<RigaRisultato[]>();
+    // tabelle della 0121 non leggibili: le gare come prima (con lo stesso filtro delle fonti)
+    return admin.from("radar_procedure").select(colonneElenco(false)).in("id", idProcedure).overlaps("fonti", visibili).returns<RigaRisultato[]>();
   };
   const [{ data: procedureRaw }, { data: novitaRaw }, fontiGare] = idProcedure.length
     ? await Promise.all([
@@ -99,11 +103,17 @@ export default async function MonitoratePage() {
   const procedure = new Map((procedureRaw ?? []).map((p) => [p.id, { ...p, valore_stimato: p.valore_stimato === null ? null : Number(p.valore_stimato) }]));
 
   const righe: (DatiRigaGara & { chiave: string; scadenzaOrd: string; gruppo: "settimana" | "prossime" | "senza_data" | "chiuse" })[] = [];
+  // la gara mostrata solo se è stata letta, cioè se ha almeno una fonte visibile: una gara con sole fonti nascoste non raggruppa nulla, così
+  // un'aggiunta a mano collegata a lei resta una riga «Aggiunta a mano» con i dati scritti dall'impresa (e non sparisce col raggruppamento)
+  const garaMostrata = (id: string | null | undefined) => {
+    const m = mostrata(id);
+    return m && procedure.has(m) ? m : undefined;
+  };
   // una sola riga per gara mostrata: due salvataggi di copie poi collegate (0117) non danno due righe (nessun salvataggio cancellato)
-  const salvateUniche = unoPerGaraMostrata(salvate, (s) => mostrata(s.procedura_id) ?? mostrata(s.aggiunta_id ? aggiunte.get(s.aggiunta_id)?.procedura_id : undefined));
+  const salvateUniche = unoPerGaraMostrata(salvate, (s) => garaMostrata(s.procedura_id) ?? garaMostrata(s.aggiunta_id ? aggiunte.get(s.aggiunta_id)?.procedura_id : undefined));
   for (const s of salvateUniche) {
     const aggiunta = s.aggiunta_id ? aggiunte.get(s.aggiunta_id) : undefined;
-    const idMostrato = mostrata(s.procedura_id) ?? mostrata(aggiunta?.procedura_id);
+    const idMostrato = garaMostrata(s.procedura_id) ?? garaMostrata(aggiunta?.procedura_id);
     const p = idMostrato ? procedure.get(idMostrato) : undefined;
     let d: DatiRigaGara;
     if (p) {
@@ -131,7 +141,9 @@ export default async function MonitoratePage() {
         rilevanza: etichettaRicerca(p, { settori: [] }),
         settoriDettaglio: settoriDellaRiga(p),
         statoClassificazione: etichettaStatoClassificazione(p),
-        fonte: etichettaFonti(fontiGare.get(p.id) ?? ["ted"]),
+        fonte: etichettaFontiElenco(fontiGare.get(p.id)),
+        // C4/C5: il tipo della gara (ricavato dal tipo dell'avviso se la colonna è vuota)
+        tipo: tipoDellaGara(p),
         verificataIl: p.ultima_rilevazione_il,
         salvata: true,
         monitorata: s.monitorata,

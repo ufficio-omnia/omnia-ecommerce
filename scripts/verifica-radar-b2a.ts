@@ -554,7 +554,9 @@ async function principale() {
   const nuoveAzioni = ["impostaFonteRegionale", "impostaVisibilitaFonte", "eseguiGiroRegionale", "decidiPropostaCollegamento"];
   atteso("console: le azioni nuove sono solo per amministratori", nuoveAzioni.every((n) => new RegExp(`export async function ${n}\\([^)]*\\)[^{]*\\{\\s*const sessione = await richiediAdminAzione\\(\\);\\s*if \\(!sessione\\)`).test(azioni)));
   atteso("console: accensione, visibilità e suggerimenti sempre nel registro", ["impostaFonteRegionale", "impostaVisibilitaFonte", "decidiPropostaCollegamento"].every((n) => new RegExp(`export async function ${n}[\\s\\S]*?registroDisponibile\\(admin\\)[\\s\\S]*?await registra\\(admin`).test(azioni)));
-  atteso("console: per mostrare SardegnaCAT serve la conferma del parere legale", /fonte === "sardegnacat" && String\(formData\.get\("parere"\) \?\? ""\) !== "si"/.test(azioni));
+  // decisione 48E dell'utente (23/11/2026): SardegnaCAT visibile senza aspettare il parere legale (comportamento provato da
+  // verifica-monitorate-fonti-nascoste.ts, MV1-MV5)
+  atteso("console: SardegnaCAT si mostra ai clienti senza la conferma del parere legale (decisione 48E)", !/formData\.get\("parere"\)/.test(azioni));
 
   console.log(fallimenti.length === 0 ? "\nVerifica B2a (motore multifonte, 7 controlli di accettazione): tutto a posto." : `\nVerifica B2a: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
   process.exit(fallimenti.length === 0 ? 0 : 1);
