@@ -1331,6 +1331,7 @@ async function principale(): Promise<void> {
   const base = { gara: V.stabulari, settore: "pulizia", rilevanza: "B", sottocategoria: [SOTTO], nota: NOTA };
   const rifiuti = {
     notaVuota: await prova({ ...base, nota: "   " }),
+    notaTroppoLunga: await prova({ ...base, nota: "x".repeat(1001) }),
     rilevanzaSbagliata: await prova({ ...base, rilevanza: "D" }),
     sottocategoriaFuoriCatalogo: await prova({ ...base, sottocategoria: ["non_nel_catalogo"] }),
     cConSottocategorie: await prova({ ...base, rilevanza: "C" }),
