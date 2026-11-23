@@ -97,7 +97,8 @@ export const CRON_PROPOSTI: Readonly<Record<FonteEsecuzione, readonly string[]>>
   pvl: ["5 6,7,11,12,16,17 * * *"],
   ted: ["15 8,9,14,15 * * 1-5"],
   sintel: ["40 5,6,11,12 * * *"],
-  sardegnacat: ["20 6,7,9,10,12,13,15,16 * * 1-5", "20 10,11 * * 0,6"],
+  // una riga per rotta: chiama tutte le ore UTC possibili dei giorni feriali e del fine settimana, e decide la porta oraria
+  sardegnacat: ["20 6,7,9,10,11,12,13,15,16 * * *"],
 };
 /**
  * Doppio richiamo (48C §3.1 punto 7): un giro PROGRAMMATO non riparte se l'ultimo giro riuscito della fonte è di meno di 45 minuti fa

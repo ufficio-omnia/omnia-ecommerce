@@ -79,6 +79,7 @@ function provaRigheCron(): void {
   }
   controlla("PVL: la riga proposta è quella di prima (CRON_PVL_PROPOSTO, mostrata in console)", CRON_PROPOSTI.pvl.length === 1 && CRON_PROPOSTI.pvl[0] === CRON_PVL_PROPOSTO);
   controlla("orari invariati rispetto a K3 (D2, D5)", ORARI_GIRI.ted.length === 2 && ORARI_GIRI.sardegnacat.length === 5);
+  controlla("UNA riga cron per rotta (non si dipende da due righe sullo stesso percorso in vercel.json)", FONTI_ESECUZIONI.every((f) => CRON_PROPOSTI[f].length === 1));
 }
 
 // ═════ guardie 2 e 3, in ordine ═════
