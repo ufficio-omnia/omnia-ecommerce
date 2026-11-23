@@ -381,8 +381,9 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
   const cpvTutti = [...new Set(cpvLotti.filter((c): c is string => !!c))];
   if (lottiGrezzi.some((e) => testoPvl(e.cpv)) && cpvTutti.length === 0) mancanti.push("cpv_non_riconosciuto");
   const testoOggetto = [titolo, ...lottiGrezzi.map((e) => testoPvl(e.descrizione))].filter(Boolean).join(" ");
-  // i lotti (descrizione e CPV) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori
-  const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto, lotti: lottiGrezzi.map((e, i) => ({ testo: testoPvl(e.descrizione), cpv: [cpvLotti[i]] })) });
+  // i lotti (descrizione e CPV) servono solo a riconoscere un servizio AUTONOMO (lotto dedicato): cambiano il livello, mai i settori. La
+  // descrizione dell'avviso (metadata.descrizione) la legge SOLO la regola S2 (trasporto con movimentazione → facchinaggio B; 49C §5)
+  const classificazione = classificaGara({ cpvPrincipale: cpvLotti[0] ?? null, cpvTutti, testo: testoOggetto, lotti: lottiGrezzi.map((e, i) => ({ testo: testoPvl(e.descrizione), cpv: [cpvLotti[i]] })), descrizione: descrizioneMeta && descrizioneMeta !== titolo ? descrizioneMeta : null });
   const natura = naturaPvl(lottiGrezzi[0]?.natura_principale);
   if (classificazione.settori.length === 0) return { tipo: "esclusione", meta, motivo: "fuori_settore" };
   // la regola della natura, una per tutte le fonti, con l'eccezione D2 dei buoni pasto (fonti/natura-contratto.ts)

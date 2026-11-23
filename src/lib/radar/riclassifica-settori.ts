@@ -17,7 +17,7 @@
 //     «aggiornata_il») non si ricalcola; una gara invariata non si riscrive.
 import { MOTIVO_NON_RICONOSCIUTO, REGOLA_NON_RICONOSCIUTO, VERSIONE_REGOLE_SETTORI, nomeSettore, type Esclusione, type SettoreRadar } from "./settori";
 import { classificaPerArchivio, type ClassificazioneArchivio, type LottoDaClassificare } from "./classificazione-unita";
-import { aggiornamentoClassificazioni, erroriRiga, righeDaClassificazione, statoDopoTentativo, type Aggiornamento, type RigaClassificazione, type RigaStato } from "./classificazioni-calcoli";
+import { aggiornamentoClassificazioni, eDaVerificare, erroriRiga, righeDaClassificazione, statoDopoTentativo, type Aggiornamento, type RigaClassificazione, type RigaStato } from "./classificazioni-calcoli";
 
 export type GaraDaRiclassificare = {
   id: string;
@@ -27,6 +27,8 @@ export type GaraDaRiclassificare = {
   settori: readonly string[];
   metodo_settore: string | null;
   natura_contratto: string | null;
+  // S2 (49C §5): radar_procedure.descrizione, letta SOLO dalla regola del trasporto con movimentazione
+  descrizione?: string | null;
 };
 export type LottoDaRiclassificare = LottoDaClassificare;
 
@@ -60,8 +62,16 @@ function conDecisioni(dopo: StatoSettori, decisioni: readonly Pick<RigaClassific
   return { settori, metodo: settori.length ? (dopo.metodo ?? prima.metodo ?? "cpv") : null };
 }
 
-/** La gara con le regole correnti: settori e metodo dopo, che cosa si aggiunge e che cosa si toglie (e perché). */
-export function riclassificaGara(g: GaraDaRiclassificare, lotti: readonly LottoDaRiclassificare[], decisioni: readonly Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva" | "origine">[] = []): Riclassificazione {
+/**
+ * La gara con le regole correnti: settori e metodo dopo, che cosa si aggiunge e che cosa si toglie (e perché). `attive` = le righe attive
+ * della 0121: le decisioni dell'amministratore decidono la colonna; le righe «non_riconosciuto» di una riclassificazione precedente restano
+ * (vedi sotto).
+ */
+export function riclassificaGara(
+  g: GaraDaRiclassificare,
+  lotti: readonly LottoDaRiclassificare[],
+  decisioni: readonly (Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva" | "origine"> & Partial<Pick<RigaClassificazione, "regole" | "da">>)[] = [],
+): Riclassificazione {
   const c = classificaPerArchivio(g, lotti);
   const prima: StatoSettori = { settori: [...g.settori], metodo: g.metodo_settore };
   const dopo = conDecisioni(c.settori.length ? { settori: [...c.settori], metodo: c.metodo } : { settori: [], metodo: null }, decisioni, prima);
@@ -83,6 +93,15 @@ export function riclassificaGara(g: GaraDaRiclassificare, lotti: readonly LottoD
     if (e.regola !== REGOLA_NON_RICONOSCIUTO || perSettore[e.settore]) continue;
     const da = prima.metodo === "parole_chiave" ? "parole_chiave" : "cpv";
     perSettore[e.settore] = { livello: "C", sottocategoria: null, regola: e.regola, sottocategorie: [], regole: [e.regola], motivi: [e.motivo], da, cpv: [] };
+  }
+  // 49C §6.3 (difetto trovato dalla sessione PVL il 23/11): una riga attiva «non_riconosciuto» di una riclassificazione PRECEDENTE (la gara
+  // era uscita da quel settore, la colonna è già vuota) RESTA, rigenerata con le regole correnti, finché le regole non valutano di nuovo quel
+  // settore. Senza questo, con una versione nuova la riga si chiuderebbe senza sostituta e la gara perderebbe il motivo (25 gare dello
+  // staging). Mai per una decisione dell'amministratore (protetta e mai riscritta), mai per un settore che le regole vedono o che resta.
+  for (const d of decisioni) {
+    const s = d.settore as SettoreRadar;
+    if (!d.attiva || d.origine === "amministratore" || !(d.regole ?? []).includes(REGOLA_NON_RICONOSCIUTO) || perSettore[s] || dopo.settori.includes(s)) continue;
+    perSettore[s] = { livello: "C", sottocategoria: null, regola: REGOLA_NON_RICONOSCIUTO, sottocategorie: [], regole: [REGOLA_NON_RICONOSCIUTO], motivi: [MOTIVO_NON_RICONOSCIUTO], da: d.da === "parole_chiave" ? "parole_chiave" : "cpv", cpv: [] };
   }
   const classificazione = perSettore === c.perSettore || Object.keys(perSettore).length === Object.keys(c.perSettore).length ? c : { ...c, perSettore, livello: c.livello ?? "C" };
   return { tipo, prima, dopo, aggiunti, tolti, soloMetodo, esclusioni, classificazione };
@@ -162,7 +181,8 @@ export type PianoGara = {
 
 /** Già classificata con queste regole e non cambiata dopo (idempotenza: la seconda esecuzione non scrive nulla). */
 export function giaClassificata(stato: Pick<RigaStato, "stato" | "versione_regole" | "classificata_il"> | null, aggiornataIl: string | null, versione = VERSIONE_REGOLE_SETTORI): boolean {
-  if (!stato || stato.stato !== "classificata" || stato.versione_regole !== versione || !stato.classificata_il) return false;
+  // «da_verificare» con la versione corrente è chiusa come una classificata (S4): le esecuzioni successive non la riscrivono
+  if (!stato || (stato.stato !== "classificata" && stato.stato !== "da_verificare") || stato.versione_regole !== versione || !stato.classificata_il) return false;
   if (!aggiornataIl) return true;
   return Date.parse(stato.classificata_il) >= Date.parse(aggiornataIl);
 }
@@ -209,7 +229,9 @@ export function pianoGara(x: {
         notificabile: false,
       }
     : null;
-  const stato = statoDopoTentativo(x.stato, errori.length ? { ok: false, errore: `Righe non valide: ${errori.join("; ")}` } : { ok: true, versione: ric.classificazione.versione }, g.id, x.adessoIso);
+  // S4: la regola unica di classificazioni-calcoli.ts, la stessa della scrittura (scriviClassificazioni)
+  const daVerificare = eDaVerificare(ric.classificazione.daVerificare, calcolate, x.attive);
+  const stato = statoDopoTentativo(x.stato, errori.length ? { ok: false, errore: `Righe non valide: ${errori.join("; ")}` } : { ok: true, versione: ric.classificazione.versione, daVerificare }, g.id, x.adessoIso);
   return { ...base, tipo: "da_scrivere", ric, cambiaSettori, calcolate, righe, errori, registro, statoPrima: x.stato, stato };
 }
 

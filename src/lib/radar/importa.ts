@@ -493,7 +493,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
       const ci = classificazioni.get(s);
       if (!id || !ci) return [];
       const fonti = [...(s.iniziale ? fontiDellaGara(s.iniziale.chiave, s.iniziale.provenienza_campi) : []), "ted"];
-      return [{ proceduraId: id, versione: ci.unita.versione, calcolate: righeImportate(ci, { proceduraId: id, fonti, fonte: "ted", adessoIso: iso, nuovoId }) }];
+      return [{ proceduraId: id, versione: ci.unita.versione, calcolate: righeImportate(ci, { proceduraId: id, fonti, fonte: "ted", adessoIso: iso, nuovoId }), casiDaVerificare: ci.unita.daVerificare ?? null }];
     });
     try {
       esito.classificazioni = await scriviClassificazioni(admin, voci, misure, iso);

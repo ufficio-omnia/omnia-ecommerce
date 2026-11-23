@@ -16,13 +16,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { blocchi, misura, type Misure } from "./importa";
-import { aggiornamentoClassificazioni, erroriRiga, statoDopoTentativo, type RigaClassificazione, type RigaStato } from "./classificazioni-calcoli";
+import { aggiornamentoClassificazioni, eDaVerificare, erroriRiga, statoDopoTentativo, type RigaClassificazione, type RigaStato } from "./classificazioni-calcoli";
 
 export type EsitoClassificazioni = { saltata: boolean; inserite: number; disattivate: number; invariate: number; protette: number; cambiateNelFrattempo: number; classificate: number; fallite: number };
 
 export async function scriviClassificazioni(
   admin: SupabaseClient,
-  voci: readonly { proceduraId: string; versione: string; calcolate: readonly RigaClassificazione[] }[],
+  // casiDaVerificare (S4, 49C): i casi delle regole per la gara; lo stato diventa «da_verificare» secondo eDaVerificare (con le righe attive)
+  voci: readonly { proceduraId: string; versione: string; calcolate: readonly RigaClassificazione[]; casiDaVerificare?: readonly { settore: string }[] | null }[],
   misure: Misure,
   adessoIso: string,
 ): Promise<EsitoClassificazioni> {
@@ -102,7 +103,8 @@ export async function scriviClassificazioni(
   }
   if (corrente.length) gruppi.push(corrente);
   const riuscita = (p: (typeof pronte)[number]) => {
-    nuoviStati.push(statoDopoTentativo(p.prima, { ok: true, versione: p.v.versione }, p.v.proceduraId, adessoIso));
+    const daVerificare = eDaVerificare(p.v.casiDaVerificare, p.v.calcolate, attive.get(p.v.proceduraId) ?? []);
+    nuoviStati.push(statoDopoTentativo(p.prima, { ok: true, versione: p.v.versione, daVerificare }, p.v.proceduraId, adessoIso));
     esito.classificate++;
   };
   for (const g of gruppi) {

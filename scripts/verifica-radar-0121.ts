@@ -273,7 +273,9 @@ async function principale() {
     );
     atteso("C. la versione delle regole viene da classificaGara (interfaccia della PVL)", BAR.versione === VERSIONE_REGOLE_SETTORI && /^\d{4}-\d{2}-\d{2}[a-z]?$/.test(BAR.versione));
     const rCas = righeDaClassificazione(CASONE, ctx({ settoriColonna: ["ristorazione"] }));
-    uguale("C. casone: ristorazione C senza sottocategorie, con la regola; la colonna lo ha ancora → ambigua (da decidere, non cambiata)", rCas.map((r) => [r.rilevanza, r.sottocategorie, r.regole, r.ambigua]), [["C", [], ["concessione_di_immobili"], true]]);
+    // regole 23a (S4 del 49C): la concessione di un immobile con un CPV di ristorazione è «da verificare»: la riga C comincia con la regola
+    // «da_verificare» e conserva quella di prima (e la gara va nello stato «da_verificare», CASONE.daVerificare)
+    uguale("C. casone: ristorazione C senza sottocategorie, «da_verificare» più la regola di prima; la colonna lo ha ancora → ambigua (da decidere, non cambiata)", [rCas.map((r) => [r.rilevanza, r.sottocategorie, r.regole, r.ambigua]), CASONE.daVerificare?.map((d) => [d.settore, d.caso])], [[["C", [], ["da_verificare", "concessione_di_immobili"], true]], [["ristorazione", "immobile_con_cpv_ristorazione"]]]);
     // D1: un motivo per ogni regola, mai vuoto
     atteso("D1. classificatore vero: un motivo per ogni regola, nessuno vuoto, riga valida per i vincoli della 0121", [...rBar, ...rCas].every((r) => r.motivi.length === r.regole.length && r.motivi.every((m) => m.trim().length > 0) && erroriRiga(r).length === 0));
     uguale("D1. motivi mancanti o fatti di soli spazi: ricavati dalla regola e dalla versione, mai vuoti; motivi in più tolti", motiviPerRegole(["cpv_principale", "oggetto", "parole_chiave"], ["  CPV principale  ", "   "], "2026-11-17c"), ["CPV principale", "Regola «oggetto» (regole 2026-11-17c)", "Regola «parole_chiave» (regole 2026-11-17c)"]);
