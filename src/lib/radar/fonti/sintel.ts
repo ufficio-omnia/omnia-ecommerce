@@ -4,7 +4,7 @@
 // Un giro normale: 1 richiesta ai metadati (data dell'ultimo caricamento: se è quella già letta, il giro finisce lì) + 1 richiesta di dati
 // (circa 900 righe con scadenza futura, tutte le categorie: la classificazione per settore si fa qui, non nella richiesta).
 import { SessioneFonte, ErroreFonte } from "./sessione-fonte";
-import { RIGHE_PER_PAGINA_SINTEL, URL_DATI_SINTEL, URL_METADATI_SINTEL, dataAggiornamentoSintel, parametriSintel, righeSintelValide, type RigaSintel } from "./sintel-calcoli";
+import { RIGHE_PER_PAGINA_SINTEL, URL_DATI_SINTEL, URL_METADATI_SINTEL, conteggioSintel, dataAggiornamentoSintel, parametriConteggioSintel, parametriSintel, righeSintelValide, type RigaSintel } from "./sintel-calcoli";
 
 const sembraJson = (testo: string, tipo: string) => /json/i.test(tipo) || /^\s*[{[]/.test(testo);
 
@@ -23,6 +23,12 @@ export class LettoreSintel {
   async dataAggiornamento(): Promise<string | null> {
     const r = await this.sessione.leggi(URL_METADATI_SINTEL, { accetta: "application/json", formatoAtteso: sembraJson, descrizioneFormato: "il JSON dei metadati" });
     return dataAggiornamentoSintel(analizza(r.testo, this.sessione.nome));
+  }
+
+  // Quante righe hanno scadenza da «daGiorno» in poi, con lo stesso filtro della lettura (K6: completezza); null = risposta inattesa.
+  async contaDaGiorno(daGiorno: string): Promise<number | null> {
+    const r = await this.sessione.leggi(`${URL_DATI_SINTEL}?${new URLSearchParams(parametriConteggioSintel(daGiorno))}`, { accetta: "application/json", formatoAtteso: sembraJson, descrizioneFormato: "il JSON del conteggio" });
+    return conteggioSintel(analizza(r.testo, this.sessione.nome));
   }
 
   // Tutte le righe con scadenza da «daGiorno» in poi, a pagine; si ferma alla prima pagina corta o al numero massimo di pagine.

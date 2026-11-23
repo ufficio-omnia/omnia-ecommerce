@@ -13,7 +13,7 @@ import { registroConEvidenza } from "./importa-evidenza";
 import { ErroreFonte, SessioneFonte, limitiValidi, type LimitiFonte } from "./fonti/sessione-fonte";
 import { LIMITI_SINTEL_INTERVALLI, LIMITI_SINTEL_PREDEFINITI, leggiRigheSintel } from "./fonti/sintel-calcoli";
 import { LettoreSintel } from "./fonti/sintel";
-import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PREDEFINITI, leggiElementiAflink } from "./fonti/aflink-calcoli";
+import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PREDEFINITI, bucoPossibileFeed, leggiElementiAflink, pubblicazionePiuVecchiaAflink } from "./fonti/aflink-calcoli";
 import { LettoreAflink } from "./fonti/aflink";
 import { giornoDiRoma } from "./fonti/ted-calcoli";
 import type { Misure } from "./importa";
@@ -25,14 +25,30 @@ import { eDoppioRichiamo } from "./programmazione-calcoli";
 
 export type RisultatoImportazioneRegionale =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
-  | { eseguita: true; fonte: FonteRegionale; invariataAllaFonte: boolean; sospesa: boolean; statistiche: StatisticheRegionali & { fonte: { richieste: number; byte: number; ms: number }; db: Misure }; durataMs: number; errore: string | null };
+  // giroFinito: tutti i bandi letti sono stati scritti entro il tempo massimo (K6); dichiarati: il conteggio di Sintel (null altrove o se
+  // illeggibile); allarmi: conteggio_diverso (Sintel), buco_possibile (feed di SardegnaCAT)
+  | {
+      eseguita: true;
+      fonte: FonteRegionale;
+      invariataAllaFonte: boolean;
+      sospesa: boolean;
+      giroFinito: boolean;
+      dichiarati: number | null;
+      allarmi: string[];
+      statistiche: StatisticheRegionali & { fonte: { richieste: number; byte: number; ms: number }; db: Misure };
+      durataMs: number;
+      errore: string | null;
+    };
 
 // origine: chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
 export type OpzioniImportazioneRegionale = { tempoMassimoMs?: number; adesso?: () => Date; fetchFn?: typeof fetch; limiti?: Partial<LimitiFonte>; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
 
 type RigaFonte = { attiva: boolean; ultimo_successo_il: string | null; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
-const BLOCCO_MS = 10 * 60_000;
+// Tempo massimo di un giro regionale se chi lo lancia non lo dice (le rotte cron passano 2 minuti). Il blocco contro i giri in parallelo
+// dura il tempo massimo più 2 minuti, come per TED e PVL (K6, 48C S6: prima era fisso a 10 minuti, anche per giri più lunghi)
+export const TEMPO_MASSIMO_REGIONALI_MS = 120_000;
+export const MARGINE_BLOCCO_MS = 120_000;
 const PAGINE_MASSIME_SINTEL = 4;
 
 function schemaAssente(e: { message: string; code?: string }): boolean {
@@ -63,10 +79,12 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   if (eDoppioRichiamo(opzioni.origine, riga.ultimo_successo_il, inizio)) return { eseguita: false, motivo: "gia_eseguito" };
   const nascoste = new Set((righe ?? []).filter((r) => r.nascosta_ai_clienti).map((r) => r.fonte));
 
-  // blocco: solo se libero o scaduto (il semaforo del coordinamento resta chiuso finché il lanciatore autorizzato non lo apre)
+  // blocco: solo se libero o scaduto (il semaforo del coordinamento resta chiuso finché il lanciatore autorizzato non lo apre); dura il
+  // tempo massimo del giro più un margine
+  const tempoMassimoMs = opzioni.tempoMassimoMs ?? TEMPO_MASSIMO_REGIONALI_MS;
   const presa = await admin
     .from("radar_fonti_stato")
-    .update({ blocco_fino_a: new Date(inizio.getTime() + BLOCCO_MS).toISOString(), ultimo_avvio_il: inizio.toISOString(), aggiornata_il: inizio.toISOString() })
+    .update({ blocco_fino_a: new Date(inizio.getTime() + tempoMassimoMs + MARGINE_BLOCCO_MS).toISOString(), ultimo_avvio_il: inizio.toISOString(), aggiornata_il: inizio.toISOString() })
     .eq("fonte", fonte)
     .or(`blocco_fino_a.is.null,blocco_fino_a.lt.${inizio.toISOString()}`)
     .select("fonte");
@@ -84,6 +102,11 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   const limiti = fonte === "sintel" ? limitiValidi(opzioni.limiti, LIMITI_SINTEL_PREDEFINITI, LIMITI_SINTEL_INTERVALLI) : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
   const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn);
   let datiDel: string | null = null;
+  // K6: giro scritto per intero entro il tempo massimo; righe di Sintel uguali al conteggio della fonte; allarmi del giro
+  let giroFinito = true;
+  let completoAllaFonte = true;
+  let dichiarati: number | null = null;
+  const allarmi: string[] = [];
 
   try {
     let bandi: BandoRegionale[] = [];
@@ -94,6 +117,13 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       else {
         const { righe: righeSintel, completo } = await lettore.leggiDaGiorno(oggi, PAGINE_MASSIME_SINTEL);
         if (!completo) throw new ErroreFonte(`Sintel: più di ${PAGINE_MASSIME_SINTEL} pagine di righe con scadenza futura: connettore sospeso finché non si verifica`, 200, true);
+        // completezza (K6): le righe lette devono essere quante ne conta la fonte con lo stesso filtro (una richiesta in più, dentro il tetto
+        // del giro). Se no: allarme, si scrive quello che c'è, ma la data dei dati NON avanza e il giro dopo rilegge tutto
+        dichiarati = await lettore.contaDaGiorno(oggi);
+        if (dichiarati !== righeSintel.length) {
+          completoAllaFonte = false;
+          allarmi.push("conteggio_diverso");
+        }
         const { procedure, righeScartate } = leggiRigheSintel(righeSintel, oggi);
         if (righeScartate > 0) conta(stat.esclusi, "riga_senza_identificativo", righeScartate);
         stat.letti += procedure.length;
@@ -108,6 +138,8 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       }
     } else {
       const feed = await new LettoreAflink(fonte, sessione).leggiFeed();
+      // feed «scivolato» (K6): l'avviso più vecchio è più recente dell'ultimo giro riuscito → qualcosa può essere uscito dal feed
+      if (bucoPossibileFeed(pubblicazionePiuVecchiaAflink(feed.elementi), riga.ultimo_successo_il ? giornoDiRoma(new Date(riga.ultimo_successo_il)) : null)) allarmi.push("buco_possibile");
       const letti = leggiElementiAflink(fonte, feed.elementi, inizio);
       stat.letti += letti.length;
       for (const p of letti) {
@@ -119,12 +151,17 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
         }
       }
     }
-    // la scrittura usa il motore di unione unico; a blocchi di 200 bandi
+    // la scrittura usa il motore di unione unico; a blocchi di 200 bandi, entro il tempo massimo del giro (oltre: il giro si ferma, non è
+    // finito e la data dei dati non avanza: il giro dopo rilegge; le scritture fatte sono idempotenti)
     for (let i = 0; i < bandi.length; i += 200) {
+      if (ora().getTime() - inizio.getTime() >= tempoMassimoMs) {
+        giroFinito = false;
+        break;
+      }
       await applicaPaginaBandiRegionali(admin, bandi.slice(i, i + 200), { fonte, modo: "incrementale", adesso: inizio, misure, stat, nascoste, proponi: fonte === "sintel", classificazioni, evidenza, esecuzioneId });
     }
     bandi = [];
-    if (datiDel) cursore = { ...cursore, datiDel };
+    if (datiDel && giroFinito && completoAllaFonte) cursore = { ...cursore, datiDel };
   } catch (e) {
     errore = e instanceof Error ? e.message.slice(0, 900) : String(e).slice(0, 900);
     sospesa = e instanceof ErroreFonte && e.sospendi;
@@ -135,7 +172,7 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   const conteggi = {
     ...(riga.conteggi ?? {}),
     ...(sospesa ? { sospensione: { il: fine.toISOString(), motivo: errore } } : {}),
-    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, invariata_alla_fonte: invariataAllaFonte, limiti, ...stat, fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure, errore },
+    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, invariata_alla_fonte: invariataAllaFonte, giro_finito: giroFinito, dichiarati, allarmi, limiti, ...stat, fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure, errore },
   };
   await admin
     .from("radar_fonti_stato")
@@ -144,10 +181,11 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       conteggi,
       cursore,
       aggiornata_il: fine.toISOString(),
-      ...(errore ? { ultimo_errore: errore, ultimo_errore_il: fine.toISOString() } : { ultimo_successo_il: fine.toISOString(), ...(datiDel ? { dati_aggiornati_al: datiDel } : {}) }),
+      // come per la PVL (S3): l'ultimo successo solo a giro finito; la data dei dati solo se il giro è finito e completo alla fonte
+      ...(errore ? { ultimo_errore: errore, ultimo_errore_il: fine.toISOString() } : giroFinito ? { ultimo_successo_il: fine.toISOString(), ...(datiDel && completoAllaFonte ? { dati_aggiornati_al: datiDel } : {}) } : {}),
       ...(sospesa ? { attiva: false } : {}),
     })
     .eq("fonte", fonte);
 
-  return { eseguita: true, fonte, invariataAllaFonte, sospesa, statistiche: { ...stat, fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure }, durataMs, errore };
+  return { eseguita: true, fonte, invariataAllaFonte, sospesa, giroFinito, dichiarati, allarmi, statistiche: { ...stat, fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure }, durataMs, errore };
 }
