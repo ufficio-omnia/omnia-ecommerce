@@ -173,19 +173,24 @@ const SERVIZIO_ESPLICITO =
 // S.p.A.» (Sintel, gara a1e9b53f: conduzione degli impianti termici, non ristorazione; segnalato dal coordinamento il 23/11). La parola si
 // neutralizza prima di classificare quando:
 //   - è seguita subito dalla forma giuridica di una società («Ristorazione S.p.A.», «Multiservizi srl», «Pulizie s.c.a r.l.»);
-//   - fa parte del nome dell'ente dopo «di competenza di», «per conto di», «di proprietà di» (al massimo tre parole prima, senza un
-//     «servizio», «affidamento», «appalto» o «gestione» in mezzo).
-// Non si toccano: la parola prima di questi riferimenti («servizio di ristorazione … per conto del Comune»), né la parola seguita da altre
-// parole prima della forma giuridica («servizio di pulizia ATAC S.p.A.»: lì «pulizia» è il servizio e ATAC la società).
+//   - fa parte del NOME PROPRIO dell'ente dopo «di competenza di», «per conto di», «di proprietà di»: la parola e le parole prima (al
+//     massimo tre, senza «Servizio», «Affidamento», «Appalto» o «Gestione») sono scritte con l'iniziale maiuscola, come un nome
+//     («per conto di Roma Ristorazione»). Un testo tutto in maiuscolo non dice dove finisce il nome: lì vale solo la forma giuridica.
+// Non si toccano: la parola prima di questi riferimenti («servizio di ristorazione … per conto del Comune»); la parola minuscola dopo il nome
+// («per conto del Comune di Bari pulizia degli uffici», titolo tipico delle centrali di committenza); la parola seguita da altre parole
+// prima della forma giuridica («servizio di pulizia ATAC S.p.A.»: lì «pulizia» è il servizio e ATAC la società).
 const PAROLE_DEI_SETTORI =
   "pulizi[ae]|sanificazion[ei]|disinfezion[ei]|disinfestazion[ei]|ausiliariato|facchinaggio|trasloc(?:o|hi)|ristorazione|mens[ae]|refezione|vigilanza|portierato|portineria|guardiania|reception|multiservizi|global service|facility management";
 const FORMA_GIURIDICA =
   "(?:s\\.?\\s?p\\.?\\s?a|s\\.?\\s?r\\.?\\s?l(?:\\.?\\s?s)?|s\\.?\\s?c\\.?\\s?a\\.?\\s?r\\.?\\s?l|s\\.?\\s?c\\.?\\s?r\\.?\\s?l|s\\.?\\s?a\\.?\\s?s|s\\.?\\s?n\\.?\\s?c|soc\\.?\\s?coop\\p{L}*|societ[aà]\\s+cooperativa|onlus)\\.?(?![\\p{L}\\d])";
 const NELLA_RAGIONE_SOCIALE = new RegExp(`(?<![\\p{L}\\d])(?:${PAROLE_DEI_SETTORI})(?=[\\s,]+${FORMA_GIURIDICA})`, "giu");
-const NEL_NOME_DELL_ENTE = new RegExp(
-  `((?:di competenza|per conto|di propriet[aà])\\s+(?:di|del|della|dello|dei|degli|delle|dell['’]?)\\s*(?:(?!(?:servizi?o?|affidament\\p{L}*|appalt\\p{L}*|gestion\\p{L}*)(?![\\p{L}\\d]))[\\p{L}\\d'’.&-]+\\s+){0,3}?)(?:${PAROLE_DEI_SETTORI})(?![\\p{L}\\d])`,
-  "giu",
-);
+// SENZA il flag «i»: con «iu» anche \p{Lu} accetterebbe le minuscole. Il riferimento si scrive in minuscolo o con l'iniziale maiuscola; il
+// nome e la parola del settore con l'iniziale maiuscola e il resto minuscolo
+const PAROLE_DEI_SETTORI_NOME =
+  "Pulizi[ae]|Sanificazion[ei]|Disinfezion[ei]|Disinfestazion[ei]|Ausiliariato|Facchinaggio|Trasloc(?:o|hi)|Ristorazione|Mens[ae]|Refezione|Vigilanza|Portierato|Portineria|Guardiania|Reception|Multiservizi|Global [Ss]ervice|Facility [Mm]anagement";
+const RIFERIMENTO_ALL_ENTE = "(?:[Dd]i [Cc]ompetenza|[Pp]er [Cc]onto|[Dd]i [Pp]ropriet[aà])\\s+(?:di|del|della|dello|dei|degli|delle|dell['’]?)\\s*";
+const PAROLA_DEL_NOME = "(?!(?:Servizi?o?|Affidament\\p{Ll}*|Appalt\\p{Ll}*|Gestion\\p{Ll}*)(?![\\p{L}\\d]))\\p{Lu}[\\p{Ll}\\d'’&-]*";
+const NEL_NOME_DELL_ENTE = new RegExp(`(${RIFERIMENTO_ALL_ENTE}(?:${PAROLA_DEL_NOME}\\s+){0,3}?)(?:${PAROLE_DEI_SETTORI_NOME})(?![\\p{L}\\d])`, "gu");
 
 export function testoSenzaEnti(testo: string | null | undefined): string {
   return (testo ?? "").replace(NELLA_RAGIONE_SOCIALE, "ente").replace(NEL_NOME_DELL_ENTE, "$1ente");

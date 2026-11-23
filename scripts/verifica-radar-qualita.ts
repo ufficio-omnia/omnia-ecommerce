@@ -1049,6 +1049,13 @@ uguale("ente, veri casi che restano A: la società DOPO il servizio («servizio 
 uguale("ente, veri casi che restano A: «servizio di pulizia ATAC S.p.A.» (una parola tra il servizio e la forma giuridica)", livelli(gara2b("Servizio di pulizia ATAC S.p.A.")), [["pulizia", "A", "parole_chiave"]]);
 uguale("ente, veri casi che restano A: il servizio dopo il riferimento («per conto del Comune del servizio di ristorazione»)", livelli(gara2b("Gestione per conto del Comune del servizio di ristorazione scolastica")), [["ristorazione", "A", "parole_chiave"]]);
 uguale("ente, veri casi che restano A: servizio e nome dell'ente nella stessa gara", livelli(gara2b("Servizio di ristorazione scolastica nei centri di competenza di Milano Ristorazione S.p.A.")), [["ristorazione", "A", "parole_chiave"]]);
+uguale(
+  "ente, veri casi che restano A: titolo da centrale di committenza «per conto del Comune di Bari pulizia degli uffici», anche tutto maiuscolo",
+  [livelli(gara2b("Per conto del Comune di Bari pulizia degli uffici giudiziari")), livelli(gara2b("PER CONTO DEL COMUNE DI BARI PULIZIA DEGLI UFFICI GIUDIZIARI"))],
+  [[["pulizia", "A", "parole_chiave"]], [["pulizia", "A", "parole_chiave"]]],
+);
+uguale("ente, veri casi che restano A: «Servizio» non fa parte del nome dell'ente («per conto del Comune Servizio Ristorazione Scolastica»)", livelli(gara2b("Gara per conto del Comune Servizio Ristorazione Scolastica")), [["ristorazione", "A", "parole_chiave"]]);
+uguale("ente, testo tutto maiuscolo: vale la forma giuridica («DI COMPETENZA DI MILANO RISTORAZIONE S.P.A.»)", gara2b(MILANO_RISTORAZIONE.toUpperCase()).valutazioni.map((v) => v.settore), []);
 uguale("ente: un testo senza nomi di enti resta identico", [testoSenzaEnti("Servizio di pulizia degli uffici comunali"), testoSenzaEnti(null)], ["Servizio di pulizia degli uffici comunali", ""]);
 uguale("ente: anche le parole chiave da sole lo sanno", [settoriDaParole(MILANO_RISTORAZIONE), settoriDaParole("Servizio di ristorazione per Milano Ristorazione S.p.A.")], [[], ["ristorazione"]]);
 
