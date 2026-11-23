@@ -30,6 +30,7 @@ import PannelloFiltri from "@/components/omnia-ai/opportunita/pannello-filtri";
 import FontiRicerca, { type StatoFontePubblica } from "@/components/omnia-ai/opportunita/fonti-ricerca";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "@/lib/radar/fonti-nascoste";
 import { etichettaFontiElenco } from "@/lib/radar/fonti-gara-calcoli";
+import { CATEGORIE_TIPO, tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 
 // «Cerca» (fase B1): filtri deterministici applicati dal database, ricerca testuale in italiano con i sinonimi della mappa CPV (mostrati),
@@ -61,6 +62,7 @@ function filtriAttiviRimovibili(f: FiltriRicerca) {
   if (f.scadenzaEntroGiorni !== null) chip.push({ etichetta: `scade entro ${f.scadenzaEntroGiorni} gg`, senza: { scadenzaEntroGiorni: null } });
   if (f.pubblicataNegliUltimiGiorni !== null) chip.push({ etichetta: `pubblicata negli ultimi ${f.pubblicataNegliUltimiGiorni} gg`, senza: { pubblicataNegliUltimiGiorni: null } });
   for (const p of f.procedure) chip.push({ etichetta: PROCEDURE_RICERCA.find((x) => x.id === p)?.etichetta ?? p, senza: { procedure: f.procedure.filter((x) => x !== p) } });
+  for (const t of f.tipi) chip.push({ etichetta: CATEGORIE_TIPO.find((c) => c.id === t)?.breve ?? t, senza: { tipi: f.tipi.filter((x) => x !== t) } });
   if (f.stato !== "aperte") chip.push({ etichetta: f.stato === "storico" ? "solo scadute e chiuse" : "aperte e storico", senza: { stato: "aperte" } });
   return chip;
 }
@@ -125,6 +127,15 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
               {SETTORI_RADAR.map((s) => (
                 <label key={s.id} className="omnia-opp-scelta">
                   <input type="checkbox" name="settore" value={s.id} defaultChecked={filtri.settori.includes(s.id)} /> {s.nome}
+                </label>
+              ))}
+            </fieldset>
+            {/* C5 (analisi 49): bandi, candidature (manifestazioni, indagini, preinformazioni), iscrizioni; nessuna casella = tutti i tipi */}
+            <fieldset className="omnia-opp-gruppo">
+              <legend>Tipo</legend>
+              {CATEGORIE_TIPO.map((c) => (
+                <label key={c.id} className="omnia-opp-scelta">
+                  <input type="checkbox" name="tipo" value={c.id} defaultChecked={filtri.tipi.includes(c.id)} /> {c.etichetta}
                 </label>
               ))}
             </fieldset>
@@ -278,6 +289,8 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
                       settoriDettaglio: settoriDellaRiga(r),
                       statoClassificazione: etichettaStatoClassificazione(r),
                       fonte: etichettaFontiElenco(fontiGare.get(r.id)),
+                      // C4/C5: il tipo della gara (ricavato dal tipo dell'avviso se la colonna è vuota), sempre scritto nella riga
+                      tipo: tipoDellaGara(r),
                       verificataIl: r.ultima_rilevazione_il,
                       salvata: !!s,
                       monitorata: !!s?.monitorata,

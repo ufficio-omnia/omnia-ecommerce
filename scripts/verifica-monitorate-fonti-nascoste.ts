@@ -2,7 +2,10 @@
 // lista delle gare seguite non filtrava la visibilità delle fonti; una gara salvata con SOLO fonti nascoste (dopo la L5a, una gara solo PVL)
 // restava in lista con l'etichetta SBAGLIATA «TED» (ripiego fontiGare.get(p.id) ?? ["ted"]) e la sua scheda non si apriva.
 //
-// Esegue le pagine VERE («Monitorate» e «Gara aggiunta a mano») e la lettura vera della scheda (leggiGaraPubblica) su database IN MEMORIA:
+// Seguiti: fonti sconosciute e azioni (punti a e b), scheda senza fonti riconosciute, PVL visibile (direttiva 48A), e nella sezione N i TIPI di
+// opportunità (analisi 49: C4 tipo ricavato dall'avviso, C5 tipo nelle liste e filtro in «Cerca», C11 «Avviso di preinformazione»).
+//
+// Esegue le pagine VERE («Monitorate», «Cerca», «Per te», scheda, «Gara aggiunta a mano») e la lettura vera della scheda (leggiGaraPubblica) su database IN MEMORIA:
 // i moduli della sessione, delle guardie e dei client di Supabase sono sostituiti nella cache dei moduli; nessuna rete (fetch rifiutata).
 // Dati SINTETICI dichiarati come tali («[SINTETICO]» nei titoli, identificativi finti), nessun dato di clienti.
 // Uso: npx tsx scripts/verifica-monitorate-fonti-nascoste.ts → codice 0 se tutto passa. Mutazioni: scripts/mutazioni-monitorate-fonti-nascoste.mjs
@@ -76,12 +79,27 @@ function termineOr(t: string): (r: Riga) => boolean {
     const parti = dividi(g[2]).map(termineOr);
     return g[1] === "and" ? (r) => parti.every((p) => p(r)) : (r) => parti.some((p) => p(r));
   }
-  const c = /^([a-z_]+)\.(is|eq|neq|gt|gte|lt|lte|ov)\.(.+)$/.exec(t);
+  const c = /^([a-z_]+)\.(not\.)?(is|eq|neq|gt|gte|lt|lte|ov|in|like|match)\.(.+)$/.exec(t);
   if (!c) throw new Error(`or: condizione non prevista «${t}»`);
-  const [, col, op, val] = c;
+  const [, col, not, op, val] = c;
   if (op === "is" && val !== "null") throw new Error(`or: «is» solo con null («${t}»)`);
-  return (r) => {
+  if (op === "in" && !/^\([^()]*\)$/.test(val)) throw new Error(`or: «in» senza elenco tra parentesi («${t}»)`);
+  // come in SQL: un confronto con NULL non è vero, e nemmeno la sua negazione (NOT NULL resta NULL); «is null» invece è sempre vero o falso
+  const base = (r: Riga): boolean => {
     const v = r[col];
+    if (op === "in") return v !== null && v !== undefined && val.slice(1, -1).split(",").includes(String(v));
+    if (op === "like") {
+      const re = new RegExp(`^${[...val].map((ch) => (ch === "*" || ch === "%" ? ".*" : ch === "_" ? "." : ch.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))).join("")}$`, "s");
+      return v !== null && v !== undefined && re.test(String(v));
+    }
+    if (op === "match") return v !== null && v !== undefined && new RegExp(val).test(String(v));
+    return confrontoSemplice(v);
+  };
+  const nullo = (r: Riga) => r[col] === null || r[col] === undefined;
+  if (not) return (r) => (op === "is" ? !base(r) : !nullo(r) && !base(r));
+  if (["in", "like", "match"].includes(op)) return base;
+  return (r) => confrontoSemplice(r[col]);
+  function confrontoSemplice(v: unknown): boolean {
     if (op === "is") return (v ?? null) === null;
     if (val.startsWith("{")) {
       const insieme = val.slice(1, -1).split(",").filter(Boolean);
@@ -93,7 +111,7 @@ function termineOr(t: string): (r: Riga) => boolean {
     if (v === null || v === undefined) return false;
     const k = confronta(String(v), val);
     return op === "eq" ? k === 0 : op === "neq" ? k !== 0 : op === "gt" ? k > 0 : op === "gte" ? k >= 0 : op === "lt" ? k < 0 : k <= 0;
-  };
+  }
 }
 
 class QueryProva implements PromiseLike<Esito> {
@@ -436,6 +454,53 @@ function nuovoMondo(pvlNascosta: boolean, opzioni: { classificazioni?: boolean }
 }
 let mondo = nuovoMondo(true);
 
+// ═══════════════════════ mondo dei TIPI di opportunità (analisi 49 §4-§5: C4, C5, C11) ═══════════════════════
+// tipo_opportunita vuoto come sullo staging (C4: il tipo si ricava dal tipo dell'avviso), oppure già scritto dal motore; atteso = il tipo
+// mostrato; categoria = il gruppo del filtro di «Cerca». P7_1_3 oggi non ha tipo (C1 è di B2): nessuna etichetta e in nessun filtro di tipo.
+type CasoTipo = { k: string; id: string; tipoOpp: string | null; avviso: string | null; fonte: string; atteso: string | null; categoria: string | null };
+const TIPI: CasoTipo[] = [
+  ["cn", null, "cn-standard", "ted", "bando", "bandi"],
+  ["pin", null, "pin-cfc-standard", "ted", "preinformazione", "candidature"],
+  ["qusy", null, "qu-sy", "ted", "sistema_qualificazione", "iscrizioni"],
+  ["p116", null, "P1_16", "pvl", "bando", "bandi"],
+  ["p112", null, "P1_12", "pvl", "preinformazione", "candidature"],
+  ["p212", null, "P2_12", "pvl", "preinformazione", "candidature"],
+  ["indagine", "indagine_mercato", null, "sintel", "indagine_mercato", "candidature"],
+  ["manif", "manifestazione_interesse", null, "sintel", "manifestazione_interesse", "candidature"],
+  ["sda", "sistema_qualificazione", null, "sintel", "sistema_qualificazione", "iscrizioni"],
+  ["bandoCn", "bando", "cn-social", "ted", "bando", "bandi"],
+  ["bandoPin", "bando", "pin-cfc-social", "ted", "preinformazione", "candidature"],
+  ["bandoSintel", "bando", null, "sintel", "bando", "bandi"],
+  ["ignoto", null, null, "ted", null, null],
+  ["p713", null, "P7_1_3", "pvl", null, null],
+].map(([k, tipoOpp, avviso, fonte, atteso, categoria], i) => ({ k: k as string, id: id(300 + i), tipoOpp, avviso, fonte: fonte as string, atteso, categoria }));
+const ETICHETTE_ATTESE: Record<string, string> = {
+  bando: "Bando di gara",
+  preinformazione: "Avviso di preinformazione",
+  sistema_qualificazione: "Iscrizione a elenco o sistema di qualificazione",
+  indagine_mercato: "Indagine di mercato",
+  manifestazione_interesse: "Manifestazione di interesse",
+};
+function mondoTipi() {
+  const gare = TIPI.map((t) => ({ ...gara("ted", `${t.fonte}:SINT-T-${t.k}`, [t.fonte]), id: t.id, oggetto: `[SINTETICO] Tipo ${t.k}`, tipo_opportunita: t.tipoOpp, tipo_avviso: t.avviso }));
+  const admin = new DbProva({
+    radar_fonti_stato: statoFonti(false),
+    radar_procedure: gare,
+    radar_procedure_fonti: TIPI.map((t) => ({ procedura_id: t.id, fonte: t.fonte, id_fonte: `SINT-T-${t.k}`, url: null, pubblicato_il: "2026-11-10", tipo_avviso: t.avviso, rilevato_il: "2026-11-10T06:00:00Z", aggiornato_il: null })),
+    radar_aggiornamenti: [],
+    radar_lotti: [],
+    omnia_ai_radar_utilizzi: [],
+    radar_classificazioni_stato: TIPI.map((t) => ({ procedura_id: t.id, stato: "classificata" })),
+    radar_classificazioni: TIPI.map((t) => ({ procedura_id: t.id, settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true })),
+  });
+  const sessione = new DbProva({
+    omnia_ai_radar_salvate: TIPI.map((t, i) => ({ id: id(800 + i), user_id: IMPRESA, procedura_id: t.id, aggiunta_id: null, monitorata: true, ultimo_aggiornamento_visto_il: null, creata_il: "2026-11-20T06:00:00Z", salvata_da: IMPRESA })),
+    omnia_ai_radar_gare_aggiunte: [],
+    omnia_ai_radar_profili: [{ user_id: IMPRESA, posizione: 1, settori: ["pulizia"], sottocategorie: null, regioni: [], tipi_procedura: [], importo_min: null, importo_max: null, vedere_correlate: false, aggiornato_il: "2026-11-20T06:00:00Z" }],
+  });
+  return { admin, sessione };
+}
+
 // ═══════════════════════ moduli sostituiti (solo in questo processo) ═══════════════════════
 function sostituisci(file: string, esporta: Record<string, unknown>): void {
   const m = new Module(file);
@@ -467,7 +532,7 @@ const dopo: unknown[] = [];
 sostituisci(richiedi.resolve("next/server"), { ...(richiedi("next/server") as Record<string, unknown>), after: (f: unknown) => void dopo.push(f) });
 
 type Elemento = { type: unknown; props: Record<string, unknown> };
-type DatiRiga = { href: string; titolo: string; fonte: string; motivi: string[]; monitorata?: boolean };
+type DatiRiga = { href: string; titolo: string; fonte: string; motivi: string[]; monitorata?: boolean; tipo?: string | null; scadenzaGiorno?: string | null; scadenza?: string | null };
 const PaginaMonitorate = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx")) as { default: () => Promise<unknown> }).default;
 const PaginaAggiunta = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/aggiunta/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const PaginaScheda = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
@@ -882,6 +947,113 @@ async function principale(): Promise<void> {
     `MN34. «Notifiche»: la pagina e i ${chiusura.size} file che importa non leggono la visibilità delle fonti, quindi la PVL visibile o nascosta non la cambia`,
     chiusura.size > 5 && [...chiusura].some((f) => f.endsWith(path.join("radar", "notifiche-preferenze.ts"))) && dipendenti.length === 0,
     { file: chiusura.size, dipendenti },
+  );
+
+  // ═════ N. tipi di opportunità (analisi 49, C4 C5 C11; decisione dell'utente: un'indagine di mercato non si confonde con una gara aperta) ═════
+  const tipiDi = (m: Map<string, DatiRiga>) => Object.fromEntries(TIPI.map((t) => [t.k, m.get(hrefG(t.id))?.tipo ?? null]));
+  const tipiAttesi = Object.fromEntries(TIPI.map((t) => [t.k, t.atteso]));
+  mondo = mondoTipi();
+  const cT = await cerca();
+  controlla("MT1. «Cerca»: il tipo di ogni gara nella riga, ricavato dal tipo dell'avviso quando la colonna è vuota (C4), preinformazioni comprese (C11)", JSON.stringify(tipiDi(cT)) === JSON.stringify(tipiAttesi), tipiDi(cT));
+  const pT = await perTe();
+  controlla("MT2. «Per te»: lo stesso tipo nella riga", JSON.stringify(tipiDi(pT)) === JSON.stringify(tipiAttesi), tipiDi(pT));
+  const mT = (await monitorate()).perHref;
+  controlla("MT3. «Monitorate»: lo stesso tipo nella riga", JSON.stringify(tipiDi(mT)) === JSON.stringify(tipiAttesi), tipiDi(mT));
+  // la riga disegnata (componente vero): etichetta del tipo, e per candidature e iscrizioni la scadenza detta come tale, mai come un'offerta
+  const disegna = (r: DatiRiga | undefined) => (r ? testi((RigaGara as (p: unknown) => unknown)({ d: r, adesso: new Date() })) : []);
+  const righeDisegnate = Object.fromEntries(TIPI.map((t) => [t.k, disegna(cT.get(hrefG(t.id)))]));
+  const errate = TIPI.filter((t) => {
+    const x = righeDisegnate[t.k];
+    const etichetta = t.atteso ? ETICHETTE_ATTESE[t.atteso] : null;
+    const conEtichetta = etichetta ? x.includes(etichetta) : !Object.values(ETICHETTE_ATTESE).some((e) => x.includes(e));
+    const candidature = x.some((s) => s.startsWith("Candidature entro"));
+    const iscrizioni = x.some((s) => s.startsWith("Iscrizioni entro"));
+    return !conEtichetta || candidature !== (t.categoria === "candidature") || iscrizioni !== (t.categoria === "iscrizioni");
+  }).map((t) => [t.k, righeDisegnate[t.k].filter((s) => /entro|Bando|Avviso|Iscrizione|Indagine|Manifestazione/.test(s))]);
+  controlla(
+    "MT4. la riga dice il tipo; indagini, manifestazioni e preinformazioni «Candidature entro», iscrizioni «Iscrizioni entro»: un'indagine non sembra mai una gara aperta",
+    errate.length === 0 && !righeDisegnate.indagine.includes("Bando di gara"),
+    errate,
+  );
+  const cercaTipo = async (tipo: string | string[]) => [...(righeDi(await PaginaCerca({ searchParams: Promise.resolve({ tipo }) })).keys())].sort();
+  const diCategoria = (...c: string[]) => TIPI.filter((t) => t.categoria && c.includes(t.categoria)).map((t) => hrefG(t.id)).sort();
+  const filtri = {
+    bandi: await cercaTipo("bandi"),
+    candidature: await cercaTipo("candidature"),
+    iscrizioni: await cercaTipo("iscrizioni"),
+    bandiEIscrizioni: await cercaTipo(["bandi", "iscrizioni"]),
+    sconosciuto: await cercaTipo("altro"),
+  };
+  controlla(
+    "MT5. «Cerca», filtro per tipo nel database: bandi, candidature (manifestazioni, indagini, preinformazioni), iscrizioni; più tipi insieme; un valore sconosciuto si ignora",
+    JSON.stringify(filtri.bandi) === JSON.stringify(diCategoria("bandi")) &&
+      JSON.stringify(filtri.candidature) === JSON.stringify(diCategoria("candidature")) &&
+      JSON.stringify(filtri.iscrizioni) === JSON.stringify(diCategoria("iscrizioni")) &&
+      JSON.stringify(filtri.bandiEIscrizioni) === JSON.stringify(diCategoria("bandi", "iscrizioni")) &&
+      filtri.sconosciuto.length === TIPI.length,
+    Object.fromEntries(Object.entries(filtri).map(([k, v]) => [k, v.map((h) => TIPI.find((t) => hrefG(t.id) === h)?.k)])),
+  );
+  // il filtro (condizione PostgREST) e l'etichetta (calcolo in memoria) devono dire la stessa cosa su ogni combinazione di colonna e avviso
+  const tipoCalcoli = ((): Record<string, unknown> => {
+    try {
+      return richiedi(src("lib/radar/tipo-gara-calcoli.ts")) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
+  const { opportunitaDaTipoAvviso } = richiedi(src("lib/radar/opportunita-calcoli.ts")) as { opportunitaDaTipoAvviso: (a: string | null) => { tipo: string } | null };
+  const AVVISI = [null, "", "cn-standard", "cn-social", "cn-desg", "pin-cfc-standard", "pin-cfc-social", "pin-only", "qu-sy", "can-standard", "P7_1_3", "P7_3", "A1_29", "P10_1", "P1_15_1", ...[1, 2].flatMap((p) => Array.from({ length: 12 }, (_, i) => `P${p}_${10 + i}`))];
+  const COLONNE = [null, "bando", "manifestazione_interesse", "indagine_mercato", "sistema_qualificazione"];
+  const disaccordi: unknown[] = [];
+  const tipoDellaGara = tipoCalcoli.tipoDellaGara as ((g: { tipo_opportunita: string | null; tipo_avviso: string | null }) => string | null) | undefined;
+  const condizioneTipi = tipoCalcoli.condizioneTipi as ((c: readonly string[]) => string) | undefined;
+  const categoriaDelTipo = tipoCalcoli.CATEGORIA_DEL_TIPO as Record<string, string> | undefined;
+  if (tipoDellaGara && condizioneTipi && categoriaDelTipo)
+    for (const colonna of COLONNE)
+      for (const avviso of AVVISI) {
+        const g = { tipo_opportunita: colonna, tipo_avviso: avviso };
+        const tipo = tipoDellaGara(g);
+        // senza colonna, il tipo è quello di opportunitaDaTipoAvviso (bando diventa preinformazione per pin-cfc e P1/P2_10-14)
+        const daAvviso = colonna === null ? (opportunitaDaTipoAvviso(avviso)?.tipo ?? null) : colonna;
+        if ((tipo === "preinformazione" ? "bando" : tipo) !== daAvviso) disaccordi.push({ colonna, avviso, tipo, daAvviso });
+        for (const c of ["bandi", "candidature", "iscrizioni"]) {
+          const nelFiltro = dividi(condizioneTipi([c])).map(termineOr).some((p) => p(g));
+          if (nelFiltro !== (tipo !== null && categoriaDelTipo[tipo] === c)) disaccordi.push({ colonna, avviso, c, nelFiltro, tipo });
+        }
+      }
+  controlla(
+    "MT6. filtro nel database ed etichetta concordano su ogni combinazione (5 colonne × 39 tipi di avviso × 3 gruppi); il tipo ricavato è quello di opportunitaDaTipoAvviso",
+    !!tipoDellaGara && !!condizioneTipi && !!categoriaDelTipo && disaccordi.length === 0,
+    disaccordi.slice(0, 6),
+  );
+  const albCerca = await PaginaCerca({ searchParams: Promise.resolve({ tipo: "candidature" }) });
+  const albSenza = await PaginaCerca({ searchParams: Promise.resolve({}) });
+  const campiTipo = elementi(albCerca).filter((e) => e.type === "input" && e.props.name === "tipo").map((e) => String(e.props.value));
+  const spuntata = elementi(albCerca).find((e) => e.type === "input" && e.props.name === "tipo" && e.props.value === "candidature")?.props.defaultChecked === true;
+  const conta = (alb: unknown) => testi(alb).filter((t) => /^Candidature/.test(t)).length;
+  controlla(
+    "MT7. «Cerca»: nel pannello dei filtri le tre caselle del tipo; con un tipo scelto la casella è spuntata e il filtro attivo compare tra quelli da togliere",
+    JSON.stringify(campiTipo) === JSON.stringify(["bandi", "candidature", "iscrizioni"]) && spuntata && conta(albCerca) > conta(albSenza),
+    { campiTipo, spuntata, con: conta(albCerca), senza: conta(albSenza) },
+  );
+  const sQ = await scheda(TIPI.find((t) => t.k === "qusy")!.id);
+  const sPin = await scheda(TIPI.find((t) => t.k === "pin")!.id);
+  const sP112 = await scheda(TIPI.find((t) => t.k === "p112")!.id);
+  const sCn = await scheda(TIPI.find((t) => t.k === "cn")!.id);
+  const comeSiPartecipa = (s: typeof sQ) => (s?.testi ?? []).some((t) => /candidatura o (la )?domanda di partecipazione/.test(t));
+  controlla(
+    "MT8. scheda: tipo ricavato quando la colonna è vuota (iscrizione); «Avviso di preinformazione» con la riga sulla candidatura o domanda di partecipazione (TED e PVL); un bando come prima",
+    !!sQ && sQ.testi.some((t) => t.includes(ETICHETTE_ATTESE.sistema_qualificazione)) &&
+      [sPin, sP112].every((s) => !!s && s.testi.some((t) => t.includes("Avviso di preinformazione")) && comeSiPartecipa(s)) &&
+      !!sCn && !comeSiPartecipa(sCn) && !sCn.testi.some((t) => t.includes("Avviso di preinformazione")),
+    [sQ, sPin, sP112, sCn].map((s) => (s?.testi ?? []).filter((t) => /Iscrizione|preinformazione|candidatura|Bando di gara/.test(t))),
+  );
+  const rc = richiedi(src("lib/radar/ricerca-calcoli.ts")) as { filtriDaParametri: (p: Record<string, unknown>) => Record<string, unknown>; parametriDaFiltri: (f: unknown) => string; filtriAttivi: (f: unknown) => number };
+  const fT = rc.filtriDaParametri({ tipo: ["candidature", "bandi", "altro", "bandi"] });
+  controlla(
+    "MT9. parametri: i tipi validi letti dall'indirizzo, senza doppioni né valori sconosciuti; l'indirizzo li riproduce; contano tra i filtri attivi",
+    JSON.stringify(fT.tipi) === JSON.stringify(["candidature", "bandi"]) && /tipo=candidature/.test(rc.parametriDaFiltri(fT)) && /tipo=bandi/.test(rc.parametriDaFiltri(fT)) && rc.filtriAttivi(fT) === rc.filtriAttivi(rc.filtriDaParametri({})) + 2,
+    { tipi: fT.tipi },
   );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);

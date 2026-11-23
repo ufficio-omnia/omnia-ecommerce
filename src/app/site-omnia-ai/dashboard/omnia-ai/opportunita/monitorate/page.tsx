@@ -9,6 +9,7 @@ import { etichettaRicerca, etichettaStatoClassificazione, settoriDellaRiga } fro
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { leggiFontiGare } from "@/lib/radar/gara";
 import { etichettaFontiElenco, type FonteGara } from "@/lib/radar/fonti-gara-calcoli";
+import { tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 import { statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
 import { giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
@@ -141,6 +142,8 @@ export default async function MonitoratePage() {
         settoriDettaglio: settoriDellaRiga(p),
         statoClassificazione: etichettaStatoClassificazione(p),
         fonte: etichettaFontiElenco(fontiGare.get(p.id)),
+        // C4/C5: il tipo della gara (ricavato dal tipo dell'avviso se la colonna è vuota)
+        tipo: tipoDellaGara(p),
         verificataIl: p.ultima_rilevazione_il,
         salvata: true,
         monitorata: s.monitorata,

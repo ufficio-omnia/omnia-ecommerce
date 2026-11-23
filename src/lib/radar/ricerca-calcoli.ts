@@ -4,6 +4,7 @@ import { SETTORI_RADAR, testoPerConfronto, type SettoreRadar } from "./settori";
 import { isRegione, type IdRegione } from "./territorio";
 import { espandiDomanda, type Espansione } from "./sinonimi";
 import { giorniAllaScadenza } from "./sintesi-calcoli";
+import { eCategoriaTipo, type CategoriaTipo } from "./tipo-gara-calcoli";
 
 export const RISULTATI_PER_PAGINA = 25;
 // Tetto dei candidati letti dal database per una ricerca: oltre si chiede di restringere i filtri (nessun conteggio esatto costoso).
@@ -35,6 +36,8 @@ export type FiltriRicerca = {
   scadenzaEntroGiorni: number | null;
   pubblicataNegliUltimiGiorni: number | null;
   procedure: ProceduraRicerca[];
+  // C5 (analisi 49): bandi, candidature, iscrizioni; vuoto = tutti i tipi
+  tipi: CategoriaTipo[];
   stato: StatoRicerca;
   ordina: Ordinamento;
   pagina: number;
@@ -79,6 +82,7 @@ export function filtriDaParametri(p: Parametri): FiltriRicerca {
     scadenzaEntroGiorni: interoTra(uno(p.scadenza), 1, 365),
     pubblicataNegliUltimiGiorni: interoTra(uno(p.pubblicata), 1, 400),
     procedure: [...new Set(lista(p.procedura).filter((x) => idProcedure.has(x)))] as ProceduraRicerca[],
+    tipi: [...new Set(lista(p.tipo).filter(eCategoriaTipo))],
     stato: (STATI_RICERCA as readonly string[]).includes(stato) ? stato : "aperte",
     ordina: (ORDINAMENTI as readonly string[]).includes(ordina) ? ordina : "rilevanza",
     pagina: interoTra(uno(p.pagina), 1, PAGINE_MASSIME) ?? 1,
@@ -97,6 +101,7 @@ export function parametriDaFiltri(f: FiltriRicerca, modifiche: Partial<FiltriRic
   if (x.scadenzaEntroGiorni !== null) p.set("scadenza", String(x.scadenzaEntroGiorni));
   if (x.pubblicataNegliUltimiGiorni !== null) p.set("pubblicata", String(x.pubblicataNegliUltimiGiorni));
   for (const pr of x.procedure) p.append("procedura", pr);
+  for (const t of x.tipi) p.append("tipo", t);
   if (x.stato !== "aperte") p.set("stato", x.stato);
   if (x.ordina !== "rilevanza") p.set("ordina", x.ordina);
   if (x.pagina > 1) p.set("pagina", String(x.pagina));
@@ -115,7 +120,7 @@ export function condizioneStorico(oggi: string, adesso: string): string {
 }
 
 export function filtriAttivi(f: FiltriRicerca): number {
-  return f.settori.length + f.regioni.length + (f.importoMin !== null ? 1 : 0) + (f.importoMax !== null ? 1 : 0) + (f.scadenzaEntroGiorni !== null ? 1 : 0) + (f.pubblicataNegliUltimiGiorni !== null ? 1 : 0) + f.procedure.length + (f.stato !== "aperte" ? 1 : 0);
+  return f.settori.length + f.regioni.length + (f.importoMin !== null ? 1 : 0) + (f.importoMax !== null ? 1 : 0) + (f.scadenzaEntroGiorni !== null ? 1 : 0) + (f.pubblicataNegliUltimiGiorni !== null ? 1 : 0) + f.procedure.length + f.tipi.length + (f.stato !== "aperte" ? 1 : 0);
 }
 
 // ───── domanda testuale ─────
