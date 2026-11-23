@@ -390,7 +390,11 @@ const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
       }
       if ((FONTI_RADAR as readonly string[]).includes(fonte)) {
         const f = fonte as (typeof FONTI_RADAR)[number];
-        controlla(`importazione identica alla regola di prima: ${fonte}, ${nome}`, JSON.stringify(scrittureRadarConsentite(f, env)) === JSON.stringify(vecchia(f, env)), [scrittureRadarConsentite(f, env), vecchia(f, env)]);
+        // dal K8, SENZA le variabili RADAR_<FONTE>_PRODUZIONE, l'esito resta identico in ogni cella; cambia solo il TESTO del motivo di PVL,
+        // Sintel e SardegnaCAT sul deploy di produzione (dice quale variabile manca). Con le variabili: verifica-radar-ambiente-k8.ts
+        const ora = scrittureRadarConsentite(f, env), prima = vecchia(f, env);
+        const soloTesto = f !== "ted" && nome === "produzione, deploy di produzione";
+        controlla(`importazione identica alla regola di prima: ${fonte}, ${nome}`, soloTesto ? ora.ok === prima.ok && ora.ambiente === prima.ambiente && !ora.ok && /PRODUZIONE=autorizzata/.test(ora.motivo) : JSON.stringify(ora) === JSON.stringify(prima), [ora, prima]);
       }
     }
   }
@@ -398,7 +402,9 @@ const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
   controlla("le notifiche dicono «nessuna notifica», l'importazione «nessuna scrittura»", fonteAutorizzata("pvl", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" }).ok === false
     && /nessuna notifica/.test((fonteAutorizzata("pvl", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL }) as { motivo: string }).motivo));
   const testoAmbiente = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "ambiente.ts"), "utf8");
-  controlla("ambiente.ts: nessuna variabile RADAR_<FONTE>_PRODUZIONE (arriva con la P2 della PVL)", !/RADAR_[A-Z]+_PRODUZIONE/.test(testoAmbiente.replace(/\/\/.*$/gm, "")));
+  // dal K8 (48C §3.7) le variabili di produzione esistono, ma solo nella tabella VARIABILI_PRODUZIONE e mai per TED
+  const codiceAmbiente = testoAmbiente.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  controlla("ambiente.ts: le variabili RADAR_<FONTE>_PRODUZIONE solo nella tabella VARIABILI_PRODUZIONE (PVL, Sintel, SardegnaCAT; mai TED)", JSON.stringify(codiceAmbiente.match(/RADAR_[A-Z]+_PRODUZIONE/g)) === JSON.stringify(["RADAR_PVL_PRODUZIONE", "RADAR_SINTEL_PRODUZIONE", "RADAR_SARDEGNACAT_PRODUZIONE"]), codiceAmbiente.match(/RADAR_[A-Z]+_PRODUZIONE/g));
   controlla("ambiente.ts: scrittureRadarConsentite è fonteAutorizzata per l'importazione", /return fonteAutorizzata\(fonte, "importazione", env\)/.test(testoAmbiente));
 }
 
