@@ -117,6 +117,7 @@ async function principale(): Promise<void> {
   controlla("situazione: «classificata» con le stesse righe C sarebbe «fuori dai settori» (il caso che «da_verificare» evita)", (() => { const c = situazioneGara({ stato: "classificata", versione_regole: "v", errore: null }, righeBib); return c.tipo === "classificata" && c.fuoriDaiSettori; })());
   controlla("situazione: uno stato sconosciuto non diventa mai «classificata»", situazioneGara({ stato: "sconosciuto" as RigaStato["stato"], versione_regole: "v", errore: null }, righeBib).tipo === "non_classificata");
   controlla("suggerimenti: una gara «da_verificare» non si suggerisce mai, anche con una riga A", gareSuggeribili([{ procedura_id: "BIB", settore: "vigilanza_portierato", rilevanza: "A", attiva: true }], new Map([["BIB", { stato: "da_verificare" as const }]]), ["vigilanza_portierato"]).length === 0);
+  controlla("motore delle notifiche: lo stato letto usa il tipo unico a 4 stati (StatoClassificazione), non un elenco suo", /leggiPer<\{ procedura_id: string; stato: StatoClassificazione \}>\("stato delle classificazioni"/.test(leggi("src/lib/radar/notifiche/motore.ts")));
 
   await provaRiallineamento(decisa);
   provaCasoDalMotivo();
