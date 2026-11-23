@@ -47,14 +47,15 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     id: "pvl",
     nome: "ANAC, Piattaforma di pubblicità a valore legale",
     stato: "in_costruzione",
-    copertura: "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti)",
+    // copertura e ultimo limite: testi approvati dall'utente il 23/11 con C1 («Sì, vanno bene»), da usare così
+    copertura: "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti), indagini di mercato e avvisi per l'iscrizione a elenchi",
     aggiornamento: `Giri previsti ${testoOrari("pvl")} (ora italiana)`,
     limiti: [
       // testo scelto dall'utente il 23/11 («Frase neutra proposta»), da usare così
       "Dati letti dalla piattaforma pubblica di ANAC; fa fede l'avviso pubblicato sulla piattaforma",
       "Il CPV è scritto come descrizione: si riconosce solo se è una voce del file approvato",
       "La durata del contratto non ha unità di misura e non si usa",
-      "Indagini di mercato, negoziate senza bando e affidamenti diretti non entrano",
+      "Le procedure negoziate su invito e gli affidamenti diretti non entrano; le indagini di mercato entrano come candidature e gli avvisi di costituzione di elenchi come iscrizioni",
     ],
     // testo scelto dall'utente il 23/11 («Frase neutra proposta»), da usare così
     licenza: "Avvisi di pubblicità legale pubblicati da ANAC: solo dati di fatto, con il collegamento all'avviso ufficiale e la citazione della fonte",

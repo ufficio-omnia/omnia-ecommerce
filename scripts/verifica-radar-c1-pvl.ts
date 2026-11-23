@@ -8,7 +8,9 @@ import path from "path";
 import { leggiAvvisoPvl, SCHEDE_BANDO_PVL, SCHEDE_CANDIDATURA_ISCRIZIONE_PVL, type BandoPvl } from "../src/lib/radar/fonti/pvl-calcoli";
 import { opportunitaDaTipoAvviso } from "../src/lib/radar/opportunita-calcoli";
 import { rigaDaBandoPvl } from "../src/lib/radar/importa-pvl-calcoli";
-import { garaEmailDaArchivio, COLONNE_GARA, type RigaGara } from "../src/lib/radar/notifiche/eventi-calcoli";
+import { garaEmailDaArchivio, eventoRiepilogo, COLONNE_GARA, type RigaGara, type RigaNuova } from "../src/lib/radar/notifiche/eventi-calcoli";
+import { descrizioneFonte } from "../src/lib/radar/fonti/tipi";
+import type { EventoRiepilogo } from "../src/lib/radar/notifiche/tipi";
 
 const falliti: string[] = [];
 let ok = 0;
@@ -89,6 +91,31 @@ uguale("notifiche: elenco P7_3 → «Iscrizione a elenco o sistema di qualificaz
 uguale("notifiche: bando «Bando di gara»; preinformazione con indizione «Avviso di preinformazione» (C11); scheda sconosciuta senza tipo",
   [tipoEmail("bando", "P1_16"), tipoEmail(null, "cn-standard"), tipoEmail("bando", "pin-cfc-standard"), tipoEmail(null, "P2_12"), tipoEmail(null, "P7_1_1"), tipoEmail("valore_strano", "P1_16")],
   ["Bando di gara", "Bando di gara", "Avviso di preinformazione", "Avviso di preinformazione", null, null]);
+
+// ───── 6. decisione D3 dell'utente (23/11, «Sì, con l'etichetta»): le indagini PVL di classe A entrano nel riepilogo come quelle di Sintel e
+// SardegnaCAT, sempre come «Indagine di mercato», mai come gara aperta; nessun filtro nuovo sul tipo ─────
+const nuova = (id: string, tipo_opportunita: string | null, tipo_avviso: string | null): RigaNuova => ({
+  ...gara(tipo_opportunita, tipo_avviso), id, prima_rilevazione_il: "2026-11-17T07:00:00Z", data_pubblicazione: "2026-11-16",
+  classificazione_stato: { stato: "classificata" }, classificazioni: [{ settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true }],
+} as unknown as RigaNuova);
+let n = 0;
+const ev = eventoRiepilogo({
+  oggi: "2026-11-17", adesso: ADESSO, impresaId: "i1",
+  profilo: { impresaId: "i1", settori: ["pulizia"], sottocategorie: {}, procedure: [], regioni: [], importoMin: null, importoMax: null, vedereCorrelate: false },
+  nuove: [nuova("g-indagine", "indagine_mercato", "P7_1_3"), nuova("g-elenco", null, "P7_3"), nuova("g-bando", "bando", "P2_16")],
+  giaInLista: new Set(), parametri: { escludiGiaSalvateDalRiepilogo: true }, nascoste: new Set(),
+  env: { NEXT_PUBLIC_SUPABASE_URL: "https://ryawdldqiumqsskrnyps.supabase.co", RADAR_NOTIFICHE_EMAIL: "attivo" }, origine: "https://esempio.invalid",
+  nuovoId: () => `e${++n}`, adessoIso: ADESSO.toISOString(),
+} as Parameters<typeof eventoRiepilogo>[0]);
+const perGara = new Map(((ev?.dati as EventoRiepilogo | undefined)?.gare ?? []).map((g) => [g.proceduraId, g.tipoAvviso]));
+uguale("riepilogo (D3 = a): l'indagine PVL di classe A entra, con «Indagine di mercato»; l'elenco con «Iscrizione…»; il bando con «Bando di gara»",
+  [perGara.get("g-indagine"), perGara.get("g-elenco"), perGara.get("g-bando")], ["Indagine di mercato", "Iscrizione a elenco o sistema di qualificazione", "Bando di gara"]);
+
+// ───── 7. testi per i clienti approvati dall'utente (C1, 23/11): esatti ─────
+const pvl = descrizioneFonte("pvl");
+uguale("testo PVL: l'ultimo limite è quello approvato, esatto", pvl.limiti[pvl.limiti.length - 1], "Le procedure negoziate su invito e gli affidamenti diretti non entrano; le indagini di mercato entrano come candidature e gli avvisi di costituzione di elenchi come iscrizioni");
+uguale("testo PVL: la copertura è quella approvata, esatta", pvl.copertura, "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti), indagini di mercato e avvisi per l'iscrizione a elenchi");
+atteso("testo PVL: la riga vecchia «Indagini di mercato, negoziate senza bando e affidamenti diretti non entrano» non c'è più", !pvl.limiti.some((l) => /^Indagini di mercato, negoziate/.test(l)));
 
 console.log(falliti.length ? `Verifica C1 PVL (indagini e iscrizioni): ${ok} ok, ${falliti.length} falliti` : `Verifica C1 PVL (indagini e iscrizioni): ${ok} ok, 0 falliti`);
 process.exit(falliti.length ? 1 : 0);

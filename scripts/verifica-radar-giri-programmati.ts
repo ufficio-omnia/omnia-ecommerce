@@ -92,7 +92,8 @@ function provaRigheCron(): void {
   const testoPvl = [pvl.copertura, pvl.aggiornamento, ...pvl.limiti, pvl.licenza].join(" | ");
   controlla("PVL: il limite «Dati letti dalla piattaforma pubblica di ANAC; fa fede l'avviso pubblicato sulla piattaforma» è esatto e al primo posto", pvl.limiti[0] === "Dati letti dalla piattaforma pubblica di ANAC; fa fede l'avviso pubblicato sulla piattaforma", pvl.limiti);
   controlla("PVL: la licenza è esatta", pvl.licenza === "Avvisi di pubblicità legale pubblicati da ANAC: solo dati di fatto, con il collegamento all'avviso ufficiale e la citazione della fonte", pvl.licenza);
-  controlla("PVL: i testi vecchi («sperimentale», «solo sullo staging», «da verificare con ANAC», «parere») non compaiono più; la riga sulle indagini di mercato resta (cambia con C1)", !/sperimental|solo sullo staging|da verificare con anac|parere/i.test(testoPvl) && pvl.limiti.includes("Indagini di mercato, negoziate senza bando e affidamenti diretti non entrano"), testoPvl);
+  controlla("PVL: i testi vecchi («sperimentale», «solo sullo staging», «da verificare con ANAC», «parere», «Indagini di mercato … non entrano») non compaiono più", !/sperimental|solo sullo staging|da verificare con anac|parere|indagini di mercato, negoziate/i.test(testoPvl), testoPvl);
+  controlla("PVL (C1): l'ultimo limite e la copertura sono i testi approvati dall'utente, esatti", pvl.limiti[pvl.limiti.length - 1] === "Le procedure negoziate su invito e gli affidamenti diretti non entrano; le indagini di mercato entrano come candidature e gli avvisi di costituzione di elenchi come iscrizioni" && pvl.copertura === "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti), indagini di mercato e avvisi per l'iscrizione a elenchi", [pvl.copertura, pvl.limiti]);
 }
 
 // ═════ guardie 2 e 3, in ordine ═════
