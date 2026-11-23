@@ -1223,7 +1223,8 @@ async function principale(): Promise<void> {
       omnia_ai_radar_utilizzi: [],
       radar_classificazioni_stato: [statoCl(V.stabulari, "da_verificare"), statoCl(V.biblioteca, "da_verificare"), statoCl(V.classificata, "classificata"), statoCl(V.senzaCaso, "da_verificare"), statoCl(V.inAttesa, "in_attesa"), statoCl(V.senzaCandidato, "da_verificare")],
       radar_classificazioni: [
-        rigaCl(V.stabulari, "pulizia", "C", ["da_verificare_stabulari", "cura_degli_animali"], [MOTIVO_STABULARI, "Cura degli animali (dato sintetico)"]),
+        // la regola «da_verificare_…» NON è la prima: il motivo va preso nella sua posizione
+        rigaCl(V.stabulari, "pulizia", "C", ["cura_degli_animali", "da_verificare_stabulari"], ["Cura degli animali (dato sintetico)", MOTIVO_STABULARI]),
         rigaCl(V.stabulari, "ristorazione", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
         rigaCl(V.biblioteca, "vigilanza_portierato", "C", ["da_verificare_biblioteca"], ["Servizi di biblioteca senza descrizione (dato sintetico)"]),
         rigaCl(V.classificata, "pulizia", "A", ["cpv_pulizia"], ["CPV di pulizia (dato sintetico)"]),
@@ -1287,7 +1288,9 @@ async function principale(): Promise<void> {
       JSON.stringify(vS.sottocategorie.map((x) => x.id)) === JSON.stringify(vociCatalogo("pulizia").map((x) => x.id)) &&
       vocePer(V.biblioteca)?.settoreCandidato === "vigilanza_portierato" && vocePer(V.biblioteca)?.caso === "biblioteca" &&
       vocePer(V.senzaCaso)?.settoreCandidato === "ristorazione" && vocePer(V.senzaCaso)?.caso === null &&
-      vocePer(V.senzaCandidato)?.settoreCandidato === null,
+      vocePer(V.senzaCandidato)?.settoreCandidato === null &&
+      // la pagina della console legge davvero l'elenco e lo passa alla vista
+      fs.readFileSync(src("lib/console/tender-intelligence.ts"), "utf8").includes("    leggiGareInVerifica(admin),\n") && /^    gareInVerifica,$/m.test(fs.readFileSync(src("lib/console/tender-intelligence.ts"), "utf8")),
     elencoS4?.map((g) => ({ id: g.id.slice(-3), settore: g.settoreCandidato, caso: g.caso, righe: g.righe.length })) ?? "modulo assente",
   );
 
