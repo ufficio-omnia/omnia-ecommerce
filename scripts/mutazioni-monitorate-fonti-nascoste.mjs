@@ -143,7 +143,7 @@ const MUTAZIONI = [
   { nome: "MM67 lettura: niente testo «Classificazione in verifica»", file: LT, cerca: '  if (c.stato === "da_verificare") return "Classificazione in verifica:', con: '  if (c.stato === "da_verificare_x") return "Classificazione in verifica:', richiede: "MS1." },
   { nome: "MM68 risultati: niente distintivo «Classificazione in verifica»", file: RC, cerca: '  if (c.rilevanza?.stato === "da_verificare") return "Classificazione in verifica";\n', con: "", richiede: "MS2." },
   { nome: "MM69 elenco: anche le gare in attesa", file: GV, cerca: '.eq("stato", "da_verificare")', con: '.in("stato", ["da_verificare", "in_attesa"])', richiede: "MS4." },
-  { nome: "MM70 elenco: caso ricavato male dal settore", file: GVC, cerca: '  pulizia: "stabulari",', con: '  pulizia: "biblioteca",', richiede: "MS4." },
+  { nome: "MM70 elenco: caso non ricavato dal motivo", file: GVC, cerca: "caso: casoDaRigaDaVerificare({ regole, motivi })", con: "caso: null", richiede: "MS4." },
   { nome: "MM71 elenco: candidato anche da una riga C senza la regola «da_verificare»", file: GVC, cerca: "    if (i < 0) continue;", con: '    if (i < 0 && r.rilevanza !== "C") continue;', richiede: "MS4." },
   { nome: "MM72 decidi: un settore diverso dal candidato accettato", file: GVC, cerca: "if (candidato !== null && settore !== candidato) return", con: "if (false && candidato !== null && settore !== candidato) return", richiede: "MS7." },
   { nome: "MM73 decidi: C con sottocategorie accettata", file: GVC, cerca: 'if (rilevanza === "C" && scelte.length > 0) return', con: 'if (false && rilevanza === "C" && scelte.length > 0) return', richiede: "MS7." },
@@ -173,12 +173,38 @@ const MUTAZIONI = [
   { nome: "MM84 vista: riquadro non nella pagina", file: CV, cerca: "{dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}", con: "{null}", richiede: "MS10." },
   { nome: "MM85 vista: senza collegamento all'avviso", file: GVV, cerca: "<a href={g.urlAvviso}", con: "<a data-href={g.urlAvviso}", richiede: "MS10." },
   { nome: "MM86 pagina della console: elenco non letto", file: CL, cerca: "    leggiGareInVerifica(admin),\n", con: "    Promise.resolve(null),\n", richiede: "MS4." },
-  // guardia del caso ricavato dal settore (MS11). [B2] = settori.ts del classificatore: mutato SOLO in memoria e ripristinato dal buffer
-  { nome: "MM87 [B2] due casi S4 con lo stesso settore candidato", file: ST, cerca: 'out.push({ settore: "vigilanza_portierato", caso: "biblioteca"', con: 'out.push({ settore: "pulizia", caso: "biblioteca"', richiede: "MS11." },
+  // guardia del caso ricavato dal MOTIVO (MS11). [B2] = settori.ts del classificatore: mutato SOLO in memoria e ripristinato dal buffer
+  {
+    nome: "MM87 [B2] due casi S4 con lo stesso motivo",
+    file: ST,
+    cerca: '  biblioteca: "Servizi di biblioteca senza descrizione:',
+    con: '  biblioteca: "Appalto misto per stabulari con le «pulizie» tra le attività: da verificare nei documenti (pulizia dei locali o cura degli animali)",\n  _vecchio: "Servizi di biblioteca senza descrizione:',
+    richiede: "MS11.",
+  },
   { nome: "MM88 [B2] caso nuovo nel tipo, senza la sua riga", file: ST, cerca: '  caso: "immobile_con_cpv_ristorazione" | "stabulari" | "biblioteca";', con: '  caso: "immobile_con_cpv_ristorazione" | "stabulari" | "biblioteca" | "caso_nuovo";', richiede: "MS11." },
-  { nome: "MM89 [B2] un caso spostato su un settore che la console non conosce", file: ST, cerca: 'out.push({ settore: "pulizia", caso: "stabulari"', con: 'out.push({ settore: "facchinaggio", caso: "stabulari"', richiede: "MS11." },
-  { nome: "MM90 console: un caso mancante nella corrispondenza", file: GVC, cerca: '  vigilanza_portierato: "biblioteca",\n', con: "", richiede: "MS11." },
+  { nome: "MM89 [B2] una riga del classificatore col motivo di un altro caso", file: ST, cerca: "motivo: MOTIVI_DA_VERIFICARE.biblioteca });", con: "motivo: MOTIVI_DA_VERIFICARE.stabulari });", richiede: "MS11." },
+  { nome: "MM90 console: caso indovinato dal settore quando il motivo non è riconosciuto", file: GVC, cerca: "caso: casoDaRigaDaVerificare({ regole, motivi })", con: "caso: casoDaRigaDaVerificare({ regole, motivi }) ?? ({ ristorazione: \"immobile_con_cpv_ristorazione\" } as Record<string, string>)[r.settore] ?? null", richiede: "MS4." },
   { nome: "MM91 console: un caso senza nome", file: GVC, cerca: '  stabulari: "Appalto misto per stabulari",\n', con: "", richiede: "MS11." },
+  // riallineamento della colonna «settori» dopo «Decidi» (riallineaSettoriGara di B2)
+  {
+    nome: "MM92 decidi: riallineamento non chiamato",
+    file: CA,
+    cerca: "const colonna = statoAggiornato ? await riallineaSettoriGara(admin, proceduraId, adesso) : null;",
+    con: 'const colonna = statoAggiornato ? ({ esito: "invariata", colonna: { settori: [] as string[], metodo: null } } as const) : null;',
+    richiede: "MS12.",
+  },
+  {
+    nome: "MM93 decidi: riallineamento chiamato anche se lo stato non è tornato «classificata»",
+    file: CA,
+    cerca: "const colonna = statoAggiornato ? await riallineaSettoriGara(admin, proceduraId, adesso) : null;",
+    con: "const colonna = await riallineaSettoriGara(admin, proceduraId, adesso);",
+    richiede: "MS15.",
+  },
+  { nome: "MM94 decidi: riallineamento non riuscito detto come riuscito", file: CA, cerca: "  return { errore: `${decisa}, ma i settori della gara NON", con: "  return { ok: true, avviso: `${decisa}, ma i settori della gara NON", richiede: "MS14." },
+  { nome: "MM95 decidi: colonna aggiornata detta come errore", file: CA, cerca: 'if (colonna.esito === "aggiornata" || colonna.esito === "invariata") return', con: 'if (colonna.esito === "invariata") return', richiede: "MS12." },
+  { nome: "MM96 decidi: esito del riallineamento non nel registro", file: CA, cerca: ' · colonna: ${colonna ? testoRiallineamento(colonna) : "non riallineata"}', con: "", richiede: "MS12." },
+  { nome: "MM97 testo: «cambiata nel frattempo» non detto", file: GVC, cerca: '"la colonna dei settori è cambiata nel frattempo"', con: '"colonna non scritta"', richiede: "MS14." },
+  { nome: "MM98 testo: «gara non trovata» non detto", file: GVC, cerca: ': "gara non trovata";', con: ': "colonna non scritta";', richiede: "MS14." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
