@@ -3,6 +3,7 @@
 // Nessun dato di persone: conteggi, finestre lette, esiti e un errore ripulito. Provata da scripts/verifica-radar-esecuzioni.ts e, sui
 // vincoli veri, su Postgres isolato (scripts/prova-isolata/esegui-prova-esecuzioni.mjs).
 import { erroreDaConservare } from "./lavori-calcoli";
+import { testoContattoMancante } from "./fonti/user-agent";
 
 export const FONTI_ESECUZIONI = ["ted", "pvl", "sintel", "sardegnacat"] as const;
 export type FonteEsecuzione = (typeof FONTI_ESECUZIONI)[number];
@@ -163,7 +164,7 @@ export function rigaEsecuzione(x: { id: string; fonte: FonteEsecuzione; origine:
 
 // ───────────────────────── dai risultati dei tre importatori ─────────────────────────
 
-type UscitaAnticipata = { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string };
+type UscitaAnticipata = { eseguita: false; motivo: "ambiente_non_consentito" | "contatto_mancante" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string };
 
 /**
  * Le uscite prima del giro vero. MAI una riga se l'ambiente non è consentito (sarebbe una scrittura proprio dove non si deve scrivere) né
@@ -175,6 +176,8 @@ export function datiUscita(r: UscitaAnticipata, modo: DatiGiro["modo"]): DatiGir
   if (r.motivo === "occupata") return { modo, esito: "occupata" };
   // doppio richiamo di un giro programmato già riuscito (K1, 48C §3.1 punto 7): nessuna chiamata alla fonte
   if (r.motivo === "gia_eseguito") return { modo, esito: "gia_eseguito" };
+  // K9: User-Agent senza contatto valido fuori dallo staging: errore (allarme «errori_ripetuti» se si ripete); il testo non contiene il contatto
+  if (r.motivo === "contatto_mancante") return { modo, esito: "errore", errore: testoContattoMancante(r.dettaglio === "contatto_non_valido" ? "contatto_non_valido" : "contatto_mancante") };
   return { modo, esito: "errore", errore: `lettura dello stato della fonte non riuscita${r.dettaglio ? `: ${r.dettaglio}` : ""}` };
 }
 

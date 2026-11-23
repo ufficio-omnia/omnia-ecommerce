@@ -19,6 +19,7 @@ import { erroreDaConservare } from "./lavori-calcoli";
 import { datiGiroTed, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
+import { userAgentFonti } from "./fonti/user-agent";
 
 export type TotaliGiro = {
   pagine: number;
@@ -29,7 +30,7 @@ export type TotaliGiro = {
 };
 
 export type RisultatoImportazioneTed =
-  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "contatto_mancante" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7); sospesa: TED ha risposto 401 o
   // 403 (K5): la fonte si spegne da sola e si riaccende solo dalla console
   | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; fermata: boolean; sospesa: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
@@ -67,6 +68,10 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
   // protezione contro le scritture accidentali in produzione (ambiente.ts): prima di qualunque lettura o scrittura
   const permesso = scrittureRadarConsentite("ted", opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
+  // K9 (L7): User-Agent con il contatto reale (RADAR_CONTATTO_FONTI); fuori dallo staging, senza contatto valido, il giro non parte. Il
+  // motivo dice che cosa manca, mai il valore del contatto
+  const ua = userAgentFonti(opzioni.env ?? process.env);
+  if (!ua.ok) return { eseguita: false, motivo: "contatto_mancante", dettaglio: ua.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
   const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
   // fase B4: colonne dell'evidenza (0123) nel registro solo con l'interruttore RADAR_REGISTRO_EVIDENZA (spento di base, solo staging)
@@ -105,7 +110,7 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
     while (cursore.inCorso && totali.pagine < opzioni.pagineMassime && ora().getTime() - inizio.getTime() < opzioni.tempoMassimoMs) {
       const finestra = finestraCorrente(cursore);
       const modo = cursore.fase === "recupero" ? "recupero" : "incrementale";
-      const pagina = await leggiPaginaTed(cursore.tipo, cpv, finestra.da, finestra.a, cursore.pagina, { fetchFn: opzioni.fetchFn, pausaMs: opzioni.pausaMs });
+      const pagina = await leggiPaginaTed(cursore.tipo, cpv, finestra.da, finestra.a, cursore.pagina, { fetchFn: opzioni.fetchFn, pausaMs: opzioni.pausaMs, userAgent: ua.valore });
       totali.ted.richieste++;
       totali.ted.byte += pagina.byte;
       totali.ted.ms += pagina.ms;

@@ -37,7 +37,8 @@ export async function leggiPaginaTed(
   da: string,
   a: string,
   pagina: number,
-  opzioni: { fetchFn?: typeof fetch; segnale?: AbortSignal; pausaMs?: number } = {},
+  // userAgent: quello del giro (K9, user-agent.ts); di base quello generico
+  opzioni: { fetchFn?: typeof fetch; segnale?: AbortSignal; pausaMs?: number; userAgent?: string } = {},
 ): Promise<PaginaTed> {
   const fetchFn = opzioni.fetchFn ?? fetch;
   const pausa = opzioni.pausaMs ?? PAUSA_MS;
@@ -54,7 +55,7 @@ export async function leggiPaginaTed(
     try {
       const r = await fetchFn(URL_RICERCA_TED, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": USER_AGENT_TED },
+        headers: { "Content-Type": "application/json", Accept: "application/json", "User-Agent": opzioni.userAgent ?? USER_AGENT_TED },
         body: corpo,
         signal: controllo.signal,
       });

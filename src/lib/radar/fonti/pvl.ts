@@ -47,6 +47,8 @@ export class SessionePvl {
     readonly limiti: LimitiPvl,
     private readonly fetchFn: typeof fetch = fetch,
     private readonly segnale?: AbortSignal,
+    // K9: lo User-Agent del giro (user-agent.ts); di base quello generico
+    private readonly userAgent: string = USER_AGENT_PVL,
   ) {}
 
   private async una(url: string): Promise<{ stato: number; testo: string; tipo: string }> {
@@ -61,7 +63,7 @@ export class SessionePvl {
     const sgancia = () => controllo.abort();
     this.segnale?.addEventListener("abort", sgancia);
     try {
-      const r = await this.fetchFn(url, { headers: { Accept: "application/json", "User-Agent": USER_AGENT_PVL }, signal: controllo.signal, cache: "no-store" });
+      const r = await this.fetchFn(url, { headers: { Accept: "application/json", "User-Agent": this.userAgent }, signal: controllo.signal, cache: "no-store" });
       const testo = await r.text();
       const ms = Date.now() - inizio;
       this.byte += testo.length;

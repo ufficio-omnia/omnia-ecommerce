@@ -39,9 +39,10 @@ import { erroreDaConservare } from "./lavori-calcoli";
 import { datiGiroPvl, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
+import { userAgentFonti } from "./fonti/user-agent";
 
 export type RisultatoImportazionePvl =
-  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "contatto_mancante" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7)
   // letta: la finestra principale del giro (incrementale o controllata) e le pagine lette; recupero e allarmi: K4 (cursore v2)
   | {
@@ -92,6 +93,10 @@ export function eseguiImportazionePvl(admin: SupabaseClient, opzioni: OpzioniImp
 async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, esecuzioneId: string): Promise<RisultatoImportazionePvl> {
   const permesso = scrittureRadarConsentite("pvl", opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
+  // K9 (L7): User-Agent con il contatto reale (RADAR_CONTATTO_FONTI); fuori dallo staging, senza contatto valido, il giro non parte. Il
+  // motivo dice che cosa manca, mai il valore del contatto
+  const ua = userAgentFonti(opzioni.env ?? process.env);
+  if (!ua.ok) return { eseguita: false, motivo: "contatto_mancante", dettaglio: ua.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
   const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
   // fase B4: fotografie, rilevamento delle modifiche PVL ed evidenza nel registro solo con l'interruttore RADAR_REGISTRO_EVIDENZA (spento)
@@ -138,7 +143,7 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
   // limiti di cortesia: quelli della console (entro gli intervalli ammessi), poi quelli passati dallo script per una prova più prudente
   const { data: righeLimiti } = await admin.from("console_impostazioni").select("chiave, valore").like("chiave", "radar_pvl_%").returns<{ chiave: string; valore: string }[]>();
   const limiti = limitiPvl({ ...limitiPvlDaRighe(righeLimiti), ...(opzioni.limiti ?? {}) });
-  const sessione = new SessionePvl(limiti, opzioni.fetchFn);
+  const sessione = new SessionePvl(limiti, opzioni.fetchFn, undefined, ua.valore);
   const stat = statistichePvlVuote();
   const db: Misure = { richiesteDb: 0, msDb: 0 };
   const cpv = cpvRicercaPvl();
