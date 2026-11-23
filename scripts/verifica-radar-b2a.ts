@@ -6,7 +6,7 @@
 //   3. unioni reversibili;
 //   4. rettifiche e proroghe propagate da qualunque fonte alla gara che resta;
 //   5. collegamenti conservati con progetti, documenti, gare monitorate, salvate e aggiunte a mano;
-//   6. visibili ai clienti solo le fonti autorizzate (SardegnaCAT nascosta fino al parere legale);
+//   6. visibili ai clienti solo le fonti non nascoste (dal 23/11 nessuna di base: SardegnaCAT visibile senza parere, 48E D4-bis);
 //   7. nessuna perdita né duplicazione nelle sincronizzazioni successive.
 import fs from "fs";
 import path from "path";
