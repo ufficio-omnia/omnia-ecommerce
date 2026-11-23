@@ -22,9 +22,10 @@ import { bandoDaAflink, bandoDaSintel, conta, statisticheRegionaliVuote, type Ba
 import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
+import { userAgentFonti } from "./fonti/user-agent";
 
 export type RisultatoImportazioneRegionale =
-  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "contatto_mancante" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   // giroFinito: tutti i bandi letti sono stati scritti entro il tempo massimo (K6); dichiarati: il conteggio di Sintel (null altrove o se
   // illeggibile); allarmi: conteggio_diverso (Sintel), buco_possibile (feed di SardegnaCAT)
   | {
@@ -63,6 +64,10 @@ export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteR
 async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale, esecuzioneId: string): Promise<RisultatoImportazioneRegionale> {
   const permesso = scrittureRadarConsentite(fonte, opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
+  // K9 (L7): User-Agent con il contatto reale (RADAR_CONTATTO_FONTI); fuori dallo staging, senza contatto valido, il giro non parte. Il
+  // motivo dice che cosa manca, mai il valore del contatto
+  const ua = userAgentFonti(opzioni.env ?? process.env);
+  if (!ua.ok) return { eseguita: false, motivo: "contatto_mancante", dettaglio: ua.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
   const classificazioni = classificazioniAttive(opzioni.env ?? process.env);
   // fase B4: colonne dell'evidenza (0123) nel registro solo con l'interruttore RADAR_REGISTRO_EVIDENZA (spento di base, solo staging)
@@ -100,7 +105,7 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   let sospesa = false;
   let errore: string | null = null;
   const limiti = fonte === "sintel" ? limitiValidi(opzioni.limiti, LIMITI_SINTEL_PREDEFINITI, LIMITI_SINTEL_INTERVALLI) : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
-  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn);
+  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore);
   let datiDel: string | null = null;
   // K6: giro scritto per intero entro il tempo massimo; righe di Sintel uguali al conteggio della fonte; allarmi del giro
   let giroFinito = true;

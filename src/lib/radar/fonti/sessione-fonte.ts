@@ -8,7 +8,8 @@
 //   - 401, 403 e 429 = la fonte non vuole essere letta così: il connettore si SOSPENDE subito, senza ripetere la richiesta;
 //   - una risposta che non è nel formato atteso (per esempio una pagina di verifica «sei un robot?») = sospensione: blocchi, CAPTCHA e
 //     protezioni non si aggirano mai;
-//   - nome generico del programma, nessun dato dell'azienda o delle persone nelle richieste, nessuna autenticazione, nessun cookie.
+//   - User-Agent: quello del giro (K9, user-agent.ts: con il contatto reale di RADAR_CONTATTO_FONTI, o il nome generico sullo staging);
+//     nessun altro dato dell'azienda o delle persone nelle richieste, nessuna autenticazione, nessun cookie.
 
 export const USER_AGENT_FONTI = "omnia-radar/1.0 (lettura avvisi pubblici)";
 
@@ -55,6 +56,8 @@ export class SessioneFonte {
     readonly limiti: LimitiFonte,
     private readonly fetchFn: typeof fetch = fetch,
     private readonly segnale?: AbortSignal,
+    // K9: lo User-Agent del giro (user-agent.ts); di base quello generico
+    private readonly userAgent: string = USER_AGENT_FONTI,
   ) {}
 
   private async una(url: string, accetta: string): Promise<RispostaFonte> {
@@ -70,7 +73,7 @@ export class SessioneFonte {
     this.segnale?.addEventListener("abort", sgancia);
     try {
       // i reindirizzamenti si seguono come farebbe un lettore di feed (l'indirizzo pubblicato non si cambia mai)
-      const r = await this.fetchFn(url, { headers: { Accept: accetta, "User-Agent": USER_AGENT_FONTI }, signal: controllo.signal, cache: "no-store", redirect: "follow" });
+      const r = await this.fetchFn(url, { headers: { Accept: accetta, "User-Agent": this.userAgent }, signal: controllo.signal, cache: "no-store", redirect: "follow" });
       const testo = await r.text();
       const ms = Date.now() - inizio;
       this.byte += testo.length;

@@ -91,10 +91,10 @@ async function provaGiri(): Promise<void> {
   const ra = await eseguiImportazionePvl(a as unknown as SupabaseClient, { modo: "incrementale", tempoMassimoMs: 1000, env: PROD_DEPLOY });
   controlla("PVL in produzione SENZA variabile: «ambiente_non_consentito», zero accessi al database (registro compreso)", !ra.eseguita && ra.motivo === "ambiente_non_consentito" && a.richieste.length === 0, { ra, richieste: a.richieste });
   const b = mondo();
-  const rb = await eseguiImportazionePvl(b as unknown as SupabaseClient, { modo: "incrementale", tempoMassimoMs: 1000, env: { ...PROD_DEPLOY, RADAR_PVL_PRODUZIONE: "autorizzata" } });
+  const rb = await eseguiImportazionePvl(b as unknown as SupabaseClient, { modo: "incrementale", tempoMassimoMs: 1000, env: { ...PROD_DEPLOY, RADAR_PVL_PRODUZIONE: "autorizzata", RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" } });
   controlla("PVL in produzione CON la variabile: passa la guardia, legge lo stato, la fonte è spenta → «fonte_spenta» registrato", !rb.eseguita && rb.motivo === "fonte_spenta" && b.richieste.some((q) => q.tabella === "radar_fonti_stato") && b.t("radar_esecuzioni")[0]?.esito === "inerte", { rb, richieste: b.richieste });
   const c = mondo();
-  const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "sintel", { env: { ...PROD_DEPLOY, RADAR_PVL_PRODUZIONE: "autorizzata" } });
+  const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "sintel", { env: { ...PROD_DEPLOY, RADAR_PVL_PRODUZIONE: "autorizzata", RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" } });
   controlla("Sintel in produzione con la variabile della PVL (non la sua): «ambiente_non_consentito», zero accessi", !rc.eseguita && rc.motivo === "ambiente_non_consentito" && c.richieste.length === 0, rc);
 }
 
