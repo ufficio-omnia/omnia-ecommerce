@@ -23,6 +23,19 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
 
 const eFonte = eFonteUnita;
 
+/**
+ * Le fonti che, SENZA un'indicazione del database (riga mancante in radar_fonti_stato, o errore di lettura), restano nascoste ai clienti.
+ * SardegnaCAT finché manca il parere sulla licenza del feed; la PVL per la decisione 7.14 (L5a del piano 36: nascosta durante sviluppo,
+ * collaudi e primo deploy protetto). Una riga esplicita del database vale sempre di più (sullo staging la riga «pvl» è «nascosta» dal 23/11).
+ */
+export const FONTI_NASCOSTE_PREDEFINITE: readonly FonteGara[] = ["sardegnacat", "pvl"];
+
+/** LA regola unica delle fonti nascoste (pagine e motore delle notifiche): la riga del database se c'è, altrimenti la predefinita. */
+export function fontiNascosteDa(righe: readonly { fonte: string; nascosta_ai_clienti: boolean | null }[]): FonteGara[] {
+  const indicate = new Map(righe.map((r) => [r.fonte, r.nascosta_ai_clienti]));
+  return FONTI_UNITE.filter((f) => indicate.get(f) ?? FONTI_NASCOSTE_PREDEFINITE.includes(f));
+}
+
 // Righe INTERNE del registro dei cambiamenti: suggerimenti di unione e segnalazioni di classificazione da verificare. Le vede solo
 // l'amministratore in console; nella scheda della gara non compaiono mai (senza questo filtro comparirebbero come «Rettifica»).
 export const CAMPO_CLASSIFICAZIONE_AMBIGUA = "classificazione_ambigua";
@@ -33,10 +46,9 @@ export function aggiornamentoPerCliente(a: { campo: string | null; fonte: string
   return !(a.campo !== null && CAMPI_INTERNI_REGISTRO.includes(a.campo)) && !nascoste.has(a.fonte);
 }
 
-// Una gara si mostra ai clienti solo se almeno una delle sue fonti è CONOSCIUTA e visibile (controllo di accettazione 6 dell'utente). Una
-// fonte che il codice non conosce ancora (fuori da FONTI_UNITE) vale come nascosta, come nella ricerca, che filtra sulle fonti visibili
-// (coordinamento 23/11, punto a). Le gare di prima della 0120 hanno le fonti riempite dalla migrazione; in mancanza vale la fonte della
-// chiave, anche lei solo se conosciuta.
+// Una gara si mostra ai clienti solo se almeno una delle sue fonti è visibile (controllo di accettazione 6 dell'utente). Le gare di prima
+// della 0120 hanno le fonti riempite dalla migrazione; in mancanza vale la fonte della chiave. Una fonte SCONOSCIUTA (fuori da FONTI_UNITE)
+// non è mai visibile, come una nascosta: una fonte che non riconosciamo non si mostra (segnalazione di B1, 23/11).
 export function garaVisibileAiClienti(g: { fonti?: readonly string[] | null; chiave: string }, nascoste: ReadonlySet<string>): boolean {
   const fonti = g.fonti && g.fonti.length > 0 ? g.fonti : [g.chiave.split(":")[0]];
   return fonti.some((f) => eFonte(f) && !nascoste.has(f));
@@ -47,13 +59,14 @@ export function fontiVisibili<T>(elementi: readonly T[], fonteDi: (x: T) => stri
   return elementi.filter((x) => !nascoste.has(fonteDi(x)));
 }
 
-// Le fonti di una gara dagli elementi già letti con la riga (nessuna richiesta in più): la provenienza dei campi e la chiave.
+// Le fonti di una gara dagli elementi già letti con la riga (nessuna richiesta in più): la provenienza dei campi e la chiave. Un prefisso
+// di chiave SCONOSCIUTO non diventa mai TED: nessuna fonte (elenco vuoto), e chi chiama lo tratta come una fonte non riconosciuta.
 export function fontiDellaGara(chiave: string, provenienza: ProvenienzaCampi | null | undefined): FonteGara[] {
   const s = new Set<FonteGara>();
   for (const p of Object.values(provenienza ?? {})) if (p && eFonte(p.f)) s.add(p.f);
   if (s.size === 0) {
     const prefisso = chiave.split(":")[0];
-    s.add(eFonte(prefisso) ? prefisso : "ted");
+    if (eFonte(prefisso)) s.add(prefisso);
   }
   return FONTI_UNITE.filter((f) => s.has(f));
 }
@@ -69,11 +82,12 @@ export function etichettaFontiElenco(fonti: readonly FonteGara[] | undefined): s
   return fonti && fonti.length > 0 ? etichettaFonti(fonti) : FONTE_NON_INDICATA;
 }
 
-// Da quale fonte viene un dato (gruppo di unione-calcoli.ts); per le gare di prima della 0115 la sola fonte della gara.
-export function fonteDelDato(provenienza: ProvenienzaCampi | null | undefined, gruppo: string, chiave: string): FonteGara {
+// Da quale fonte viene un dato (gruppo di unione-calcoli.ts); per le gare di prima della 0115 la sola fonte della gara. null = nessuna
+// fonte riconosciuta (mai TED per ripiego).
+export function fonteDelDato(provenienza: ProvenienzaCampi | null | undefined, gruppo: string, chiave: string): FonteGara | null {
   const p = provenienza?.[gruppo];
   if (p && eFonte(p.f)) return p.f;
-  return fontiDellaGara(chiave, provenienza)[0];
+  return fontiDellaGara(chiave, provenienza)[0] ?? null;
 }
 
 export type AvvisoLetto = { fonte: string; id_fonte: string; url: string | null; pubblicato_il: string | null; tipo_avviso: string | null; rilevato_il: string; aggiornato_il?: string | null };

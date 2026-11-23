@@ -9,6 +9,8 @@ import { applicaPaginaBandi } from "../src/lib/radar/importa";
 import { cambiamentiTraVersioni, type RigaProcedura } from "../src/lib/radar/importa-calcoli";
 import { affidabilitaDi, documentiPerConfronto, evidenzaDellaRiga, oggettoPerConfronto, registroConEvidenza, rigaAvvisoSenzaCampi, stessaScadenza } from "../src/lib/radar/importa-evidenza";
 import { campoRegistroPvl } from "../src/lib/radar/importa-fonti-pagina";
+import { fonteDelDato, fontiDellaGara, garaVisibileAiClienti } from "../src/lib/radar/fonti-gara-calcoli";
+import type { ProvenienzaCampi } from "../src/lib/radar/unione-calcoli";
 import { applicaPaginaBandiPvl, fotografieERilevamentiPvl } from "../src/lib/radar/importa-pvl-pagina";
 import { statistichePvlVuote as statisticheVuote } from "../src/lib/radar/importa-pvl-calcoli";
 import { fotoDaBandoPvl } from "../src/lib/radar/modifiche-pvl";
@@ -672,8 +674,24 @@ async function provaSintel(): Promise<void> {
 
 }
 
+// ═══════════ 4 bis. fonti SCONOSCIUTE: mai «TED» in silenzio, mai visibili (segnalazione di B1, 23/11) ═══════════
+function provaFontiSconosciute(): void {
+  const P = (f: string) => ({ durata_mesi: { f, il: "2026-11-01T00:00:00Z" } }) as unknown as ProvenienzaCampi;
+  controlla("fonti sconosciute: una chiave con un prefisso sconosciuto e senza provenienza NON diventa TED (nessuna fonte)", JSON.stringify(fontiDellaGara("anac:123", null)) === "[]", fontiDellaGara("anac:123", null));
+  controlla("fonti sconosciute: con una provenienza nota vale la provenienza", JSON.stringify(fontiDellaGara("anac:123", P("pvl"))) === JSON.stringify(["pvl"]));
+  controlla("fonti note: invariate (ted, pvl, sintel, sardegnacat dalla chiave)", ["ted", "pvl", "sintel", "sardegnacat"].every((f) => JSON.stringify(fontiDellaGara(`${f}:1`, {})) === JSON.stringify([f])));
+  controlla("fonti sconosciute: la fonte di un dato è «nessuna» (null), mai TED", fonteDelDato({}, "scadenza", "anac:123") === null && fonteDelDato({}, "scadenza", "ted:1") === "ted");
+  const nessuna = new Set<string>();
+  controlla("visibilità: una gara con la sola fonte sconosciuta (dalla chiave) NON è visibile", !garaVisibileAiClienti({ fonti: null, chiave: "anac:123" }, nessuna));
+  controlla("visibilità: una gara con le sole fonti sconosciute (colonna fonti) NON è visibile", !garaVisibileAiClienti({ fonti: ["anac"], chiave: "ted:1" }, nessuna));
+  controlla("visibilità: una fonte nota e visibile basta (anche accanto a una sconosciuta)", garaVisibileAiClienti({ fonti: ["anac", "ted"], chiave: "ted:1" }, nessuna));
+  controlla("visibilità: le fonti nascoste restano nascoste (PVL nascosta, solo PVL → non visibile)", !garaVisibileAiClienti({ fonti: ["pvl"], chiave: "pvl:1" }, new Set(["pvl"])) && garaVisibileAiClienti({ fonti: ["pvl", "ted"], chiave: "ted:1" }, new Set(["pvl"])));
+}
+
 // ═══════════ 5. testo dei file ═══════════
 function provaTesto(): void {
+  const calcoli = fs.readFileSync(path.join(RADICE, "src/lib/radar/fonti-gara-calcoli.ts"), "utf8");
+  controlla("fonti-gara-calcoli.ts: nessun ripiego su «ted» per una fonte sconosciuta", !/: "ted"\)/.test(calcoli) && !/\?\? \["ted"\]/.test(calcoli));
   const leggi = (f: string) => fs.readFileSync(path.join(RADICE, f), "utf8");
   for (const f of ["src/lib/radar/importa-ted.ts", "src/lib/radar/importa-pvl.ts", "src/lib/radar/importa-regionali.ts"]) {
     const t = leggi(f);
@@ -691,6 +709,7 @@ function provaTesto(): void {
   await provaLottoTed();
   await provaLottoPvl();
   await provaSintel();
+  provaFontiSconosciute();
   provaTesto();
 })()
   .catch((e) => falliti.push(`eccezione: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`))
