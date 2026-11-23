@@ -94,7 +94,7 @@ export async function impostaFonteTed(_stato: StatoAzioneTi, formData: FormData)
 export async function eseguiGiroTed(): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
-  const esito = await eseguiImportazioneTed(createAdminClient(), { tempoMassimoMs: 50_000, pagineMassime: 10 });
+  const esito = await eseguiImportazioneTed(createAdminClient(), { tempoMassimoMs: 50_000, pagineMassime: 10, origine: "console" });
   ricarica();
   if (!esito.eseguita) {
     const motivi = { ambiente_non_consentito: "scritture non consentite in questo database", fonte_spenta: "la fonte TED è spenta", occupata: "un altro giro è già in corso", schema_assente: "le tabelle non esistono ancora", errore_lettura: "lettura dello stato non riuscita" } as const;
@@ -133,7 +133,7 @@ export async function impostaFontePvl(_stato: StatoAzioneTi, formData: FormData)
 export async function eseguiGiroPvl(): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
-  const esito = await eseguiImportazionePvl(createAdminClient(), { modo: "incrementale", tempoMassimoMs: 50_000 });
+  const esito = await eseguiImportazionePvl(createAdminClient(), { modo: "incrementale", tempoMassimoMs: 50_000, origine: "console" });
   ricarica();
   if (!esito.eseguita) {
     const motivi = { ambiente_non_consentito: "la PVL è autorizzata solo sullo staging", fonte_spenta: "la fonte PVL è spenta o sospesa", occupata: "un altro giro è già in corso", schema_assente: "le tabelle non esistono ancora", errore_lettura: "lettura dello stato non riuscita" } as const;
@@ -260,7 +260,7 @@ export async function eseguiGiroRegionale(_stato: StatoAzioneTi, formData: FormD
   const admin = createAdminClient();
   // ogni giro lanciato a mano resta nel registro della console (chi, quando, con quale esito)
   if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessun giro avviato." };
-  const esito = await eseguiImportazioneRegionale(admin, fonte, { tempoMassimoMs: 50_000 });
+  const esito = await eseguiImportazioneRegionale(admin, fonte, { tempoMassimoMs: 50_000, origine: "console" });
   await registra(admin, [{ oggetto: `fonte:${fonte}:giro`, valore_precedente: null, valore_nuovo: esito.eseguita ? (esito.errore ? `interrotto: ${esito.errore}` : "eseguito") : `non eseguito: ${esito.motivo}` }], sessione);
   ricarica();
   if (!esito.eseguita) {

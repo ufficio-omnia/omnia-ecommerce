@@ -30,7 +30,7 @@ async function main() {
   const pagine = Number(process.argv[2] ?? 40);
   const minuti = Number(process.argv[3] ?? 10);
   const admin = createClient(url, chiave, { auth: { persistSession: false, autoRefreshToken: false } });
-  const esito = await eseguiImportazioneTed(admin, { tempoMassimoMs: minuti * 60_000, pagineMassime: pagine });
+  const esito = await eseguiImportazioneTed(admin, { tempoMassimoMs: minuti * 60_000, pagineMassime: pagine, origine: "script" });
   console.log(JSON.stringify(esito, null, 1));
   process.exit(esito.eseguita && !esito.errore ? 0 : 1);
 }

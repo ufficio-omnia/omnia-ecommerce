@@ -151,6 +151,9 @@ export class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | 
   /** filtro «or» di PostgREST: «and(c.op.v,…),c.op.v,…». Parser STRETTO: ogni sintassi non prevista è un errore (mai un filtro ignorato). */
   or(filtri: string) {
     const condizione = (s: string): ((r: Riga) => boolean) => {
+      // «c.is.null»: il blocco dei giri degli importatori (blocco_fino_a libero o scaduto), aggiunto per il registro dei giri (K2)
+      const nulla = /^([a-z_]+)\.is\.null$/.exec(s);
+      if (nulla) return (r) => (r[nulla[1]] ?? null) === null;
       const m = /^([a-z_]+)\.(eq|lt|lte|gt|gte)\.([^,()]+)$/.exec(s);
       if (!m) throw new Error(`or: condizione non prevista «${s}»`);
       const [, c, op, v] = m;
@@ -176,6 +179,8 @@ export class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | 
   /** come PostgREST: al più una riga, null se nessuna (lettura dell'abbonamento in omnia-ai-access.ts) */
   private una = false;
   maybeSingle() { this.una = true; return this; }
+  /** come supabase-js: solo un aiuto per i tipi, nessun effetto */
+  returns() { return this; }
   then<A, B>(ok?: ((v: { data: unknown; error: Errore | null }) => A | PromiseLike<A>) | null, ko?: ((e: unknown) => B | PromiseLike<B>) | null): Promise<A | B> {
     return Promise.resolve().then(() => this.esegui()).then(ok, ko);
   }

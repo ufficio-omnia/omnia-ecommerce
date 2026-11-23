@@ -19,6 +19,8 @@ import { applicaEsitiPvl, applicaPaginaBandiPvl } from "./importa-pvl-pagina";
 import { aggiungi, conteggioAnomalo, cursoreDopoPagina, cursoreFinestra, cursoreIncrementale, statistichePvlVuote, type CursorePvl, type StatistichePvl } from "./importa-pvl-calcoli";
 import { giornoIso } from "./importa-ted-calcoli";
 import { erroreDaConservare } from "./lavori-calcoli";
+import { datiGiroPvl, type OrigineGiro } from "./esecuzioni-calcoli";
+import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 
 export type RisultatoImportazionePvl =
   | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
@@ -34,11 +36,19 @@ export type OpzioniImportazionePvl = {
   adesso?: () => Date;
   fetchFn?: typeof fetch;
   env?: Record<string, string | undefined>;
+  // chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
+  origine?: OrigineGiro;
+  nuovoIdEsecuzione?: () => string;
 };
 
 type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
-export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl): Promise<RisultatoImportazionePvl> {
+/** Un giro PVL, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere (esecuzioni.ts). */
+export function eseguiImportazionePvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl): Promise<RisultatoImportazionePvl & { esecuzione: EsitoRegistro }> {
+  return giroRegistrato(admin, "pvl", opzioni, (esecuzioneId) => giroPvl(admin, opzioni, esecuzioneId), datiGiroPvl);
+}
+
+async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, esecuzioneId: string): Promise<RisultatoImportazionePvl> {
   const permesso = scrittureRadarConsentite("pvl", opzioni.env ?? process.env);
   if (!permesso.ok) return { eseguita: false, motivo: "ambiente_non_consentito", dettaglio: permesso.motivo };
   // fase B2b: classificazioni della 0121 nel giro solo con l'interruttore acceso (spento di base)
@@ -112,7 +122,7 @@ export async function eseguiImportazionePvl(admin: SupabaseClient, opzioni: Opzi
       stat.avvisi.bandi += bandi.length;
       stat.avvisi.esiti += esiti.length;
       const adesso = ora();
-      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni, evidenza, grezzi });
+      await applicaPaginaBandiPvl(admin, bandi, modoImportazione, adesso, db, stat, { classificazioni, evidenza, grezzi, esecuzioneId });
       await applicaEsitiPvl(admin, esiti, modoImportazione, adesso, db, stat);
       // ultima pagina anche secondo il conteggio dichiarato (attendibile sotto i mille risultati): nessuna richiesta in più alla fonte
       const ultimaPerConteggio = pagina.count !== null && pagina.count < 1000 && (cursore.pagine + 1) * limiti.avvisiPerPagina >= pagina.count;

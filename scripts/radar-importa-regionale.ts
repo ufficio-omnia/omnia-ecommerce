@@ -39,6 +39,7 @@ async function main() {
   const admin = createClient(url, chiave, { auth: { persistSession: false, autoRefreshToken: false } });
   const esito = await eseguiImportazioneRegionale(admin, fonte as FonteRegionale, {
     tempoMassimoMs: 10 * 60_000,
+    origine: "script",
     limiti: Number.isInteger(richieste) && richieste > 0 ? { richiesteMassime: richieste } : undefined,
   });
   console.log(JSON.stringify(esito, null, 1));
