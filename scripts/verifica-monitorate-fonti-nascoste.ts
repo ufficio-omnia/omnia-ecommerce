@@ -45,7 +45,56 @@ class DbProva {
   }
 }
 
-const confronta = (a: unknown, b: unknown) => String(a ?? "").localeCompare(String(b ?? ""));
+const confronta = (a: unknown, b: unknown) => {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  const x = String(a ?? ""),
+    y = String(b ?? "");
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
+// divide al primo livello (fuori da parentesi tonde e graffe) un elenco separato da virgole
+function dividi(s: string): string[] {
+  const out: string[] = [];
+  let livello = 0,
+    da = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "(" || s[i] === "{") livello++;
+    else if (s[i] === ")" || s[i] === "}") livello--;
+    else if (s[i] === "," && livello === 0) {
+      out.push(s.slice(da, i));
+      da = i + 1;
+    }
+  }
+  out.push(s.slice(da));
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+
+// filtro «or» di PostgREST con and()/or() annidati. Analizzatore STRETTO: una sintassi non prevista è un errore, mai un filtro ignorato.
+function termineOr(t: string): (r: Riga) => boolean {
+  const g = /^(and|or)\((.*)\)$/.exec(t);
+  if (g) {
+    const parti = dividi(g[2]).map(termineOr);
+    return g[1] === "and" ? (r) => parti.every((p) => p(r)) : (r) => parti.some((p) => p(r));
+  }
+  const c = /^([a-z_]+)\.(is|eq|neq|gt|gte|lt|lte|ov)\.(.+)$/.exec(t);
+  if (!c) throw new Error(`or: condizione non prevista «${t}»`);
+  const [, col, op, val] = c;
+  if (op === "is" && val !== "null") throw new Error(`or: «is» solo con null («${t}»)`);
+  return (r) => {
+    const v = r[col];
+    if (op === "is") return (v ?? null) === null;
+    if (val.startsWith("{")) {
+      const insieme = val.slice(1, -1).split(",").filter(Boolean);
+      if (!Array.isArray(v)) return false;
+      if (op === "ov") return v.some((x) => insieme.includes(String(x)));
+      if (op === "eq") return v.length === insieme.length && insieme.every((x) => v.map(String).includes(x));
+      throw new Error(`or: operatore non previsto sugli insiemi «${t}»`);
+    }
+    if (v === null || v === undefined) return false;
+    const k = confronta(String(v), val);
+    return op === "eq" ? k === 0 : op === "neq" ? k !== 0 : op === "gt" ? k > 0 : op === "gte" ? k >= 0 : op === "lt" ? k < 0 : k <= 0;
+  };
+}
 
 class QueryProva implements PromiseLike<Esito> {
   private metodo: "select" | "update" | "insert" | "upsert" | "delete" = "select";
@@ -58,6 +107,8 @@ class QueryProva implements PromiseLike<Esito> {
   private valori: Riga = {};
   private nuove: Riga[] = [];
   private conflitto: string[] = [];
+  /** filtri su una tabella incorporata («classificazioni.attiva»): come PostgREST senza !inner, filtrano le righe incorporate, non la gara */
+  private filtriIncorporati: { alias: string; colonna: string; valore: unknown }[] = [];
   constructor(
     private db: DbProva,
     private tabella: string,
@@ -95,7 +146,33 @@ class QueryProva implements PromiseLike<Esito> {
     return this;
   }
   eq(c: string, v: unknown) {
+    if (c.includes(".")) {
+      const [alias, colonna] = c.split(".");
+      this.filtriIncorporati.push({ alias, colonna, valore: v });
+      return this;
+    }
     this.filtri.push((r) => r[c] === v);
+    return this;
+  }
+  gt(c: string, v: unknown) {
+    this.filtri.push((r) => r[c] != null && confronta(r[c], v) > 0);
+    return this;
+  }
+  gte(c: string, v: unknown) {
+    this.filtri.push((r) => r[c] != null && confronta(r[c], v) >= 0);
+    return this;
+  }
+  lt(c: string, v: unknown) {
+    this.filtri.push((r) => r[c] != null && confronta(r[c], v) < 0);
+    return this;
+  }
+  lte(c: string, v: unknown) {
+    this.filtri.push((r) => r[c] != null && confronta(r[c], v) <= 0);
+    return this;
+  }
+  or(espressione: string) {
+    const parti = dividi(espressione).map(termineOr);
+    this.filtri.push((r) => parti.some((p) => p(r)));
     return this;
   }
   in(c: string, vs: readonly unknown[]) {
@@ -138,8 +215,18 @@ class QueryProva implements PromiseLike<Esito> {
   private esegui(): Esito {
     this.db.richieste.push({ tabella: this.tabella, metodo: this.metodo, colonne: this.colonne });
     if (this.db.guasti.has(this.tabella)) return { data: null, error: { code: "08006", message: "guasto simulato" } };
-    // le tabelle della 0121 (classificazioni) non esistono nel finto: una lettura incorporata fallisce come in PostgREST
-    if (this.colonne.includes("(")) return { data: null, error: { code: "PGRST200", message: "relazione non trovata (tabelle della 0121 assenti nel finto)" } };
+    // colonne semplici e tabelle incorporate («alias:tabella(colonne)»); una tabella incorporata assente dal mondo (le tabelle della 0121 nei
+    // mondi senza classificazioni) fa fallire la lettura come in PostgREST
+    const semplici: string[] = [];
+    const incorporate: { alias: string; tabella: string; colonne: string[] }[] = [];
+    if (this.metodo === "select" && this.colonne.trim() !== "*")
+      for (const p of dividi(this.colonne)) {
+        const m = /^(\w+):(\w+)\(([^()]*)\)$/.exec(p);
+        if (m) incorporate.push({ alias: m[1], tabella: m[2], colonne: m[3].split(",").map((s) => s.trim()) });
+        else if (p.includes("(")) throw new Error(`select: incorporazione non prevista «${p}»`);
+        else semplici.push(p);
+      }
+    if (incorporate.some((i) => this.db.tabelle[i.tabella] === undefined)) return { data: null, error: { code: "PGRST200", message: "relazione non trovata (tabelle della 0121 assenti in questo mondo)" } };
     const tutte = (this.db.tabelle[this.tabella] ??= []);
     const righe = tutte.filter((r) => this.filtri.every((f) => f(r)));
     if (this.metodo === "update") {
@@ -168,16 +255,19 @@ class QueryProva implements PromiseLike<Esito> {
     let x = righe;
     for (const [c, asc] of [...this.ordini].reverse()) x = [...x].sort((a, b) => (asc ? 1 : -1) * confronta(a[c], b[c]));
     if (this.lim !== null) x = x.slice(0, this.lim);
-    const proietta = (r: Riga): Riga =>
-      this.colonne.trim() === "*"
-        ? { ...r }
-        : Object.fromEntries(
-            this.colonne
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-              .map((k) => [k, r[k] ?? null]),
-          );
+    const proietta = (r: Riga): Riga => {
+      if (this.colonne.trim() === "*") return { ...r };
+      const out: Riga = Object.fromEntries(semplici.map((k) => [k, r[k] ?? null]));
+      for (const i of incorporate) {
+        const filtri = this.filtriIncorporati.filter((f) => f.alias === i.alias);
+        const righe = (this.db.tabelle[i.tabella] ?? [])
+          .filter((e) => e.procedura_id === r.id && filtri.every((f) => e[f.colonna] === f.valore))
+          .map((e) => Object.fromEntries(i.colonne.map((k) => [k, e[k] ?? null])));
+        // relazione uno a uno (tabelle «…_stato»): un oggetto o null; uno a molti: un elenco
+        out[i.alias] = i.tabella.endsWith("_stato") ? (righe[0] ?? null) : righe;
+      }
+      return out;
+    };
     if (this.una) return x.length > 1 ? { data: null, error: { code: "PGRST116", message: "più di una riga" } } : { data: x.length ? proietta(x[0]) : null, error: null };
     return { data: x.map(proietta), error: null };
   }
@@ -186,7 +276,9 @@ class QueryProva implements PromiseLike<Esito> {
 // ═══════════════════════ mondo sintetico ═══════════════════════
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const IMPRESA = id(9001);
-const G = { ted: id(1), pvl: id(2), mista: id(3), sintel: id(4), senzaProv: id(5), ignota: id(6), copia: id(7), copiaDiPvl: id(8), ted2: id(9), sardegna: id(10), chiaveIgnota: id(11) };
+const G = { ted: id(1), pvl: id(2), mista: id(3), sintel: id(4), senzaProv: id(5), ignota: id(6), copia: id(7), copiaDiPvl: id(8), ted2: id(9), sardegna: id(10), chiaveIgnota: id(11), pvlPura: id(12) };
+// scadenze relative al giorno della prova (la prova gira a ogni build: una data fissa la renderebbe scaduta col tempo)
+const FRA_UN_MESE = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
 const A = { pvl: id(101), ted2: id(102), libera: id(103), copia: id(104), copiaPvl: id(105), ignota: id(106) };
 // CIG sintetici (10 caratteri) dei lotti: uno di una gara visibile, uno di una gara solo PVL
 const CIG = { ted: "SINT00001A", pvl: "SINT00002A" };
@@ -202,8 +294,9 @@ const TITOLO: Record<keyof typeof G, string> = {
   ted2: "[SINTETICO] Gara TED trovata dal CIG",
   sardegna: "[SINTETICO] Gara solo SardegnaCAT",
   chiaveIgnota: "[SINTETICO] Gara visibile con chiave di fonte non riconosciuta e senza avvisi letti",
+  pvlPura: "[SINTETICO] Gara solo PVL senza copie collegate",
 };
-const NASCOSTI = [TITOLO.pvl, TITOLO.ignota, TITOLO.sardegna, TITOLO.copiaDiPvl];
+const NASCOSTI = [TITOLO.pvl, TITOLO.ignota, TITOLO.sardegna, TITOLO.copiaDiPvl, TITOLO.pvlPura];
 
 function gara(k: keyof typeof G, chiave: string, fonti: string[], unitaA: string | null = null): Riga {
   return {
@@ -217,10 +310,10 @@ function gara(k: keyof typeof G, chiave: string, fonti: string[], unitaA: string
     sa_codice_fiscale: null,
     sa_comune: null,
     sa_provincia: null,
-    settori: [],
+    settori: ["pulizia"],
     metodo_settore: null,
-    scadenza_giorno: "2026-12-15",
-    scadenza_offerte: "2026-12-15T11:00:00Z",
+    scadenza_giorno: FRA_UN_MESE,
+    scadenza_offerte: `${FRA_UN_MESE}T11:00:00Z`,
     scadenza_ora_indicata: true,
     data_pubblicazione: "2026-11-10",
     valore_stimato: 100000,
@@ -282,6 +375,7 @@ const SALVATE = [
   salvata(null, A.ted2, true),
   salvata(null, A.libera, true),
   salvata(G.sardegna, null),
+  salvata(G.pvlPura, null, true),
 ];
 // l'aggiunta collegata alla gara di fonte sconosciuta non è tra le salvate: serve solo alla prova della sua pagina (sezione G)
 const AGGIUNTE = [aggiunta("pvl", G.pvl), aggiunta("ted2", G.ted2), aggiunta("libera", null), aggiunta("copia", G.copia), aggiunta("copiaPvl", G.copiaDiPvl), aggiunta("ignota", G.ignota)];
@@ -295,8 +389,18 @@ function statoFonti(pvlNascosta: boolean): Riga[] {
   ];
 }
 
-function nuovoMondo(pvlNascosta: boolean) {
+// con «classificazioni»: le tabelle della 0121 esistono (stato «classificata», settore «pulizia» pertinente A per ogni gara che resta), come
+// sullo staging con le classificazioni accese; senza, una lettura incorporata fallisce (scenario D)
+function nuovoMondo(pvlNascosta: boolean, opzioni: { classificazioni?: boolean } = {}) {
+  const gareCheRestano = Object.values(G).filter((g) => g !== G.copia && g !== G.copiaDiPvl);
+  const classificazioni: Record<string, Riga[]> = opzioni.classificazioni
+    ? {
+        radar_classificazioni_stato: gareCheRestano.map((g) => ({ procedura_id: g, stato: "classificata" })),
+        radar_classificazioni: gareCheRestano.map((g) => ({ procedura_id: g, settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true })),
+      }
+    : {};
   const admin = new DbProva({
+    ...classificazioni,
     radar_fonti_stato: statoFonti(pvlNascosta),
     radar_procedure: [
       gara("ted", "ted:SINT-1-2026", ["ted"]),
@@ -312,8 +416,9 @@ function nuovoMondo(pvlNascosta: boolean) {
       // caso limite della scheda (seguito del punto c di B2): visibile per la colonna fonti, ma nessuna fonte riconosciuta da avvisi,
       // provenienza o chiave; ultima_versione_id di una fonte non riconosciuta, che non va mai citato come numero di avviso TED
       { ...gara("chiaveIgnota", "nuova:SINT-11", ["ted"]), ultima_versione_id: "SINT11VERSIONE" },
+      gara("pvlPura", "pvl:SINT-12", ["pvl"]),
     ],
-    radar_procedure_fonti: [avviso("ted", "ted"), avviso("pvl", "pvl"), avviso("mista", "pvl"), avviso("mista", "ted"), avviso("sintel", "sintel"), avviso("ignota", "nuova"), avviso("copia", "pvl"), avviso("copiaDiPvl", "ted"), avviso("ted2", "ted"), avviso("sardegna", "sardegnacat")],
+    radar_procedure_fonti: [avviso("ted", "ted"), avviso("pvl", "pvl"), avviso("mista", "pvl"), avviso("mista", "ted"), avviso("sintel", "sintel"), avviso("ignota", "nuova"), avviso("copia", "pvl"), avviso("copiaDiPvl", "ted"), avviso("ted2", "ted"), avviso("sardegna", "sardegnacat"), avviso("pvlPura", "pvl")],
     radar_aggiornamenti: [],
     radar_lotti: [
       { procedura_id: G.ted, numero_lotto: "1", cig: CIG.ted, oggetto: null, valore_stimato: null, cpv: null },
@@ -321,7 +426,12 @@ function nuovoMondo(pvlNascosta: boolean) {
     ],
     omnia_ai_radar_utilizzi: [],
   });
-  const sessione = new DbProva({ omnia_ai_radar_salvate: SALVATE, omnia_ai_radar_gare_aggiunte: AGGIUNTE });
+  const sessione = new DbProva({
+    omnia_ai_radar_salvate: SALVATE,
+    omnia_ai_radar_gare_aggiunte: AGGIUNTE,
+    // profilo di ricerca dell'impresa per «Per te»: settore «pulizia», tutta Italia, nessun importo né procedura
+    omnia_ai_radar_profili: [{ user_id: IMPRESA, posizione: 1, settori: ["pulizia"], sottocategorie: null, regioni: [], tipi_procedura: [], importo_min: null, importo_max: null, vedere_correlate: false, aggiornato_il: "2026-11-20T06:00:00Z" }],
+  });
   return { admin, sessione };
 }
 let mondo = nuovoMondo(true);
@@ -340,13 +450,14 @@ const RADICE_OPPORTUNITA = `${RADICE_AREA}/opportunita`;
 sostituisci(src("lib/supabase/server.ts"), { createClient: async () => mondo.sessione });
 sostituisci(src("lib/supabase/admin.ts"), { createAdminClient: () => mondo.admin });
 sostituisci(src("lib/radar/guardie-opportunita.ts"), {
-  richiediOpportunitaPagina: async () => ({ contesto: { accountId: IMPRESA, userId: IMPRESA } }),
-  richiediOpportunitaAzione: async () => ({ ok: true, user: { id: IMPRESA }, contesto: { accountId: IMPRESA, userId: IMPRESA } }),
+  richiediOpportunitaPagina: async () => ({ contesto: { accountId: IMPRESA, userId: IMPRESA, ruolo: "titolare" } }),
+  richiediOpportunitaAzione: async () => ({ ok: true, user: { id: IMPRESA }, contesto: { accountId: IMPRESA, userId: IMPRESA, ruolo: "titolare" } }),
 });
 sostituisci(src("lib/radar/area-cliente.ts"), {
   RADICE_OPPORTUNITA,
   MESSAGGIO_RADAR_NON_DISPONIBILE: "[prova] modulo non disponibile",
-  dirittoRadarOppure404: async () => ({ diritto: { operativo: true, messaggioSolaLettura: "" } }),
+  // limiti al minuto alti: la prova non deve mai fermarsi sul limite tecnico delle ricerche
+  dirittoRadarOppure404: async () => ({ diritto: { operativo: true, messaggioSolaLettura: "" }, parametri: { limiti: { ricerche_minuto: 1000 }, costi: {} }, cliente: null }),
 });
 sostituisci(src("lib/radar/impostazioni.ts"), { leggiDirittoRadar: async () => ({ visibile: true, operativo: true, messaggioSolaLettura: "" }) });
 // la cache dei dati di Next non esiste fuori da Next: la lettura delle fonti nascoste si esegue ogni volta (nessun ricordo tra gli scenari);
@@ -360,6 +471,8 @@ type DatiRiga = { href: string; titolo: string; fonte: string; motivi: string[];
 const PaginaMonitorate = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx")) as { default: () => Promise<unknown> }).default;
 const PaginaAggiunta = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/aggiunta/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const PaginaScheda = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
+const PaginaCerca = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
+const PaginaPerTe = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/per-te/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const RigaGara = (richiedi(src("components/omnia-ai/opportunita/riga-gara.tsx")) as { default: unknown }).default;
 const { leggiGaraPubblica } = richiedi(src("lib/radar/gara.ts")) as { leggiGaraPubblica: (admin: unknown, id: string) => Promise<unknown> };
 const calcoliFonti = richiedi(src("lib/radar/fonti-gara-calcoli.ts")) as Record<string, unknown>;
@@ -416,7 +529,7 @@ async function principale(): Promise<void> {
   const hrefA1 = [...a.perHref.keys()];
   controlla(
     "MN1. Monitorate (PVL nascosta): nessuna riga per le gare con SOLO fonti nascoste (solo PVL, solo SardegnaCAT, copia collegata a una gara solo PVL) né di una fonte sconosciuta",
-    ![G.pvl, G.sardegna, G.ignota, G.copiaDiPvl].some((g) => a.perHref.has(hrefG(g))),
+    ![G.pvl, G.pvlPura, G.sardegna, G.ignota, G.copiaDiPvl].some((g) => a.perHref.has(hrefG(g))),
     hrefA1,
   );
   controlla(
@@ -463,11 +576,11 @@ async function principale(): Promise<void> {
   // ═════ B. PVL visibile (come in produzione oggi): nessun filtro di troppo ═════
   mondo = nuovoMondo(false);
   const b = await monitorate();
-  const atteseB = ordinati([hrefG(G.ted), hrefG(G.pvl), hrefG(G.mista), hrefG(G.sintel), hrefG(G.senzaProv), hrefG(G.ted2), hrefA(A.libera)]);
+  const atteseB = ordinati([hrefG(G.ted), hrefG(G.pvl), hrefG(G.mista), hrefG(G.sintel), hrefG(G.senzaProv), hrefG(G.ted2), hrefG(G.pvlPura), hrefA(A.libera)]);
   // la gara solo PVL ha una copia collegata pubblicata su TED: le fonti delle copie si attribuiscono alla gara che resta (leggiFontiGare)
   controlla(
     "MN8. PVL visibile: la gara solo PVL torna in lista, con l'aggiunta e la copia collegate raggruppate; SardegnaCAT e la fonte sconosciuta restano fuori",
-    JSON.stringify(ordinati(b.perHref.keys())) === JSON.stringify(atteseB) && b.perHref.get(hrefG(G.pvl))?.fonte === "TED e PVL ANAC" && b.perHref.get(hrefG(G.mista))?.fonte === "TED e PVL ANAC" && b.perHref.get(hrefG(G.sintel))?.fonte === "Sintel",
+    JSON.stringify(ordinati(b.perHref.keys())) === JSON.stringify(atteseB) && b.perHref.get(hrefG(G.pvl))?.fonte === "TED e PVL ANAC" && b.perHref.get(hrefG(G.mista))?.fonte === "TED e PVL ANAC" && b.perHref.get(hrefG(G.sintel))?.fonte === "Sintel" && b.perHref.get(hrefG(G.pvlPura))?.fonte === "PVL ANAC",
     { avute: ordinati(b.perHref.keys()), attese: atteseB, etichette: b.righe.map((r) => [r.href.slice(-3), r.fonte]) },
   );
 
@@ -639,14 +752,21 @@ async function principale(): Promise<void> {
 
   // ═════ I. scheda: con nessuna fonte riconosciuta, mai «TED» (sintesi, riquadro «Fonte», nota delle fonti) ═════
   const scheda = async (gid: string) => {
-    const albero = await PaginaScheda({ params: Promise.resolve({ id: gid }), searchParams: Promise.resolve({}) });
+    let albero: unknown;
+    try {
+      albero = await PaginaScheda({ params: Promise.resolve({ id: gid }), searchParams: Promise.resolve({}) });
+    } catch (e) {
+      // la scheda che non si apre per il cliente («non trovata»)
+      if (String((e as { digest?: unknown }).digest ?? "").startsWith("NEXT_HTTP_ERROR_FALLBACK;404")) return null;
+      throw e;
+    }
     const els = elementi(albero);
     const riquadroFonte = els.find((e) => e.props.etichetta === "Fonte" || e.props.etichetta === "Fonti")?.props.valore;
     const nota = els.find((e) => Array.isArray(e.props.children) && e.props.children[0] === "Fonti: ")?.props.children as unknown[] | undefined;
     return { testi: testi(albero), riquadroFonte, notaFonti: nota?.[1] };
   };
   mondo = nuovoMondo(false);
-  const s1 = await scheda(G.chiaveIgnota);
+  const s1 = (await scheda(G.chiaveIgnota)) ?? { testi: [], riquadroFonte: undefined, notaFonti: undefined };
   controlla(
     "MN26. scheda di una gara senza fonti riconosciute: mai «TED» né il numero di un avviso non riconosciuto; «fonte non riconosciuta» nella sintesi, nel riquadro e nella nota",
     !s1.testi.some((t) => /Fonte: TED/.test(t) || t.includes("SINT11VERSIONE")) &&
@@ -655,11 +775,113 @@ async function principale(): Promise<void> {
       typeof s1.notaFonti === "string" && /non riconosciuta/.test(s1.notaFonti),
     { sintesi: s1.testi.filter((t) => t.startsWith("Fonte")), riquadro: s1.riquadroFonte, nota: s1.notaFonti },
   );
-  const s2 = await scheda(G.ted);
+  const s2 = (await scheda(G.ted)) ?? { testi: [], riquadroFonte: undefined, notaFonti: undefined };
   controlla(
     "MN27. scheda di una gara TED: sintesi, riquadro e nota come prima (nessun cambio per le fonti riconosciute)",
     s2.testi.some((t) => t.startsWith("Fonte: TED, avviso")) && typeof s2.notaFonti === "string" && s2.notaFonti.startsWith("TED, Ufficio delle pubblicazioni"),
     { sintesi: s2.testi.filter((t) => t.startsWith("Fonte")), nota: s2.notaFonti },
+  );
+
+  // ═════ J. direttiva 48A (23/11): PVL VISIBILE ai clienti come le altre fonti. Le gare solo PVL in «Cerca», «Per te» e «Monitorate» (MN8) ═════
+  const righeDi = (albero: unknown) => new Map(elementi(albero).filter((e) => e.type === RigaGara).map((e) => [(e.props.d as DatiRiga).href, e.props.d as DatiRiga]));
+  const cerca = async () => righeDi(await PaginaCerca({ searchParams: Promise.resolve({}) }));
+  const perTe = async () => {
+    const prima = { RADAR_PER_TE: process.env.RADAR_PER_TE, RADAR_CLASSIFICAZIONI: process.env.RADAR_CLASSIFICAZIONI, NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL };
+    const { PROGETTO_STAGING: staging } = richiedi(src("lib/radar/ambiente.ts")) as { PROGETTO_STAGING: string };
+    // «Per te» esiste solo con l'interruttore e le classificazioni accesi, solo sullo staging (finto: nessuna rete)
+    Object.assign(process.env, { RADAR_PER_TE: "attivo", RADAR_CLASSIFICAZIONI: "attive", NEXT_PUBLIC_SUPABASE_URL: `https://${staging}.supabase.co` });
+    try {
+      return righeDi(await PaginaPerTe({ searchParams: Promise.resolve({}) }));
+    } finally {
+      for (const [k, v] of Object.entries(prima)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  };
+  const etichette = (m: Map<string, DatiRiga>) => [...m.values()].map((r) => [r.href.slice(-3), r.fonte]);
+  const fuori = [G.copia, G.copiaDiPvl, G.sardegna, G.ignota];
+  mondo = nuovoMondo(false);
+  const cB = await cerca();
+  controlla(
+    "MN28. PVL visibile, «Cerca»: le gare solo PVL compaiono con le loro fonti («PVL ANAC»; con la copia TED collegata «TED e PVL ANAC»); copie collegate, SardegnaCAT e fonti sconosciute fuori",
+    cB.get(hrefG(G.pvlPura))?.fonte === "PVL ANAC" && cB.get(hrefG(G.pvl))?.fonte === "TED e PVL ANAC" && cB.get(hrefG(G.mista))?.fonte === "TED e PVL ANAC" && cB.get(hrefG(G.ted))?.fonte === "TED" && !fuori.some((g) => cB.has(hrefG(g))),
+    etichette(cB),
+  );
+  mondo = nuovoMondo(false, { classificazioni: true });
+  const pB = await perTe();
+  controlla(
+    "MN29. PVL visibile, «Per te» (classificazioni e profilo dell'impresa): le gare solo PVL compaiono con «PVL ANAC», come le altre fonti; copie, SardegnaCAT e fonti sconosciute fuori",
+    pB.get(hrefG(G.pvlPura))?.fonte === "PVL ANAC" && pB.get(hrefG(G.pvl))?.fonte === "TED e PVL ANAC" && pB.get(hrefG(G.ted))?.fonte === "TED" && !fuori.some((g) => pB.has(hrefG(g))),
+    etichette(pB),
+  );
+  mondo = nuovoMondo(true);
+  const cA = await cerca();
+  mondo = nuovoMondo(true, { classificazioni: true });
+  const pA = await perTe();
+  controlla(
+    "MN30. meccanismo delle fonti nascoste (oggi solo SardegnaCAT; qui la PVL nascosta per prova): in «Cerca» e «Per te» niente gare con sole fonti nascoste, le miste con le sole fonti visibili",
+    ![G.pvl, G.pvlPura].some((g) => cA.has(hrefG(g)) || pA.has(hrefG(g))) && cA.get(hrefG(G.mista))?.fonte === "TED" && pA.get(hrefG(G.mista))?.fonte === "TED" && cA.has(hrefG(G.ted)) && pA.has(hrefG(G.ted)),
+    { cerca: etichette(cA), perTe: etichette(pA) },
+  );
+
+  // ═════ L. PVL visibile: la scheda si apre; gare unite TED+PVL con fonti e provenienze corrette ═════
+  const ATTRIB = calcoliFonti.ATTRIBUZIONE_FONTE as Record<string, string>;
+  const fontiRiquadro = (v: unknown) => elementi(v).filter((e) => e.type === "li").map((e) => String((e as unknown as { key: unknown }).key));
+  const nota = (s: { notaFonti?: unknown } | null) => String(s?.notaFonti ?? "").split("; ").sort();
+  mondo = nuovoMondo(false);
+  const sP = await scheda(G.pvlPura);
+  controlla(
+    "MN31. PVL visibile, scheda di una gara solo PVL: si apre; sintesi «Fonte: PVL di ANAC», l'avviso PVL nel riquadro, l'attribuzione di ANAC",
+    !!sP && sP.testi.some((t) => t.startsWith("Fonte: PVL di ANAC, avviso pubblicato il")) && JSON.stringify(fontiRiquadro(sP.riquadroFonte)) === JSON.stringify(["pvl"]) && sP.notaFonti === ATTRIB.pvl,
+    sP && { sintesi: sP.testi.filter((t) => t.startsWith("Font")), riquadro: fontiRiquadro(sP.riquadroFonte), nota: sP.notaFonti },
+  );
+  const sM = await scheda(G.mista);
+  const sU = await scheda(G.pvl);
+  controlla(
+    "MN32. PVL visibile, gare su TED e PVL (stessa gara con due avvisi, e gara PVL con la copia TED collegata, 0117): «Fonti: TED e PVL ANAC», i due avvisi nel riquadro, le due attribuzioni",
+    !!sM && !!sU &&
+      [sM, sU].every((s) => s.testi.some((t) => t.startsWith("Fonti: TED e PVL ANAC; primo avviso pubblicato il")) && JSON.stringify(fontiRiquadro(s.riquadroFonte)) === JSON.stringify(["ted", "pvl"])) &&
+      JSON.stringify(nota(sM)) === JSON.stringify([ATTRIB.pvl, ATTRIB.ted].sort()) &&
+      JSON.stringify(nota(sU)) === JSON.stringify([ATTRIB.pvl, ATTRIB.ted].sort()),
+    [sM, sU].map((s) => s && { sintesi: s.testi.filter((t) => t.startsWith("Font")), riquadro: fontiRiquadro(s.riquadroFonte), nota: s.notaFonti }),
+  );
+  mondo = nuovoMondo(true);
+  const sMA = await scheda(G.mista);
+  const sPA = await scheda(G.pvlPura);
+  controlla(
+    "MN33. meccanismo (PVL nascosta per prova): la gara su TED e PVL mostra solo l'avviso, la sintesi e l'attribuzione TED; la gara solo PVL non si apre",
+    sPA === null && !!sMA && JSON.stringify(fontiRiquadro(sMA.riquadroFonte)) === JSON.stringify(["ted"]) && sMA.testi.some((t) => t.startsWith("Fonte: TED, avviso")) && sMA.notaFonti === ATTRIB.ted,
+    { sPA: sPA === null, sMA: sMA && { sintesi: sMA.testi.filter((t) => t.startsWith("Font")), riquadro: fontiRiquadro(sMA.riquadroFonte), nota: sMA.notaFonti } },
+  );
+
+  // ═════ M. «Notifiche»: la pagina non dipende dalla visibilità delle fonti (né lei né ciò che importa) ═════
+  const chiusura = new Set<string>();
+  const daVisitare = [src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx")];
+  const risolvi = (da: string, spec: string): string | null => {
+    const base = spec.startsWith("@/") ? path.join(RADICE, "src", spec.slice(2)) : spec.startsWith(".") ? path.resolve(path.dirname(da), spec) : null;
+    if (!base) return null;
+    for (const est of ["", ".ts", ".tsx", path.join("/index.ts"), path.join("/index.tsx")]) {
+      const f = base + est;
+      if (fs.existsSync(f) && fs.statSync(f).isFile()) return f;
+    }
+    return null;
+  };
+  while (daVisitare.length) {
+    const f = daVisitare.pop() as string;
+    if (chiusura.has(f)) continue;
+    chiusura.add(f);
+    for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:^|\n)\s*(?:import|export)\s+(?!type\s)[^;]*?\sfrom\s+"([^"]+)"/g)) {
+      const g = risolvi(f, m[1]);
+      if (g) daVisitare.push(g);
+    }
+  }
+  const VISIBILITA = /fontiNascosteAiClienti|fontiVisibiliDa|garaVisibileAiClienti|FONTI_NASCOSTE_PREDEFINITE|fontiNascosteDa|nascosta_ai_clienti/;
+  const dipendenti = [...chiusura].filter((f) => VISIBILITA.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(RADICE, f));
+  controlla(
+    `MN34. «Notifiche»: la pagina e i ${chiusura.size} file che importa non leggono la visibilità delle fonti, quindi la PVL visibile o nascosta non la cambia`,
+    chiusura.size > 5 && [...chiusura].some((f) => f.endsWith(path.join("radar", "notifiche-preferenze.ts"))) && dipendenti.length === 0,
+    { file: chiusura.size, dipendenti },
   );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
