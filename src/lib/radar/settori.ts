@@ -1398,18 +1398,26 @@ const STABULARI = /\b(stabular\w*|stabiliment\w* utilizzator\w*|animal\w* (da |p
 const BIBLIOTECA = /\b(servizi\w* (integrat\w* )?(di |della |delle |dei )?bibliotec\w*|servizi\w* bibliotecar\w*|gestione (della |delle |dei )?bibliotec\w*)\b/;
 
 // Si chiama solo per una gara senza A né B (ultimo ritorno di classificaSenzaLotti: tutte le valutazioni sono C o non ce ne sono)
+// I motivi dei tre casi S4, uno per caso e tutti diversi (B2, 23/11, testo INVARIATO): così il caso si ricava dal motivo scritto nella riga
+// «da_verificare» (casoDaRigaDaVerificare in classificazioni-calcoli.ts) senza dipendere dal settore candidato.
+export const MOTIVI_DA_VERIFICARE: Readonly<Record<DaVerificare["caso"], string>> = {
+  immobile_con_cpv_ristorazione: "Concessione di un immobile con un CPV di ristorazione, senza una descrizione del servizio: da verificare sull'avviso (punto ristoro o solo immobile)",
+  stabulari: "Appalto misto per stabulari con le «pulizie» tra le attività: da verificare nei documenti (pulizia dei locali o cura degli animali)",
+  biblioteca: "Servizi di biblioteca senza descrizione: da verificare se comprendono apertura, accoglienza e custodia delle sale (correlata di portierato)",
+};
+
 function casiDaVerificare(t: string, valutazioni: readonly Valutazione[], settoriDeiCpv: readonly SettoreRadar[]): DaVerificare[] {
   if (!t) return [];
   const esclusaDa = (s: SettoreRadar, regola: string) => valutazioni.some((v) => v.settore === s && v.livello === "C" && v.regole.includes(regola));
   const out: DaVerificare[] = [];
   if (esclusaDa("ristorazione", "concessione_di_immobili") && settoriDeiCpv.includes("ristorazione") && CONCESSIONE_DI_IMMOBILE.test(t)) {
-    out.push({ settore: "ristorazione", caso: "immobile_con_cpv_ristorazione", regola: "da_verificare", motivo: "Concessione di un immobile con un CPV di ristorazione, senza una descrizione del servizio: da verificare sull'avviso (punto ristoro o solo immobile)" });
+    out.push({ settore: "ristorazione", caso: "immobile_con_cpv_ristorazione", regola: "da_verificare", motivo: MOTIVI_DA_VERIFICARE.immobile_con_cpv_ristorazione });
   }
   if (esclusaDa("pulizia", "cura_degli_animali") && STABULARI.test(t) && /\bpulizi\w*/.test(t)) {
-    out.push({ settore: "pulizia", caso: "stabulari", regola: "da_verificare", motivo: "Appalto misto per stabulari con le «pulizie» tra le attività: da verificare nei documenti (pulizia dei locali o cura degli animali)" });
+    out.push({ settore: "pulizia", caso: "stabulari", regola: "da_verificare", motivo: MOTIVI_DA_VERIFICARE.stabulari });
   }
   if (BIBLIOTECA.test(t) && !valutazioni.some((v) => v.settore === "vigilanza_portierato")) {
-    out.push({ settore: "vigilanza_portierato", caso: "biblioteca", regola: "da_verificare", motivo: "Servizi di biblioteca senza descrizione: da verificare se comprendono apertura, accoglienza e custodia delle sale (correlata di portierato)" });
+    out.push({ settore: "vigilanza_portierato", caso: "biblioteca", regola: "da_verificare", motivo: MOTIVI_DA_VERIFICARE.biblioteca });
   }
   return out;
 }

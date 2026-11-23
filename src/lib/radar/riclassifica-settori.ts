@@ -63,6 +63,55 @@ function conDecisioni(dopo: StatoSettori, decisioni: readonly Pick<RigaClassific
 }
 
 /**
+ * La colonna «settori» di UNA gara dalle sue righe ATTIVE, con la stessa regola del popolamento: i settori della gara sono quelli con una
+ * riga attiva di rilevanza A o B, decisioni dell'amministratore comprese. Serve dopo una decisione dalla console (S4, «Decidi»), così la
+ * gara decisa A o B entra subito nei filtri per settore senza aspettare una riclassificazione. L'ordine dei settori che restano non cambia,
+ * i nuovi vanno in fondo in ordine alfabetico; il metodo resta quello di prima, altrimenti quello delle righe (cpv se nessuno lo dice).
+ * `cambia` = la colonna va scritta (insieme diverso o metodo diverso).
+ */
+export function colonnaDaRigheAttive(
+  attive: readonly (Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva"> & Partial<Pick<RigaClassificazione, "da">>)[],
+  prima: StatoSettori,
+): StatoSettori & { cambia: boolean } {
+  const pertinenti = attive.filter((r) => r.attiva && pertinente(r.rilevanza));
+  const insieme = new Set<string>(pertinenti.map((r) => r.settore));
+  const settori = [...prima.settori.filter((s) => insieme.has(s)), ...[...insieme].filter((s) => !prima.settori.includes(s)).sort()];
+  const metodo = settori.length ? (prima.metodo ?? pertinenti.find((r) => r.da)?.da ?? "cpv") : null;
+  const cambia = !stessi(prima.settori, settori) || (prima.metodo ?? null) !== metodo;
+  return { settori, metodo, cambia };
+}
+
+/** Regola del registro per un cambio della colonna deciso dall'amministratore (mai notificabile, come le correzioni delle regole). */
+export const REGOLA_DECISIONE_AMMINISTRATORE = "decisione_amministratore";
+
+/**
+ * La traccia nel registro dei cambiamenti di un riallineamento dopo una decisione dell'amministratore: stessa forma delle correzioni della
+ * riclassificazione (la frase per il cliente la legge già: «abbiamo aggiunto la gara a …»), esecuzione «amministratore-<istante>» (mai
+ * confondibile con un'esecuzione da annullare), MAI notificabile.
+ */
+export function tracciaRiallineamento(proceduraId: string, prima: StatoSettori, dopo: StatoSettori, adessoIso: string): Record<string, unknown> {
+  const aggiunti = dopo.settori.filter((s) => !prima.settori.includes(s));
+  const tolti = prima.settori.filter((s) => !dopo.settori.includes(s));
+  const ric = {
+    esclusioni: tolti.map((s) => ({ settore: s as SettoreRadar, regola: REGOLA_DECISIONE_AMMINISTRATORE, motivo: "Decisione dell'amministratore" })),
+    aggiunti,
+    soloMetodo: aggiunti.length === 0 && tolti.length === 0,
+  };
+  const parti = [aggiunti.length ? `aggiunta a: ${aggiunti.map(nome).join(", ")}` : "", tolti.length ? `tolta da: ${tolti.map(nome).join(", ")}` : ""].filter(Boolean);
+  return {
+    procedura_id: proceduraId,
+    tipo: "correzione_dati",
+    campo: "settori",
+    valore_precedente: valoreRegistro(prima),
+    valore_nuovo: valoreRegistro(dopo),
+    fonte: FONTE_REGISTRO,
+    id_fonte: idFonteRiclassificazione(ric, `amministratore-${idEsecuzione(adessoIso)}`),
+    nota: `Decisione dell'amministratore dalla console: ${parti.join("; ") || "metodo della colonna allineato"}.`.slice(0, 1000),
+    notificabile: false,
+  };
+}
+
+/**
  * La gara con le regole correnti: settori e metodo dopo, che cosa si aggiunge e che cosa si toglie (e perché). `attive` = le righe attive
  * della 0121: le decisioni dell'amministratore decidono la colonna; le righe «non_riconosciuto» di una riclassificazione precedente restano
  * (vedi sotto).

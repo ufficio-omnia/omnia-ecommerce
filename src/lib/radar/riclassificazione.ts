@@ -15,7 +15,7 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 import { blocchi, type Misure } from "./importa";
 import { scriviClassificazioni, type EsitoClassificazioni } from "./classificazioni";
 import type { RigaClassificazione, RigaStato } from "./classificazioni-calcoli";
-import { FONTE_REGISTRO, isoDaEsecuzione, pianoGara, statoDaRegistro, type GaraArchivio, type LottoDaRiclassificare, type PianoGara } from "./riclassifica-settori";
+import { FONTE_REGISTRO, colonnaDaRigheAttive, isoDaEsecuzione, pianoGara, statoDaRegistro, tracciaRiallineamento, type GaraArchivio, type LottoDaRiclassificare, type PianoGara, type StatoSettori } from "./riclassifica-settori";
 
 const PAGINA = 1000;
 export const COLONNE_GARA_ARCHIVIO = "id, chiave, oggetto, descrizione, cpv_principale, cpv_tutti, settori, metodo_settore, natura_contratto, fonti, aggiornata_il, unita_a";
@@ -329,4 +329,44 @@ export async function annullaEsecuzione(db: SupabaseClient, esecuzione: string, 
     else esito.statiInAttesa += b.length;
   }
   return esito;
+}
+
+// ───── riallineamento della colonna di UNA gara dopo una decisione dell'amministratore (console S4, 49C §4.2) ─────
+
+export type EsitoRiallineamento =
+  | { esito: "invariata"; colonna: StatoSettori }
+  | { esito: "aggiornata"; prima: StatoSettori; dopo: StatoSettori }
+  | { esito: "cambiata_nel_frattempo" | "gara_assente" }
+  | { esito: "errore"; errore: string };
+
+/**
+ * Riallinea la colonna «settori» (e il metodo) di UNA gara alle sue righe ATTIVE della 0121, decisioni dell'amministratore comprese, con la
+ * stessa regola del popolamento (colonnaDaRigheAttive): una gara decisa A o B entra subito nei filtri per settore, senza aspettare una
+ * riclassificazione. Si chiama DOPO aver scritto la decisione (decisioneAmministratore). Letture: la gara e le sue righe attive; scrittura:
+ * al più la colonna, condizionata a com'era letta (se intanto è cambiata non si tocca), più UNA traccia nel registro (correzione_dati, mai
+ * notificabile). Se la traccia non si scrive, la colonna torna com'era: nessun cambio della colonna senza traccia. Non lancia eccezioni.
+ */
+export async function riallineaSettoriGara(db: SupabaseClient, proceduraId: string, adessoIso: string = new Date().toISOString()): Promise<EsitoRiallineamento> {
+  try {
+    const g = await db.from("radar_procedure").select("id, settori, metodo_settore").eq("id", proceduraId).maybeSingle<{ id: string; settori: string[] | null; metodo_settore: string | null }>();
+    if (g.error) return { esito: "errore", errore: `gara: ${g.error.message}` };
+    if (!g.data) return { esito: "gara_assente" };
+    const righe = await db.from("radar_classificazioni").select("settore, rilevanza, attiva, da").eq("procedura_id", proceduraId).eq("attiva", true).returns<Pick<RigaClassificazione, "settore" | "rilevanza" | "attiva" | "da">[]>();
+    if (righe.error) return { esito: "errore", errore: `righe: ${righe.error.message}` };
+    const prima: StatoSettori = { settori: [...(g.data.settori ?? [])], metodo: g.data.metodo_settore ?? null };
+    const calcolata = colonnaDaRigheAttive(righe.data ?? [], prima);
+    if (!calcolata.cambia) return { esito: "invariata", colonna: prima };
+    const dopo: StatoSettori = { settori: calcolata.settori, metodo: calcolata.metodo };
+    const w = await stessaColonna(db.from("radar_procedure").update({ settori: dopo.settori, metodo_settore: dopo.metodo }).eq("id", proceduraId), prima).select("id");
+    if (w.error) return { esito: "errore", errore: `colonna: ${w.error.message}` };
+    if ((w.data ?? []).length === 0) return { esito: "cambiata_nel_frattempo" };
+    const t = await db.from("radar_aggiornamenti").upsert(tracciaRiallineamento(proceduraId, prima, dopo, adessoIso), { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true });
+    if (t.error) {
+      await stessaColonna(db.from("radar_procedure").update({ settori: prima.settori, metodo_settore: prima.metodo }).eq("id", proceduraId), dopo);
+      return { esito: "errore", errore: `traccia: ${t.error.message} (colonna rimessa com'era)` };
+    }
+    return { esito: "aggiornata", prima, dopo };
+  } catch (e) {
+    return { esito: "errore", errore: e instanceof Error ? e.message : String(e) };
+  }
 }
