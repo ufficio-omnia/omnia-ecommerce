@@ -41,7 +41,7 @@ class DbProva {
   guasti = new Set<string>();
   contatore = 0;
   /** eseguita una volta, subito prima della prossima scrittura (simula un'altra scrittura arrivata nel frattempo) */
-  primaDiScrivere: ((tabella: string, db: DbProva) => void) | null = null;
+  primaDiScrivere: ((tabella: string, db: DbProva) => boolean | void) | null = null;
   constructor(tabelle: Record<string, Riga[]>) {
     this.tabelle = structuredClone(tabelle);
   }
@@ -209,6 +209,15 @@ class QueryProva implements PromiseLike<Esito> {
     this.filtri.push((r) => (r[c] ?? null) !== v);
     return this;
   }
+  // array che contiene tutti i valori / array contenuto nei valori (scrittura condizionata di riallineaSettoriGara, B2)
+  contains(c: string, vs: readonly unknown[]) {
+    this.filtri.push((r) => Array.isArray(r[c]) && vs.every((x) => (r[c] as unknown[]).includes(x)));
+    return this;
+  }
+  containedBy(c: string, vs: readonly unknown[]) {
+    this.filtri.push((r) => Array.isArray(r[c]) && (r[c] as unknown[]).every((x) => vs.includes(x)));
+    return this;
+  }
   overlaps(c: string, vs: readonly unknown[]) {
     const s = new Set(vs);
     this.filtri.push((r) => Array.isArray(r[c]) && (r[c] as unknown[]).some((x) => s.has(x)));
@@ -235,12 +244,8 @@ class QueryProva implements PromiseLike<Esito> {
   private esegui(): Esito {
     this.db.richieste.push({ tabella: this.tabella, metodo: this.metodo, colonne: this.colonne });
     if (this.db.guasti.has(this.tabella)) return { data: null, error: { code: "08006", message: "guasto simulato" } };
-    // una scrittura «concorrente» simulata subito prima di questa (prova della scrittura condizionata)
-    if (this.metodo !== "select" && this.db.primaDiScrivere) {
-      const f = this.db.primaDiScrivere;
-      this.db.primaDiScrivere = null;
-      f(this.tabella, this.db);
-    }
+    // una scrittura «concorrente» simulata subito prima di questa (prova delle scritture condizionate): il gancio resta finché non agisce
+    if (this.metodo !== "select" && this.db.primaDiScrivere?.(this.tabella, this.db) === true) this.db.primaDiScrivere = null;
     // colonne semplici e tabelle incorporate («alias:tabella(colonne)»); una tabella incorporata assente dal mondo (le tabelle della 0121 nei
     // mondi senza classificazioni) fa fallire la lettura come in PostgREST
     const semplici: string[] = [];
@@ -1210,11 +1215,20 @@ async function principale(): Promise<void> {
     sostituita_da: null,
     ...extra,
   });
-  const MOTIVO_STABULARI = "Appalto misto per stabulari con le «pulizie» tra le attività: da verificare nei documenti (dato sintetico)";
+  const { MOTIVI_DA_VERIFICARE } = richiedi(src("lib/radar/settori.ts")) as { MOTIVI_DA_VERIFICARE: Record<string, string> };
+  const MOTIVO_STABULARI = MOTIVI_DA_VERIFICARE.stabulari;
   const statoCl = (pid: string, stato: string): Riga => ({ procedura_id: pid, stato, versione_regole: stato === "in_attesa" ? null : "2026-11-23a", classificata_il: stato === "classificata" ? "2026-11-23T08:00:00Z" : null, tentativi: 1, tentativo_il: "2026-11-23T08:00:00Z", errore: null, aggiornata_il: "2026-11-23T08:00:00Z" });
   const mondoS4 = () => {
     nRiga = 0;
-    const g = (pid: string, titolo: string) => ({ ...gara("ted", `ted:SINT-V-${pid.slice(-3)}`, ["ted"]), id: pid, oggetto: `[SINTETICO] ${titolo}`, sa_denominazione: "[SINTETICO] Università di prova", url_avviso: `https://esempio.invalid/avviso-${pid.slice(-3)}` });
+    // le gare da verificare non hanno settori nella colonna (nessuna A o B); la classificata ha «pulizia» (serve a «Per te»)
+    const g = (pid: string, titolo: string) => ({
+      ...gara("ted", `ted:SINT-V-${pid.slice(-3)}`, ["ted"]),
+      id: pid,
+      oggetto: `[SINTETICO] ${titolo}`,
+      sa_denominazione: "[SINTETICO] Università di prova",
+      url_avviso: `https://esempio.invalid/avviso-${pid.slice(-3)}`,
+      ...(pid === V.classificata ? { settori: ["pulizia"], metodo_settore: "cpv" } : { settori: [], metodo_settore: null }),
+    });
     const admin = new DbProva({
       radar_fonti_stato: statoFonti(false),
       radar_procedure: [g(V.stabulari, "Servizi per lo stabulario"), g(V.biblioteca, "Servizi integrati di biblioteca"), g(V.classificata, "Pulizia degli uffici"), g(V.senzaCaso, "Concessione del casone"), g(V.inAttesa, "Gara in attesa"), g(V.senzaCandidato, "Gara da verificare senza candidato")],
@@ -1228,7 +1242,7 @@ async function principale(): Promise<void> {
         // formato di B2 (classificazione-unita.ts): prima la regola «da_verificare» col motivo S4, poi la regola e il motivo di oggi
         rigaCl(V.stabulari, "pulizia", "C", ["da_verificare", "cura_degli_animali"], [MOTIVO_STABULARI, "Cura degli animali (dato sintetico)"]),
         rigaCl(V.stabulari, "ristorazione", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
-        rigaCl(V.biblioteca, "vigilanza_portierato", "C", ["da_verificare"], ["Servizi di biblioteca senza descrizione (dato sintetico)"]),
+        rigaCl(V.biblioteca, "vigilanza_portierato", "C", ["da_verificare"], [MOTIVI_DA_VERIFICARE.biblioteca]),
         rigaCl(V.classificata, "pulizia", "A", ["cpv_pulizia"], ["CPV di pulizia (dato sintetico)"]),
         rigaCl(V.senzaCaso, "ristorazione", "C", ["da_verificare", "concessione_di_immobili"], ["Concessione di un immobile con un CPV di ristorazione (dato sintetico)", "Concessione di immobili (dato sintetico)"]),
         rigaCl(V.senzaCandidato, "pulizia", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
@@ -1289,7 +1303,7 @@ async function principale(): Promise<void> {
       vS.settoreCandidato === "pulizia" && vS.caso === "stabulari" && vS.motivo === MOTIVO_STABULARI && vS.righe.length === 2 &&
       JSON.stringify(vS.sottocategorie.map((x) => x.id)) === JSON.stringify(vociCatalogo("pulizia").map((x) => x.id)) &&
       vocePer(V.biblioteca)?.settoreCandidato === "vigilanza_portierato" && vocePer(V.biblioteca)?.caso === "biblioteca" &&
-      vocePer(V.senzaCaso)?.settoreCandidato === "ristorazione" && vocePer(V.senzaCaso)?.caso === "immobile_con_cpv_ristorazione" &&
+      vocePer(V.senzaCaso)?.settoreCandidato === "ristorazione" && vocePer(V.senzaCaso)?.caso === null &&
       vocePer(V.senzaCandidato)?.settoreCandidato === null &&
       // la pagina della console legge davvero l'elenco e lo passa alla vista
       fs.readFileSync(src("lib/console/tender-intelligence.ts"), "utf8").includes("    leggiGareInVerifica(admin),\n") && /^    gareInVerifica,$/m.test(fs.readFileSync(src("lib/console/tender-intelligence.ts"), "utf8")),
@@ -1318,6 +1332,21 @@ async function principale(): Promise<void> {
       regDecidi.length === 1 && regDecidi[0].oggetto === "gara:decisione_classificazione" && regDecidi[0].autore_id === AMMINISTRATORE.userId && String(regDecidi[0].valore_nuovo).includes("pulizia: B"),
     { esitoDecidi, nuova: nuova && { rilevanza: nuova.rilevanza, sotto: nuova.sottocategorie, autore: nuova.autore }, stato: st?.stato, registro: regDecidi.map((r) => r.oggetto) },
   );
+  // la colonna «settori» si riallinea subito (riallineaSettoriGara di B2), DOPO lo stato «classificata», con la sua traccia mai notificabile
+  const garaDecisa = mondo.admin.tabelle.radar_procedure.find((r) => r.id === V.stabulari);
+  const tracce = mondo.admin.tabelle.radar_aggiornamenti.filter((r) => r.procedura_id === V.stabulari);
+  const ordine = mondo.admin.richieste.map((r) => `${r.tabella}|${r.metodo}`);
+  const iStato = ordine.indexOf("radar_classificazioni_stato|update");
+  const iColonna = ordine.indexOf("radar_procedure|update");
+  controlla(
+    "MS12. «Decidi» riallinea subito i settori della gara (B per pulizia → «pulizia» nella colonna), con la traccia, SOLO dopo lo stato «classificata»; l'amministratore lo legge, il registro lo dice",
+    JSON.stringify(garaDecisa?.settori) === JSON.stringify(["pulizia"]) && garaDecisa?.metodo_settore !== null && tracce.length === 1 && iStato >= 0 && iColonna > iStato &&
+      String(esitoDecidi.avviso ?? "").includes("settori della gara aggiornati") && String(regDecidi[0]?.valore_nuovo ?? "").includes("colonna: settori della gara aggiornati"),
+    { settori: garaDecisa?.settori, tracce: tracce.length, iStato, iColonna, avviso: esitoDecidi.avviso },
+  );
+  // e quindi una B decisa entra subito in «Per te» (il profilo vuole anche le correlate)
+  const pDopo = await perTe();
+  controlla("MS13. dopo «Decidi» B, la gara entra subito in «Per te» (prima no: MS3)", pDopo.has(hrefG(V.stabulari)), [...pDopo.keys()].map((h) => h.slice(-3)));
   // dopo la decisione la scheda è quella di una gara classificata (correlata), non più «in verifica»
   const sDopo = await conClassificazioni(() => scheda(V.stabulari));
   controlla("MS6. dopo «Decidi» la gara è classificata: la scheda mostra il settore deciso e non dice più «in verifica»", !!sDopo && sDopo.testi.some((t) => t === "Correlata") && !sDopo.testi.some((t) => t.startsWith("Classificazione in verifica")), sDopo?.testi.filter((t) => /Correlata|verifica|Pertinente/.test(t)));
@@ -1354,9 +1383,10 @@ async function principale(): Promise<void> {
   // concorrenza: la riga candidata cambia tra la lettura e la scrittura → nessuna riga nuova, stato invariato
   const concorrente = await prova(base, () => {
     mondo.admin.primaDiScrivere = (tabella, db) => {
-      if (tabella !== "radar_classificazioni") return;
+      if (tabella !== "radar_classificazioni") return false;
       const r = db.tabelle.radar_classificazioni.find((x) => x.procedura_id === V.stabulari && x.settore === "pulizia" && x.attiva === true);
       if (r) r.attiva = false;
+      return true;
     };
   });
   controlla(
@@ -1372,6 +1402,57 @@ async function principale(): Promise<void> {
     "MS9. «Decidi» anche per il casone (C: concessione del solo immobile, senza sottocategorie) e, senza riga candidata, per un settore scelto",
     eCaso.ok === true && eSenza.ok === true && statoDiGara(V.senzaCaso)?.stato === "classificata" && statoDiGara(V.senzaCandidato)?.stato === "classificata" && righeClassDi(V.senzaCaso).some((r) => r.origine === "amministratore" && r.rilevanza === "C" && JSON.stringify(r.sottocategorie) === "[]"),
     { eCaso, eSenza },
+  );
+  // riallineamento non riuscito: la decisione resta salvata, la colonna no, e l'amministratore lo legge chiaramente (errore, non «ok»)
+  const salvataMaNonRiallineata = (e: { errore?: string; ok?: boolean }, motivo: RegExp) =>
+    !e.ok && /Decisione salvata/.test(e.errore ?? "") && /NON sono stati riallineati/.test(e.errore ?? "") && motivo.test(e.errore ?? "") &&
+    righeClassDi(V.stabulari).some((r) => r.origine === "amministratore" && r.attiva === true) && statoDiGara(V.stabulari)?.stato === "classificata";
+  const colonnaDi = (pid: string) => mondo.admin.tabelle.radar_procedure.find((r) => r.id === pid)?.settori;
+  // a) la traccia non si scrive: B2 rimette la colonna com'era → esito «errore»
+  mondo = mondoS4();
+  mondo.admin.guasti.add("radar_aggiornamenti");
+  const eErrore = decidi ? await decidi(undefined, modulo4(base)) : { errore: "azione assente" };
+  const okErrore = salvataMaNonRiallineata(eErrore, /errore:/) && JSON.stringify(colonnaDi(V.stabulari)) === "[]" && /colonna: errore/.test(String(mondo.admin.tabelle.radar_console_registro[0]?.valore_nuovo ?? ""));
+  // b) la colonna cambia nel frattempo → «cambiata_nel_frattempo»
+  mondo = mondoS4();
+  mondo.admin.primaDiScrivere = (tabella, db) => {
+    if (tabella !== "radar_procedure") return false;
+    const g = db.tabelle.radar_procedure.find((r) => r.id === V.stabulari);
+    if (g) g.settori = ["ristorazione"];
+    return true;
+  };
+  const eCambiata = decidi ? await decidi(undefined, modulo4(base)) : { errore: "azione assente" };
+  const okCambiata = salvataMaNonRiallineata(eCambiata, /cambiata nel frattempo/) && JSON.stringify(colonnaDi(V.stabulari)) === JSON.stringify(["ristorazione"]);
+  // c) la gara sparisce tra lo stato e il riallineamento → «gara_assente»
+  mondo = mondoS4();
+  mondo.admin.primaDiScrivere = (tabella, db) => {
+    if (tabella !== "radar_classificazioni_stato") return false;
+    db.tabelle.radar_procedure = db.tabelle.radar_procedure.filter((r) => r.id !== V.stabulari);
+    return true;
+  };
+  const eAssente = decidi ? await decidi(undefined, modulo4(base)) : { errore: "azione assente" };
+  const okAssente = salvataMaNonRiallineata(eAssente, /gara non trovata/);
+  controlla(
+    "MS14. riallineamento non riuscito (traccia non scritta, colonna cambiata nel frattempo, gara sparita): la decisione resta salvata, l'amministratore legge un errore chiaro con il motivo, il registro lo dice",
+    okErrore && okCambiata && okAssente,
+    { eErrore, eCambiata, eAssente, colonna: colonnaDi(V.stabulari) },
+  );
+  // d) lo stato non torna «classificata» (cambiato nel frattempo): il riallineamento NON si chiama
+  mondo = mondoS4();
+  mondo.admin.primaDiScrivere = (tabella, db) => {
+    if (tabella !== "radar_classificazioni_stato") return false;
+    const s = db.tabelle.radar_classificazioni_stato.find((r) => r.procedura_id === V.stabulari);
+    if (s) s.stato = "classificata";
+    return true;
+  };
+  const eStato = decidi ? await decidi(undefined, modulo4(base)) : { errore: "azione assente" };
+  controlla(
+    "MS15. se lo stato non torna «classificata» il riallineamento non si chiama: nessuna lettura né scrittura della colonna, nessuna traccia; errore chiaro",
+    /non è tornato «classificata»/.test(eStato.errore ?? "") &&
+      !mondo.admin.richieste.some((r) => r.tabella === "radar_procedure" && r.metodo === "update") &&
+      mondo.admin.tabelle.radar_aggiornamenti.length === 0 &&
+      JSON.stringify(colonnaDi(V.stabulari)) === "[]",
+    { eStato, richieste: mondo.admin.richieste.filter((r) => r.tabella === "radar_procedure" || r.tabella === "radar_aggiornamenti").map((r) => `${r.tabella}|${r.metodo}`) },
   );
   // la vista della console
   const componente = ((): ((p: unknown) => unknown) | null => {
@@ -1392,27 +1473,32 @@ async function principale(): Promise<void> {
     { rilevanza: campiDi("rilevanza").length, nota: campiDi("nota").length, sotto: campiDi("sottocategoria").length },
   );
 
-  // ═════ Q. guardia del caso ricavato dal settore (coordinamento, 23/11): la riga di B2 non scrive il caso, la console lo ricava dal settore
-  // candidato. Vale solo se nel classificatore ogni caso S4 ha un settore suo: il giorno in cui due casi condividono un settore, o un caso
-  // nuovo non è nella corrispondenza, questa prova cade. Si leggono i casi dal sorgente del classificatore (settori.ts): il tipo DaVerificare
-  // e le righe «out.push({ settore, caso, regola: "da_verificare" })» di casiDaVerificare.
+  // ═════ Q. guardia del caso ricavato dal MOTIVO (coordinamento, 23/11): la riga di B2 non scrive il caso, la console lo ricava dal motivo con
+  // casoDaRigaDaVerificare di B2, mai dal settore. Vale solo se i motivi dei casi sono uno per caso e tutti diversi: il giorno in cui due casi
+  // hanno lo stesso motivo, o un caso nuovo non ha il suo motivo o il suo nome, questa prova cade. Si leggono i casi dal sorgente del
+  // classificatore (settori.ts: il tipo DaVerificare e le righe di casiDaVerificare) e i motivi dalla costante MOTIVI_DA_VERIFICARE.
   const testoSettori = fs.readFileSync(src("lib/radar/settori.ts"), "utf8");
   const tipoCasi = /export type DaVerificare = \{[\s\S]*?\n\s*caso: ([^;]+);/.exec(testoSettori)?.[1] ?? "";
   const casiDelTipo = [...tipoCasi.matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]).sort();
-  const casiPrevisti = [...testoSettori.matchAll(/out\.push\(\{\s*settore:\s*"([a-z_]+)",\s*caso:\s*"([a-z0-9_]+)",\s*regola:\s*"da_verificare"/g)].map((m) => ({ settore: m[1], caso: m[2] }));
-  const calcoliConsole = richiedi(src("lib/console/gare-in-verifica-calcoli.ts")) as { CASO_DEL_SETTORE: Record<string, string>; CASO_LEGGIBILE: Record<string, string> };
-  const settoriDeiCasi = casiPrevisti.map((c) => c.settore);
-  const doppi = settoriDeiCasi.filter((s, i) => settoriDeiCasi.indexOf(s) !== i);
-  const daiCasi = Object.fromEntries([...casiPrevisti].sort((a, b) => a.settore.localeCompare(b.settore)).map((c) => [c.settore, c.caso]));
-  const mappa = Object.fromEntries(Object.entries(calcoliConsole.CASO_DEL_SETTORE).sort(([a], [b]) => a.localeCompare(b)));
+  const casiPrevisti = [...testoSettori.matchAll(/out\.push\(\{\s*settore:\s*"([a-z_]+)",\s*caso:\s*"([a-z0-9_]+)",\s*regola:\s*"da_verificare",\s*motivo:\s*MOTIVI_DA_VERIFICARE\.([a-z0-9_]+)\s*\}\)/g)].map((m) => ({ settore: m[1], caso: m[2], motivoDi: m[3] }));
+  const calcoliConsole = richiedi(src("lib/console/gare-in-verifica-calcoli.ts")) as { CASO_DEL_SETTORE?: unknown; CASO_LEGGIBILE: Record<string, string> };
+  const { casoDaRigaDaVerificare } = richiedi(src("lib/radar/classificazioni-calcoli.ts")) as { casoDaRigaDaVerificare: (r: { regole: string[]; motivi: string[] }) => string | null };
+  const chiaviMotivi = Object.keys(MOTIVI_DA_VERIFICARE).sort();
+  const testiMotivi = Object.values(MOTIVI_DA_VERIFICARE).map((m) => m.trim().slice(0, 300));
+  const motiviDoppi = testiMotivi.filter((m, i) => testiMotivi.indexOf(m) !== i);
+  const ritorno = casiDelTipo.map((c) => [c, casoDaRigaDaVerificare({ regole: ["da_verificare", "altra_regola"], motivi: [MOTIVI_DA_VERIFICARE[c] ?? "", "Altro motivo"] })]);
   controlla(
-    "MS11. guardia: ogni caso S4 del classificatore ha un settore candidato SUO (nessun settore con due casi), la corrispondenza della console è esattamente quella del classificatore, ogni caso ha il suo nome",
-    casiPrevisti.length > 0 &&
+    "MS11. guardia: un motivo per ogni caso S4 del classificatore, tutti diversi, ogni riga del classificatore col motivo del suo caso, ogni caso col suo nome; il caso si ricava dal motivo (e torna), mai dal settore",
+    casiDelTipo.length > 0 &&
+      JSON.stringify(chiaviMotivi) === JSON.stringify(casiDelTipo) &&
       JSON.stringify(casiPrevisti.map((c) => c.caso).sort()) === JSON.stringify(casiDelTipo) &&
-      doppi.length === 0 &&
-      JSON.stringify(mappa) === JSON.stringify(daiCasi) &&
-      casiDelTipo.every((c) => !!calcoliConsole.CASO_LEGGIBILE[c]),
-    { casiDelTipo, casiPrevisti, doppi, mappa, daiCasi },
+      casiPrevisti.every((c) => c.motivoDi === c.caso) &&
+      motiviDoppi.length === 0 &&
+      ritorno.every(([c, r]) => c === r) &&
+      casoDaRigaDaVerificare({ regole: ["da_verificare"], motivi: ["Motivo che il classificatore non scrive (dato sintetico)"] }) === null &&
+      casiDelTipo.every((c) => !!calcoliConsole.CASO_LEGGIBILE[c]) &&
+      calcoliConsole.CASO_DEL_SETTORE === undefined,
+    { casiDelTipo, chiaviMotivi, casiPrevisti, motiviDoppi, ritorno, corrispondenzaDalSettore: calcoliConsole.CASO_DEL_SETTORE !== undefined },
   );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);

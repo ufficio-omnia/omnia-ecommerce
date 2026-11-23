@@ -51,7 +51,7 @@ export default function GareInVerifica({ gare }: { gare: GaraInVerificaConsole[]
                 )}
                 <p className="cn-nota">
                   Settore candidato: <strong>{g.nomeSettoreCandidato ?? "non indicato: sceglilo nel modulo"}</strong>
-                  {" · "}caso: {g.casoLeggibile ?? "non indicato"}
+                  {" · "}caso: {g.casoLeggibile ?? "caso non riconosciuto (vale il motivo)"}
                   {g.motivo ? ` · ${g.motivo}` : ""}
                 </p>
                 {g.righe.length > 0 && (

@@ -5,20 +5,17 @@
 // attive calcolate, la riga C del SETTORE CANDIDATO con la regola REGOLA_DA_VERIFICARE e, nella stessa posizione, il motivo S4, seguiti dalla
 // regola e dal motivo di oggi (per esempio il casone: [da_verificare, concessione_di_immobili]). Contratto di lettura qui sotto:
 //   - il settore candidato è quello della riga calcolata con REGOLA_DA_VERIFICARE; il motivo è quello nella stessa posizione;
-//   - il CASO non è scritto nella riga: si ricava dal settore, perché nei tre casi del 49A ogni settore ha un solo caso (CASO_DEL_SETTORE,
-//     specchio di casiDaVerificare in settori.ts). Un settore senza caso noto → «caso non indicato» (vale il motivo);
+//   - il CASO non è scritto nella riga: si ricava SOLO dal motivo, con casoDaRigaDaVerificare di B2 (i motivi dei casi sono uno per caso e
+//     tutti diversi, MOTIVI_DA_VERIFICARE di settori.ts). Motivo non riconosciuto → null, «caso non riconosciuto» con il motivo grezzo: mai un
+//     caso indovinato dal settore (decisione del coordinamento, 23/11). «Decidi» resta possibile: la decisione riguarda il settore;
 //   - senza una riga così (dato incompleto) la gara resta nell'elenco senza candidato, e l'amministratore sceglie il settore.
 // La decisione la scrive decisioneAmministratore di B2 (classificazioni-calcoli.ts): riga «amministratore» con la nota obbligatoria.
-import { REGOLA_DA_VERIFICARE } from "@/lib/radar/classificazioni-calcoli";
+import { REGOLA_DA_VERIFICARE, casoDaRigaDaVerificare } from "@/lib/radar/classificazioni-calcoli";
 import { SETTORI_RADAR, nomeSettore, type SettoreRadar } from "@/lib/radar/settori";
 import { risolviSottocategoria } from "@/lib/radar/settori-catalogo";
+import type { EsitoRiallineamento } from "@/lib/radar/riclassificazione";
 
-// i tre casi del 49A (settori.ts, DaVerificare: settore → caso)
-export const CASO_DEL_SETTORE: Partial<Record<SettoreRadar, string>> = {
-  ristorazione: "immobile_con_cpv_ristorazione",
-  pulizia: "stabulari",
-  vigilanza_portierato: "biblioteca",
-};
+// il nome leggibile di ogni caso di MOTIVI_DA_VERIFICARE (la prova MS11 pretende un nome per ogni caso del classificatore)
 export const CASO_LEGGIBILE: Record<string, string> = {
   immobile_con_cpv_ristorazione: "Concessione di un immobile con un CPV di ristorazione",
   stabulari: "Appalto misto per stabulari",
@@ -39,9 +36,11 @@ export function eSettoreRadar(x: unknown): x is SettoreRadar {
 export function candidatoDaRighe(righe: readonly RigaAttivaConsole[]): Candidato {
   for (const r of righe) {
     if (r.origine === "amministratore" || !eSettoreRadar(r.settore)) continue;
-    const i = (r.regole ?? []).indexOf(REGOLA_DA_VERIFICARE);
+    const regole = r.regole ?? [];
+    const motivi = r.motivi ?? [];
+    const i = regole.indexOf(REGOLA_DA_VERIFICARE);
     if (i < 0) continue;
-    return { settore: r.settore, caso: CASO_DEL_SETTORE[r.settore] ?? null, motivo: (r.motivi ?? [])[i]?.trim() || null };
+    return { settore: r.settore, caso: casoDaRigaDaVerificare({ regole, motivi }), motivo: motivi[i]?.trim() || null };
   }
   return { settore: null, caso: null, motivo: null };
 }
@@ -75,4 +74,13 @@ export function validaDecisione(
   if (!nota) return { ok: false, errore: "La nota è obbligatoria: scrivi perché decidi così." };
   if (nota.length > 1000) return { ok: false, errore: "La nota è troppo lunga (al massimo 1000 caratteri)." };
   return { ok: true, decisione: { settore, rilevanza, sottocategorie, nota } };
+}
+
+/** L'esito di riallineaSettoriGara (B2) detto all'amministratore, nel messaggio e nel registro. */
+export function testoRiallineamento(e: EsitoRiallineamento): string {
+  const elenco = (s: { settori: string[] }) => (s.settori.length ? s.settori.map((x) => (eSettoreRadar(x) ? nomeSettore(x) : x)).join(", ") : "nessuno");
+  if (e.esito === "aggiornata") return `settori della gara aggiornati: ${elenco(e.prima)} → ${elenco(e.dopo)}`;
+  if (e.esito === "invariata") return `settori della gara già allineati (${elenco(e.colonna)})`;
+  if (e.esito === "errore") return `errore: ${e.errore}`;
+  return e.esito === "cambiata_nel_frattempo" ? "la colonna dei settori è cambiata nel frattempo" : "gara non trovata";
 }

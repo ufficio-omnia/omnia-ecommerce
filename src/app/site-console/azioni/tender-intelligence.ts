@@ -15,7 +15,8 @@ import { FONTI_REGIONALI, type FonteRegionale } from "@/lib/radar/importa-region
 import { TAG_FONTI_RADAR } from "@/lib/radar/fonti-nascoste";
 import { decisioneAmministratore, erroriRiga, type RigaClassificazione } from "@/lib/radar/classificazioni-calcoli";
 import { VERSIONE_REGOLE_SETTORI, nomeSettore } from "@/lib/radar/settori";
-import { candidatoDaRighe, validaDecisione } from "@/lib/console/gare-in-verifica-calcoli";
+import { candidatoDaRighe, testoRiallineamento, validaDecisione } from "@/lib/console/gare-in-verifica-calcoli";
+import { riallineaSettoriGara } from "@/lib/radar/riclassificazione";
 
 // Console «Tender Intelligence» (fasi B1 e B1-bis): interruttori, costi e limiti; fonti TED e PVL; imprese abilitate; giri manuali.
 // Ogni azione parte da richiediAdminAzione() (solo amministratori), valida nel server e registra in radar_console_registro chi ha cambiato
@@ -351,10 +352,16 @@ export async function decidiGaraInVerifica(_stato: StatoAzioneTi, formData: Form
     .eq("stato", "da_verificare")
     .select("procedura_id");
   const statoAggiornato = !e4 && (st ?? []).length > 0;
+  // 4) SOLO dopo lo stato «classificata»: la colonna «settori» della gara si riallinea subito alle righe attive (riallineaSettoriGara di B2,
+  //    scrittura condizionata più una traccia mai notificabile; non lancia eccezioni), così una A o una B entra subito nei filtri per settore e
+  //    in «Per te». Se non riesce, la decisione resta salvata ma la colonna no: l'amministratore lo legge chiaramente
+  const colonna = statoAggiornato ? await riallineaSettoriGara(admin, proceduraId, adesso) : null;
   const prima = `${proceduraId} · ${d.settore}: da verificare${candidato.caso ? ` (${candidato.caso})` : ""}${attiva ? ` · riga ${attiva.rilevanza}` : ""}`;
-  const dopo = `${d.settore}: ${d.rilevanza}${d.sottocategorie.length ? ` · ${d.sottocategorie.join(", ")}` : ""} · nota: ${d.nota}`.slice(0, 2000);
+  const dopo = `${d.settore}: ${d.rilevanza}${d.sottocategorie.length ? ` · ${d.sottocategorie.join(", ")}` : ""} · colonna: ${colonna ? testoRiallineamento(colonna) : "non riallineata"} · nota: ${d.nota}`.slice(0, 2000);
   await registra(admin, [{ oggetto: "gara:decisione_classificazione", valore_precedente: prima, valore_nuovo: dopo }], sessione);
   ricarica();
-  if (!statoAggiornato) return { errore: "Decisione salvata, ma lo stato della gara non è tornato «classificata»: ricarica la pagina e riprova." };
-  return { ok: true, avviso: `Decisione salvata: ${nomeSettore(d.settore)}, ${d.rilevanza === "A" ? "pertinente" : d.rilevanza === "B" ? "correlata" : "non pertinente"}. La gara torna classificata.` };
+  if (!statoAggiornato || !colonna) return { errore: "Decisione salvata, ma lo stato della gara non è tornato «classificata»: ricarica la pagina e riprova." };
+  const decisa = `Decisione salvata: ${nomeSettore(d.settore)}, ${d.rilevanza === "A" ? "pertinente" : d.rilevanza === "B" ? "correlata" : "non pertinente"}. La gara torna classificata`;
+  if (colonna.esito === "aggiornata" || colonna.esito === "invariata") return { ok: true, avviso: `${decisa}; ${testoRiallineamento(colonna)}.` };
+  return { errore: `${decisa}, ma i settori della gara NON sono stati riallineati (${testoRiallineamento(colonna)}): entrerà nei filtri per settore e in «Per te» solo con la prossima riclassificazione.` };
 }
