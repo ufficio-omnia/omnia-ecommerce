@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { applica, nascondiPvl } from "./l5a/pvl-nascosta-staging";
+import { FermoCollaudo } from "./collaudo-z8/collaudo-motore-z8";
 import { DbFinto } from "./lib/db-finto-motore";
 import type { ClientDb } from "../src/lib/radar/notifiche/motore";
 
@@ -44,12 +45,13 @@ async function principale(): Promise<void> {
   const e2 = await nascondiPvl(db as unknown as ClientDb, new Date("2026-11-24T12:00:00Z"));
   controlla("L5a: ripetuta, non cambia NULLA (idempotente: già nascosta, nemmeno aggiornata_il)", e2.cambiate === 0 && e2.prima === true && JSON.stringify(db.t("radar_fonti_stato")) === prima2);
   let fermo = false;
+  const senzaPvl = mondo([{ fonte: "ted", attiva: true, nascosta_ai_clienti: false, cursore: null, aggiornata_il: "x" }]);
   try {
-    await nascondiPvl(mondo([{ fonte: "ted", attiva: true, nascosta_ai_clienti: false, cursore: null, aggiornata_il: "x" }]) as unknown as ClientDb, ORA);
-  } catch {
-    fermo = true;
+    await nascondiPvl(senzaPvl as unknown as ClientDb, ORA);
+  } catch (x) {
+    fermo = x instanceof FermoCollaudo && /riga «pvl»/.test(x.message);
   }
-  controlla("L5a: senza la riga «pvl» si ferma e non scrive", fermo);
+  controlla("L5a: senza la riga «pvl» si ferma con il suo motivo (non un errore qualsiasi) e non scrive", fermo && !senzaPvl.richieste.some((r) => r.metodo === "update"));
   // guardie del lancio: nessuna richiesta prima dei controlli
   const ambiente = { NEXT_PUBLIC_SUPABASE_URL: "https://ryawdldqiumqsskrnyps.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_finto_per_la_prova", VERCEL_ENV: undefined as string | undefined };
   const porta = { controllaPorta: () => undefined };
@@ -66,6 +68,7 @@ async function principale(): Promise<void> {
   await rifiuta("senza autorizzazione registrata", () => applica(ambiente, { controllaPorta: () => { throw new Error("negata"); } }));
   await rifiuta("database di produzione", () => applica({ ...ambiente, NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co" }, porta));
   await rifiuta("su Vercel", () => applica({ ...ambiente, VERCEL_ENV: "preview" }, porta));
+  await rifiuta("un valore della produzione in un'altra variabile", () => applica({ ...ambiente, SUPABASE_SERVICE_ROLE_KEY: "chiave-bihfrzspqxsrzlbqqvqa" }, porta));
   const n = chiamate.length;
   let fermato = false;
   try {
