@@ -1056,6 +1056,8 @@ uguale(
 );
 uguale("ente, veri casi che restano A: «Servizio» non fa parte del nome dell'ente («per conto del Comune Servizio Ristorazione Scolastica»)", livelli(gara2b("Gara per conto del Comune Servizio Ristorazione Scolastica")), [["ristorazione", "A", "parole_chiave"]]);
 uguale("ente, testo tutto maiuscolo: vale la forma giuridica («DI COMPETENZA DI MILANO RISTORAZIONE S.P.A.»)", gara2b(MILANO_RISTORAZIONE.toUpperCase()).valutazioni.map((v) => v.settore), []);
+uguale("ente, anche nelle esclusioni: «fornitura di derrate per conto di Torino Refezione» resta C (il nome dell'ente non è il nucleo del servizio)", livelli(gara2b("Fornitura di derrate per conto di Torino Refezione", ["55300000"])), [["ristorazione", "C", "forniture_di_beni"]]);
+uguale("ente: al massimo tre parole del nome prima della parola del settore", livelli(gara2b("Affidamento per conto di Comune Città Metropolitana Di Bari Pulizia Uffici")), [["pulizia", "A", "parole_chiave"]]);
 uguale("ente: un testo senza nomi di enti resta identico", [testoSenzaEnti("Servizio di pulizia degli uffici comunali"), testoSenzaEnti(null)], ["Servizio di pulizia degli uffici comunali", ""]);
 uguale("ente: anche le parole chiave da sole lo sanno", [settoriDaParole(MILANO_RISTORAZIONE), settoriDaParole("Servizio di ristorazione per Milano Ristorazione S.p.A.")], [[], ["ristorazione"]]);
 
