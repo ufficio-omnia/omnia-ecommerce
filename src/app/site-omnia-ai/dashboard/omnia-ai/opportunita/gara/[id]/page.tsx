@@ -128,9 +128,11 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     scadenza: g.scadenza_offerte,
     scadenzaGiorno: g.scadenza_giorno,
     // fase B2a: con più fonti si elencano tutte quelle visibili al cliente (le nascoste sono già fuori da «perFonte»)
-    fonte: fontiMostrate.length > 1 ? etichettaFonti(fontiMostrate) : fontiMostrate[0] === "pvl" || (!fontiMostrate.length && primoAvviso?.fonte === "pvl") ? "PVL di ANAC" : fontiMostrate[0] && fontiMostrate[0] !== "ted" ? NOME_FONTE[fontiMostrate[0]] : "TED",
-    // il numero dell'avviso si cita solo per una gara di sola fonte TED (gli identificativi delle altre fonti sono interni)
-    numeroAvviso: fontiMostrate.length > 1 || (primoAvviso && primoAvviso.fonte !== "ted") ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.includes(":") ? null : g.ultima_versione_id)),
+    // senza nessuna fonte riconosciuta, «fonte non riconosciuta» come in fonteDi (mai «TED» per ripiego, 23/11)
+    fonte: fontiMostrate.length > 1 ? etichettaFonti(fontiMostrate) : fontiMostrate[0] === "pvl" || (!fontiMostrate.length && primoAvviso?.fonte === "pvl") ? "PVL di ANAC" : fontiMostrate[0] ? NOME_FONTE[fontiMostrate[0]] : "fonte non riconosciuta",
+    // il numero dell'avviso si cita solo per una gara di sola fonte TED (gli identificativi delle altre fonti sono interni); senza fonti
+    // riconosciute nessun numero (un identificativo di fonte non riconosciuta non è un avviso TED)
+    numeroAvviso: fontiMostrate.length !== 1 || (primoAvviso && primoAvviso.fonte !== "ted") ? null : (primoTed?.id_fonte ?? (g.ultima_versione_id?.includes(":") ? null : g.ultima_versione_id)),
     dataPubblicazione: primoAvviso?.pubblicato_il ?? g.data_pubblicazione,
   });
   const soglia = sogliaApplicabile({
@@ -221,7 +223,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
                   ))}
                 </ul>
               ) : (
-                etichettaFonti(fonti)
+                etichettaFonti(fonti) || "Fonte non riconosciuta"
               )
             }
             nota={`Prima rilevazione ${giorno(g.prima_rilevazione_il)} · dati aggiornati il ${giorno(g.ultima_rilevazione_il)}${fonti.length > 1 ? " · stessa gara pubblicata su più fonti: un'unica scheda" : ""}`}
@@ -372,7 +374,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           </>
         )}
         <p className="omnia-opp-nota">
-          Fonti: {fonti.map((f) => ATTRIBUZIONE_FONTE[f]).join("; ")}. Fa fede solo l&apos;avviso ufficiale.
+          Fonti: {fonti.map((f) => ATTRIBUZIONE_FONTE[f]).join("; ") || "non riconosciuta"}. Fa fede solo l&apos;avviso ufficiale.
         </p>
       </section>
     </div>

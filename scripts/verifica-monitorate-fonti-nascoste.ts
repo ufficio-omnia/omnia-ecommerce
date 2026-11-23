@@ -186,7 +186,7 @@ class QueryProva implements PromiseLike<Esito> {
 // ═══════════════════════ mondo sintetico ═══════════════════════
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const IMPRESA = id(9001);
-const G = { ted: id(1), pvl: id(2), mista: id(3), sintel: id(4), senzaProv: id(5), ignota: id(6), copia: id(7), copiaDiPvl: id(8), ted2: id(9), sardegna: id(10) };
+const G = { ted: id(1), pvl: id(2), mista: id(3), sintel: id(4), senzaProv: id(5), ignota: id(6), copia: id(7), copiaDiPvl: id(8), ted2: id(9), sardegna: id(10), chiaveIgnota: id(11) };
 const A = { pvl: id(101), ted2: id(102), libera: id(103), copia: id(104), copiaPvl: id(105), ignota: id(106) };
 // CIG sintetici (10 caratteri) dei lotti: uno di una gara visibile, uno di una gara solo PVL
 const CIG = { ted: "SINT00001A", pvl: "SINT00002A" };
@@ -201,6 +201,7 @@ const TITOLO: Record<keyof typeof G, string> = {
   copiaDiPvl: "[SINTETICO] Copia collegata della gara solo PVL",
   ted2: "[SINTETICO] Gara TED trovata dal CIG",
   sardegna: "[SINTETICO] Gara solo SardegnaCAT",
+  chiaveIgnota: "[SINTETICO] Gara visibile con chiave di fonte non riconosciuta e senza avvisi letti",
 };
 const NASCOSTI = [TITOLO.pvl, TITOLO.ignota, TITOLO.sardegna, TITOLO.copiaDiPvl];
 
@@ -232,7 +233,9 @@ function gara(k: keyof typeof G, chiave: string, fonti: string[], unitaA: string
     tipo_procedura: "aperta",
     ultima_rilevazione_il: "2026-11-22T06:00:00Z",
     cpv_principale: null,
+    cpv_tutti: [],
     provenienza_campi: null,
+    prima_rilevazione_il: "2026-11-10T06:00:00Z",
   };
 }
 const avviso = (k: keyof typeof G, fonte: string) => ({ procedura_id: G[k], fonte, id_fonte: `SINT-${k}-${fonte}`, url: null, pubblicato_il: "2026-11-10", tipo_avviso: null, rilevato_il: "2026-11-10T06:00:00Z", aggiornato_il: null });
@@ -306,6 +309,9 @@ function nuovoMondo(pvlNascosta: boolean) {
       gara("copiaDiPvl", "ted:SINT-8-2026", ["ted"], G.pvl),
       gara("ted2", "ted:SINT-9-2026", ["ted"]),
       gara("sardegna", "sardegnacat:SINT-10", ["sardegnacat"]),
+      // caso limite della scheda (seguito del punto c di B2): visibile per la colonna fonti, ma nessuna fonte riconosciuta da avvisi,
+      // provenienza o chiave; ultima_versione_id di una fonte non riconosciuta, che non va mai citato come numero di avviso TED
+      { ...gara("chiaveIgnota", "nuova:SINT-11", ["ted"]), ultima_versione_id: "SINT11VERSIONE" },
     ],
     radar_procedure_fonti: [avviso("ted", "ted"), avviso("pvl", "pvl"), avviso("mista", "pvl"), avviso("mista", "ted"), avviso("sintel", "sintel"), avviso("ignota", "nuova"), avviso("copia", "pvl"), avviso("copiaDiPvl", "ted"), avviso("ted2", "ted"), avviso("sardegna", "sardegnacat")],
     radar_aggiornamenti: [],
@@ -353,6 +359,7 @@ type Elemento = { type: unknown; props: Record<string, unknown> };
 type DatiRiga = { href: string; titolo: string; fonte: string; motivi: string[]; monitorata?: boolean };
 const PaginaMonitorate = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx")) as { default: () => Promise<unknown> }).default;
 const PaginaAggiunta = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/aggiunta/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
+const PaginaScheda = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const RigaGara = (richiedi(src("components/omnia-ai/opportunita/riga-gara.tsx")) as { default: unknown }).default;
 const { leggiGaraPubblica } = richiedi(src("lib/radar/gara.ts")) as { leggiGaraPubblica: (admin: unknown, id: string) => Promise<unknown> };
 const calcoliFonti = richiedi(src("lib/radar/fonti-gara-calcoli.ts")) as Record<string, unknown>;
@@ -628,6 +635,31 @@ async function principale(): Promise<void> {
     "MN25. «aggiungi a mano» con il CIG di una gara visibile: come prima, la gara pubblica salvata e monitorata e la sua scheda",
     conCigVisibile.redirect === `${hrefG(G.ted)}?da=aggiungi` && mondo.sessione.tabelle.omnia_ai_radar_salvate.some((r) => r.procedura_id === G.ted && r.monitorata === true) && !mondo.sessione.tabelle.omnia_ai_radar_gare_aggiunte.some((a) => a.cig === CIG.ted),
     conCigVisibile,
+  );
+
+  // ═════ I. scheda: con nessuna fonte riconosciuta, mai «TED» (sintesi, riquadro «Fonte», nota delle fonti) ═════
+  const scheda = async (gid: string) => {
+    const albero = await PaginaScheda({ params: Promise.resolve({ id: gid }), searchParams: Promise.resolve({}) });
+    const els = elementi(albero);
+    const riquadroFonte = els.find((e) => e.props.etichetta === "Fonte" || e.props.etichetta === "Fonti")?.props.valore;
+    const nota = els.find((e) => Array.isArray(e.props.children) && e.props.children[0] === "Fonti: ")?.props.children as unknown[] | undefined;
+    return { testi: testi(albero), riquadroFonte, notaFonti: nota?.[1] };
+  };
+  mondo = nuovoMondo(false);
+  const s1 = await scheda(G.chiaveIgnota);
+  controlla(
+    "MN26. scheda di una gara senza fonti riconosciute: mai «TED» né il numero di un avviso non riconosciuto; «fonte non riconosciuta» nella sintesi, nel riquadro e nella nota",
+    !s1.testi.some((t) => /Fonte: TED/.test(t) || t.includes("SINT11VERSIONE")) &&
+      s1.testi.some((t) => t.startsWith("Fonte: fonte non riconosciuta, avviso pubblicato il")) &&
+      typeof s1.riquadroFonte === "string" && /fonte non riconosciuta/i.test(s1.riquadroFonte) &&
+      typeof s1.notaFonti === "string" && /non riconosciuta/.test(s1.notaFonti),
+    { sintesi: s1.testi.filter((t) => t.startsWith("Fonte")), riquadro: s1.riquadroFonte, nota: s1.notaFonti },
+  );
+  const s2 = await scheda(G.ted);
+  controlla(
+    "MN27. scheda di una gara TED: sintesi, riquadro e nota come prima (nessun cambio per le fonti riconosciute)",
+    s2.testi.some((t) => t.startsWith("Fonte: TED, avviso")) && typeof s2.notaFonti === "string" && s2.notaFonti.startsWith("TED, Ufficio delle pubblicazioni"),
+    { sintesi: s2.testi.filter((t) => t.startsWith("Fonte")), nota: s2.notaFonti },
   );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
