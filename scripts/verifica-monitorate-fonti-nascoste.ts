@@ -1570,7 +1570,8 @@ async function principale(): Promise<void> {
   const leggiDatiFonti = moduloFonti.leggiDatiFonti as ((admin: unknown, adesso?: Date, env?: Record<string, string | undefined>) => Promise<DatiFontiProva>) | undefined;
   const { leggiSituazioneFonti } = richiedi(src("lib/radar/esecuzioni.ts")) as { leggiSituazioneFonti: (db: unknown, adesso: Date, env: Record<string, string | undefined>) => Promise<{ situazioni: { fonte: string; stato: string; attiva: boolean; allarmi: { codice: string; messaggio: string }[] }[]; registroAssente: boolean; errore: string | null }> };
   const { orariPrevisti } = richiedi(src("lib/radar/programmazione-calcoli.ts")) as { orariPrevisti: (f: string, da: Date, a: Date) => Date[] };
-  const ENV_F = { RADAR_PVL_CRON: "attivo" };
+  // PVL e regionali coi giri programmati accesi (TED li ha sempre): una fonte spenta non ha comunque un prossimo giro
+  const ENV_F = { RADAR_PVL_CRON: "attivo", RADAR_REGIONALI_CRON: "attivo" };
   mondo = mondoFonti();
   const rif = await leggiSituazioneFonti(mondo.admin, ADESSO_F, ENV_F);
   mondo = mondoFonti();
@@ -1600,9 +1601,12 @@ async function principale(): Promise<void> {
     { messaggiPagina, messaggiRif },
   );
   const prossimoPvl = orariPrevisti("pvl", ADESSO_F, new Date(ADESSO_F.getTime() + 8 * 86_400_000))[0]?.toISOString() ?? null;
+  // la PVL accesa ma coi giri programmati spenti in questo ambiente: nessun prossimo giro
+  mondo = mondoFonti();
+  const datiSenzaCron = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, {}) : null;
   controlla(
     "FS3. prossimo giro: dagli orari di B2 per una fonte accesa col cron acceso (PVL 13:05 di Roma); nessuno per una fonte spenta o col cron spento; ultimo giro e ultimo successo nella pagina",
-    !!datiF && datiF.fonti[1].prossimoGiro === prossimoPvl && prossimoPvl === "2026-11-25T12:05:00.000Z" && datiF.fonti[2].prossimoGiro === null && datiF.fonti[3].prossimoGiro === null &&
+    !!datiF && datiF.fonti[1].prossimoGiro === prossimoPvl && prossimoPvl === "2026-11-25T12:05:00.000Z" && datiF.fonti[2].prossimoGiro === null && datiF.fonti[3].prossimoGiro === null && datiSenzaCron?.fonti[1].prossimoGiro === null && typeof datiSenzaCron?.fonti[0].prossimoGiro === "string" &&
       testiPannello(1).some((t) => /Ultimo giro/.test(t)) && testiPannello(1).some((t) => /Ultimo successo/.test(t)) && testiPannello(1).some((t) => /Prossimo giro/.test(t)),
     { prossimi: datiF?.fonti.map((f) => f.prossimoGiro), prossimoPvl },
   );
