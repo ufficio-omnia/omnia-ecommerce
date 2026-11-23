@@ -40,7 +40,8 @@ export type ProfiloRadar = {
 export type GaraPerRadar = {
   id: string;
   unitaA: string | null;
-  statoClassificazione: "classificata" | "in_attesa" | "fallita" | null;
+  // «da_verificare» (0133, S4): come in attesa e fallita, mai in «Per te» (si propongono solo gare «classificata»)
+  statoClassificazione: "classificata" | "in_attesa" | "fallita" | "da_verificare" | null;
   righe: { settore: string; rilevanza: LivelloRilevanza; sottocategorie: string[]; attiva: boolean }[];
   tipoProcedura: string | null;
   regioni: string[];

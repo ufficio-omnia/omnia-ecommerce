@@ -19,6 +19,11 @@ const RC = "src/lib/radar/ricerca-calcoli.ts";
 const RG = "src/components/omnia-ai/opportunita/riga-gara.tsx";
 const CA = "src/app/site-console/azioni/tender-intelligence.ts";
 const CV = "src/app/site-console/_componenti/tender-intelligence-vista.tsx";
+const LT = "src/lib/radar/classificazioni-lettura.ts";
+const GV = "src/lib/console/gare-in-verifica.ts";
+const GVC = "src/lib/console/gare-in-verifica-calcoli.ts";
+const GVV = "src/app/site-console/_componenti/gare-in-verifica.tsx";
+const CL = "src/lib/console/tender-intelligence.ts";
 
 const MUTAZIONI = [
   // 1. Monitorate: filtro delle fonti nelle due letture
@@ -132,6 +137,41 @@ const MUTAZIONI = [
     con: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n                    <input type="checkbox" name="parere" value="si" />',
     richiede: "MV5.",
   },
+  // S4 (49C §4.2): quarto stato per i clienti, elenco e «Decidi» in console
+  { nome: "MM66 lettura: le righe C di una gara da verificare tornano visibili («non pertinente»)", file: LT, cerca: 'settori: s.stato === "da_verificare" ? settori.filter((x) => x.livello !== "C") : settori,', con: "settori,", richiede: "MS1." },
+  { nome: "MM67 lettura: niente testo «Classificazione in verifica»", file: LT, cerca: '  if (c.stato === "da_verificare") return "Classificazione in verifica:', con: '  if (c.stato === "da_verificare_x") return "Classificazione in verifica:', richiede: "MS1." },
+  { nome: "MM68 risultati: niente distintivo «Classificazione in verifica»", file: RC, cerca: '  if (c.rilevanza?.stato === "da_verificare") return "Classificazione in verifica";\n', con: "", richiede: "MS2." },
+  { nome: "MM69 elenco: anche le gare in attesa", file: GV, cerca: '.eq("stato", "da_verificare")', con: '.in("stato", ["da_verificare", "in_attesa"])', richiede: "MS4." },
+  { nome: "MM70 elenco: caso ricavato male dal settore", file: GVC, cerca: '  pulizia: "stabulari",', con: '  pulizia: "biblioteca",', richiede: "MS4." },
+  { nome: "MM71 elenco: candidato anche da una riga C senza la regola «da_verificare»", file: GVC, cerca: "    if (i < 0) continue;", con: '    if (i < 0 && r.rilevanza !== "C") continue;', richiede: "MS4." },
+  { nome: "MM72 decidi: un settore diverso dal candidato accettato", file: GVC, cerca: "if (candidato !== null && settore !== candidato) return", con: "if (false && candidato !== null && settore !== candidato) return", richiede: "MS7." },
+  { nome: "MM73 decidi: C con sottocategorie accettata", file: GVC, cerca: 'if (rilevanza === "C" && scelte.length > 0) return', con: 'if (false && rilevanza === "C" && scelte.length > 0) return', richiede: "MS7." },
+  {
+    nome: "MM74 decidi: sottocategoria fuori catalogo accettata",
+    file: GVC,
+    cerca: "    if (!r || r.daAlias || r.id !== s) return { ok: false, errore: `Sottocategoria «${s}» non presente nel catalogo del settore.` };\n    sottocategorie.push(r.id);",
+    con: "    sottocategorie.push(s);",
+    richiede: "MS7.",
+  },
+  // (la nota vuota ha una doppia guardia: anche decisioneAmministratore di B2 la rifiuta; qui si prova il limite di lunghezza)
+  { nome: "MM75 decidi: nota oltre i 1000 caratteri accettata", file: GVC, cerca: "  if (nota.length > 1000) return", con: "  if (false) return", richiede: "MS7." },
+  { nome: "MM76 decidi: anche una gara non da verificare", file: CA, cerca: '  if (!stato || stato.stato !== "da_verificare") return', con: "  if (!stato) return", richiede: "MS7." },
+  { nome: "MM77 decidi: disattivazione non condizionata (scrittura concorrente ignorata)", file: CA, cerca: '.eq("id", x.id).eq("attiva", true).select("id");', con: '.eq("id", x.id).select("id");', richiede: "MS8." },
+  { nome: "MM78 decidi: lo stato non torna «classificata»", file: CA, cerca: '.update({ stato: "classificata", versione_regole: versione,', con: '.update({ stato: "da_verificare", versione_regole: versione,', richiede: "MS5." },
+  { nome: "MM79 decidi: nessuna riga nel registro", file: CA, cerca: '  await registra(admin, [{ oggetto: "gara:decisione_classificazione", valore_precedente: prima, valore_nuovo: dopo }], sessione);\n', con: "  void prima;\n  void dopo;\n", richiede: "MS5." },
+  {
+    nome: "MM80 decidi: senza registro si salva lo stesso",
+    file: CA,
+    cerca: '  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };\n  const [{ data: stato, error: e1 }',
+    con: '  if (false && !(await registroDisponibile(admin))) return { errore: "registro" };\n  const [{ data: stato, error: e1 }',
+    richiede: "MS7.",
+  },
+  { nome: "MM81 decidi: autore non registrato nella riga", file: CA, cerca: "autore: `console:${sessione.email}`,", con: 'autore: "console",', richiede: "MS5." },
+  { nome: "MM82 vista: nota non obbligatoria nel modulo", file: GVV, cerca: '<textarea name="nota" required', con: '<textarea name="nota"', richiede: "MS10." },
+  { nome: "MM83 vista: manca la scelta C", file: GVV, cerca: '  { id: "C", nome: "C non pertinente" },\n', con: "", richiede: "MS10." },
+  { nome: "MM84 vista: riquadro non nella pagina", file: CV, cerca: "{dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}", con: "{null}", richiede: "MS10." },
+  { nome: "MM85 vista: senza collegamento all'avviso", file: GVV, cerca: "<a href={g.urlAvviso}", con: "<a data-href={g.urlAvviso}", richiede: "MS10." },
+  { nome: "MM86 pagina della console: elenco non letto", file: CL, cerca: "    leggiGareInVerifica(admin),\n", con: "    Promise.resolve(null),\n", richiede: "MS4." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));

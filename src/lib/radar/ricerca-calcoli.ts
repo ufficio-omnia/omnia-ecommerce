@@ -192,7 +192,8 @@ export type CandidatoRicerca = {
 
 // Fase B3 (interfaccia): anche «non_classificata» (nessuno stato: mai C) e le sottocategorie leggibili dei settori A e B.
 export type RilevanzaRicerca = {
-  stato: "classificata" | "in_attesa" | "fallita" | "non_classificata";
+  // «da_verificare» (0133, S4): decide un amministratore; mai «fuori dai settori», mai tolta da un filtro di settore
+  stato: "classificata" | "in_attesa" | "fallita" | "da_verificare" | "non_classificata";
   perSettore: Partial<Record<string, "A" | "B" | "C">>;
   sottocategorie?: Partial<Record<string, string[]>>;
 };
@@ -224,6 +225,8 @@ export function etichettaRicerca(c: CandidatoRicerca, filtri: Pick<FiltriRicerca
  */
 export function etichettaStatoClassificazione(c: CandidatoRicerca): string | null {
   if (c.rilevanza?.stato === "in_attesa") return "Classificazione in corso";
+  // S4: diverso da «Classificazione da verificare», che è già il testo della classificazione fallita
+  if (c.rilevanza?.stato === "da_verificare") return "Classificazione in verifica";
   if (c.rilevanza?.stato === "non_classificata") return "Non ancora classificata";
   return null;
 }
