@@ -42,6 +42,7 @@ async function principale(): Promise<void> {
   controlla("regola: nessuna fonte nascosta di base (48A PVL, 48E SardegnaCAT)", FONTI_NASCOSTE_PREDEFINITE.length === 0 && fontiNascosteDa([]).length === 0);
   const sarda = DESCRIZIONI_FONTI.find((f) => f.id === "sardegnacat");
   controlla("testi della fonte SardegnaCAT: nessun «non ancora mostrata» né «in attesa di parere»", !!sarda && !JSON.stringify(sarda).match(/Non ancora mostrata|in attesa di parere|serve il parere/), sarda);
+  controlla("nessuna fonte del catalogo si dice «non ancora mostrata ai clienti» (nessuna fonte nascosta di base)", !DESCRIZIONI_FONTI.some((f) => JSON.stringify(f).includes("Non ancora mostrata ai clienti")));
   const commento = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "fonti", "aflink-calcoli.ts"), "utf8").slice(0, 1500);
   controlla("aflink-calcoli.ts: la regola della licenza dice «visibili senza aspettare il parere» (48E)", /visibili ai clienti senza\s*\/\/\s*aspettare il parere legale/.test(commento) && !/ai clienti solo dopo il parere legale/.test(commento));
 
