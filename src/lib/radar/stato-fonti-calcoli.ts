@@ -3,7 +3,7 @@
 // nessun orologio. La legge la pagina «Fonti» della console (B1) con leggiSituazioneFonti (esecuzioni.ts). Soglie del 48C §3.5, approvate
 // dall'utente il 23/11 (D2). Le email tecniche arrivano dopo, con la loro autorizzazione.
 import { FONTI_ESECUZIONI, type EsitoEsecuzione, type FonteEsecuzione, type ModoEsecuzione } from "./esecuzioni-calcoli";
-import { SCHEDE_BANDO_PVL, SCHEDE_ESITO_PVL, motivoScheda } from "./fonti/pvl-calcoli";
+import { SCHEDE_BANDO_PVL, SCHEDE_ESITO_PVL, eCodiceDivisione, motivoScheda } from "./fonti/pvl-calcoli";
 import { aggiungiGiorni, giornoRoma } from "./notifiche/calendario";
 import { eFeriale, orariPrevisti } from "./programmazione-calcoli";
 
@@ -45,6 +45,11 @@ export type CodiceAllarme =
   | "tetto_ripetuto"
   | "giorno_lavorativo_senza_bandi"
   | "volume_anomalo"
+  // C2 (49C, R1 e R3): PVL con l'elenco di ricerca a 60 codici in più
+  | "pagine_oltre_soglia"
+  | "pagine_ripetute"
+  | "conteggio_alto"
+  | "divisione_alta"
   | "risorse"
   | "tipo_sconosciuto"
   | "registro_mancante"
@@ -82,9 +87,21 @@ export const SOGLIE_ALLARMI = {
   risorseRichiesteDb: 300,
   risorseSecondi: 120,
   registroMancanteMinuti: 15,
+  // C2 (49C, R1): un giro PVL oltre 2 pagine; 5 giri di fila oltre 1 pagina; più di 250 avvisi dichiarati per giorno di finestra (la
+  // sospensione automatica resta a 400, AVVISI_ANOMALI_PER_GIORNO). R3: un codice di divisione oltre 10 avvisi al giorno
+  paginePerGiro: 2,
+  giriPagineRipetute: 5,
+  avvisiPerGiornoFinestra: 250,
+  divisioneAvvisiPerGiorno: 10,
 } as const;
 
 const NOME: Record<FonteEsecuzione, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT" };
+// giorni di calendario della finestra «da»–«a» (estremi compresi); 0 se non leggibile
+function giorniFinestra(da: unknown, a: unknown): number {
+  if (typeof da !== "string" || typeof a !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(da) || !/^\d{4}-\d{2}-\d{2}$/.test(a)) return 0;
+  const n = Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${da}T00:00:00Z`)) / 86_400_000) + 1;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
 const ESEGUITI = new Set(["ok", "errore", "sospesa"]); // i giri veri (non «occupata», «inerte», «gia_eseguito»)
 const RIUSCITI = new Set(["ok", "gia_eseguito"]); // un giro riuscito (o un doppio richiamo di un giro già riuscito)
 const ms = (s: string | null | undefined) => (s ? Date.parse(s) : Number.NaN);
@@ -210,6 +227,24 @@ export function allarmiFonti(
       // C7: tipi o modalità sconosciuti
       const nuovi = tipiSconosciuti(fonte, ultimo.avvisi);
       if (nuovi.length) aggiungi("tipo_sconosciuto", "avviso", `Tipi di avviso non riconosciuti nell'ultimo giro: ${nuovi.join(", ")}. Da guardare: potrebbero essere gare perse`, ultimo.iniziato_il, { codici: nuovi });
+    }
+    // C2 (49C, R1 e R3): pagine, conteggio dichiarato e codici di divisione della PVL, sui giri veri che non sono di recupero
+    if (fonte === "pvl") {
+      const giri = veri.filter((r) => r.modo !== "recupero");
+      const pagine = (r: RigaEsecuzioneLetta) => numero(oggetto(r.finestre).pagine);
+      const g = giri[0];
+      if (g && pagine(g) > SOGLIE_ALLARMI.paginePerGiro)
+        aggiungi("pagine_oltre_soglia", "avviso", `L'ultimo giro della PVL ha letto ${pagine(g)} pagine (più di ${SOGLIE_ALLARMI.paginePerGiro}): controllare l'elenco di ricerca`, g.iniziato_il, { pagine: pagine(g) });
+      const ultimiGiri = giri.slice(0, SOGLIE_ALLARMI.giriPagineRipetute);
+      if (ultimiGiri.length === SOGLIE_ALLARMI.giriPagineRipetute && ultimiGiri.every((r) => pagine(r) > 1))
+        aggiungi("pagine_ripetute", "avviso", `Gli ultimi ${SOGLIE_ALLARMI.giriPagineRipetute} giri della PVL hanno letto più di una pagina ciascuno`, ultimiGiri[ultimiGiri.length - 1].iniziato_il, { pagine: ultimiGiri.map(pagine) });
+      const f = g ? oggetto(g.finestre) : {};
+      const giorni = giorniFinestra(f.da, f.a);
+      if (g && giorni > 0 && numero(f.dichiarati) / giorni > SOGLIE_ALLARMI.avvisiPerGiornoFinestra)
+        aggiungi("conteggio_alto", "avviso", `La PVL dichiara ${numero(f.dichiarati)} avvisi in ${giorni} giorni di finestra (oltre ${SOGLIE_ALLARMI.avvisiPerGiornoFinestra} al giorno)`, g.iniziato_il, { dichiarati: numero(f.dichiarati), giorni });
+      const divisioni = g && giorni > 0 ? Object.entries(oggetto(oggetto(g.avvisi).per_codice)).filter(([c, m]) => eCodiceDivisione(c) && numero(oggetto(m).letti) / giorni > SOGLIE_ALLARMI.divisioneAvvisiPerGiorno).map(([c]) => c).sort() : [];
+      if (g && divisioni.length)
+        aggiungi("divisione_alta", "avviso", `Codici di divisione con più di ${SOGLIE_ALLARMI.divisioneAvvisiPerGiorno} avvisi al giorno nell'ultimo giro: ${divisioni.join(", ")}. Da valutare per la potatura`, g.iniziato_il, { codici: divisioni });
     }
     // risorse dell'ultimo giro vero
     if (ultimo) {

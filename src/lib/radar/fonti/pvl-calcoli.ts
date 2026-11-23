@@ -20,6 +20,7 @@ import { nomeDiConfronto, provinciaDaTesto } from "../province";
 import { confrontaScadenze, giornoDiRoma, impronta, type ScadenzaTed } from "./ted-calcoli";
 import { settoriDopoNatura } from "./natura-contratto";
 import type { RecordLotto, RecordProcedura } from "./tipi";
+import { CPV_RICERCA_PVL } from "../cpv-ricerca-pvl-dati";
 
 export const URL_PVL = "https://pubblicitalegale.anticorruzione.it/api/v0";
 export const PERCORSO_RICERCA_PVL = "/avvisi-full-text-specializzata";
@@ -72,10 +73,16 @@ export function dataPvl(giorno: string): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-// I codici CPV del file approvato, esatti a 8 cifre: la ricerca avanzata filtra per prefisso, e un prefisso di 8 cifre è il codice esatto
-// (stessa regola di TED: solo i 50 codici del file, nessuna famiglia più larga).
+// I codici CPV della ricerca, esatti a 8 cifre (la ricerca avanzata filtra per prefisso, e un prefisso di 8 cifre è il codice esatto): quelli
+// del file di classificazione e, dopo, quelli dell'elenco di RICERCA (C2, decisione dell'utente del 23/11: 60 codici, nota 49C), senza
+// ripetizioni. L'elenco serve solo a chiedere più avvisi: il settore lo decide sempre il classificatore con il file approvato (R4, R5 c).
 export function cpvRicercaPvl(): string[] {
-  return vociCpv().map((v) => v.cpv);
+  return [...new Set([...vociCpv().map((v) => v.cpv), ...CPV_RICERCA_PVL.map((r) => r.cpv)])];
+}
+
+// Codice di divisione (due cifre e sei zeri, per esempio 55000000): nell'elenco di ricerca è sorvegliato a parte (49C, R3).
+export function eCodiceDivisione(cpv: string): boolean {
+  return /^\d{2}0{6}$/.test(cpv);
 }
 
 export function parametriRicercaPvl(p: { da: string; a: string; cpv: readonly string[]; avvisiPerPagina: number; token: string | null }): Record<string, string> {
@@ -187,6 +194,28 @@ export function cpvDaDescrizione(x: unknown): string | null {
   return CPV_PER_DESCRIZIONE.get(nomeDiConfronto(t)) ?? null;
 }
 
+// C2 (49C, R2 e R4): a quale codice dell'elenco di RICERCA appartiene un avviso, dalla descrizione del CPV dei suoi lotti (o dal codice, se
+// scritto). Serve SOLO alla misura per codice (potatura): non cambia la classificazione, che continua a usare cpvDaDescrizione. I codici
+// senza descrizione nell'elenco (14, da completare dal vocabolario CPV ufficiale) non si possono attribuire: l'avviso conta tra i «non
+// attribuiti», mai un codice indovinato.
+const RICERCA_PER_DESCRIZIONE = new Map(CPV_RICERCA_PVL.filter((r) => !!r.descrizione).map((r) => [nomeDiConfronto(r.descrizione as string), r.cpv]));
+const CODICI_RICERCA = new Set(CPV_RICERCA_PVL.map((r) => r.cpv));
+const CODICI_FILE = new Set(vociCpv().map((v) => v.cpv));
+
+export function attribuzioneRicercaPvl(a: Avviso): { codici: string[]; delFile: boolean } {
+  const codici = new Set<string>();
+  let delFile = false;
+  for (const e of sezioni(a).elementi) {
+    const t = testoPvl(e.cpv);
+    if (!t) continue;
+    const scritto = normalizzaCpv(t.match(/^(\d{8}(?:-\d)?)/)?.[1] ?? null);
+    const codice = scritto ?? RICERCA_PER_DESCRIZIONE.get(nomeDiConfronto(t)) ?? null;
+    if (codice && CODICI_RICERCA.has(codice)) codici.add(codice);
+    if ((scritto && CODICI_FILE.has(scritto)) || (!scritto && cpvDaDescrizione(t) !== null)) delFile = true;
+  }
+  return { codici: [...codici].sort(), delFile };
+}
+
 const FMT_ORA_ROMA = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 
 // Scadenza di un lotto. Regole (mai un'ora presunta):
@@ -261,6 +290,8 @@ export type BandoPvl = {
   meta: MetaPvl;
   record: RecordProcedura;
   settori: SettoreRadar[];
+  // il livello migliore tra i settori tenuti (A, altrimenti B): solo per la misura per codice di C2 (49C, R2)
+  livello: "A" | "B";
   metodoSettore: "cpv" | "parole_chiave";
   regioni: IdRegione[];
   scadenzaFonte: string | null;
@@ -474,6 +505,7 @@ export function leggiAvvisoPvl(a: Avviso): AvvisoPvlLetto {
     meta,
     record,
     settori: settoriTenuti,
+    livello: settoriTenuti.some((s) => classificazione.valutazioni.find((v) => v.settore === s)?.livello === "A") ? "A" : "B",
     metodoSettore: classificazione.metodo ?? "cpv",
     regioni,
     scadenzaFonte: scadenzaProc?.fonte ?? null,

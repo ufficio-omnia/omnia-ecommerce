@@ -16,7 +16,7 @@ import { cpvRicercaPvl, leggiAvvisoPvl, limitiPvl, limitiPvlDaRighe, type BandoP
 import { ErrorePvl, SessionePvl } from "./fonti/pvl";
 import type { Misure } from "./importa";
 import { applicaEsitiPvl, applicaPaginaBandiPvl } from "./importa-pvl-pagina";
-import { aggiungi, conteggioAnomalo, statistichePvlVuote, type StatistichePvl } from "./importa-pvl-calcoli";
+import { aggiungi, conteggioAnomalo, misuraPerCodicePvl, statistichePvlVuote, type StatistichePvl } from "./importa-pvl-calcoli";
 import {
   CONTEGGIO_ATTENDIBILE,
   RICHIESTE_RECUPERO_PER_GIRO,
@@ -158,6 +158,8 @@ async function giroPvl(admin: SupabaseClient, opzioni: OpzioniImportazionePvl, e
     if (stat.pvl.conteggioDichiarato === null) stat.pvl.conteggioDichiarato = pagina.count;
     if (conteggioAnomalo(pagina.count, l)) throw new ErrorePvl(`Numero di avvisi anomalo (${pagina.count}) per la finestra ${l.da} – ${l.a}: connettore sospeso finché non si verifica`, 200, true);
     const letti = pagina.content.map(leggiAvvisoPvl);
+    // C2 (49C, R2): misura per codice dell'elenco di ricerca, nel registro dei giri
+    misuraPerCodicePvl(stat.avvisi, pagina.content as Record<string, unknown>[], letti);
     // il «tipo» dell'avviso (rettifica dichiarata) sta solo nell'avviso grezzo: serve alla fotografia della versione (fase B4)
     const grezzi = new Map<string, unknown>();
     if (evidenza) pagina.content.forEach((g, i) => { const x = letti[i]; if (x.tipo === "bando") grezzi.set(x.meta.idAvviso, g); });
