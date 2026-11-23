@@ -9,6 +9,9 @@
 //     fonte a sé quando l'istanza sarà accolta;
 //   - ogni campo di una gara conserva la fonte da cui viene (radar_procedure.provenienza_campi, migrazione 0115).
 
+// gli orari dei giri vengono da ORARI_GIRI (programmazione-calcoli.ts): frase neutra («giri previsti»), vera anche finché i giri sono spenti
+import { testoOrari } from "../programmazione-calcoli";
+
 export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
 
 export type StatoFonte = "attiva" | "in_costruzione" | "transitoria" | "prevista";
@@ -31,7 +34,7 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     nome: "TED, Gazzetta ufficiale dell'Unione europea",
     stato: "in_costruzione",
     copertura: "Gare italiane sopra la soglia europea, e quelle che gli enti pubblicano su TED per scelta",
-    aggiornamento: "Ogni giorno feriale",
+    aggiornamento: `Giri previsti ${testoOrari("ted")} (ora italiana)`,
     limiti: [
       "Non comprende le gare sotto la soglia europea",
       "Il CIG manca quasi sempre nel bando",
@@ -46,7 +49,7 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     nome: "ANAC, Piattaforma di pubblicità a valore legale",
     stato: "in_costruzione",
     copertura: "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti)",
-    aggiornamento: "Prova sullo staging; giri previsti alle 8, alle 13 e alle 18 (non ancora attivi)",
+    aggiornamento: `Giri previsti ${testoOrari("pvl")} (ora italiana)`,
     limiti: [
       "Uso sperimentale solo sullo staging: manca la conferma di ANAC all'uso automatico e il parere sul riuso commerciale",
       "Il CPV è scritto come descrizione: si riconosce solo se è una voce del file approvato",
@@ -63,7 +66,7 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     nome: "Sintel, piattaforma di e-procurement della Regione Lombardia",
     stato: "in_costruzione",
     copertura: "Gare degli enti lombardi gestite su Sintel, anche sotto la soglia europea (bandi, manifestazioni di interesse, indagini di mercato)",
-    aggiornamento: "Ogni giorno, dopo il caricamento dei dati aperti della Regione",
+    aggiornamento: `Giri previsti ${testoOrari("sintel")} (ora italiana), dopo il caricamento dei dati aperti della Regione`,
     limiti: [
       "Comprende solo le gare gestite su Sintel dagli enti lombardi",
       "La scadenza è indicata solo come giorno: l'ora va controllata sulla pagina della procedura",
@@ -79,7 +82,7 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     nome: "SardegnaCAT, piattaforma di e-procurement della Regione Sardegna",
     stato: "in_costruzione",
     copertura: "Gare degli enti sardi pubblicate su SardegnaCAT, anche sotto la soglia europea",
-    aggiornamento: "Più volte al giorno, dal feed pubblico dei bandi",
+    aggiornamento: `Giri previsti ${testoOrari("sardegnacat")} (ora italiana), dal feed pubblico dei bandi`,
     limiti: [
       "Comprende solo le gare pubblicate su SardegnaCAT",
       "Il CIG manca nelle procedure con più lotti",

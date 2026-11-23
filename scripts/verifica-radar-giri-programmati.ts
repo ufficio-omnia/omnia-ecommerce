@@ -4,8 +4,9 @@
 // Uso: npx tsx scripts/verifica-radar-giri-programmati.ts → codice 0 se tutto passa.
 import fs from "node:fs";
 import path from "node:path";
-import { CRON_PROPOSTI, INTERRUTTORI_CRON, MINUTI_DOPPIO_RICHIAMO, ORARI_GIRI, ROTTE_CRON, TOLLERANZA_GIRO, eDoppioRichiamo, eOraDiUnGiro, istanteDiRoma, orariPrevisti } from "../src/lib/radar/programmazione-calcoli";
+import { CRON_PROPOSTI, INTERRUTTORI_CRON, MINUTI_DOPPIO_RICHIAMO, ORARI_GIRI, ROTTE_CRON, TOLLERANZA_GIRO, eDoppioRichiamo, eOraDiUnGiro, istanteDiRoma, orariPrevisti, testoOrari } from "../src/lib/radar/programmazione-calcoli";
 import { portaGiroProgrammato } from "../src/lib/radar/giro-programmato";
+import { descrizioneFonte } from "../src/lib/radar/fonti/tipi";
 import { CRON_PVL_PROPOSTO } from "../src/lib/radar/importa-pvl-calcoli";
 import { FONTI_ESECUZIONI, type FonteEsecuzione } from "../src/lib/radar/esecuzioni-calcoli";
 import { eseguiImportazioneTed } from "../src/lib/radar/importa-ted";
@@ -80,6 +81,12 @@ function provaRigheCron(): void {
   controlla("PVL: la riga proposta è quella di prima (CRON_PVL_PROPOSTO, mostrata in console)", CRON_PROPOSTI.pvl.length === 1 && CRON_PROPOSTI.pvl[0] === CRON_PVL_PROPOSTO);
   controlla("orari invariati rispetto a K3 (D2, D5)", ORARI_GIRI.ted.length === 2 && ORARI_GIRI.sardegnacat.length === 5);
   controlla("UNA riga cron per rotta (non si dipende da due righe sullo stesso percorso in vercel.json)", FONTI_ESECUZIONI.every((f) => CRON_PROPOSTI[f].length === 1));
+  // il testo «aggiornamento» delle fonti (console e riquadro delle fonti nelle pagine dei clienti): orari da ORARI_GIRI, frase neutra
+  controlla("orari in parole: PVL e SardegnaCAT", testoOrari("pvl") === "alle 08:05, 13:05 e 18:05 tutti i giorni" && testoOrari("sardegnacat") === "alle 08:20, 11:20, 14:20 e 17:20 dal lunedì al venerdì; alle 12:20 il sabato e la domenica", [testoOrari("pvl"), testoOrari("sardegnacat")]);
+  for (const f of FONTI_ESECUZIONI) {
+    const t = descrizioneFonte(f).aggiornamento;
+    controlla(`fonte ${f}: «aggiornamento» con gli orari veri (da ORARI_GIRI), frase neutra «giri previsti», niente «non ancora attivi» né orari a mano`, t.startsWith("Giri previsti ") && t.includes(testoOrari(f)) && !/non ancora attiv|alle 8, alle 13|staging/i.test(t), t);
+  }
 }
 
 // ═════ guardie 2 e 3, in ordine ═════
