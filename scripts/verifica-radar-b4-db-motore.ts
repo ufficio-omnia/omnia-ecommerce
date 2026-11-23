@@ -108,8 +108,8 @@ function mondo(opzioni: { parametri?: Partial<ParametriNotifiche>; copione?: Cop
     { impresa_id: I2, user_id: MB, ...tutte },
     { impresa_id: I3, user_id: I3, ...tutte },
   ];
-  // la PVL VISIBILE con una riga esplicita: senza riga sarebbe nascosta di base (L5a, FONTI_NASCOSTE_PREDEFINITE), e questo mondo prova
-  // anche i casi PVL (gara 2, proroga di un lotto PVL)
+  // la PVL VISIBILE con una riga esplicita (come lo staging dopo la 48B; senza riga sarebbe visibile lo stesso, direttiva 48A): questo
+  // mondo prova anche i casi PVL (gara 2, proroga di un lotto PVL)
   db.tabelle.radar_fonti_stato = [{ fonte: "sardegnacat", nascosta_ai_clienti: true }, { fonte: "ted", nascosta_ai_clienti: false }, { fonte: "pvl", nascosta_ai_clienti: false }];
   // archivio sintetico (giorni contati dal 20/10/2026, cambio dell'ora il 25/10/2026)
   db.tabelle.radar_procedure = [
@@ -384,6 +384,17 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
   controlla("48A motore: riga «pvl» visibile (come sarà lo staging dopo la 48B) → il suo promemoria c'è", visibile.eventi === 1 && visibile.consegne === assente.consegne);
   controlla("48A motore: riga «pvl» nascosta (come lo staging oggi, fino alla 48B) → nessun evento", nascosta.eventi === 0);
   controlla("regola delle fonti: la lettura delle fonti resta UNA richiesta per passaggio, con o senza la riga", assente.letture === nascosta.letture && assente.letture === visibile.letture);
+  // la predefinita conta anche nel motore: senza la riga «sardegnacat», la gara solo SardegnaCAT resta nascosta (come nelle pagine)
+  const eventiSardegna = async (righe: Riga[]) => {
+    const m = mondo();
+    m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "sardegnacat"), ...righe];
+    await eseguiPassaggio(m.d);
+    return eventi(m).filter((e) => e.gara_chiave === `p:${U(104)}`).length;
+  };
+  const sardegnaAssente = await eventiSardegna([]);
+  const sardegnaVisibile = await eventiSardegna([{ fonte: "sardegnacat", nascosta_ai_clienti: false }]);
+  controlla("48A motore: riga «sardegnacat» ASSENTE → la gara solo SardegnaCAT resta nascosta (predefinita), nessun evento", sardegnaAssente === 0, sardegnaAssente);
+  controlla("48A motore: riga «sardegnacat» visibile → la stessa gara dà eventi (la prova sopra non è vuota per caso)", sardegnaVisibile > 0, sardegnaVisibile);
   const pagine = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "fonti-nascoste.ts"), "utf8");
   controlla("regola delle fonti: fonti-nascoste.ts usa la STESSA regola (fontiNascosteDa) e, in caso di errore, le predefinite",
     /return fontiNascosteDa\(data \?\? \[\]\);/.test(pagine) && (pagine.match(/return \[\.\.\.FONTI_NASCOSTE_PREDEFINITE\];/g) ?? []).length === 2);
