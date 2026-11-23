@@ -669,10 +669,12 @@ async function principale(): Promise<void> {
   mondo.admin.guasti.add("radar_fonti_stato");
   const c = await monitorate();
   const pvlDiBase = FONTI_NASCOSTE_PREDEFINITE.includes("pvl");
+  // K11 di B2 (48E, D4-bis, 23/11): SardegnaCAT non è più nascosta di base; come la PVL, segue FONTI_NASCOSTE_PREDEFINITE (oggi vuota)
+  const sardegnaDiBase = FONTI_NASCOSTE_PREDEFINITE.includes("sardegnacat");
   controlla(
-    "MN9. stato delle fonti non leggibile: valgono le fonti nascoste di base (FONTI_NASCOSTE_PREDEFINITE), SardegnaCAT mai in lista",
-    !c.perHref.has(hrefG(G.sardegna)) && c.perHref.has(hrefG(G.pvl)) === !pvlDiBase && c.perHref.has(hrefG(G.ted)),
-    { pvlDiBase, avute: ordinati(c.perHref.keys()) },
+    "MN9. stato delle fonti non leggibile: valgono le fonti nascoste di base (FONTI_NASCOSTE_PREDEFINITE), per la PVL e per SardegnaCAT",
+    c.perHref.has(hrefG(G.sardegna)) === !sardegnaDiBase && c.perHref.has(hrefG(G.pvl)) === !pvlDiBase && c.perHref.has(hrefG(G.ted)),
+    { pvlDiBase, sardegnaDiBase, avute: ordinati(c.perHref.keys()) },
   );
 
   // ═════ D. classificazioni accese ma tabelle della 0121 non leggibili: la seconda lettura filtra allo stesso modo ═════
