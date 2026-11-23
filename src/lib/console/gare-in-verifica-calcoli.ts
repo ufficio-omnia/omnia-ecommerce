@@ -1,19 +1,24 @@
 // Console «Tender Intelligence», gare «da verificare» (schema S4 del 49A, dato del 49C §4.2, 23/11/2026). Logica pura, provata da
 // scripts/verifica-monitorate-fonti-nascoste.ts (sezione P).
 //
-// Il dato (scritto dal popolamento di B2): stato della gara «da_verificare» (migrazione 0133) e, tra le righe attive calcolate, una riga C
-// per il SETTORE CANDIDATO con una regola che inizia con «da_verificare» e il motivo S4. Contratto di lettura qui sotto:
-//   - la regola «da_verificare_<caso>» dice anche il caso (immobile_con_cpv_ristorazione, stabulari, biblioteca); «da_verificare» da sola
-//     vale «caso non indicato»;
-//   - il motivo è quello nella stessa posizione della regola;
+// Il dato, come lo scrive B2 (classificazione-unita.ts, 7c43e20): stato della gara «da_verificare» (migrazione 0133) e, tra le righe
+// attive calcolate, la riga C del SETTORE CANDIDATO con la regola REGOLA_DA_VERIFICARE e, nella stessa posizione, il motivo S4, seguiti dalla
+// regola e dal motivo di oggi (per esempio il casone: [da_verificare, concessione_di_immobili]). Contratto di lettura qui sotto:
+//   - il settore candidato è quello della riga calcolata con REGOLA_DA_VERIFICARE; il motivo è quello nella stessa posizione;
+//   - il CASO non è scritto nella riga: si ricava dal settore, perché nei tre casi del 49A ogni settore ha un solo caso (CASO_DEL_SETTORE,
+//     specchio di casiDaVerificare in settori.ts). Un settore senza caso noto → «caso non indicato» (vale il motivo);
 //   - senza una riga così (dato incompleto) la gara resta nell'elenco senza candidato, e l'amministratore sceglie il settore.
 // La decisione la scrive decisioneAmministratore di B2 (classificazioni-calcoli.ts): riga «amministratore» con la nota obbligatoria.
+import { REGOLA_DA_VERIFICARE } from "@/lib/radar/classificazioni-calcoli";
 import { SETTORI_RADAR, nomeSettore, type SettoreRadar } from "@/lib/radar/settori";
 import { risolviSottocategoria } from "@/lib/radar/settori-catalogo";
 
-export const PREFISSO_DA_VERIFICARE = "da_verificare";
-
-// i tre casi del 49A (settori.ts, DaVerificare.caso)
+// i tre casi del 49A (settori.ts, DaVerificare: settore → caso)
+export const CASO_DEL_SETTORE: Partial<Record<SettoreRadar, string>> = {
+  ristorazione: "immobile_con_cpv_ristorazione",
+  pulizia: "stabulari",
+  vigilanza_portierato: "biblioteca",
+};
 export const CASO_LEGGIBILE: Record<string, string> = {
   immobile_con_cpv_ristorazione: "Concessione di un immobile con un CPV di ristorazione",
   stabulari: "Appalto misto per stabulari",
@@ -34,11 +39,9 @@ export function eSettoreRadar(x: unknown): x is SettoreRadar {
 export function candidatoDaRighe(righe: readonly RigaAttivaConsole[]): Candidato {
   for (const r of righe) {
     if (r.origine === "amministratore" || !eSettoreRadar(r.settore)) continue;
-    const regole = r.regole ?? [];
-    const i = regole.findIndex((x) => x === PREFISSO_DA_VERIFICARE || x.startsWith(`${PREFISSO_DA_VERIFICARE}_`));
+    const i = (r.regole ?? []).indexOf(REGOLA_DA_VERIFICARE);
     if (i < 0) continue;
-    const caso = regole[i].length > PREFISSO_DA_VERIFICARE.length ? regole[i].slice(PREFISSO_DA_VERIFICARE.length + 1) : null;
-    return { settore: r.settore, caso, motivo: (r.motivi ?? [])[i]?.trim() || null };
+    return { settore: r.settore, caso: CASO_DEL_SETTORE[r.settore] ?? null, motivo: (r.motivi ?? [])[i]?.trim() || null };
   }
   return { settore: null, caso: null, motivo: null };
 }

@@ -1225,12 +1225,12 @@ async function principale(): Promise<void> {
       omnia_ai_radar_utilizzi: [],
       radar_classificazioni_stato: [statoCl(V.stabulari, "da_verificare"), statoCl(V.biblioteca, "da_verificare"), statoCl(V.classificata, "classificata"), statoCl(V.senzaCaso, "da_verificare"), statoCl(V.inAttesa, "in_attesa"), statoCl(V.senzaCandidato, "da_verificare")],
       radar_classificazioni: [
-        // la regola «da_verificare_…» NON è la prima: il motivo va preso nella sua posizione
-        rigaCl(V.stabulari, "pulizia", "C", ["cura_degli_animali", "da_verificare_stabulari"], ["Cura degli animali (dato sintetico)", MOTIVO_STABULARI]),
+        // formato di B2 (classificazione-unita.ts): prima la regola «da_verificare» col motivo S4, poi la regola e il motivo di oggi
+        rigaCl(V.stabulari, "pulizia", "C", ["da_verificare", "cura_degli_animali"], [MOTIVO_STABULARI, "Cura degli animali (dato sintetico)"]),
         rigaCl(V.stabulari, "ristorazione", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
-        rigaCl(V.biblioteca, "vigilanza_portierato", "C", ["da_verificare_biblioteca"], ["Servizi di biblioteca senza descrizione (dato sintetico)"]),
+        rigaCl(V.biblioteca, "vigilanza_portierato", "C", ["da_verificare"], ["Servizi di biblioteca senza descrizione (dato sintetico)"]),
         rigaCl(V.classificata, "pulizia", "A", ["cpv_pulizia"], ["CPV di pulizia (dato sintetico)"]),
-        rigaCl(V.senzaCaso, "ristorazione", "C", ["da_verificare"], ["Concessione di un immobile con un CPV di ristorazione (dato sintetico)"]),
+        rigaCl(V.senzaCaso, "ristorazione", "C", ["da_verificare", "concessione_di_immobili"], ["Concessione di un immobile con un CPV di ristorazione (dato sintetico)", "Concessione di immobili (dato sintetico)"]),
         rigaCl(V.senzaCandidato, "pulizia", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
       ],
     });
@@ -1289,7 +1289,7 @@ async function principale(): Promise<void> {
       vS.settoreCandidato === "pulizia" && vS.caso === "stabulari" && vS.motivo === MOTIVO_STABULARI && vS.righe.length === 2 &&
       JSON.stringify(vS.sottocategorie.map((x) => x.id)) === JSON.stringify(vociCatalogo("pulizia").map((x) => x.id)) &&
       vocePer(V.biblioteca)?.settoreCandidato === "vigilanza_portierato" && vocePer(V.biblioteca)?.caso === "biblioteca" &&
-      vocePer(V.senzaCaso)?.settoreCandidato === "ristorazione" && vocePer(V.senzaCaso)?.caso === null &&
+      vocePer(V.senzaCaso)?.settoreCandidato === "ristorazione" && vocePer(V.senzaCaso)?.caso === "immobile_con_cpv_ristorazione" &&
       vocePer(V.senzaCandidato)?.settoreCandidato === null &&
       // la pagina della console legge davvero l'elenco e lo passa alla vista
       fs.readFileSync(src("lib/console/tender-intelligence.ts"), "utf8").includes("    leggiGareInVerifica(admin),\n") && /^    gareInVerifica,$/m.test(fs.readFileSync(src("lib/console/tender-intelligence.ts"), "utf8")),
@@ -1369,7 +1369,7 @@ async function principale(): Promise<void> {
   const eCaso = decidi ? await decidi(undefined, modulo4({ gara: V.senzaCaso, settore: "ristorazione", rilevanza: "C", nota: "Concessione del solo immobile, nessun servizio di ristorazione (prova sintetica)" })) : { errore: "azione assente" };
   const eSenza = decidi ? await decidi(undefined, modulo4({ gara: V.senzaCandidato, settore: "pulizia", rilevanza: "A", sottocategoria: [SOTTO], nota: "Pulizia vera e propria (prova sintetica)" })) : { errore: "azione assente" };
   controlla(
-    "MS9. «Decidi» anche senza caso indicato (riga «da_verificare» semplice) e, senza riga candidata, per un settore scelto; C senza sottocategorie",
+    "MS9. «Decidi» anche per il casone (C: concessione del solo immobile, senza sottocategorie) e, senza riga candidata, per un settore scelto",
     eCaso.ok === true && eSenza.ok === true && statoDiGara(V.senzaCaso)?.stato === "classificata" && statoDiGara(V.senzaCandidato)?.stato === "classificata" && righeClassDi(V.senzaCaso).some((r) => r.origine === "amministratore" && r.rilevanza === "C" && JSON.stringify(r.sottocategorie) === "[]"),
     { eCaso, eSenza },
   );
