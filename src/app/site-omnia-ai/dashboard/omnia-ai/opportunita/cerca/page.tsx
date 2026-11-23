@@ -29,7 +29,7 @@ import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara"
 import PannelloFiltri from "@/components/omnia-ai/opportunita/pannello-filtri";
 import FontiRicerca, { type StatoFontePubblica } from "@/components/omnia-ai/opportunita/fonti-ricerca";
 import { fontiNascosteAiClienti, fontiVisibiliDa } from "@/lib/radar/fonti-nascoste";
-import { etichettaFonti } from "@/lib/radar/fonti-gara-calcoli";
+import { etichettaFontiElenco } from "@/lib/radar/fonti-gara-calcoli";
 import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 
 // «Cerca» (fase B1): filtri deterministici applicati dal database, ricerca testuale in italiano con i sinonimi della mappa CPV (mostrati),
@@ -277,7 +277,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
                       rilevanza: etichettaRicerca(r, filtri),
                       settoriDettaglio: settoriDellaRiga(r),
                       statoClassificazione: etichettaStatoClassificazione(r),
-                      fonte: etichettaFonti(fontiGare.get(r.id) ?? ["ted"]),
+                      fonte: etichettaFontiElenco(fontiGare.get(r.id)),
                       verificataIl: r.ultima_rilevazione_il,
                       salvata: !!s,
                       monitorata: !!s?.monitorata,

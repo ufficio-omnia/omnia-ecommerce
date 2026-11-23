@@ -151,7 +151,19 @@ export async function leggiGaraPubblica(admin: SupabaseClient, id: string, opzio
   };
 }
 
-// Le fonti (TED, PVL) delle gare di una pagina di risultati: una lettura sola, solo per le gare mostrate. Senza provenienza: TED.
+// La scheda di una gara si apre per il cliente? Stesse regole di leggiGaraPubblica, seguendo una copia collegata (0117) fino alla gara che
+// resta: almeno una fonte visibile ai clienti. Serve alla pagina di un'aggiunta a mano collegata a una gara pubblica (documento 47 §3.1): si
+// passa alla scheda solo se si apre, altrimenti restano i dati scritti dall'impresa. Errore di lettura = no.
+export async function schedaGaraApribile(admin: SupabaseClient, id: string): Promise<boolean> {
+  const leggi = (x: string) => admin.from("radar_procedure").select("chiave, fonti, unita_a").eq("id", x).maybeSingle<{ chiave: string; fonti: string[] | null; unita_a: string | null }>();
+  let { data, error } = await leggi(id);
+  if (!error && data?.unita_a) ({ data, error } = await leggi(data.unita_a));
+  if (error || !data) return false;
+  return garaVisibileAiClienti(data, new Set(await fontiNascosteAiClienti()));
+}
+
+// Le fonti (TED, PVL) delle gare di una pagina di risultati: una lettura sola, solo per le gare mostrate. Solo le fonti VISIBILI degli
+// avvisi letti: una gara senza avvisi visibili non ha voce nella mappa (gli elenchi scrivono «Fonte non indicata», mai TED presunta).
 export async function leggiFontiGare(admin: SupabaseClient, proceduraIds: string[]): Promise<Map<string, FonteGara[]>> {
   if (proceduraIds.length === 0) return new Map();
   // solo le fonti mostrabili ai clienti (0120); anche quelle delle gare collegate a queste (0117), attribuite alla gara che resta
