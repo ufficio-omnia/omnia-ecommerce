@@ -189,6 +189,8 @@ export type RisultatoTedPerRegistro =
       fase: "recupero" | "incrementale";
       giroFinito: boolean;
       fermata?: boolean;
+      // K5: 401 o 403 da TED
+      sospesa?: boolean;
       errore: string | null;
       totali: {
         pagine: number;
@@ -205,15 +207,15 @@ export function datiGiroTed(r: RisultatoTedPerRegistro): DatiGiro | null {
   const t = r.totali;
   return {
     modo: r.fase === "recupero" ? "recupero" : "incrementale",
-    esito: esitoDi(r.errore, false),
+    esito: esitoDi(r.errore, r.sospesa === true),
     errore: r.errore,
     finestre: { fase: r.fase, tipo: r.cursore.tipo ?? null, da: r.cursore.da ?? null, a: r.cursore.a ?? null, ultimo_giorno: r.cursore.ultimoGiorno ?? null, pagine: t.pagine, giro_finito: r.giroFinito },
     misureFonte: { richieste: t.ted.richieste, byte: t.ted.byte, ms: t.ted.ms },
     db: { richieste: t.db.richiesteDb, ms: t.db.msDb },
-    avvisi: { bandi: { letti: t.bandi.letti, invariati: t.bandi.invariati, annullati: t.bandi.annullate, esclusi: t.bandi.esclusi }, esiti: { letti: t.esiti.letti, applicati: t.esiti.applicati, senza_bando: t.esiti.senzaBando } },
+    avvisi: { bandi: { letti: t.bandi.letti, invariati: t.bandi.invariati, annullati: t.bandi.annullate, esclusi: t.bandi.esclusi }, esiti: { letti: t.esiti.letti, applicati: t.esiti.applicati, senza_bando: t.esiti.senzaBando }, ...motivoSospensione(r.errore, r.sospesa === true) },
     gare: { nuove: t.bandi.nuove, unite: t.bandi.unitePvl, aggiornate: t.bandi.aggiornate, rettifiche: t.bandi.rettifiche, conflitti: 0 },
     // K7: fonte spenta dalla console a metà giro → esito «ok» più l'allarme (48C §3.6)
-    allarmi: r.fermata ? ["fermata_dalla_console"] : [],
+    allarmi: [...(r.sospesa ? ["sospesa"] : []), ...(r.fermata ? ["fermata_dalla_console"] : [])],
   };
 }
 

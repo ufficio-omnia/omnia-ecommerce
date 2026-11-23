@@ -1,8 +1,9 @@
 // Protezione esplicita contro le scritture accidentali delle importazioni di Tender Intelligence nel database di PRODUZIONE (richiesta del
 // titolare del 16/11/2026, dopo l'anteprima partita con le variabili di produzione). Logica pura: legge solo l'ambiente che riceve.
 //
-// Regole:
-//   - PVL: scrive SOLO nello staging, sempre (uso sperimentale autorizzato solo lì). Con qualunque altro database il giro non parte;
+// Regole (fonteAutorizzata, sotto):
+//   - PVL, Sintel, SardegnaCAT: nello staging sempre; in produzione solo dal deploy di produzione e con RADAR_<FONTE>_PRODUZIONE=autorizzata
+//     (K8, L6 del piano 36); senza la variabile il giro non parte;
 //   - TED: nello staging sempre; in produzione solo dal deploy di produzione su Vercel (VERCEL_ENV=production), mai da un computer
 //     locale né da un'anteprima che usi il database di produzione;
 //   - un database non riconosciuto (né staging né produzione) è trattato come produzione: niente scritture;
@@ -41,12 +42,23 @@ export type FonteRadar = (typeof FONTI_RADAR)[number];
 export type UsoFonte = "importazione" | "notifiche";
 
 /**
- * L'UNICA regola che decide se una fonte del Radar si può usare in questo ambiente, per un dato uso. Semantica identica a quella del
- * 16–18/11 (decisione dell'utente del 19/11 sulla PVL in produzione: le variabili RADAR_<FONTE>_PRODUZIONE arriveranno solo con la P2
- * della PVL, autorizzata a parte):
+ * K8 (L6): la variabile che autorizza una fonte in PRODUZIONE (valore «autorizzata»). TED non ne ha: in produzione vale il solo deploy di
+ * produzione, come prima (48C §3.7). Le variabili si creano su Vercel, ambiente Production, solo con l'autorizzazione dell'utente (51 §4).
+ */
+export const VARIABILI_PRODUZIONE: Readonly<Partial<Record<FonteRadar, string>>> = {
+  pvl: "RADAR_PVL_PRODUZIONE",
+  sintel: "RADAR_SINTEL_PRODUZIONE",
+  sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE",
+};
+const NOMI_FONTI: Record<FonteRadar, string> = { ted: "TED", pvl: "La PVL", sintel: "Sintel", sardegnacat: "SardegnaCAT" };
+
+/**
+ * L'UNICA regola che decide se una fonte del Radar si può usare in questo ambiente, per un dato uso (importatori, accensione dalla console,
+ * motore delle notifiche):
  *   - anteprima di Vercel (VERCEL_ENV=preview): MAI, nemmeno sullo staging;
  *   - staging: sempre;
- *   - PVL, Sintel, SardegnaCAT (e ogni fonte nuova): SOLO staging;
+ *   - PVL, Sintel, SardegnaCAT: in produzione SOLO dal deploy di produzione e con RADAR_<FONTE>_PRODUZIONE=autorizzata (K8); senza la
+ *     variabile, solo staging, come prima;
  *   - TED: in produzione solo dal deploy di produzione su Vercel (VERCEL_ENV=production), mai da un computer locale;
  *   - un database non riconosciuto vale come produzione.
  * Una fonte fuori dall'elenco (per esempio «manuale» dei collegamenti) non è mai autorizzata.
@@ -59,6 +71,15 @@ export function fonteAutorizzata(fonte: string, uso: UsoFonte, env: Record<strin
     return { ok: false, ambiente, motivo: uso === "importazione" ? MOTIVO_ANTEPRIMA : "Anteprima Vercel: le notifiche sono spente (la Preview legge lo staging, non lo scrive)." };
   }
   if (ambiente === "staging") return { ok: true, ambiente };
+  // K8 (L6 del piano 36, 48C §3.7): PVL, Sintel e SardegnaCAT in produzione SOLO se ci sono tutte e tre le condizioni: deploy di produzione
+  // su Vercel, database di produzione e la variabile della fonte RADAR_<FONTE>_PRODUZIONE=autorizzata (creata solo con l'autorizzazione
+  // dell'utente). Senza la variabile tutto resta com'era (stessi motivi)
+  const variabile = VARIABILI_PRODUZIONE[fonte as FonteRadar];
+  if (variabile && ambiente === "produzione" && env.VERCEL_ENV === "production") {
+    if (env[variabile] === "autorizzata") return { ok: true, ambiente };
+    // sul deploy di produzione manca solo la variabile: l'amministratore deve leggere esattamente che cosa manca
+    return { ok: false, ambiente, motivo: `${NOMI_FONTI[fonte as FonteRadar]} in produzione richiede ${variabile}=autorizzata, che si crea solo con l'autorizzazione dell'utente: ${cosa}.` };
+  }
   if (fonte === "pvl") return { ok: false, ambiente, motivo: `La PVL è autorizzata solo sullo staging: ${cosa} in questo database.` };
   if (fonte !== "ted") return { ok: false, ambiente, motivo: `Le fonti regionali sono autorizzate solo sullo staging: ${cosa} in questo database.` };
   if (ambiente === "produzione" && env.VERCEL_ENV === "production") return { ok: true, ambiente };
