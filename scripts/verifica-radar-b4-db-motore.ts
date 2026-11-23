@@ -29,7 +29,7 @@ function controlla(nome: string, condizione: boolean, dettaglio?: unknown): void
 }
 
 // ═══════════════════════ database in memoria (imitazione di PostgREST per le operazioni del motore): scripts/lib/db-finto-motore.ts ═══════════════════════
-import { DbFinto, confronta, type Riga } from "./lib/db-finto-motore";
+import { DbFinto, type Riga } from "./lib/db-finto-motore";
 
 // ═══════════════════════ dati SINTETICI (dichiarati come tali: imprese, persone e gare inventate) ═══════════════════════
 
