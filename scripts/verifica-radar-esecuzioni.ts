@@ -204,7 +204,11 @@ function provaRighe(): void {
   const o5 = riga("pvl", { modo: "incrementale", esito: "ok", avvisi: { letti: 10, ...testiLunghi, dettaglio: { a: 1 } } });
   righe.push(o5);
   controlla("dati ostili: avvisi oltre il limite di byte → solo i campi semplici più «troncato», entro il limite", byteJsonb(o5.avvisi) <= 19_000 && (o5.avvisi.troncato === true) && !("dettaglio" in o5.avvisi), { byte: byteJsonb(o5.avvisi), chiavi: Object.keys(o5.avvisi).length });
+  // elenchi e oggetti annidati con testi «difficili» (a capo, virgolette, tabulazioni, accenti): la prova su Postgres confronta i byte
+  const o7 = riga("pvl", { modo: "recupero", esito: "ok", finestre: { blocchi: [{ da: "2026-11-01", a: "2026-11-07", dichiarati: 120, letti: 120 }, { da: "2026-10-25", a: "2026-10-31", dichiarati: 98, letti: 97 }], buchi: [] }, avvisi: { schede: ["P1_16", "P2_19", "P7_1_3"], nota: "riga\n«a capo»\t\"virgolette\" \\ barra è" } });
+  righe.push(o7);
   const o6 = riga("ted", { modo: "incrementale", esito: "ok", finestre: { piccolo: 1e-7, grande: 1e21, decimale: 1534.6789 } });
+  righe.push(o6);
   controlla("numeri nei jsonb: arrotondati a 3 decimali ed entro 1e15 (stesso testo in JavaScript e in Postgres)", JSON.stringify(o6.finestre).includes('"piccolo":0') && JSON.stringify(o6.finestre).includes('"grande":1000000000000000') && JSON.stringify(o6.finestre).includes('"decimale":1534.679'), o6.finestre);
   controlla("dati ostili: risposte enormi → vuote; testi senza NUL né surrogati", Object.keys(o4.fonte_risposte).length === 0 && o4.avvisi.testo === "abc");
   controlla("dati ostili: allarmi solo validi, senza doppioni, al più 20", o4.allarmi.length === 20 && o4.allarmi[0] === "giro_mancato" && !o4.allarmi.includes("Sospesa") && !o4.allarmi.includes("a"), o4.allarmi);
