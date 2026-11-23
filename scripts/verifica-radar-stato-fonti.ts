@@ -41,6 +41,7 @@ function provaStato(): void {
   controlla("stato: spenta con una sospensione più recente del successo → sospesa", statoFonte(fonte({ fonte: "pvl", attiva: false, ultimo_successo_il: "2026-11-22T09:00:00Z", conteggi: { sospensione: { il: "2026-11-23T08:05:00Z", motivo: "HTTP 429" } } })) === "sospesa");
   controlla("stato: spenta con una sospensione VECCHIA (poi riaccesa e riuscita) → spenta dalla console", statoFonte(fonte({ fonte: "pvl", attiva: false, ultimo_successo_il: "2026-11-23T09:00:00Z", conteggi: { sospensione: { il: "2026-11-20T08:05:00Z" } } })) === "spenta");
   controlla("stato: spenta senza sospensione → spenta", statoFonte(fonte({ fonte: "sintel", attiva: false })) === "spenta");
+  controlla("stato: errore e nessun successo mai → in errore; nessuno dei due → ok", statoFonte(fonte({ fonte: "sintel", ultimo_errore_il: "2026-11-23T10:00:00Z" })) === "in_errore" && statoFonte(fonte({ fonte: "sintel" })) === "ok");
 }
 
 // ═════ allarmi ═════
@@ -76,6 +77,8 @@ function provaAllarmi(): void {
   const er = (righe: RigaEsecuzioneLetta[]) => di(allarmiFonti(righe, stati(), ADESSO, { cronAttivi: new Set() }), "ted");
   controlla("errori ripetuti: 2 giri di fila in errore → allarme, con il conteggio", codici(er([riga("ted", "2026-11-23T09:15:00Z", "errore"), riga("ted", "2026-11-20T09:15:00Z", "errore"), riga("ted", "2026-11-19T09:15:00Z", "ok")])).includes("errori_ripetuti"));
   controlla("errori ripetuti: un errore solo → nessun allarme", !codici(er([riga("ted", "2026-11-23T09:15:00Z", "errore"), riga("ted", "2026-11-20T09:15:00Z", "ok")])).includes("errori_ripetuti"));
+  const alterni = er([riga("ted", "2026-11-23T09:15:00Z", "errore"), riga("ted", "2026-11-20T09:15:00Z", "ok"), riga("ted", "2026-11-19T09:15:00Z", "errore")]);
+  controlla("errori ripetuti: un giro riuscito in mezzo azzera il conteggio", alterni.erroriConsecutivi === 1 && !codici(alterni).includes("errori_ripetuti"), alterni);
   const occ = er([riga("ted", "2026-11-23T09:20:00Z", "errore"), riga("ted", "2026-11-23T09:16:00Z", "occupata"), riga("ted", "2026-11-23T09:15:00Z", "inerte"), riga("ted", "2026-11-20T09:15:00Z", "errore")]);
   controlla("errori ripetuti: «occupata» e «inerte» non sono giri (non interrompono né contano)", occ.erroriConsecutivi === 2 && codici(occ).includes("errori_ripetuti"), occ);
 
@@ -86,6 +89,7 @@ function provaAllarmi(): void {
   controlla("giro mancato: il giro delle 13:05 senza un giro riuscito entro 60 minuti → allarme «errore» con l'orario", codici(gm).includes("giro_mancato") && gm.allarmi.find((a) => a.codice === "giro_mancato")?.dal === "2026-11-23T12:05:00.000Z", gm.allarmi);
   controlla("giro mancato: alle 14:00 (55 minuti dopo le 13:05) ancora no", !codici(pvl(solo08, new Date("2026-11-23T13:00:00Z"))).includes("giro_mancato"));
   controlla("giro mancato: con il giro delle 13:06 riuscito → nessun allarme", !codici(pvl([...solo08, riga("pvl", "2026-11-23T12:06:00Z", "ok")])).includes("giro_mancato"));
+  controlla("giro mancato: un giro partito 3 minuti PRIMA dell'orario lo copre; 7 minuti prima no", !codici(pvl([...solo08, riga("pvl", "2026-11-23T12:02:00Z", "ok")])).includes("giro_mancato") && codici(pvl([...solo08, riga("pvl", "2026-11-23T11:58:00Z", "ok")])).includes("giro_mancato"));
   controlla("giro mancato: un doppio richiamo «gia_eseguito» vale come riuscito", !codici(pvl([...solo08, riga("pvl", "2026-11-23T12:07:00Z", "gia_eseguito")])).includes("giro_mancato"));
   controlla("giro mancato: un giro delle 13:06 in ERRORE non basta (nessun giro riuscito)", codici(pvl([...solo08, riga("pvl", "2026-11-23T12:06:00Z", "errore")])).includes("giro_mancato"));
   controlla("giro mancato: un giro riuscito 2 ore dopo l'orario non lo copre", codici(pvl([...solo08, riga("pvl", "2026-11-23T14:30:00Z", "ok")], new Date("2026-11-23T15:00:00Z"))).includes("giro_mancato"));
@@ -109,11 +113,16 @@ function provaAllarmi(): void {
   controlla("PVL: un giorno con bandi → nulla; un giorno senza giri → nulla (lo dice «giro mancato»)", !bandi(3, 0).includes("giorno_lavorativo_senza_bandi") && !bandi(0, null).includes("giorno_lavorativo_senza_bandi"));
   const tedBandi = codici(di(allarmiFonti([riga("ted", "2026-11-20T09:16:00Z", "ok", { avvisi: { bandi: { letti: 0 } } }), riga("ted", "2026-11-19T09:16:00Z", "ok", { avvisi: { bandi: { letti: 0 } } })], stati(), ADESSO, { cronAttivi: new Set() }), "ted"));
   controlla("TED: stessa regola sui bandi letti", tedBandi.includes("giorno_lavorativo_senza_bandi"));
+  const tedConBandi = codici(di(allarmiFonti([riga("ted", "2026-11-20T09:16:00Z", "ok", { avvisi: { bandi: { letti: 40 } } }), riga("ted", "2026-11-19T09:16:00Z", "ok", { avvisi: { bandi: { letti: 0 } } })], stati(), ADESSO, { cronAttivi: new Set() }), "ted"));
+  controlla("TED: con bandi letti un giorno → nulla", !tedConBandi.includes("giorno_lavorativo_senza_bandi"));
 
   // volume anomalo
   const vol = (ultimo: number, precedenti = 6) => codici(di(allarmiFonti([riga("sintel", "2026-11-23T12:41:00Z", "ok", { gare_nuove: ultimo }), ...Array.from({ length: precedenti }, (_, i) => riga("sintel", `2026-11-2${2 - Math.floor(i / 2)}T${i % 2 ? "12" : "06"}:41:00Z`, "ok", { gare_nuove: 2 }))], stati(), ADESSO, { cronAttivi: new Set() }), "sintel"));
   controlla("volume anomalo: 30 gare nuove con una media di 2 → avviso", vol(30).includes("volume_anomalo"));
-  controlla("volume anomalo: 5 gare nuove (sotto il minimo) o pochi giri precedenti → nulla", !vol(5).includes("volume_anomalo") && !vol(30, 3).includes("volume_anomalo"));
+  controlla("volume anomalo: 8 gare nuove (oltre il triplo ma sotto il minimo di 10) o pochi giri precedenti → nulla", !vol(8).includes("volume_anomalo") && !vol(30, 3).includes("volume_anomalo"));
+  controlla("volume anomalo: la media è dei giri PRECEDENTI (10 gare dopo 5 giri da 2 → avviso)", vol(10, 5).includes("volume_anomalo"));
+  const dopoErrore = codici(di(allarmiFonti([riga("sintel", "2026-11-23T12:41:00Z", "errore", { gare_nuove: 30, avvisi: { esclusi: { modalita_sconosciuta: 2 } } }), ...Array.from({ length: 6 }, (_, i) => riga("sintel", `2026-11-2${2 - Math.floor(i / 2)}T${i % 2 ? "12" : "06"}:41:00Z`, "ok", { gare_nuove: 2 }))], stati(), ADESSO, { cronAttivi: new Set() }), "sintel"));
+  controlla("volume e tipi sconosciuti guardano un ultimo giro RIUSCITO (dopo un errore: nulla)", !dopoErrore.includes("volume_anomalo") && !dopoErrore.includes("tipo_sconosciuto"), dopoErrore);
 
   // risorse
   const ris = (x: Partial<RigaEsecuzioneLetta>) => codici(di(allarmiFonti([riga("ted", "2026-11-23T09:16:00Z", "ok", x)], stati(), ADESSO, { cronAttivi: new Set() }), "ted"));
@@ -136,19 +145,34 @@ function provaAllarmi(): void {
   // segnalati dal giro e ordine
   const dalGiro = di(allarmiFonti([riga("sardegnacat", "2026-11-23T13:21:00Z", "ok", { allarmi: ["buco_possibile", "sospesa", "nome_sconosciuto"] })], stati(), ADESSO, { cronAttivi: new Set() }), "sardegnacat");
   controlla("allarmi segnalati dal giro: quelli noti passano (buco_possibile), gli altri no", codici(dalGiro).join() === "buco_possibile", dalGiro.allarmi);
-  const misti = di(allarmiFonti([riga("ted", "2026-11-23T09:16:00Z", "ok", { db_richieste: 400 }), riga("ted", "2026-11-23T09:15:00Z", "errore"), riga("ted", "2026-11-22T09:15:00Z", "errore")], stati({ ted: { attiva: false, conteggi: { sospensione: { il: "2026-11-23T10:00:00Z", motivo: "x" } } } }), ADESSO, { cronAttivi: new Set() }), "ted");
-  controlla("ordine: prima gli «errore», poi gli «avviso», poi le «informazione»", misti.allarmi.every((a, i, v) => i === 0 || ["errore", "avviso", "informazione"].indexOf(v[i - 1].gravita) <= ["errore", "avviso", "informazione"].indexOf(a.gravita)) && misti.allarmi[0].gravita === "errore", misti.allarmi);
+  // ordine: il calcolo trova prima la sospensione (errore), poi i giorni senza bandi (informazione), poi le risorse (avviso)
+  const misti = di(allarmiFonti([riga("ted", "2026-11-20T09:16:00Z", "ok", { avvisi: { bandi: { letti: 0 } }, db_richieste: 400 }), riga("ted", "2026-11-19T09:16:00Z", "ok", { avvisi: { bandi: { letti: 0 } } })], stati({ ted: { attiva: false, conteggi: { sospensione: { il: "2026-11-23T10:00:00Z", motivo: "x" } } } }), ADESSO, { cronAttivi: new Set() }), "ted");
+  controlla("ordine: prima gli «errore», poi gli «avviso», poi le «informazione»", codici(misti).join() === "sospesa,risorse,giorno_lavorativo_senza_bandi", misti.allarmi);
   controlla("soglie del 48C §3.5 (approvate)", SOGLIE_ALLARMI.giroMancatoMinuti === 60 && SOGLIE_ALLARMI.erroriRipetuti === 2 && SOGLIE_ALLARMI.tettoRipetuto === 3 && SOGLIE_ALLARMI.volumeFattore === 3 && SOGLIE_ALLARMI.risorseRichiesteDb === 300 && SOGLIE_ALLARMI.risorseSecondi === 120);
 }
 
 // ═════ lettura per la console ═════
+// una lettura che finisce con un errore (catena select → gte → order → limit → returns)
+function catena(errore: { code: string; message: string }): unknown {
+  const c: Record<string, unknown> = {};
+  for (const m of ["select", "gte", "order", "limit"]) c[m] = () => c;
+  c.returns = () => Promise.resolve({ data: null, error: errore });
+  return c;
+}
 async function provaLettura(): Promise<void> {
   const db = new DbFinto();
   db.tabelle.radar_fonti_stato = stati();
-  db.tabelle.radar_esecuzioni = [riga("pvl", "2026-11-23T07:06:00Z", "ok"), riga("pvl", "2026-10-01T07:06:00Z", "errore")];
+  db.tabelle.radar_esecuzioni = [riga("pvl", "2026-11-23T07:06:00Z", "ok"), riga("ted", "2026-10-02T09:15:00Z", "errore"), riga("ted", "2026-10-01T09:15:00Z", "errore")];
   const r = await leggiSituazioneFonti(db as unknown as SupabaseClient, ADESSO, { RADAR_PVL_CRON: "attivo" });
   controlla("lettura: due letture (stato e registro), nessuna scrittura; quattro fonti; giro mancato della PVL (cron acceso)", db.richieste.length === 2 && db.richieste.every((q) => q.metodo === "select") && r.situazioni.length === 4 && codici(di(r.situazioni, "pvl")).includes("giro_mancato") && r.errore === null && !r.registroAssente, { r: r.situazioni.map((s) => [s.fonte, s.stato, codici(s)]), richieste: db.richieste });
-  controlla("lettura: solo gli ultimi 30 giorni del registro (la riga di ottobre non conta)", di(r.situazioni, "pvl").erroriConsecutivi === 0);
+  controlla("lettura: solo gli ultimi 30 giorni del registro (i due errori TED di inizio ottobre non contano)", di(r.situazioni, "ted").erroriConsecutivi === 0 && di(r.situazioni, "ted").ultimoGiro === null, di(r.situazioni, "ted"));
+  // tabella del registro assente (0128 non applicata): situazioni dallo stato, «registroAssente», nessun errore
+  const senzaTabella = { from: (t: string) => (t === "radar_esecuzioni" ? catena({ code: "PGRST205", message: "Could not find the table 'public.radar_esecuzioni' in the schema cache" }) : db.from(t)) };
+  const r3 = await leggiSituazioneFonti(senzaTabella as unknown as SupabaseClient, ADESSO, {});
+  controlla("lettura: registro assente → registroAssente, quattro fonti dallo stato, nessun errore", r3.registroAssente && r3.errore === null && r3.situazioni.length === 4, r3);
+  const guastoRegistro = { from: (t: string) => (t === "radar_esecuzioni" ? catena({ code: "08006", message: "connessione persa" }) : db.from(t)) };
+  const r4 = await leggiSituazioneFonti(guastoRegistro as unknown as SupabaseClient, ADESSO, {});
+  controlla("lettura: registro non leggibile per un guasto → errore detto, non «assente»", !r4.registroAssente && /registro dei giri/.test(r4.errore ?? "") && r4.situazioni.length === 4, r4);
   const db2 = new DbFinto();
   db2.tabelle.radar_fonti_stato = stati();
   db2.guasti.set("radar_fonti_stato|select", 1);
