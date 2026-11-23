@@ -73,6 +73,11 @@
 // Controlli CAMBIATI con la versione «2026-11-18e» (controllo del coordinamento del 18/11 sulla 18d):
 //   - versione delle regole «2026-11-18e». Nessun altro controllo cambiato; nuovi: le frasi sintetiche del coordinamento su «parte/parti»
 //     (A da sola, B solo coordinata dopo un altro servizio), «in tutto o in parte», «da parte del servizio», spiagge e servizi igienici A.
+// Controlli CAMBIATI con la versione «2026-11-23a» (decisione dell'utente del 23/11 sui quattro schemi del documento 49A):
+//   - versione delle regole «2026-11-23a». Nessun altro controllo cambiato; nuovi: S1 (servizio elencato tra le attività affidate B, con i
+//     casi reali che restano citazione: «pulizia casse», «assistenza alla mensa», luoghi, esclusioni), S2 (trasporto con imballaggio o
+//     montaggio nella descrizione B, solo con la descrizione), S3 (manutenzione integrata di edifici multiservizi B, mai A, apparecchiature e
+//     strade no), S4 (tre casi «da verificare» come dato puro, la riga resta quella di oggi).
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -102,6 +107,7 @@ import {
   descriviCorrezioneSettori,
   esclusioniOggetto,
   idFonteCorrezioneSettori,
+  servizioInElenco,
   settoriDaParole,
   testoPerConfronto,
   type ContestoCpv,
@@ -920,6 +926,101 @@ uguale("«utilizzo dei locali da parte del servizio di ristorazione»: C, la ris
 // 18e: il «salvo» di acque e coste vale anche per gli edifici coordinati alle spiagge
 uguale("pulizia delle spiagge e dei servizi igienici degli stabilimenti, senza CPV: pulizia A", livelli(gara2b("Pulizia delle spiagge e dei servizi igienici degli stabilimenti comunali")), [["pulizia", "A", "parole_chiave"]]);
 uguale("pulizia delle spiagge e dei servizi igienici degli stabilimenti, con il CPV della pulizia: pulizia A", livelli(gara2b("Pulizia delle spiagge e dei servizi igienici degli stabilimenti comunali", ["90910000"])), [["pulizia", "A", "cpv_principale"]]);
+// ───── 2026-11-23a: decisione dell'utente del 23/11 sui quattro schemi del documento 49A (revisione delle gare C) ─────
+// S1: il servizio elencato tra le attività affidate è B, non una citazione C (caso guida n. 19, Brigata aeromobile, TED e30a5e91)
+const BRIGATA =
+  "FASC 1145 SERVIZIO DI NOLEGGIO SULLE REGIONI SARDEGNA E LAZIO DI CONTAINER/MODULI DOCCE/ WC CON VASCHEDI RECUPERO REFLUI, CONTAINER/ MODULI AD USO ABITATIVO, GRUPPI ELETTROGENI, CERTIFICAZIONE IMPIANTO LETTRICO,SANIFICAZIONE/DISINFESTAZIONE E DERATTIZZAZIONE A FAVORE DEI REPARTI DEL COMANDO AVIAZIONE ESERCITO";
+const brigata = gara2b(BRIGATA, ["98390000", "79952000", "44210000"]);
+uguale("S1, caso guida n. 19 (Brigata aeromobile): sanificazione e disinfestazione elencate tra le attività affidate, pulizia B «servizio_in_elenco»", [brigata.settori, livelli(brigata)], [["pulizia"], [["pulizia", "B", "servizio_in_elenco"]]]);
+atteso("S1: motivo leggibile e sottocategorie dal testo", /attività elencate come affidate/.test(brigata.valutazioni[0]?.motivo ?? "") && JSON.stringify(brigata.valutazioni[0]?.sottocategorie) === JSON.stringify(["sanificazione", "disinfestazione"]), JSON.stringify(brigata.valutazioni[0]));
+uguale(
+  "S1, resta citazione: «pulizia casse» delle navi tra carenaggio e pitturazioni (n. 23, Agenzia Industrie Difesa, TED 04ceaec1)",
+  livelli(gara2b("Procedura aperta … relativo ai servizi a richiesta a quantità indeterminata di carenaggio, lavaggio, pulizia casse e pitturazioni necessari per il ripristino efficienza delle UU.NN. della Marina Militare", ["50240000"])),
+  [["pulizia", "C", "parola_chiave_citata"]],
+);
+uguale(
+  "S1, resta citazione: «assistenza alla mensa» (n. 17, Comune di Verzuolo, TED b6d73dd4)",
+  livelli(gara2b("COMUNE DI VERZUOLO - Procedura Aperta - SERVIZIO di ASSISTENZA per l'AUTONOMIA e la COMUNICAZIONE personale degli alunni diversamente abili e di ASSISTENZA alla MENSA per n. 3 AA.SS.", ["80410000"])),
+  [["ristorazione", "C", "parola_chiave_citata"]],
+);
+atteso(
+  "S1, resta citazione: una parola che può essere un luogo («presso le scuole, mense e uffici»)",
+  livelli(gara2b("Servizio di vigilanza armata presso le scuole, mense e uffici comunali")).some((v) => v[0] === "ristorazione" && v[1] === "C"),
+  JSON.stringify(livelli(gara2b("Servizio di vigilanza armata presso le scuole, mense e uffici comunali"))),
+);
+uguale("S1, elenco sintetico: «noleggio di tensostrutture, montaggio, sanificazione e smontaggio» → pulizia B", livelli(gara2b("Noleggio di tensostrutture per eventi, montaggio, sanificazione e smontaggio a fine evento")), [["pulizia", "B", "servizio_in_elenco"]]);
+uguale("S1 non supera le esclusioni: raccolta dei rifiuti, spazzamento e pulizia resta fuori dalla pulizia", gara2b("Servizio di raccolta dei rifiuti, spazzamento, pulizia delle aree mercatali").settori, []);
+uguale("S1 non supera le esclusioni: il canile con «cattura, ricovero, pulizia, custodia» resta C «cura_degli_animali» (n. 25)", livelli(gara2b("INDIVIDUAZIONE DI CANILE SANITARIO E RIFUGIO CUI AFFIDARE IL SERVIZIO DI CATTURA, RICOVERO, PULIZIA, CUSTODIA E MANTENIMENTO DEI CANI RANDAGI", ["98380000"])), [["pulizia", "C", "cura_degli_animali"]]);
+uguale("S1, funzione: in elenco dopo un'attività sì, dopo un luogo no, con un oggetto che non è un ambiente no", [servizioInElenco("pulizia", BRIGATA), servizioInElenco("pulizia", "presso le scuole, pulizia degli uffici"), servizioInElenco("pulizia", "carenaggio, lavaggio, pulizia casse")], [true, false, false]);
+uguale(
+  "S1, funzione: senza virgola o «e» prima non è un elenco; dopo lavori o progettazione non è un'attività affidata",
+  [servizioInElenco("pulizia", "verifica e certificazione degli impianti pulizia"), servizioInElenco("pulizia", "Lavori di progettazione e realizzazione, pulizia dei locali")],
+  [false, false],
+);
+atteso(
+  "S1: una parola che può essere un luogo («mensa») resta citazione anche dopo un'attività elencata",
+  livelli(gara2b("Noleggio di moduli, montaggio, sanificazione e mensa per il personale")).some((v) => v[0] === "ristorazione" && v[1] === "C" && v[2] === "parola_chiave_citata"),
+  JSON.stringify(livelli(gara2b("Noleggio di moduli, montaggio, sanificazione e mensa per il personale"))),
+);
+
+// S3: manutenzione integrata di edifici e impianti = multiservizi B «gestione impianti», mai A da sola (caso guida n. 16, ASL Napoli 1)
+const ASL_NAPOLI =
+  "procedura aperta, ai sensi dell'art. 71 del D.Lgs. 36/2023, per l'affidamento di appalto dei servizi integrati, gestionali ed operativi di manutenzione da eseguirsi presso gli immobili di proprietà o in uso all’ASL Napoli 1 Centro, da espletare con il criterio dell'offerta economicamente più vantaggiosa";
+const LOTTO_BIOMEDICALI = "procedura aperta per l'affidamento di appalto dei servizi di Gestione Integrata e manutenzione delle apparecchiature biomediche in dotazione all'Asl Napoli 1 Centro";
+const asl = classificaGara({ cpvPrincipale: "50000000", cpvTutti: ["50000000", "45000000", "50413200"], testo: `${ASL_NAPOLI} ${LOTTO_BIOMEDICALI} (lotto 1) ${LOTTO_BIOMEDICALI} (lotto 2)`, lotti: [{ testo: `${LOTTO_BIOMEDICALI} (lotto 1)`, cpv: ["50000000"] }, { testo: `${LOTTO_BIOMEDICALI} (lotto 2)`, cpv: ["50000000"] }] });
+uguale("S3, caso guida n. 16 (ASL Napoli 1): multiservizi B «manutenzione_integrata_edifici», sottocategoria gestione impianti", [asl.settori, asl.valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie, v.regola])], [["multiservizi"], [["multiservizi", "B", ["gestione_impianti"], "manutenzione_integrata_edifici"]]]);
+uguale("S3, sintetico: «manutenzione integrata degli edifici scolastici» → multiservizi B", livelli(gara2b("Servizio di manutenzione integrata degli edifici scolastici comunali")), [["multiservizi", "B", "manutenzione_integrata_edifici"]]);
+uguale("S3, niente: manutenzione integrata di apparecchiature elettromedicali (n. 21)", gara2b("servizi integrati per la gestione, manutenzione e collaudo di sistemi e apparecchiature elettromedicali", ["50420000"]).settori, []);
+uguale("S3, niente: global service della rete stradale (n. 11)", gara2b("Procedura aperta per l’appalto misto di servizi e lavori - global service di gestione e manutenzione di parte della rete stradale", ["50230000"]).settori, []);
+uguale("S3, niente: manutenzione ordinaria degli edifici senza segnale di integrazione", gara2b("Servizio di manutenzione ordinaria degli edifici comunali").settori, []);
+uguale("S3, niente con i soli CPV dei lavori", gara2b("Servizi integrati di manutenzione degli immobili comunali", ["45453000"]).settori, []);
+uguale("S3 non aggiunge una seconda riga a un multiservizi già pertinente («global service di manutenzione integrata degli immobili»)", livelli(gara2b("Global service di manutenzione integrata degli immobili comunali")), [["multiservizi", "A", "parole_chiave"]]);
+uguale("S3 non abbassa le A: «manutenzione in global service delle strutture» resta multiservizi A", livelli(gara2b("Procedura aperta per l'affidamento di servizi di manutenzione in global service sulle strutture gestite dalla società, impianti elettrici e idrico sanitari")), [["multiservizi", "A", "parole_chiave"]]);
+
+// S2: trasporto con imballaggio, montaggio o movimentazione nella DESCRIZIONE = facchinaggio B (caso guida n. 33, MANN, TED 566d9123)
+const MANN = { cpvPrincipale: "63110000", cpvTutti: ["63110000"], testo: "SERVIZIO DI TRASPORTO DI OPERE D’ARTE" };
+const MANN_DESCRIZIONE = "SERVIZIO DI TRASPORTO DI OPERE D’ARTE ‘DA CHIODO A CHIODO’, COMPRENSIVO DI IMBALLAGGIO E DISIMBALLAGGIO, MONTAGGIO E SMONTAGGIO DELLE OPERE IN ANDATA E RITORNO";
+const mann = classificaGara({ ...MANN, descrizione: MANN_DESCRIZIONE });
+uguale("S2, caso guida n. 33 (MANN) con la descrizione: facchinaggio B «trasporto_con_movimentazione»", [mann.settori, mann.valutazioni.map((v) => [v.settore, v.livello, v.sottocategorie, v.regola])], [["facchinaggio"], [["facchinaggio", "B", ["facchinaggio_movimentazione"], "trasporto_con_movimentazione"]]]);
+uguale("S2: senza la descrizione resta C «trasporto_puro» (come oggi)", livelli(classificaGara(MANN)), [["facchinaggio", "C", "trasporto_puro"]]);
+uguale("S2: «escluso il montaggio» nella descrizione non basta", livelli(classificaGara({ ...MANN, descrizione: "Trasporto delle opere, escluso il montaggio e l'imballaggio" })), [["facchinaggio", "C", "trasporto_puro"]]);
+uguale("S2: trasporto interbibliotecario senza movimentazione resta C (n. 10)", livelli(classificaGara({ cpvPrincipale: "63100000", cpvTutti: ["63100000"], testo: "AFFIDAMENTO DEL SERVIZIO DI TRASPORTO INTERBIBLIOTECARIO", descrizione: "Trasporto settimanale dei libri tra le biblioteche del sistema" })), [["facchinaggio", "C", "trasporto_puro"]]);
+uguale("S2: imballaggio o montaggio senza trasporto nella descrizione non bastano", livelli(classificaGara({ ...MANN, descrizione: "Allestimento della mostra con montaggio e smontaggio delle opere" })), [["facchinaggio", "C", "trasporto_puro"]]);
+uguale("S2: la descrizione non arriva alle esclusioni («raccolta dei rifiuti» solo nella descrizione di una pulizia)", classificaGara({ testo: "Servizio di pulizia degli uffici comunali", descrizione: "Compresa la raccolta dei rifiuti degli uffici" }).settori, ["pulizia"]);
+uguale("S2: la descrizione non arriva al riconoscimento dell'affidamento", livelli(classificaGara({ testo: "Fornitura di detergenti per la pulizia", descrizione: "Servizio di pulizia degli uffici comunali" })), [["pulizia", "C", "parola_chiave_citata"]]);
+uguale("S2: la descrizione non arriva all'elenco delle attività (S1)", livelli(classificaGara({ testo: "Noleggio di moduli abitativi per la sanificazione", descrizione: "Certificazione degli impianti, sanificazione e derattizzazione dei moduli" })), [["pulizia", "C", "parola_chiave_citata"]]);
+uguale("S2: la descrizione non arriva alle parole chiave", classificaGara({ testo: "Servizio di trasporto scolastico", descrizione: "Servizio di pulizia degli scuolabus" }).valutazioni.map((v) => v.settore), []);
+uguale("S2: la descrizione non aggiunge altri settori, nemmeno come C («vigilanza» nella descrizione di una pulizia)", classificaGara({ testo: "Servizio di pulizia degli uffici comunali", descrizione: "Il servizio comprende anche la vigilanza e il portierato degli accessi" }).valutazioni.map((v) => v.settore), ["pulizia"]);
+
+// S4: tre casi senza descrizione utile = etichetta «da verificare» (dato puro: la riga resta quella di oggi)
+const casone = gara2b("AFFIDAMENTO IN CONCESSIONE DEL CASONE “PADULI” PER LA DURATA DI SETTE ANNI", ["55300000"]);
+uguale("S4, n. 9 (casone «Paduli»): da verificare, ristorazione; la riga resta C «concessione_di_immobili»", [casone.daVerificare?.map((d) => [d.settore, d.caso, d.regola]), livelli(casone), casone.settori], [[["ristorazione", "immobile_con_cpv_ristorazione", "da_verificare"]], [["ristorazione", "C", "concessione_di_immobili"]], []]);
+const stabulari = gara2b("Gara europea a procedura aperta per l'affidamento dei Servizi di gestione degli stabilimenti utilizzatori di Ateneo (Monitoraggio sanitario, fornitura diete e lettiera, pulizie e cure degli animali) dell'Università degli Studi di Torino", ["77400000"]);
+uguale("S4, n. 4 (stabulari, Torino): da verificare, pulizia; la riga resta C «cura_degli_animali»", [stabulari.daVerificare?.map((d) => [d.settore, d.caso]), livelli(stabulari)], [[["pulizia", "stabulari"]], [["pulizia", "C", "cura_degli_animali"]]]);
+const biblioteca = gara2b("Gara d'appalto europea a procedura aperta per l'affidamento dei servizi integrati di biblioteca presso le strutture dell'Università \"G. d'Annunzio\" di Chieti-Pescara", ["92511000"]);
+uguale("S4, n. 29 (biblioteca, Chieti): da verificare, vigilanza e portierato; nessuna valutazione", [biblioteca.daVerificare?.map((d) => [d.settore, d.caso]), biblioteca.valutazioni.length], [[["vigilanza_portierato", "biblioteca"]], 0]);
+atteso("S4: ogni etichetta ha un motivo leggibile", [casone, stabulari, biblioteca].every((c) => (c.daVerificare ?? []).every((d) => d.motivo.length > 40)));
+uguale("S4, niente: il canile resta C senza etichetta (n. 25)", gara2b("INDIVIDUAZIONE DI CANILE SANITARIO E RIFUGIO CUI AFFIDARE IL SERVIZIO DI CATTURA, RICOVERO, PULIZIA, CUSTODIA E MANTENIMENTO DEI CANI RANDAGI", ["98380000"]).daVerificare, undefined);
+uguale("S4, niente: concessione demaniale con un CPV di ristorazione (non è un immobile)", gara2b("Assentimento di n. 6 concessioni demaniali marittime ad uso commerciale, ludico, turistico ricreativo", ["55300000"]).daVerificare, undefined);
+uguale("S4, niente su una gara pertinente: biblioteca con il servizio di pulizia affidato", gara2b("Servizi integrati di biblioteca e servizio di pulizia dei locali").daVerificare, undefined);
+atteso("S4: il campo non c'è nelle classificazioni di sempre", !("daVerificare" in gara2b("Affidamento del servizio di pulizia degli uffici")) && !("daVerificare" in gara2b("Servizio di trasporto interbibliotecario", ["63100000"])));
+const bibliotecaConLotti = classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo", lotti: [{ testo: "Servizi di biblioteca" }, { testo: "Servizio di pulizia dei locali delle biblioteche" }] });
+uguale("S4: un lotto che rende la gara pertinente toglie l'etichetta", [bibliotecaConLotti.settori, bibliotecaConLotti.daVerificare], [["pulizia"], undefined]);
+uguale("S4: senza quel lotto l'etichetta c'è", classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo" }).daVerificare?.map((d) => d.caso), ["biblioteca"]);
+
+// S4, migrazione 0133 (approvata dall'utente il 23/11, mai applicata): solo il vincolo dello stato, idempotente, con i valori di prima
+{
+  const m0133 = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/0133_radar_classificazioni_da_verificare.sql"), "utf8").replace(/--[^\n]*/g, "");
+  const istruzioni = m0133.split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+  uguale("0133: tre istruzioni, solo il vincolo dello stato e la ricarica dello schema", istruzioni, [
+    "alter table public.radar_classificazioni_stato drop constraint if exists radar_classificazioni_stato_stato_check",
+    "alter table public.radar_classificazioni_stato add constraint radar_classificazioni_stato_stato_check check (stato in ('in_attesa', 'classificata', 'fallita', 'da_verificare'))",
+    "notify pgrst, 'reload schema'",
+  ]);
+  const statiDelCodice = [...(fs.readFileSync(path.join(__dirname, "..", "src/lib/radar/classificazioni-calcoli.ts"), "utf8").match(/export type StatoClassificazione = ([^;]+);/)?.[1] ?? "").matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
+  atteso("0133: il vincolo nuovo ammette tutti gli stati del codice di oggi", statiDelCodice.length === 3 && statiDelCodice.every((s) => istruzioni[1].includes(`'${s}'`)), statiDelCodice.join(","));
+}
+
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
   "manutenzione IN global service delle strutture (TED 54bdd6eb): multiservizi A",
@@ -1241,7 +1342,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-18e");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-23a");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
