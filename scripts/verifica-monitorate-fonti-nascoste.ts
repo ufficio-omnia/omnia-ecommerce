@@ -1956,6 +1956,224 @@ async function principale(): Promise<void> {
       scrittoAMano.length === 0,
     { tiGiriSpenti, tiGiriAccesi, avvisiAccensione: avvisiAccensione.map((a) => a.slice(0, 120)), scrittoAMano },
   );
+
+  // ═════ «Riprendi il recupero» della PVL (K4 di B2, riprendiRecuperoPvl): pulsante solo con l'allarme «blocco_incompleto», conferma nel
+  // server, registro 0112, ogni motivo di rifiuto detto in chiaro. Cursore v2 sintetico fermo sul blocco 01/10–07/10 ═════
+  const { cursorePvlNuovo } = richiedi(src("lib/radar/importa-pvl-cursore.ts")) as { cursorePvlNuovo: (oggi: string) => { recupero: Record<string, unknown> } };
+  const calcoliRipresa = richiedi(src("lib/console/fonti-calcoli.ts")) as { TESTO_MOTIVO_RIPRESA?: Record<string, string>; ERRORE_CONFERMA_RIPRESA?: string };
+  const TESTO_MOTIVO = calcoliRipresa.TESTO_MOTIVO_RIPRESA ?? {};
+  const BLOCCO_FERMO = { il: "2026-11-25T07:06:00.000Z", da: "2026-10-01", a: "2026-10-07" };
+  const cursoreFermo = () => {
+    const c = cursorePvlNuovo("2026-11-25");
+    return { ...c, recupero: { ...c.recupero, fermo: { ...BLOCCO_FERMO } } };
+  };
+  const mondoRipresa = (o: { allarmeSu?: string | null; fermo?: boolean; bloccoFinoA?: string | null } = {}) => {
+    const m = mondoFonti();
+    const pvl = m.admin.tabelle.radar_fonti_stato.find((r) => r.fonte === "pvl")!;
+    Object.assign(pvl, { cursore: o.fermo === false ? cursorePvlNuovo("2026-11-25") : cursoreFermo(), blocco_fino_a: o.bloccoFinoA ?? null, aggiornata_il: "2026-11-25T07:06:30.000Z" });
+    const su = o.allarmeSu === undefined ? "pvl" : o.allarmeSu;
+    if (su) {
+      const ultimo = m.admin.tabelle.radar_esecuzioni.filter((r) => r.fonte === su).sort((x, y) => String(y.iniziato_il).localeCompare(String(x.iniziato_il)))[0];
+      ultimo.allarmi = ["blocco_incompleto"];
+    }
+    return m;
+  };
+  const riprendi = azioniTi.riprendiRecuperoPvlConsole as ((s: unknown, fd: FormData) => Promise<{ errore?: string; ok?: boolean; avviso?: string }>) | undefined;
+  type FonteConRipresa = FonteConsoleProva & { ripresaRecupero?: { stato: string; blocco?: { il: string; da: string; a: string } } | null };
+  const vistaRipresa = async (o: Parameters<typeof mondoRipresa>[0]) => {
+    mondo = mondoRipresa(o);
+    const d = leggiDatiFonti ? ((await leggiDatiFonti(mondo.admin, ADESSO_F, ENV_F)) as unknown as Omit<DatiFontiProva, "fonti"> & { fonti: FonteConRipresa[] }) : null;
+    const alb = vistaFonti && d ? vistaFonti({ dati: d }) : null;
+    const pann = elementi(alb).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT"].some((n) => String(e.props.titolo).startsWith(n)));
+    const moduli = pann.map((p) => elementi(p.props.children).filter((e) => e.type === ModuloAzioneConsole && e.props.azione === riprendi && !!riprendi));
+    return { d, pann, moduli, testiPvl: testi(pann[1]?.props.children) };
+  };
+  const rFermo = await vistaRipresa({});
+  const rSenza = await vistaRipresa({ allarmeSu: null });
+  const rSuTed = await vistaRipresa({ allarmeSu: "ted" });
+  const rGiaRipreso = await vistaRipresa({ fermo: false });
+  const moduloPvl = rFermo.moduli[1]?.[0];
+  const casellaRipresa = moduloPvl ? elementi(moduloPvl.props.children).find((e) => e.type === "input" && e.props.name === "conferma") : undefined;
+  const nessunModulo = (r: Awaited<ReturnType<typeof vistaRipresa>>) => r.pann.length === 4 && r.moduli.every((m) => m.length === 0);
+  controlla(
+    "FS13. «Riprendi il recupero» SOLO per la PVL con l'allarme «blocco_incompleto» e il recupero fermo: il blocco fermo accanto (01/10/2026–07/10/2026), la nota «si ritenta al prossimo giro», la casella di conferma obbligatoria; nessun pulsante senza l'allarme, con l'allarme su un'altra fonte o col recupero già ripreso",
+    !!riprendi &&
+      rFermo.pann.length === 4 &&
+      rFermo.moduli.map((m) => m.length).join(",") === "0,1,0,0" &&
+      JSON.stringify(rFermo.d?.fonti[1].ripresaRecupero) === JSON.stringify({ stato: "fermo", blocco: BLOCCO_FERMO }) &&
+      rFermo.testiPvl.some((t) => t.includes("01/10/2026") && t.includes("07/10/2026")) &&
+      testi(moduloPvl?.props.children).some((t) => /si ritenta al prossimo giro/i.test(t)) &&
+      casellaRipresa?.props.type === "checkbox" && casellaRipresa?.props.required === true && casellaRipresa?.props.value === "si" &&
+      nessunModulo(rSenza) && rSenza.d?.fonti.every((f) => f.ripresaRecupero === null) === true &&
+      nessunModulo(rSuTed) && rSuTed.d?.fonti.every((f) => f.ripresaRecupero === null) === true &&
+      nessunModulo(rGiaRipreso) && rGiaRipreso.d?.fonti[1].ripresaRecupero?.stato === "gia_ripreso" && rGiaRipreso.testiPvl.some((t) => /già ripreso/.test(t)),
+    {
+      moduli: rFermo.moduli.map((m) => m.length),
+      ripresa: rFermo.d?.fonti[1].ripresaRecupero,
+      senza: rSenza.moduli.map((m) => m.length),
+      suTed: rSuTed.moduli.map((m) => m.length),
+      giaRipreso: rGiaRipreso.d?.fonti[1].ripresaRecupero,
+    },
+  );
+
+  // l'azione vera, col database in memoria (sullo staging solo in memoria: la PVL si scrive solo lì)
+  const provaRipresa = async (campi: Record<string, string>, prepara: (m: ReturnType<typeof mondoRipresa>) => void = () => undefined, o: Parameters<typeof mondoRipresa>[0] = {}, staging = true) => {
+    mondo = mondoRipresa(o);
+    prepara(mondo);
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(campi)) fd.append(k, v);
+    const esito = riprendi ? await conStagingF(staging, () => riprendi({}, fd)) : { errore: "azione assente" };
+    const pvl = mondo.admin.tabelle.radar_fonti_stato?.find((r) => r.fonte === "pvl");
+    return {
+      esito,
+      richieste: mondo.admin.richieste.length,
+      fermo: ((pvl?.cursore as { recupero?: { fermo?: unknown } } | undefined)?.recupero?.fermo ?? null) as unknown,
+      ripresa: (pvl?.conteggi as Record<string, unknown> | undefined)?.ultima_ripresa_recupero as { autore?: string; blocco?: unknown } | undefined,
+      registro: (mondo.admin.tabelle.radar_console_registro ?? []).filter((r) => r.oggetto === "fonte:pvl:ripresa_recupero"),
+    };
+  };
+  adminAutenticato = false;
+  const rNonAdmin = await provaRipresa({ conferma: "si" });
+  adminAutenticato = true;
+  const rSenzaConferma = await provaRipresa({});
+  const rConfermaOn = await provaRipresa({ conferma: "on" });
+  const rRegistroAssente = await provaRipresa({ conferma: "si" }, (m) => m.admin.assenti.add("radar_console_registro"));
+  const rOk = await provaRipresa({ conferma: "si" });
+  const nonToccato = (x: Awaited<ReturnType<typeof provaRipresa>>) => JSON.stringify(x.fermo) === JSON.stringify(BLOCCO_FERMO) && x.ripresa === undefined && x.registro.length === 0;
+  controlla(
+    "FS14. azione «Riprendi il recupero»: senza amministratore nessuna richiesta al database; senza conferma «si» rifiutata prima di ogni lettura; senza registro 0112 nulla cambia; con la conferma il recupero riparte (cursore non più fermo, autore «console:<email>»), il registro scrive prima e dopo col blocco, il messaggio dice il blocco e il prossimo giro",
+    !!riprendi &&
+      rNonAdmin.esito.errore === "Non autorizzato." && rNonAdmin.richieste === 0 && nonToccato(rNonAdmin) &&
+      typeof calcoliRipresa.ERRORE_CONFERMA_RIPRESA === "string" &&
+      rSenzaConferma.esito.errore === calcoliRipresa.ERRORE_CONFERMA_RIPRESA && rSenzaConferma.richieste === 0 && nonToccato(rSenzaConferma) &&
+      rConfermaOn.esito.errore === calcoliRipresa.ERRORE_CONFERMA_RIPRESA && rConfermaOn.richieste === 0 && nonToccato(rConfermaOn) &&
+      /0112/.test(rRegistroAssente.esito.errore ?? "") && nonToccato(rRegistroAssente) &&
+      rOk.esito.ok === true && !rOk.esito.errore &&
+      rOk.fermo === null &&
+      rOk.ripresa?.autore === `console:${AMMINISTRATORE.email}` &&
+      rOk.registro.length === 1 &&
+      rOk.registro[0].valore_precedente === "fermo sul blocco 2026-10-01..2026-10-07" &&
+      rOk.registro[0].valore_nuovo === "ripreso: blocco 2026-10-01..2026-10-07 da ritentare al prossimo giro" &&
+      rOk.registro[0].autore_email === AMMINISTRATORE.email &&
+      /01\/10\/2026/.test(rOk.esito.avviso ?? "") && /07\/10\/2026/.test(rOk.esito.avviso ?? "") && /prossimo giro/.test(rOk.esito.avviso ?? ""),
+    {
+      nonAdmin: [rNonAdmin.esito.errore, rNonAdmin.richieste],
+      senzaConferma: [rSenzaConferma.esito.errore?.slice(0, 50), rSenzaConferma.richieste],
+      registroAssente: rRegistroAssente.esito.errore?.slice(0, 60),
+      ok: [rOk.esito, rOk.fermo, rOk.ripresa?.autore?.slice(0, 12), rOk.registro.map((r) => [r.valore_precedente, r.valore_nuovo])],
+    },
+  );
+
+  // ogni motivo di rifiuto di riprendiRecuperoPvl, con la sua frase; nessuna scrittura, nessuna riga di registro
+  const secondaChiamataGuasta = (m: ReturnType<typeof mondoRipresa>) => {
+    const da = m.admin.from.bind(m.admin);
+    let n = 0;
+    m.admin.from = (t: string) => {
+      if (t === "radar_fonti_stato" && ++n === 2) m.admin.guasti.add(t);
+      return da(t);
+    };
+  };
+  // in fila: «mondo» è condiviso
+  const esitiMotivi: Record<string, Awaited<ReturnType<typeof provaRipresa>>> = {};
+  for (const [nome, p] of [
+    ["ambiente_non_consentito", () => provaRipresa({ conferma: "si" }, undefined, {}, false)],
+    ["schema_assente", () => provaRipresa({ conferma: "si" }, (m) => m.admin.assenti.add("radar_fonti_stato"))],
+    ["errore_lettura", () => provaRipresa({ conferma: "si" }, (m) => m.admin.guasti.add("radar_fonti_stato"))],
+    ["fonte_assente", () => provaRipresa({ conferma: "si" }, (m) => (m.admin.tabelle.radar_fonti_stato = m.admin.tabelle.radar_fonti_stato.filter((r) => r.fonte !== "pvl")))],
+    ["non_fermo", () => provaRipresa({ conferma: "si" }, undefined, { fermo: false })],
+    ["giro_in_corso", () => provaRipresa({ conferma: "si" }, undefined, { bloccoFinoA: "2099-01-01T00:00:00.000Z" })],
+    [
+      "cambiato_nel_frattempo",
+      () =>
+        provaRipresa({ conferma: "si" }, (m) => {
+          m.admin.primaDiScrivere = (tabella, db) => {
+            if (tabella !== "radar_fonti_stato") return false;
+            const r = db.tabelle.radar_fonti_stato.find((x) => x.fonte === "pvl");
+            if (r) r.aggiornata_il = "2026-11-25T08:00:00.000Z";
+            return true;
+          };
+        }),
+    ],
+    ["errore_scrittura", () => provaRipresa({ conferma: "si" }, secondaChiamataGuasta)],
+  ] as [string, () => Promise<Awaited<ReturnType<typeof provaRipresa>>>][])
+    esitiMotivi[nome] = await p();
+  const frasiMotivi = Object.values(TESTO_MOTIVO);
+  const motiviOk = Object.entries(esitiMotivi).map(([nome, x]) => {
+    const atteso = TESTO_MOTIVO[nome] ? `Recupero non ripreso: ${TESTO_MOTIVO[nome]}.` : null;
+    // il recupero resta com'era (fermo; non fermo nel caso «non_fermo»; la riga PVL non c'è nel caso «fonte_assente»)
+    const fermoRimasto = JSON.stringify(x.fermo) === JSON.stringify(nome === "non_fermo" || nome === "fonte_assente" ? null : BLOCCO_FERMO);
+    return { nome, ok: !!atteso && x.esito.errore === atteso && x.registro.length === 0 && x.ripresa === undefined && fermoRimasto, errore: x.esito.errore?.slice(0, 70) };
+  });
+  controlla(
+    "FS15. ogni motivo di rifiuto della ripresa (ambiente, schema, lettura, fonte assente, non fermo, giro in corso, cambiato nel frattempo, scrittura) ha la sua frase in chiaro, tutte diverse; nessuna scrittura né registro",
+    motiviOk.length === 8 && motiviOk.every((m) => m.ok) && frasiMotivi.length === 8 && new Set(frasiMotivi).size === 8,
+    motiviOk.filter((m) => !m.ok),
+  );
+
+  // ═════ K8: accendere TED dalla console solo dove TED si può scrivere (fonteAutorizzata, la regola di importatori e notifiche); il motivo
+  // in chiaro all'amministratore; spegnere sempre. Ambienti SOLO in memoria (il database è quello finto, la rete è bloccata) ═════
+  const { fonteAutorizzata, PROGETTO_PRODUZIONE: produzioneF } = richiedi(src("lib/radar/ambiente.ts")) as {
+    fonteAutorizzata: (f: string, uso: string, env: Record<string, string | undefined>) => { ok: boolean; motivo?: string };
+    PROGETTO_PRODUZIONE: string;
+  };
+  const CHIAVI_AMBIENTE = ["NEXT_PUBLIC_SUPABASE_URL", "VERCEL_ENV"] as const;
+  const conAmbienteF = async <T,>(env: Partial<Record<(typeof CHIAVI_AMBIENTE)[number], string>>, f: () => Promise<T>): Promise<T> => {
+    const prima = Object.fromEntries(CHIAVI_AMBIENTE.map((k) => [k, process.env[k]]));
+    for (const k of CHIAVI_AMBIENTE) {
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+    }
+    try {
+      return await f();
+    } finally {
+      for (const k of CHIAVI_AMBIENTE) {
+        if (prima[k] === undefined) delete process.env[k];
+        else process.env[k] = prima[k];
+      }
+    }
+  };
+  const AMBIENTI_TED = {
+    locale: {},
+    anteprima: { NEXT_PUBLIC_SUPABASE_URL: `https://${stagingF}.supabase.co`, VERCEL_ENV: "preview" },
+    produzioneDaLocale: { NEXT_PUBLIC_SUPABASE_URL: `https://${produzioneF}.supabase.co` },
+    deployProduzione: { NEXT_PUBLIC_SUPABASE_URL: `https://${produzioneF}.supabase.co`, VERCEL_ENV: "production" },
+  } as const;
+  const provaTed = async (ambiente: keyof typeof AMBIENTI_TED, campi: Record<string, string>, accesa: boolean) => {
+    mondo = mondoFonti();
+    for (const r of mondo.admin.tabelle.radar_fonti_stato) if (r.fonte === "ted") r.attiva = accesa;
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(campi)) fd.append(k, v);
+    const azione = azioniTi.impostaFonteTed as (s: unknown, fd: FormData) => Promise<{ errore?: string; ok?: boolean }>;
+    const esito = await conAmbienteF(AMBIENTI_TED[ambiente], () => azione({}, fd));
+    return {
+      esito,
+      richieste: mondo.admin.richieste.length,
+      attiva: mondo.admin.tabelle.radar_fonti_stato.find((r) => r.fonte === "ted")?.attiva,
+      registro: mondo.admin.tabelle.radar_console_registro.filter((r) => r.oggetto === "fonte:ted:attiva").map((r) => r.valore_nuovo),
+      motivoAtteso: fonteAutorizzata("ted", "importazione", AMBIENTI_TED[ambiente]).motivo ?? null,
+    };
+  };
+  const tedRifiutati = [] as (Awaited<ReturnType<typeof provaTed>> & { ambiente: string })[];
+  for (const amb of ["locale", "anteprima", "produzioneDaLocale"] as const) tedRifiutati.push({ ambiente: amb, ...(await provaTed(amb, { azione: "accendi", conferma: "si" }, false)) });
+  const tedDeploy = await provaTed("deployProduzione", { azione: "accendi", conferma: "si" }, false);
+  const tedSpegni = [] as Awaited<ReturnType<typeof provaTed>>[];
+  for (const amb of ["locale", "anteprima", "produzioneDaLocale"] as const) tedSpegni.push(await provaTed(amb, { azione: "spegni" }, true));
+  // senza conferma vale prima la conferma (l'ordine: amministratore, conferma, ambiente)
+  const tedSenzaConferma = await provaTed("locale", { azione: "accendi" }, false);
+  controlla(
+    "FS16. K8: accendere TED dalla console fuori dagli ambienti consentiti (computer locale, anteprima, database di produzione da locale) è rifiutato col motivo di fonteAutorizzata, prima di ogni lettura e senza scritture né registro; dal deploy di produzione si accende; spegnere è sempre ammesso; senza conferma vale prima la conferma",
+    tedRifiutati.every((x) => !!x.motivoAtteso && x.esito.errore === x.motivoAtteso && x.richieste === 0 && x.attiva === false && x.registro.length === 0) &&
+      new Set(tedRifiutati.map((x) => x.motivoAtteso)).size >= 2 &&
+      tedDeploy.motivoAtteso === null && tedDeploy.esito.ok === true && tedDeploy.attiva === true && JSON.stringify(tedDeploy.registro) === JSON.stringify(["true"]) &&
+      tedSpegni.every((x) => x.esito.ok === true && x.attiva === false && JSON.stringify(x.registro) === JSON.stringify(["false"])) &&
+      tedSenzaConferma.esito.errore === ERRORE_CONFERMA_ACCENSIONE && tedSenzaConferma.richieste === 0,
+    {
+      rifiutati: tedRifiutati.map((x) => [x.ambiente, x.esito.errore?.slice(0, 60), x.richieste, x.attiva]),
+      deploy: [tedDeploy.esito, tedDeploy.attiva, tedDeploy.registro],
+      spegni: tedSpegni.map((x) => [x.esito.ok, x.esito.errore?.slice(0, 40), x.attiva]),
+      senzaConferma: tedSenzaConferma.esito.errore?.slice(0, 40),
+    },
+  );
   // la pagina vera: guardia degli amministratori, lettura e vista; il collegamento dalla pagina Tender Intelligence
   const paginaFonti = ((): (() => Promise<unknown>) | null => {
     try {

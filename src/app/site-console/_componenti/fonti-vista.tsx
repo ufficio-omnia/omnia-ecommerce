@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { DatiFontiConsole, FonteConsole } from "@/lib/console/fonti";
-import { GRAVITA_CONSOLE, STATO_FONTE_CONSOLE, esitoLeggibile, modoLeggibile, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
-import { impostaFontePvl, impostaFonteRegionale, impostaFonteTed } from "../azioni/tender-intelligence";
+import { GRAVITA_CONSOLE, STATO_FONTE_CONSOLE, esitoLeggibile, giornoLeggibile, modoLeggibile, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
+import { impostaFontePvl, impostaFonteRegionale, impostaFonteTed, riprendiRecuperoPvlConsole } from "../azioni/tender-intelligence";
 import { Badge, Pannello } from "./elementi";
 import ModuloAzione from "./modulo-azione";
 
@@ -48,6 +48,29 @@ function accendiSpegni(f: FonteConsole) {
   );
 }
 
+// «Riprendi il recupero»: SOLO per la PVL con l'allarme «blocco_incompleto» (f.ripresaRecupero non nullo). Il blocco fermo accanto; la
+// conferma è controllata anche nel server; nessuna richiesta alla PVL adesso: si ritenta al prossimo giro
+function ripresaRecupero(f: FonteConsole) {
+  const r = f.ripresaRecupero;
+  if (!r) return null;
+  if (r.stato === "gia_ripreso") return <p className="cn-nota">Recupero già ripreso: l&apos;allarme resta fino al prossimo giro, che ritenta il blocco.</p>;
+  return (
+    <div>
+      <p className="cn-nota">
+        {r.stato === "fermo"
+          ? `Recupero fermo sul blocco dal ${giornoLeggibile(r.blocco.da)} al ${giornoLeggibile(r.blocco.a)} (fermo dal ${data(r.blocco.il)}).`
+          : `Recupero fermo; il blocco non si è potuto leggere (${r.errore}).`}
+      </p>
+      <ModuloAzione azione={riprendiRecuperoPvlConsole} etichetta="Riprendi il recupero" etichettaInCorso="Salvo…">
+        <label className="cn-nota">
+          <input type="checkbox" name="conferma" value="si" required /> Confermo: riprendo il recupero della PVL
+        </label>
+        <p className="cn-nota">Si ritenta al prossimo giro: nessuna richiesta alla PVL adesso.</p>
+      </ModuloAzione>
+    </div>
+  );
+}
+
 // funzioni chiamate direttamente (non componenti): il contenuto resta nell'albero della vista, come lo legge la prova
 function sezioneFonte(f: FonteConsole) {
   const stato = STATO_FONTE_CONSOLE[f.stato];
@@ -81,6 +104,7 @@ function sezioneFonte(f: FonteConsole) {
         ) : (
           <p className="cn-nota">Nessun allarme.</p>
         )}
+        {ripresaRecupero(f)}
         {f.giri.length > 0 && (
           <div className="cn-scorri">
             <table className="cn-tab">

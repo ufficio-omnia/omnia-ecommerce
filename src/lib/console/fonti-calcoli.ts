@@ -4,6 +4,7 @@
 import type { FonteEsecuzione } from "@/lib/radar/esecuzioni-calcoli";
 import { CRON_PROPOSTI, INTERRUTTORE_REGIONALI_VECCHIO, INTERRUTTORI_CRON, ORARI_GIRI, cronAttiviDa, orariPrevisti, type GiorniGiro } from "@/lib/radar/programmazione-calcoli";
 import type { GravitaAllarme, RigaEsecuzioneLetta, StatoFonte } from "@/lib/radar/stato-fonti-calcoli";
+import type { EsitoRipresaRecuperoPvl } from "@/lib/radar/recupero-pvl";
 
 export type TonoConsole = "neutro" | "ok" | "avviso" | "errore";
 
@@ -38,6 +39,36 @@ export function esitoLeggibile(e: string): string {
 export const ERRORE_CONFERMA_ACCENSIONE = "Accendere la fonte avvia acquisizioni vere: spunta la casella di conferma e riprova. Nessuna modifica salvata.";
 export function accensioneConfermata(dati: FormData): boolean {
   return dati.get("conferma") === "si";
+}
+
+// ───── «Riprendi il recupero» della PVL (K4 di B2: riprendiRecuperoPvl) ─────
+// Il pulsante c'è SOLO per la PVL con l'allarme «blocco_incompleto» (il giro lo segnala finché il recupero è fermo) e il cursore fermo.
+// Conferma nel server come per accendere; registro 0112 obbligatorio; nessuna richiesta alla PVL: si ritenta al prossimo giro.
+export const ERRORE_CONFERMA_RIPRESA = "Riprendere il recupero fa rileggere il blocco fermo al prossimo giro: spunta la casella di conferma e riprova. Nessuna modifica salvata.";
+export type MotivoRipresaRecupero = Extract<EsitoRipresaRecuperoPvl, { ok: false }>["motivo"];
+export const TESTO_MOTIVO_RIPRESA: Record<MotivoRipresaRecupero, string> = {
+  ambiente_non_consentito: "la PVL si scrive solo sullo staging, in questo database il recupero non si riprende",
+  schema_assente: "le tabelle delle fonti non esistono ancora in questo database",
+  errore_lettura: "lettura dello stato della PVL non riuscita, riprova tra poco",
+  fonte_assente: "la fonte PVL non è nel database (migrazione 0115)",
+  non_fermo: "il recupero non è fermo, non c'è niente da riprendere (ricarica la pagina)",
+  giro_in_corso: "un giro della PVL è in corso, riprova quando è finito",
+  cambiato_nel_frattempo: "lo stato della PVL è cambiato nel frattempo (un giro o un'altra ripresa), ricarica la pagina e riprova",
+  errore_scrittura: "salvataggio non riuscito, riprova tra poco",
+};
+
+export function mostraRipresaRecupero(fonte: string, allarmi: readonly { codice: string }[]): boolean {
+  return fonte === "pvl" && allarmi.some((a) => a.codice === "blocco_incompleto");
+}
+
+// stato del recupero per la pagina, letto dal cursore SOLO quando c'è l'allarme: fermo (pulsante), già ripreso (l'allarme resta fino al
+// prossimo giro), cursore non letto (pulsante: decide il server)
+export type RipresaRecuperoConsole = { stato: "fermo"; blocco: { il: string; da: string; a: string } } | { stato: "gia_ripreso" } | { stato: "non_letto"; errore: string };
+
+/** «2026-10-01» → «01/10/2026»; altro testo resta com'è */
+export function giornoLeggibile(g: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(g);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : g;
 }
 
 export const GIRI_PER_FONTE = 10;

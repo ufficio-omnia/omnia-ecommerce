@@ -6,7 +6,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { GIORNI_REGISTRO_CONSOLE, leggiSituazioneFonti } from "@/lib/radar/esecuzioni";
 import { COLONNE_ESECUZIONI_ALLARMI, type Allarme, type RigaEsecuzioneLetta, type StatoFonte } from "@/lib/radar/stato-fonti-calcoli";
 import type { FonteEsecuzione } from "@/lib/radar/esecuzioni-calcoli";
-import { GIRI_PER_FONTE, NOME_FONTE_CONSOLE, giroConsole, giriPerFonte, giriProgrammatiFonte, prossimoGiro, type GiriProgrammatiConsole, type GiroConsole } from "./fonti-calcoli";
+import { cursorePvlV2Valido } from "@/lib/radar/importa-pvl-cursore";
+import {
+  GIRI_PER_FONTE,
+  NOME_FONTE_CONSOLE,
+  giroConsole,
+  giriPerFonte,
+  giriProgrammatiFonte,
+  mostraRipresaRecupero,
+  prossimoGiro,
+  type GiriProgrammatiConsole,
+  type GiroConsole,
+  type RipresaRecuperoConsole,
+} from "./fonti-calcoli";
 
 export type FonteConsole = {
   fonte: FonteEsecuzione;
@@ -21,6 +33,8 @@ export type FonteConsole = {
   giriProgrammati: GiriProgrammatiConsole;
   prossimoGiro: string | null;
   giri: GiroConsole[];
+  // solo PVL con l'allarme «blocco_incompleto»: il recupero fermo e il pulsante «Riprendi il recupero»; altrimenti null
+  ripresaRecupero: RipresaRecuperoConsole | null;
 };
 
 export type DatiFontiConsole = {
@@ -50,6 +64,16 @@ export async function leggiDatiFonti(admin: SupabaseClient, adesso: Date = new D
     if (r.error) erroreGiri = `ultimi giri: ${r.error.message}`;
     else righe = r.data ?? [];
   }
+  // il blocco fermo della PVL: una lettura del cursore SOLO con l'allarme «blocco_incompleto» (nessun dato di gare)
+  let ripresa: RipresaRecuperoConsole | null = null;
+  if (s.situazioni.some((x) => mostraRipresaRecupero(x.fonte, x.allarmi))) {
+    const r = await admin.from("radar_fonti_stato").select("cursore").eq("fonte", "pvl").maybeSingle<{ cursore: unknown }>();
+    if (r.error) ripresa = { stato: "non_letto", errore: r.error.message };
+    else {
+      const fermo = cursorePvlV2Valido(r.data?.cursore)?.recupero.fermo ?? null;
+      ripresa = fermo ? { stato: "fermo", blocco: { il: fermo.il, da: fermo.da, a: fermo.a } } : { stato: "gia_ripreso" };
+    }
+  }
   return {
     adesso: adesso.toISOString(),
     registroAssente: s.registroAssente,
@@ -69,6 +93,7 @@ export async function leggiDatiFonti(admin: SupabaseClient, adesso: Date = new D
         giriProgrammati: giri,
         prossimoGiro: prossimoGiro(x.fonte, x.attiva, giri.attivi, adesso),
         giri: giriPerFonte(righe, x.fonte),
+        ripresaRecupero: mostraRipresaRecupero(x.fonte, x.allarmi) ? ripresa : null,
       };
     }),
   };
