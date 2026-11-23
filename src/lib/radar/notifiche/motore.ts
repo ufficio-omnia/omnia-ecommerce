@@ -94,6 +94,12 @@ export type DipendenzeMotore = {
   ultimoPassaggio: (adesso: Date) => boolean;
   /** cursore delle «nuove» al primissimo giro (nessun giro precedente): di base 24 ore prima */
   cursoreNuoveIniziale?: (adesso: Date) => string;
+  /**
+   * Fonti da trattare come NASCOSTE ai clienti in aggiunta a quelle che il database indica (radar_fonti_stato.nascosta_ai_clienti). Di
+   * base nessuna: la rotta e l'aggancio non la impostano. La usa il collaudo Z8 (documento 46) con «pvl», per rispettare la decisione
+   * 7.14 (PVL nascosta durante sviluppo e collaudi) finché la riga «pvl» dello staging dice «visibile» (L5a non ancora fatta).
+   */
+  fontiNascosteAggiunte?: readonly string[];
 };
 
 /** Ultimo passaggio del giorno con la programmazione consigliata (ogni 30 minuti dalle 05:30 alle 19:30 UTC, decisione 1). */
@@ -215,7 +221,7 @@ async function leggiQuadro(d: DipendenzeMotore, soloImprese: readonly string[] |
 /** Le fonti nascoste ai clienti (0120): nessuna email da queste fonti. */
 async function leggiNascoste(d: DipendenzeMotore): Promise<Set<string>> {
   const r = controlla<{ fonte: string }[]>("fonti nascoste", await d.admin.from(T.fonti).select("fonte").eq("nascosta_ai_clienti", true));
-  return new Set(r.map((x) => x.fonte));
+  return new Set([...r.map((x) => x.fonte), ...(d.fontiNascosteAggiunte ?? [])]);
 }
 
 /** Le liste delle imprese date (salvate ∪ monitorate) con le gare dell'archivio, i lotti e le gare aggiunte a mano. */
