@@ -13,7 +13,9 @@
 import { SETTORI_RADAR, nomeSettore, nomeSottocategoria, type SettoreRadar } from "./settori";
 
 export type LivelloRilevanza = "A" | "B" | "C";
-export type StatoLettura = "classificata" | "in_attesa" | "fallita" | "non_classificata";
+// «da_verificare» (0133, schema S4 del 49A): la classificazione automatica è riuscita, ma la gara è uno dei casi senza descrizione utile;
+// decide a mano un amministratore. Come «in_attesa» e «fallita» non è mai «non pertinente» e non entra in «Per te» né nei suggerimenti.
+export type StatoLettura = "classificata" | "in_attesa" | "fallita" | "da_verificare" | "non_classificata";
 
 /** Da aggiungere alla select degli elenchi (Cerca, Monitorate): stato e, per settore, livello e sottocategorie. */
 export const CLASSIFICAZIONI_ELENCO =
@@ -26,7 +28,7 @@ export const CLASSIFICAZIONI_SCHEDA =
 /** Filtro sulle righe incorporate (non sulle gare): solo le righe attive. */
 export const COLONNA_RIGHE_ATTIVE = "classificazioni.attiva";
 
-type StatoIncorporato = { stato: "classificata" | "in_attesa" | "fallita"; versione_regole?: string | null; classificata_il?: string | null; errore?: string | null };
+type StatoIncorporato = { stato: "classificata" | "in_attesa" | "fallita" | "da_verificare"; versione_regole?: string | null; classificata_il?: string | null; errore?: string | null };
 type RigaIncorporata = {
   settore: string;
   rilevanza: LivelloRilevanza;
@@ -117,8 +119,10 @@ export function classificazioneDaRiga(r: ConClassificazioni): ClassificazioneLet
     versione: s.versione_regole ?? null,
     classificataIl: s.classificata_il ?? null,
     errore: s.stato === "fallita" ? (s.errore ?? "classificazione non riuscita") : null,
-    // in attesa o fallita: le righe attive precedenti restano valide finché la nuova classificazione non riesce (classificazioni.ts)
-    settori,
+    // in attesa o fallita: le righe attive precedenti restano valide finché la nuova classificazione non riesce (classificazioni.ts).
+    // da verificare: le righe C calcolate restano nel database come spiegazione per l'amministratore, ma al cliente non si mostrano (mai
+    // «non pertinente» finché decide una persona)
+    settori: s.stato === "da_verificare" ? settori.filter((x) => x.livello !== "C") : settori,
   };
 }
 
@@ -141,6 +145,7 @@ export function rilevanzaPerRicerca(c: ClassificazioneLetta): {
 export function messaggioStato(c: Pick<ClassificazioneLetta, "stato" | "errore">): string | null {
   if (c.stato === "in_attesa") return "Classificazione in corso: i settori mostrati sono quelli della classificazione precedente o della fonte.";
   if (c.stato === "fallita") return "Classificazione da verificare: l'ultima classificazione automatica non è riuscita. I settori mostrati sono quelli precedenti.";
+  if (c.stato === "da_verificare") return "Classificazione in verifica: dalla descrizione della gara non si capisce se riguarda i settori monitorati, la verifichiamo a mano. Intanto la gara non è esclusa.";
   if (c.stato === "non_classificata") return "Non ancora classificata con le regole attuali: i settori mostrati sono quelli indicati dalla fonte.";
   return null;
 }
