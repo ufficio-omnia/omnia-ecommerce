@@ -142,8 +142,8 @@ const MUTAZIONI = [
   { nome: "MM67 lettura: niente testo «Classificazione in verifica»", file: LT, cerca: '  if (c.stato === "da_verificare") return "Classificazione in verifica:', con: '  if (c.stato === "da_verificare_x") return "Classificazione in verifica:', richiede: "MS1." },
   { nome: "MM68 risultati: niente distintivo «Classificazione in verifica»", file: RC, cerca: '  if (c.rilevanza?.stato === "da_verificare") return "Classificazione in verifica";\n', con: "", richiede: "MS2." },
   { nome: "MM69 elenco: anche le gare in attesa", file: GV, cerca: '.eq("stato", "da_verificare")', con: '.in("stato", ["da_verificare", "in_attesa"])', richiede: "MS4." },
-  { nome: "MM70 elenco: caso letto male (prefisso lasciato)", file: GVC, cerca: "regole[i].slice(PREFISSO_DA_VERIFICARE.length + 1)", con: "regole[i]", richiede: "MS4." },
-  { nome: "MM71 elenco: motivo preso dalla prima posizione", file: GVC, cerca: "motivo: (r.motivi ?? [])[i]", con: "motivo: (r.motivi ?? [])[0]", richiede: "MS4." },
+  { nome: "MM70 elenco: caso ricavato male dal settore", file: GVC, cerca: '  pulizia: "stabulari",', con: '  pulizia: "biblioteca",', richiede: "MS4." },
+  { nome: "MM71 elenco: candidato anche da una riga C senza la regola «da_verificare»", file: GVC, cerca: "    if (i < 0) continue;", con: '    if (i < 0 && r.rilevanza !== "C") continue;', richiede: "MS4." },
   { nome: "MM72 decidi: un settore diverso dal candidato accettato", file: GVC, cerca: "if (candidato !== null && settore !== candidato) return", con: "if (false && candidato !== null && settore !== candidato) return", richiede: "MS7." },
   { nome: "MM73 decidi: C con sottocategorie accettata", file: GVC, cerca: 'if (rilevanza === "C" && scelte.length > 0) return', con: 'if (false && rilevanza === "C" && scelte.length > 0) return', richiede: "MS7." },
   {
