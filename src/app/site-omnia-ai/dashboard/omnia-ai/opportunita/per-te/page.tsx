@@ -16,6 +16,7 @@ import { inizioFinestra, limiteEffettivo, verificaLimite } from "@/lib/radar/dir
 import { etichettaRicerca, etichettaStatoClassificazione, settoriDellaRiga, type Ordinamento } from "@/lib/radar/ricerca-calcoli";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { etichettaFontiElenco } from "@/lib/radar/fonti-gara-calcoli";
+import { tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 import { nomeSettore } from "@/lib/radar/settori";
 import { nomeRegione } from "@/lib/radar/territorio";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
@@ -165,6 +166,8 @@ export default async function PerTePage({ searchParams }: { searchParams: Promis
                       settoriDettaglio: settoriDellaRiga(r),
                       statoClassificazione: etichettaStatoClassificazione(r),
                       fonte: etichettaFontiElenco(fontiGare.get(r.id)),
+                      // C4/C5: il tipo della gara (ricavato dal tipo dell'avviso se la colonna è vuota), sempre scritto nella riga
+                      tipo: tipoDellaGara(r),
                       verificataIl: r.ultima_rilevazione_il,
                       salvata: !!s,
                       monitorata: !!s?.monitorata,

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { RADICE_OPPORTUNITA } from "@/lib/radar/area-cliente";
 import { ETICHETTA_STATO, statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
 import { contoAllaRovescia, giorno, importoBreve, regioniLeggibili, scadenzaBreve, settoriLeggibili } from "./formato";
+import { CATEGORIA_DEL_TIPO, ETICHETTA_TIPO, type TipoMostrato } from "@/lib/radar/tipo-gara-calcoli";
 
 export type DatiRigaGara = {
   href: string;
@@ -34,6 +35,8 @@ export type DatiRigaGara = {
   settoriDettaglio?: { settore: string; livello: "A" | "B" | null; sottocategorie: string[] }[];
   // fase B3: «Classificazione in corso» o «Non ancora classificata» (mai «non pertinente»)
   statoClassificazione?: string | null;
+  // C5 (analisi 49): il tipo della gara (tipo-gara-calcoli.ts); assente o null = non riconosciuto, nessuna etichetta
+  tipo?: TipoMostrato | null;
 };
 
 // «Pulizia e sanificazione (uffici, sanificazione)» per un settore pertinente; «… · correlata» per uno correlato. Al massimo due
@@ -51,13 +54,20 @@ export default function RigaGara({ d, adesso }: { d: DatiRigaGara; adesso: Date 
   const conto = stato === "aperta" ? contoAllaRovescia(d.scadenzaGiorno, adesso) : null;
   const valore = importoBreve(d.valore);
   const dove = [d.comune ? `${d.comune}${d.provincia ? ` (${d.provincia})` : ""}` : null, d.regioni.length ? regioniLeggibili(d.regioni) : null].filter(Boolean).join(" · ");
+  // decisione dell'utente: un'indagine di mercato non si confonde con una gara aperta. Per candidature e iscrizioni la scadenza è quella della
+  // candidatura o dell'iscrizione, e lo dice; il tipo è sempre scritto nella riga
+  const categoria = d.tipo ? CATEGORIA_DEL_TIPO[d.tipo] : null;
+  const scadenzaDi = d.scadenzaGiorno || d.scadenza ? (categoria === "candidature" ? "Candidature entro " : categoria === "iscrizioni" ? "Iscrizioni entro " : "") : "";
   return (
     <Link href={d.href} className="omnia-opp-riga">
       <div className="omnia-opp-riga-testa">
         <div className="omnia-opp-riga-titolo">{d.titolo}</div>
         <div className={`omnia-opp-riga-scadenza${conto?.urgente ? " urgente" : ""}`}>
           {conto && <strong>{conto.testo}</strong>}
-          <span>{scadenzaBreve(d.scadenzaGiorno, d.scadenza)}</span>
+          <span>
+            {scadenzaDi}
+            {scadenzaBreve(d.scadenzaGiorno, d.scadenza)}
+          </span>
         </div>
       </div>
       <div className="omnia-opp-riga-ente">
@@ -90,6 +100,7 @@ export default function RigaGara({ d, adesso }: { d: DatiRigaGara; adesso: Date 
       </div>
       <div className="omnia-opp-riga-piede">
         <span className="omnia-opp-badge-gruppo">
+          {d.tipo && <span className={`omnia-badge${categoria === "bandi" ? "" : " ambra"}`}>{ETICHETTA_TIPO[d.tipo]}</span>}
           {stato !== "aperta" && <span className={`omnia-badge ${stato === "annullata" || stato === "chiusa_senza_aggiudicazione" ? "rosso" : "ambra"}`}>{ETICHETTA_STATO[stato]}</span>}
           {d.rettificata && <span className="omnia-badge ambra">Rettificata</span>}
           {d.rilevanza && <span className={`omnia-badge${d.rilevanza === "Classificazione da verificare" ? " ambra" : ""}`}>{d.rilevanza}</span>}

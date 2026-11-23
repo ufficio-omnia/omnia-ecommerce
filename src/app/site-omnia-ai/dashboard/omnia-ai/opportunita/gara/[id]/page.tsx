@@ -17,7 +17,7 @@ import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvatag
 import ClassificazioneGara from "@/components/omnia-ai/opportunita/classificazione-gara";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
-import { ETICHETTA_OPPORTUNITA } from "@/lib/radar/opportunita-calcoli";
+import { COME_SI_PARTECIPA_PREINFORMAZIONE, ETICHETTA_TIPO, tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 
 // Scheda di una gara del Radar (fase B1): «In sintesi» con le quattro informazioni chiave, panoramica senza modello (solo i dati
 // dell'avviso), lotti, soglia UE spiegata, fonti verificabili (avviso ufficiale, versioni lette, date di verifica), cambiamenti rilevati.
@@ -99,6 +99,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
     return f ? NOME_FONTE[f] : "fonte non riconosciuta";
   };
   const adesso = new Date();
+  // C4/C11 (analisi 49): il tipo della gara, ricavato dal tipo dell'avviso quando la colonna è vuota
+  const tipo = tipoDellaGara(g);
   // aperta la scheda, le novità di una gara salvata risultano viste (dopo la risposta, senza rallentare la pagina)
   if (salvataggio) {
     after(async () => {
@@ -183,7 +185,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
               g.valore_stimato !== null ? `dato ${fonteDi("valore_stimato")}: il valore stimato comprende di solito opzioni e rinnovi, non è la base di gara` : null,
               // fase B2a: le piattaforme regionali indicano la base d'asta, non il valore stimato complessivo
               g.valore_stimato !== null && g.valore_base !== null ? `base d'asta ${euro(g.valore_base)} (dato ${fonteDi("valore_base")})` : g.valore_stimato === null && g.valore_base !== null ? `dato ${fonteDi("valore_base")}, come indicato dalla piattaforma` : null,
-              g.tipo_opportunita && g.tipo_opportunita !== "bando" ? ETICHETTA_OPPORTUNITA[g.tipo_opportunita as keyof typeof ETICHETTA_OPPORTUNITA] : null,
+              // C4/C11: il tipo anche quando la colonna è vuota (dal tipo dell'avviso); un bando resta senza etichetta, come prima
+              tipo && tipo !== "bando" ? ETICHETTA_TIPO[tipo] : null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -199,6 +202,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
                   : undefined
             }
           />
+          {/* C11 (nome deciso dall'utente): per una preinformazione che indice la gara si presenta prima la candidatura o la domanda */}
+          {tipo === "preinformazione" && <Dato etichetta="Come si partecipa" valore={COME_SI_PARTECIPA_PREINFORMAZIONE} />}
           <Dato etichetta="Stato" valore={ETICHETTA_STATO[stato]} />
           <Dato etichetta="Requisiti" valore="Non ancora analizzati" nota="L'analisi dei requisiti sui documenti di gara arriverà nelle prossime fasi." />
           <Dato

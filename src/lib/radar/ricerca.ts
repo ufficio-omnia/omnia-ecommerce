@@ -23,9 +23,10 @@ import { fontiNascosteAiClienti, fontiVisibiliDa } from "./fonti-nascoste";
 import { CLASSIFICAZIONI_ELENCO, COLONNA_RIGHE_ATTIVE, classificazioneDaRiga, rilevanzaPerRicerca, type ConClassificazioni } from "./classificazioni-lettura";
 import { opportunitaPerImpresa, type OpportunitaRadar, type ProfiloRadar } from "./radar-personalizzato-contratto";
 import { condizioneRegioniOSenzaLuogo, garaPerRadarDaRiga, pertinentiPrima, soloSettori } from "./profilo-calcoli";
+import { condizioneTipi } from "./tipo-gara-calcoli";
 
 export const COLONNE_RISULTATO =
-  "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale, unita_a";
+  "id, oggetto, oggetto_breve, sa_denominazione, sa_comune, sa_provincia, settori, metodo_settore, scadenza_giorno, scadenza_offerte, scadenza_ora_indicata, data_pubblicazione, valore_stimato, durata_mesi, n_lotti, stato, rettificata, luogo_regioni, tipo_procedura, ultima_rilevazione_il, cpv_principale, unita_a, tipo_opportunita, tipo_avviso";
 
 /** Fase B3: le colonne di un elenco di gare; con le classificazioni accese anche stato e righe attive della 0121, nella STESSA richiesta. */
 export function colonneElenco(classificazioni: boolean): string {
@@ -51,6 +52,9 @@ export type RigaRisultato = CandidatoRicerca & {
   cpv_principale: string | null;
   // gara che resta, se questa è collegata a un'altra (0117)
   unita_a: string | null;
+  // C4/C5 (analisi 49): il tipo nella stessa lettura; colonna vuota = si ricava dal tipo dell'avviso (tipo-gara-calcoli.ts)
+  tipo_opportunita: string | null;
+  tipo_avviso: string | null;
 };
 
 export type RisultatoRicerca = {
@@ -117,6 +121,8 @@ export async function cercaGare(
     if (filtri.scadenzaEntroGiorni !== null) q = q.gte("scadenza_giorno", oggi).lte("scadenza_giorno", aggiungiGiorni(oggi, filtri.scadenzaEntroGiorni));
     if (filtri.pubblicataNegliUltimiGiorni !== null) q = q.gte("data_pubblicazione", aggiungiGiorni(giornoIso(adesso), -filtri.pubblicataNegliUltimiGiorni));
     if (filtri.procedure.length) q = q.in("tipo_procedura", PROCEDURE_RICERCA.filter((p) => filtri.procedure.includes(p.id)).flatMap((p) => [...p.valori]));
+    // C5: il tipo nel database, con le stesse regole dell'etichetta (anche col tipo ricavato dall'avviso quando la colonna è vuota)
+    if (filtri.tipi.length) q = q.or(condizioneTipi(filtri.tipi));
     return q.returns<(RigaRisultato & ConClassificazioni & { valore_stimato: number | string | null })[]>();
   };
 

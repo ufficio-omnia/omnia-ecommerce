@@ -14,6 +14,9 @@ const S = "src/lib/radar/gara.ts";
 const AZ = "src/app/actions/radar.ts";
 const GS = `${OPP}/gara/[id]/page.tsx`;
 const RIC = "src/lib/radar/ricerca.ts";
+const TG = "src/lib/radar/tipo-gara-calcoli.ts";
+const RC = "src/lib/radar/ricerca-calcoli.ts";
+const RG = "src/components/omnia-ai/opportunita/riga-gara.tsx";
 
 const MUTAZIONI = [
   // 1. Monitorate: filtro delle fonti nelle due letture
@@ -73,6 +76,28 @@ const MUTAZIONI = [
     con: 'import { notFound } from "next/navigation";\nimport { fontiNascosteAiClienti } from "@/lib/radar/fonti-nascoste";\nvoid fontiNascosteAiClienti;',
     richiede: "MN34.",
   },
+  // analisi 49: C4 (tipo dall'avviso), C5 (tipo nelle liste e filtro in «Cerca»), C11 («Avviso di preinformazione»)
+  { nome: "MM38 C4: niente ripiego sul tipo dell'avviso", file: TG, cerca: "colonna === null ? (opportunitaDaTipoAvviso(g.tipo_avviso)?.tipo ?? null) :", con: "colonna === null ? null :", richiede: "MT1." },
+  { nome: "MM39 C11: la preinformazione torna «Bando di gara»", file: TG, cerca: 'return tipo === "bando" && ePreinformazione(g.tipo_avviso) ? "preinformazione" : tipo;', con: "return tipo;", richiede: "MT1." },
+  { nome: "MM40 C11: preinformazioni PVL P2_10-14 dimenticate", file: TG, cerca: ', "P2_10", "P2_11", "P2_12", "P2_13", "P2_14"', con: "", richiede: "MT1." },
+  { nome: "MM41 filtro «bandi»: un bando senza tipo di avviso (Sintel) escluso dal NULL di SQL", file: TG, cerca: "or(tipo_avviso.is.null,and(", con: "or(and(", richiede: "MT5." },
+  { nome: "MM42 filtro «candidature»: preinformazioni col tipo «bando» nella colonna dimenticate", file: TG, cerca: "and(tipo_opportunita.eq.bando,${PREINFORMAZIONE}),", con: "", richiede: "MT5." },
+  { nome: "MM43 filtro «iscrizioni»: senza il ripiego qu-sy", file: TG, cerca: ",and(tipo_opportunita.is.null,tipo_avviso.eq.qu-sy)", con: "", richiede: "MT5." },
+  { nome: "MM44 filtro «bandi»: LIKE al posto della regola delle schede PVL (P7, P10 diventano bandi)", file: TG, cerca: "tipo_avviso.match.^P[12]_", con: "tipo_avviso.like.P*", richiede: "MT6." },
+  { nome: "MM45 ricerca: filtro per tipo non applicato", file: RIC, cerca: "    if (filtri.tipi.length) q = q.or(condizioneTipi(filtri.tipi));\n", con: "", richiede: "MT5." },
+  { nome: "MM46 parametri: tipi sconosciuti e doppioni accettati", file: RC, cerca: "tipi: [...new Set(lista(p.tipo).filter(eCategoriaTipo))],", con: "tipi: lista(p.tipo) as CategoriaTipo[],", richiede: "MT9." },
+  { nome: "MM47 parametri: il tipo non torna nell'indirizzo", file: RC, cerca: '  for (const t of x.tipi) p.append("tipo", t);\n', con: "", richiede: "MT9." },
+  { nome: "MM48 filtri attivi: il tipo non conta", file: RC, cerca: "f.procedure.length + f.tipi.length +", con: "f.procedure.length +", richiede: "MT9." },
+  { nome: "MM49 riga: scadenza di una candidatura detta come quella di un'offerta", file: RG, cerca: 'categoria === "candidature" ? "Candidature entro "', con: 'categoria === "candidature" ? ""', richiede: "MT4." },
+  { nome: "MM50 riga: etichetta del tipo assente", file: RG, cerca: "{d.tipo && <span className=", con: "{false && <span className=", richiede: "MT4." },
+  { nome: "MM51 «Cerca»: tipo non passato alla riga", file: `${OPP}/cerca/page.tsx`, cerca: "tipo: tipoDellaGara(r),", con: "tipo: null,", richiede: "MT1." },
+  { nome: "MM52 «Per te»: tipo non passato alla riga", file: `${OPP}/per-te/page.tsx`, cerca: "tipo: tipoDellaGara(r),", con: "tipo: null,", richiede: "MT2." },
+  { nome: "MM53 «Monitorate»: tipo non passato alla riga", file: M, cerca: "tipo: tipoDellaGara(p),", con: "tipo: null,", richiede: "MT3." },
+  { nome: "MM54 «Cerca»: caselle del tipo assenti", file: `${OPP}/cerca/page.tsx`, cerca: 'name="tipo" value={c.id}', con: 'name="tipo_x" value={c.id}', richiede: "MT7." },
+  { nome: "MM55 «Cerca»: filtro del tipo non tra quelli attivi", file: `${OPP}/cerca/page.tsx`, cerca: "for (const t of f.tipi) chip.push(", con: "for (const t of [] as typeof f.tipi) chip.push(", richiede: "MT7." },
+  { nome: "MM56 scheda: riga «Come si partecipa» assente", file: GS, cerca: '{tipo === "preinformazione" && <Dato etichetta="Come si partecipa"', con: '{false && <Dato etichetta="Come si partecipa"', richiede: "MT8." },
+  { nome: "MM57 scheda: niente ripiego sul tipo dell'avviso", file: GS, cerca: "const tipo = tipoDellaGara(g);", con: "const tipo = tipoDellaGara({ tipo_opportunita: g.tipo_opportunita, tipo_avviso: null });", richiede: "MT8." },
+  { nome: "MM58 liste: il tipo non è nella lettura", file: RIC, cerca: "unita_a, tipo_opportunita, tipo_avviso\"", con: "unita_a\"", richiede: "MT1." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
