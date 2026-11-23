@@ -6,7 +6,8 @@ import { applica, rendiPvlVisibile } from "./pvl-visibile/pvl-visibile-staging";
 import { FermoCollaudo } from "./collaudo-z8/collaudo-motore-z8";
 import { DbFinto } from "./lib/db-finto-motore";
 import type { ClientDb } from "../src/lib/radar/notifiche/motore";
-import { fontiNascosteDa } from "../src/lib/radar/fonti-gara-calcoli";
+import { aggiornamentoPerCliente, etichettaFonti, fontiDellaGara, fontiNascosteDa, fonteDelDato, garaVisibileAiClienti, riepilogoFonti, type AvvisoLetto } from "../src/lib/radar/fonti-gara-calcoli";
+import type { ProvenienzaCampi } from "../src/lib/radar/unione-calcoli";
 
 let ok = 0;
 const falliti: string[] = [];
@@ -104,6 +105,46 @@ async function principale(): Promise<void> {
   controlla("testo: la scrittura è condizionata a fonte = pvl E nascosta_ai_clienti = true, e mette solo false", /\.update\(\{ nascosta_ai_clienti: false, aggiornata_il: adesso\.toISOString\(\) \}\)\s*\.eq\("fonte", "pvl"\)\s*\.eq\("nascosta_ai_clienti", true\)/.test(testo));
   controlla("testo: l'autorizzazione si controlla prima dell'osservatore e del client", testo.indexOf("controllaPorta({ script") < testo.indexOf("installaOsservatore(url") && testo.indexOf("installaOsservatore(url") < testo.indexOf("createClient(url"));
   controlla("testo: il nome dello script nella porta è quello del file", /controllaPorta\(\{ script: "pvl-visibile-staging\.ts" \}\)/.test(testo));
+  pagine();
+}
+
+// Le pagine del cliente con la PVL visibile (direttiva 48A): una gara UNITA TED+PVL e una SOLO PVL, con le stesse regole pure che usano
+// gara.ts (scheda), la ricerca e la lista; tre stati della riga «pvl»: visibile (staging dopo la 48B), assente (produzione), nascosta (oggi).
+function pagine(): void {
+  const pv = (f: string, id: string): ProvenienzaCampi[string] => ({ f, id, g: "2026-11-10", t: "2026-11-10T08:00:00Z", ted: null }) as unknown as ProvenienzaCampi[string];
+  const unita = { chiave: "ted:700001-2026", fonti: ["ted", "pvl"], provenienza: { oggetto: pv("ted", "700001-2026"), scadenza: pv("pvl", "pvl-sint-1"), importo: pv("ted", "700001-2026") } as ProvenienzaCampi };
+  const soloPvl = { chiave: "pvl:pvl-sint-2", fonti: ["pvl"], provenienza: { oggetto: pv("pvl", "pvl-sint-2") } as ProvenienzaCampi };
+  const avvisi: AvvisoLetto[] = [
+    { fonte: "ted", id_fonte: "700001-2026", url: "https://esempio.invalid/ted/700001-2026", pubblicato_il: "2026-11-09", tipo_avviso: "cn-standard", rilevato_il: "2026-11-09T08:00:00Z" },
+    { fonte: "pvl", id_fonte: "pvl-sint-1", url: "https://esempio.invalid/pvl/1", pubblicato_il: "2026-11-10", tipo_avviso: "P1_10", rilevato_il: "2026-11-10T08:00:00Z" },
+  ];
+  const registro = [
+    { campo: "scadenza_offerte", fonte: "pvl" },
+    { campo: "scadenza_offerte", fonte: "ted" },
+    { campo: "collegamento_proposto", fonte: "pvl" },
+  ];
+  const stati = {
+    visibile: new Set(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: false }, { fonte: "sardegnacat", nascosta_ai_clienti: true }])),
+    assente: new Set(fontiNascosteDa([])),
+    nascosta: new Set(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: true }, { fonte: "sardegnacat", nascosta_ai_clienti: true }])),
+  };
+  for (const [nome, nascoste] of [["visibile", stati.visibile], ["assente", stati.assente]] as const) {
+    controlla(`pagine (PVL ${nome}): la gara unita TED+PVL e quella solo PVL si vedono`, garaVisibileAiClienti(unita, nascoste) && garaVisibileAiClienti(soloPvl, nascoste));
+    // scheda della gara: provenienze filtrate come in gara.ts, poi il riquadro «Fonti»
+    const fonti = riepilogoFonti(avvisi.filter((a) => !nascoste.has(a.fonte)), {});
+    controlla(`pagine (PVL ${nome}): nella scheda della gara unita compaiono TED e PVL, ciascuna col suo avviso`, JSON.stringify(fonti.map((f) => [f.fonte, f.url])) === JSON.stringify([["ted", "https://esempio.invalid/ted/700001-2026"], ["pvl", "https://esempio.invalid/pvl/1"]]), fonti);
+    controlla(`pagine (PVL ${nome}): il registro mostra la rettifica PVL e quella TED (mai le righe interne)`, JSON.stringify(registro.filter((a) => aggiornamentoPerCliente(a, nascoste)).map((a) => a.fonte)) === JSON.stringify(["pvl", "ted"]));
+  }
+  controlla("pagine: le fonti della gara unita sono «TED e PVL ANAC»; il dato della scadenza viene dalla PVL", etichettaFonti(fontiDellaGara(unita.chiave, unita.provenienza)) === "TED e PVL ANAC" && fonteDelDato(unita.provenienza, "scadenza", unita.chiave) === "pvl");
+  controlla("pagine: la gara solo PVL ha come fonte la PVL", JSON.stringify(fontiDellaGara(soloPvl.chiave, soloPvl.provenienza)) === JSON.stringify(["pvl"]));
+  // e com'è oggi lo staging (PVL nascosta): l'unita resta per TED senza l'avviso PVL, la sola PVL sparisce
+  const n = stati.nascosta;
+  controlla("pagine (PVL nascosta, lo staging di oggi): l'unita resta visibile per TED, la sola PVL no", garaVisibileAiClienti(unita, n) && !garaVisibileAiClienti(soloPvl, n));
+  controlla("pagine (PVL nascosta): nella scheda solo TED, e nel registro solo la rettifica TED", JSON.stringify(riepilogoFonti(avvisi.filter((a) => !n.has(a.fonte)), {}).map((f) => f.fonte)) === JSON.stringify(["ted"]) && JSON.stringify(registro.filter((a) => aggiornamentoPerCliente(a, n)).map((a) => a.fonte)) === JSON.stringify(["ted"]));
+  // la scheda (gara.ts) applica davvero queste regole, con le fonti lette dalla regola unica
+  const scheda = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "gara.ts"), "utf8");
+  controlla("testo: gara.ts filtra provenienze e registro con le fonti nascoste della regola unica",
+    /const nascoste = new Set\(await fontiNascosteAiClienti\(\)\);/.test(scheda) && /if \(!gara\.unita_a && !garaVisibileAiClienti\(gara, nascoste\)\) return null;/.test(scheda) && /\.filter\(\(p\) => !nascoste\.has\(p\.fonte\)\)/.test(scheda) && /\.filter\(\(a\) => aggiornamentoPerCliente\(a, nascoste\)\)/.test(scheda));
 }
 
 principale()

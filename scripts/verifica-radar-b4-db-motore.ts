@@ -338,6 +338,9 @@ async function principale(): Promise<void> {
   // ───── Z8 (documento 46): fonti nascoste in aggiunta al database (decisione 7.14 nel collaudo) ─────
   await provaFontiNascosteAggiunte();
 
+  // ───── 48A: la PVL di nuovo visibile nei promemoria, nei riepiloghi e nelle rettifiche ─────
+  await provaPvlVisibile();
+
   // ───── 15. testo dei file e rotta ─────
   provaTesto();
   await provaRotta();
@@ -423,6 +426,52 @@ async function provaRotta(): Promise<void> {
     if (salvato.email === undefined) delete process.env.RADAR_NOTIFICHE_EMAIL;
     else process.env.RADAR_NOTIFICHE_EMAIL = salvato.email;
   }
+}
+
+// Direttiva 48A (23/11/2026, revoca della 7.14): le gare PVL tornano nei promemoria, nei riepiloghi e nelle rettifiche come quelle delle
+// altre fonti. Lo stesso scenario con la riga «pvl» visibile (lo staging dopo la 48B), assente (la produzione: nasce visibile) e nascosta
+// (lo staging di oggi): con la PVL nascosta la gara UNITA TED+PVL resta visibile (basta una fonte visibile), la sola PVL no.
+async function provaPvlVisibile(): Promise<void> {
+  const scenario = async (righePvl: Riga[]) => {
+    const m = mondo();
+    m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "pvl"), ...righePvl];
+    const soloPvl = gara(460, { chiave: "pvl:SINT-460", prima_rilevazione_il: "2026-10-19T09:00:00Z", scadenza_giorno: "2026-12-01" });
+    const unita = gara(461, { fonti: ["ted", "pvl"], prima_rilevazione_il: "2026-10-19T09:00:00Z", scadenza_giorno: "2026-12-01" });
+    m.db.t("radar_procedure").push(soloPvl, unita);
+    for (const g of [soloPvl, unita]) {
+      m.db.t("radar_classificazioni_stato").push({ procedura_id: g.id, stato: "classificata" });
+      m.db.t("radar_classificazioni").push({ procedura_id: g.id, settore: "pulizia", rilevanza: "A", sottocategorie: [], attiva: true });
+    }
+    await eseguiPassaggio(m.d);
+    const riepilogo = new Set(((eventi(m).find((e) => e.tipo === "riepilogo_opportunita" && e.impresa_id === I1)?.dati as EventoRiepilogo | undefined)?.gare ?? []).map((g) => g.proceduraId));
+    const promemoria = eventi(m).filter((e) => e.gara_chiave === `p:${U(102)}` && String(e.tipo).startsWith("scadenza_"));
+    const consegnePromemoria = consegne(m).filter((c) => promemoria.some((e) => e.id === c.evento_id)).length;
+    // proroga arrivata dalla SOLA PVL sulla gara solo PVL (gara 2, nella lista dell'impresa 2)
+    const p2 = m.db.t("radar_procedure").find((p) => p.id === U(102))!;
+    Object.assign(p2, { scadenza_giorno: "2026-11-02", scadenza_offerte: "2026-11-02T11:00:00Z", scadenza_ora_indicata: true });
+    m.db.t("radar_aggiornamenti").push({ id: U(360), tipo: "proroga", fonte: "pvl", id_fonte: "pvl-avviso-60", avviso_ted: null, affidabilita: "confronto_versioni", rilevato_il: "2026-10-20T10:00:00Z", procedura_id: U(102), campo: "scadenza_offerte", valore_precedente: "2026-10-25T10:00:00Z", valore_nuovo: "2026-11-02T12:00:00+01:00", notificabile: true, notifica_email: true, avviso_url: "https://esempio.invalid/rettifica-pvl", avviso_pubblicato_il: "2026-10-20", dichiarazione_fonte: null });
+    // e una proroga dalla SOLA PVL sulla gara UNITA TED+PVL (gara 1, nella lista dell'impresa 1): la gara resta visibile per TED, ma la
+    // notizia viene da una fonte che, se nascosta, il cliente non vede
+    const p1 = m.db.t("radar_procedure").find((p) => p.id === U(101))!;
+    Object.assign(p1, { fonti: ["ted", "pvl"], scadenza_giorno: "2026-11-06", scadenza_offerte: "2026-11-06T11:00:00Z" });
+    m.db.t("radar_aggiornamenti").push({ id: U(361), tipo: "proroga", fonte: "pvl", id_fonte: "pvl-avviso-61", avviso_ted: null, affidabilita: "confronto_versioni", rilevato_il: "2026-10-20T10:00:00Z", procedura_id: U(101), campo: "scadenza_offerte", valore_precedente: "2026-10-30T11:00:00Z", valore_nuovo: "2026-11-06T12:00:00+01:00", notificabile: true, notifica_email: true, avviso_url: "https://esempio.invalid/rettifica-pvl-unita", avviso_pubblicato_il: "2026-10-20", dichiarazione_fonte: null });
+    m.ora.t = new Date("2026-10-21T05:30:00Z");
+    await eseguiPassaggio(m.d);
+    const proroghe = eventi(m).filter((e) => e.tipo === "proroga" && e.gara_chiave === `p:${U(102)}`);
+    const consegneProroga = consegne(m).filter((c) => proroghe.some((e) => e.id === c.evento_id)).length;
+    const prorogheUnita = eventi(m).filter((e) => e.tipo === "proroga" && e.gara_chiave === `p:${U(101)}`).length;
+    return { soloPvl: riepilogo.has(soloPvl.id), unita: riepilogo.has(unita.id), promemoria: promemoria.length, consegnePromemoria, proroghe: proroghe.length, consegneProroga, prorogheUnita };
+  };
+  const visibile = await scenario([{ fonte: "pvl", nascosta_ai_clienti: false }]);
+  const assente = await scenario([]);
+  const nascosta = await scenario([{ fonte: "pvl", nascosta_ai_clienti: true }]);
+  controlla("48A notifiche, PVL visibile: la gara solo PVL e quella unita TED+PVL entrano nel riepilogo", visibile.soloPvl && visibile.unita, visibile);
+  controlla("48A notifiche, PVL visibile: il promemoria della gara solo PVL, con le sue consegne", visibile.promemoria === 1 && visibile.consegnePromemoria > 0, visibile);
+  controlla("48A notifiche, PVL visibile: la proroga arrivata dalla sola PVL dà il suo evento e le consegne", visibile.proroghe === 1 && visibile.consegneProroga > 0, visibile);
+  controlla("48A notifiche, PVL visibile: la proroga dalla sola PVL sulla gara unita TED+PVL dà il suo evento", visibile.prorogheUnita > 0, visibile);
+  controlla("48A notifiche, riga «pvl» assente (produzione): esattamente come visibile", JSON.stringify(assente) === JSON.stringify(visibile), { assente, visibile });
+  controlla("48A notifiche, PVL nascosta: la sola PVL esce da riepilogo, promemoria e proroghe; l'unita TED+PVL resta nel riepilogo", !nascosta.soloPvl && nascosta.unita && nascosta.promemoria === 0 && nascosta.proroghe === 0, nascosta);
+  controlla("48A notifiche, PVL nascosta: la proroga arrivata dalla sola PVL non dà eventi nemmeno sulla gara unita (fonte non visibile)", nascosta.prorogheUnita === 0, nascosta);
 }
 
 async function provaRiepilogo(): Promise<void> {
