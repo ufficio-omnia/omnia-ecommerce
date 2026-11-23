@@ -363,13 +363,14 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
     JSON.stringify(eventi(con).map((e) => `${e.impresa_id}:${e.gara_chiave}:${e.tipo}`).sort()) === JSON.stringify(eventi(senza).filter((e) => e.gara_chiave !== chiavePvl && e.tipo !== "riepilogo_opportunita").concat(eventi(senza).filter((e) => e.tipo === "riepilogo_opportunita")).map((e) => `${e.impresa_id}:${e.gara_chiave}:${e.tipo}`).sort()));
   controlla("fonti nascoste aggiunte: nessuna richiesta in più al database", con.db.conta() <= senza.db.conta(), { con: con.db.conta(), senza: senza.db.conta() });
 
-  // la regola UNICA delle fonti nascoste (fonti-gara-calcoli.ts), la stessa delle pagine. Direttiva 48A (23/11): la PVL è VISIBILE come
-  // le altre fonti (revoca della 7.14); resta nascosta di base solo SardegnaCAT
-  controlla("regola delle fonti: nessuna riga → nascosta di base SOLO SardegnaCAT (la PVL è visibile, 48A)", JSON.stringify(fontiNascosteDa([])) === JSON.stringify(["sardegnacat"]));
-  controlla("regola delle fonti: la riga esplicita vince sulla predefinita (sardegnacat visibile, ted nascosta)",
+  // la regola UNICA delle fonti nascoste (fonti-gara-calcoli.ts), la stessa delle pagine. Decisioni del 23/11: la PVL è VISIBILE (48A,
+  // revoca della 7.14) e SardegnaCAT anche, senza parere (48E, D4-bis): nessuna fonte nascosta di base; la console può sempre nasconderne una
+  controlla("regola delle fonti: nessuna riga → NESSUNA fonte nascosta di base (PVL 48A, SardegnaCAT 48E)", JSON.stringify(fontiNascosteDa([])) === JSON.stringify([]));
+  controlla("regola delle fonti: la riga esplicita decide (sardegnacat visibile, ted nascosta)",
     JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: false }, { fonte: "ted", nascosta_ai_clienti: true }])) === JSON.stringify(["ted"]));
-  controlla("regola delle fonti: un valore nullo vale come riga mancante", JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: null }])) === JSON.stringify(["sardegnacat"]));
-  controlla("regola delle fonti: le predefinite sono ESATTAMENTE SardegnaCAT", JSON.stringify([...FONTI_NASCOSTE_PREDEFINITE]) === JSON.stringify(["sardegnacat"]));
+  controlla("regola delle fonti: una fonte nascosta dalla console (riga «true») resta nascosta", JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: true }, { fonte: "pvl", nascosta_ai_clienti: false }])) === JSON.stringify(["sardegnacat"]));
+  controlla("regola delle fonti: un valore nullo vale come riga mancante (visibile)", JSON.stringify(fontiNascosteDa([{ fonte: "sardegnacat", nascosta_ai_clienti: null }])) === JSON.stringify([]));
+  controlla("regola delle fonti: le predefinite sono VUOTE", FONTI_NASCOSTE_PREDEFINITE.length === 0);
   const tipiPvl = async (righePvl: Riga[]) => {
     const m = mondo();
     m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "pvl"), ...righePvl];
@@ -387,7 +388,7 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
   controlla("48A motore: riga «pvl» visibile (come sarà lo staging dopo la 48B) → il suo promemoria c'è", visibile.eventi === 1 && visibile.consegne === assente.consegne);
   controlla("48A motore: riga «pvl» nascosta (come lo staging oggi, fino alla 48B) → nessun evento", nascosta.eventi === 0);
   controlla("regola delle fonti: la lettura delle fonti resta UNA richiesta per passaggio, con o senza la riga", assente.letture === nascosta.letture && assente.letture === visibile.letture);
-  // la predefinita conta anche nel motore: senza la riga «sardegnacat», la gara solo SardegnaCAT resta nascosta (come nelle pagine)
+  // SardegnaCAT nel motore (48E): senza la riga è visibile come le altre; nascosta dalla console (riga «true») non dà eventi
   const eventiSardegna = async (righe: Riga[]) => {
     const m = mondo();
     m.db.tabelle.radar_fonti_stato = [...m.db.t("radar_fonti_stato").filter((r) => r.fonte !== "sardegnacat"), ...righe];
@@ -396,8 +397,10 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
   };
   const sardegnaAssente = await eventiSardegna([]);
   const sardegnaVisibile = await eventiSardegna([{ fonte: "sardegnacat", nascosta_ai_clienti: false }]);
-  controlla("48A motore: riga «sardegnacat» ASSENTE → la gara solo SardegnaCAT resta nascosta (predefinita), nessun evento", sardegnaAssente === 0, sardegnaAssente);
-  controlla("48A motore: riga «sardegnacat» visibile → la stessa gara dà eventi (la prova sopra non è vuota per caso)", sardegnaVisibile > 0, sardegnaVisibile);
+  const sardegnaNascosta = await eventiSardegna([{ fonte: "sardegnacat", nascosta_ai_clienti: true }]);
+  controlla("48E motore: riga «sardegnacat» ASSENTE → la gara solo SardegnaCAT dà i suoi eventi (nessuna fonte nascosta di base)", sardegnaAssente > 0, sardegnaAssente);
+  controlla("48E motore: riga «sardegnacat» visibile (lo staging dopo la sua richiesta) → gli stessi eventi", sardegnaVisibile === sardegnaAssente, { sardegnaVisibile, sardegnaAssente });
+  controlla("48E motore: riga «sardegnacat» nascosta (dalla console, o lo staging di oggi) → nessun evento", sardegnaNascosta === 0, sardegnaNascosta);
   const pagine = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "fonti-nascoste.ts"), "utf8");
   controlla("regola delle fonti: fonti-nascoste.ts usa la STESSA regola (fontiNascosteDa) e, in caso di errore, le predefinite",
     /return fontiNascosteDa\(data \?\? \[\]\);/.test(pagine) && (pagine.match(/return \[\.\.\.FONTI_NASCOSTE_PREDEFINITE\];/g) ?? []).length === 2);

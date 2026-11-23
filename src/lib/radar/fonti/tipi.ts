@@ -84,9 +84,10 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
       "Comprende solo le gare pubblicate su SardegnaCAT",
       "Il CIG manca nelle procedure con più lotti",
       "Non comprende procedure su invito né affidamenti diretti",
-      "Non ancora mostrata ai clienti: serve il parere legale sulla licenza del feed",
     ],
-    licenza: "Regione Autonoma della Sardegna – SardegnaCAT: licenza non dichiarata, in attesa di parere legale",
+    // decisione dell'utente del 23/11 (48E, D4-bis): visibile ai clienti senza aspettare il parere; restano solo dati di fatto con il
+    // collegamento alla pagina ufficiale e la citazione della fonte, e i limiti verso il feed
+    licenza: "Regione Autonoma della Sardegna – SardegnaCAT: licenza del feed non dichiarata; solo dati di fatto, con il collegamento alla pagina ufficiale e la citazione della fonte",
     porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
   {

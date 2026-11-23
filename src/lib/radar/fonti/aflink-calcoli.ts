@@ -4,9 +4,9 @@
 // Regole (decisioni del 16/11/2026, documento 09):
 //   - si usa SOLO il feed PUBBLICATO sulla pagina «Feed RSS» dell'istanza, all'indirizzo pubblicato (mai modificato: contiene un filtro);
 //     un'istanza non si aggiunge perché usa lo stesso software: GIADA e AURA restano fuori finché non decidi la S10;
-//   - la licenza del feed non è dichiarata: sviluppo e prove sullo staging, ai clienti solo dopo il parere legale; solo dati di fatto
-//     (oggetto, ente, CPV, importo, scadenza, CIG) con il collegamento alla pagina ufficiale e la citazione della fonte; mai allegati
-//     (il link «Scarica Allegati» passa dal login e non si segue);
+//   - la licenza del feed non è dichiarata: per decisione dell'utente del 23/11 (48E, D4-bis) le gare sono visibili ai clienti senza
+//     aspettare il parere legale; solo dati di fatto (oggetto, ente, CPV, importo, scadenza, CIG) con il collegamento alla pagina ufficiale
+//     e la citazione della fonte; mai allegati (il link «Scarica Allegati» passa dal login e non si segue);
 //   - affidamenti diretti e procedure negoziate (su invito) NON sono opportunità aperte: non entrano.
 //
 // Come è fatto il feed (letto il 16/11/2026): RSS 2.0 con campi del fornitore nello spazio «afs» (http://www.aflink.it/XMLBANDI), tutti gli
