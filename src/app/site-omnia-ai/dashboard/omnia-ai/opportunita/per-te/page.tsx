@@ -23,7 +23,7 @@ import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opport
 import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 
-// «Per te» (fase B4, grado 1, RADAR_PER_TE acceso solo sullo staging): le gare aperte pertinenti al profilo dell'impresa. È la STESSA ricerca di
+// «Per te» (fase B4, grado 1, RADAR_PER_TE: staging o deploy di produzione, interruttori-b4.ts): le gare aperte pertinenti al profilo dell'impresa. È la STESSA ricerca di
 // «Cerca» (UNA richiesta all'archivio) con i filtri del profilo, più le regole del contratto in memoria: solo pertinenti (A), le correlate (B)
 // solo se il profilo lo chiede, mai le non pertinenti (C). Le gare senza luogo compaiono (decisione del 19/11). Non conta nel limite delle
 // ricerche: si registra come statistica «per_te». Nessun aggiornamento periodico: si calcola all'apertura della pagina.

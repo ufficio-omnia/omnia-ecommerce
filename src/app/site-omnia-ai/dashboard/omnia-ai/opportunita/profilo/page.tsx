@@ -11,7 +11,7 @@ import { PROCEDURE_RICERCA } from "@/lib/radar/ricerca-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import ProfiloForm from "@/components/omnia-ai/opportunita/profilo-form";
 
-// Profilo di ricerca dell'impresa (fase B4, grado 1, RADAR_PER_TE acceso solo sullo staging). Un profilo per impresa; lo modifica SOLO il
+// Profilo di ricerca dell'impresa (fase B4, grado 1, RADAR_PER_TE: staging o deploy di produzione, interruttori-b4.ts). Un profilo per impresa; lo modifica SOLO il
 // titolare (l'azione salvaProfiloRadar parte dalla sua guardia); l'Ufficio Gare, con il grado 2 acceso, lo vede in sola lettura.
 // Sottocategorie dal catalogo stabile della PVL (settori-catalogo.ts). 1 lettura per chiave del profilo, con la sessione dell'utente.
 export default async function ProfiloRicercaPage() {

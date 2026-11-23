@@ -153,7 +153,7 @@ async function VistaUfficioGare({ user, contesto, children }: { user: User; cont
     return <SchermataFermo email={email} titolo="Abbonamento non attivo" testo={MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO} />;
   }
 
-  // Fase B4 (grado 2): con RADAR_UFFICIO_GARE acceso (solo staging) e il Radar visibile per l'impresa, anche la voce «Opportunità». A
+  // Fase B4 (grado 2): con RADAR_UFFICIO_GARE acceso (staging o deploy di produzione, interruttori-b4.ts) e il Radar visibile per l'impresa, anche la voce «Opportunità». A
   // interruttore spento nessuna lettura in più; acceso, radarNelMenu passa dalla cache dei dati (come per il titolare).
   const [{ data: company }, conOpportunita] = await Promise.all([
     admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>(),

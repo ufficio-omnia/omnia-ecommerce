@@ -11,7 +11,7 @@ import type { StatoImpresaNotifiche } from "@/lib/radar/notifiche/destinatari-ca
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import { InterruttoreEmailImpresa, PreferenzePersonaForm } from "@/components/omnia-ai/opportunita/notifiche-form";
 
-// «Notifiche» (fase B4, grado 3, RADAR_NOTIFICHE_PREFERENZE acceso solo sullo staging). Decisione dell'utente del 19/11 §3 e approvazione
+// «Notifiche» (fase B4, grado 3, RADAR_NOTIFICHE_PREFERENZE: staging o deploy di produzione, interruttori-b4.ts). Decisione dell'utente del 19/11 §3 e approvazione
 // definitiva:
 //   - interruttore delle email dell'IMPRESA: lo cambia il titolare dell'impresa, l'Ufficio Gare lo vede;
 //   - preferenze personali a 3 categorie: il titolare per tutte le persone della sua impresa, l'Ufficio Gare solo le proprie e solo per spegnere;

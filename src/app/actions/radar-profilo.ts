@@ -10,7 +10,7 @@ import { inputProfiloDaModulo, validaProfiloRadar } from "@/lib/radar/profilo-ca
 import { scriviProfiloRadar } from "@/lib/radar/profilo";
 
 // Fase B4 (B1), grado 1 — Salvataggio del profilo di ricerca. SOLO il titolare dell'impresa (decisione dell'utente del 19/11: l'Ufficio Gare
-// vede il profilo ma non lo modifica). Prima cosa la guardia del titolare, poi l'interruttore RADAR_PER_TE (solo staging) e il diritto al modulo;
+// vede il profilo ma non lo modifica). Prima cosa la guardia del titolare, poi l'interruttore RADAR_PER_TE (staging o deploy di produzione, interruttori-b4.ts) e il diritto al modulo;
 // l'impresa e l'autore vengono dalla sessione, mai dal modulo. Scrittura con la chiave di servizio (la 0122 non dà scritture ai clienti).
 
 export type StatoProfiloRadar = { errore?: string; ok?: boolean; messaggio?: string };

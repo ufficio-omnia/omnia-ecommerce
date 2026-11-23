@@ -1,5 +1,5 @@
 // Fase B4 (B1), grado 2 — Le guardie delle pagine e delle azioni di «Opportunità».
-// Di base Opportunità resta del TITOLARE, come in produzione oggi. Con RADAR_UFFICIO_GARE=attivo (solo staging, interruttori-b4.ts) si apre
+// Di base Opportunità resta del TITOLARE, come in produzione oggi. Con RADAR_UFFICIO_GARE=attivo (staging o deploy di produzione, interruttori-b4.ts) si apre
 // anche all'Ufficio Gare ATTIVO dell'impresa (decisione dell'utente del 19/11, §8): cerca, salva, monitora, aggiunge. Il profilo di ricerca e
 // le scelte dell'impresa restano del titolare: quelle azioni usano richiediTitolareAzione, mai queste guardie.
 // I dati sono sempre dell'impresa: contesto.accountId (mai user.id), e le tabelle riservate filtrano con omnia_ai_titolare_effettivo().
