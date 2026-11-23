@@ -403,7 +403,9 @@ async function principale() {
   atteso("stesso nome generico del programma di TED e PVL", USER_AGENT_FONTI === USER_AGENT_PVL);
   uguale("solo le istanze approvate: SardegnaCAT (GIADA e AURA aspettano la decisione S10)", Object.keys(ISTANZE_AFLINK), ["sardegnacat"]);
   atteso("SardegnaCAT: si legge solo l'indirizzo del feed (mai allegati o pagine di accesso)", !/loginportale|scarica|allegat/i.test(codice["src/lib/radar/fonti/aflink.ts"]) && /ISTANZE_AFLINK\[this\.istanza\]\.urlFeed/.test(codice["src/lib/radar/fonti/aflink.ts"]));
-  atteso("Sintel: si leggono solo i due indirizzi del dataset", (codice["src/lib/radar/fonti/sintel.ts"].match(/sessione\.leggi\(/g) ?? []).length === 2 && /URL_METADATI_SINTEL/.test(codice["src/lib/radar/fonti/sintel.ts"]) && /URL_DATI_SINTEL/.test(codice["src/lib/radar/fonti/sintel.ts"]));
+  // dal K6 le letture sono tre (metadati, righe, conteggio delle righe), sempre e solo sui due indirizzi del dataset
+  const lettureSintel = codice["src/lib/radar/fonti/sintel.ts"].match(/sessione\.leggi\([^,]+/g) ?? [];
+  atteso("Sintel: si leggono solo i due indirizzi del dataset", lettureSintel.length === 3 && lettureSintel.every((x) => /^sessione\.leggi\((URL_METADATI_SINTEL|`\$\{URL_DATI_SINTEL\}\?)/.test(x)));
   atteso("citazione delle fonti presente", /ATTRIBUZIONE_SINTEL = "Regione Lombardia – Open Data Lombardia \(Sintel\), licenza CC0 1\.0"/.test(leggi("src/lib/radar/fonti/sintel-calcoli.ts")) && /attribuzione: "Regione Autonoma della Sardegna – SardegnaCAT/.test(leggi("src/lib/radar/fonti/aflink-calcoli.ts")));
   uguale("limiti fuori intervallo tornano ai predefiniti", limitiValidi({ pausaMs: 10, tentativi: 9, timeoutMs: 20_000 }, LIMITI_PROVA, { pausaMs: { min: 1_000, max: 60_000 }, timeoutMs: { min: 5_000, max: 120_000 }, tentativi: { min: 1, max: 3 }, richiesteMassime: { min: 1, max: 20 } }), { ...LIMITI_PROVA, timeoutMs: 20_000 });
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };

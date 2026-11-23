@@ -80,6 +80,25 @@ export type ElementoAflink = Record<string, string>;
 
 export type FeedAflink = { elementi: ElementoAflink[]; totaleDichiarato: number | null };
 
+/** Il giorno di pubblicazione più vecchio tra gli elementi del feed (AAAA-MM-GG), o null se nessuno lo indica. */
+export function pubblicazionePiuVecchiaAflink(elementi: readonly ElementoAflink[]): string | null {
+  let piuVecchia: string | null = null;
+  for (const e of elementi) {
+    const g = scadenzaAflink(e.DtPubblicazioneTecnical)?.giorno ?? null;
+    if (g && (!piuVecchia || g < piuVecchia)) piuVecchia = g;
+  }
+  return piuVecchia;
+}
+
+/**
+ * Feed «scivolato» (K6, 48C §3.3): il feed contiene solo gli avvisi correnti. Se l'avviso più vecchio è stato pubblicato DOPO il giorno
+ * dell'ultimo giro riuscito, gli avvisi usciti nel frattempo possono essere andati persi: allarme «buco_possibile». Oltre il feed non si
+ * recupera, e non si aggira nulla. Senza un giro riuscito prima (primo giro) o senza date nel feed: nessun allarme.
+ */
+export function bucoPossibileFeed(piuVecchia: string | null, giornoUltimoSuccesso: string | null): boolean {
+  return !!piuVecchia && !!giornoUltimoSuccesso && piuVecchia > giornoUltimoSuccesso;
+}
+
 // L'XML del feed → elementi con i campi «afs:*» (senza prefisso) più «link». Formato inatteso → errore (la fonte si sospende).
 export function leggiFeedAflink(xml: string): FeedAflink | { errore: string } {
   if (!/^\s*(<\?xml[^>]*>\s*)?<rss\b/i.test(xml)) return { errore: "la risposta non è un feed RSS" };

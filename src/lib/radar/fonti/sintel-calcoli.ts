@@ -79,6 +79,21 @@ export function parametriSintel(p: { daGiorno: string; limite: number; offset: n
   };
 }
 
+// Completezza (K6, 48C §3.3): il conteggio delle righe con lo STESSO filtro della lettura, in una sola richiesta leggera (SODA count).
+// Le righe lette devono essere tante quante quelle contate; se no la data dei dati non avanza e il giro dopo rilegge tutto.
+export function parametriConteggioSintel(daGiorno: string): Record<string, string> {
+  if (!GIORNO.test(daGiorno)) throw new Error("Giorno non valido");
+  return { $select: "count(*) AS n", $where: `data_fine_negoziazione >= '${daGiorno}T00:00:00'` };
+}
+
+/** Il numero dalla risposta del conteggio ([{ "n": "123" }]); null se il formato non è quello atteso. */
+export function conteggioSintel(j: unknown): number | null {
+  if (!Array.isArray(j) || j.length !== 1 || !j[0] || typeof j[0] !== "object") return null;
+  const v = (j[0] as Record<string, unknown>).n;
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,9}$/.test(v.trim()) ? Number(v.trim()) : Number.NaN;
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
 // Data dell'ultimo caricamento del dataset (metadati, campo «rowsUpdatedAt» in secondi): una richiesta leggera prima di leggere i dati.
 export function dataAggiornamentoSintel(metadati: unknown): string | null {
   const m = metadati && typeof metadati === "object" ? (metadati as Record<string, unknown>) : null;

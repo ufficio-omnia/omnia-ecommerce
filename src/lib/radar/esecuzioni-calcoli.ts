@@ -290,6 +290,10 @@ export type RisultatoRegionalePerRegistro =
       eseguita: true;
       invariataAllaFonte: boolean;
       sospesa: boolean;
+      // K6: giro scritto per intero entro il tempo massimo; conteggio dichiarato da Sintel; allarmi del giro
+      giroFinito?: boolean;
+      dichiarati?: number | null;
+      allarmi?: string[];
       errore: string | null;
       statistiche: {
         letti: number;
@@ -317,11 +321,11 @@ export function datiGiroRegionale(r: RisultatoRegionalePerRegistro): DatiGiro | 
     modo: "incrementale",
     esito: esitoDi(r.errore, r.sospesa),
     errore: r.errore,
-    finestre: { invariata_alla_fonte: r.invariataAllaFonte },
+    finestre: { invariata_alla_fonte: r.invariataAllaFonte, ...(r.giroFinito !== undefined ? { giro_finito: r.giroFinito } : {}), ...(r.dichiarati !== undefined ? { dichiarati: r.dichiarati } : {}) },
     misureFonte: { richieste: s.fonte.richieste, byte: s.fonte.byte, ms: s.fonte.ms },
     db: { richieste: s.db.richiesteDb, ms: s.db.msDb },
     avvisi: { letti: s.letti, invariati: s.invariati, annullati: s.annullate, esclusi: s.esclusi, su_gara_esistente: s.suGaraEsistente, proposte: s.proposte, ambiguita: s.ambiguita, ...motivoSospensione(r.errore, r.sospesa) },
     gare: { nuove: s.nuove, unite, aggiornate: s.aggiornate, rettifiche: s.rettifiche, conflitti: s.conflitti },
-    allarmi: r.sospesa ? ["sospesa"] : [],
+    allarmi: [...(r.sospesa ? ["sospesa"] : []), ...(r.allarmi ?? [])],
   };
 }

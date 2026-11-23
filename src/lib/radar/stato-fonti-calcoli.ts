@@ -48,9 +48,11 @@ export type CodiceAllarme =
   | "risorse"
   | "tipo_sconosciuto"
   | "registro_mancante"
-  // segnalati dal giro stesso (registro, colonna «allarmi»): recupero della PVL (K4), feed di SardegnaCAT (K6), arresto dalla console (K7)
+  // segnalati dal giro stesso (registro, colonna «allarmi»): recupero della PVL (K4), conteggio di Sintel e feed di SardegnaCAT (K6),
+  // arresto dalla console (K7)
   | "buco_in_recupero"
   | "blocco_incompleto"
+  | "conteggio_diverso"
   | "buco_possibile"
   | "fermata_dalla_console";
 export type Allarme = { codice: CodiceAllarme; gravita: GravitaAllarme; messaggio: string; dal: string | null; dettagli?: Record<string, unknown> };
@@ -117,7 +119,8 @@ export function tipiSconosciuti(fonte: FonteEsecuzione, avvisi: Record<string, u
 
 const MESSAGGI_DEL_GIRO: Partial<Record<CodiceAllarme, [GravitaAllarme, string]>> = {
   buco_in_recupero: ["avviso", "Un periodo non letto è entrato tra i buchi da recuperare"],
-  blocco_incompleto: ["avviso", "Un blocco del recupero non torna con il conteggio dichiarato dalla fonte"],
+  blocco_incompleto: ["avviso", "Un blocco del recupero non torna con il conteggio dichiarato dalla fonte dopo 3 tentativi: il recupero è fermo finché non si riprende dalla console"],
+  conteggio_diverso: ["avviso", "Le righe lette non tornano con il conteggio della fonte: si rileggono al giro dopo"],
   buco_possibile: ["avviso", "Dopo un fermo lungo qualche avviso può essere uscito dal feed"],
   fermata_dalla_console: ["informazione", "Giro fermato dalla console a metà"],
 };
