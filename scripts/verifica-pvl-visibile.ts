@@ -124,9 +124,9 @@ function pagine(): void {
     { campo: "collegamento_proposto", fonte: "pvl" },
   ];
   const stati = {
-    visibile: new Set(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: false }, { fonte: "sardegnacat", nascosta_ai_clienti: true }])),
-    assente: new Set(fontiNascosteDa([])),
-    nascosta: new Set(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: true }, { fonte: "sardegnacat", nascosta_ai_clienti: true }])),
+    visibile: new Set<string>(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: false }, { fonte: "sardegnacat", nascosta_ai_clienti: true }])),
+    assente: new Set<string>(fontiNascosteDa([])),
+    nascosta: new Set<string>(fontiNascosteDa([{ fonte: "pvl", nascosta_ai_clienti: true }, { fonte: "sardegnacat", nascosta_ai_clienti: true }])),
   };
   for (const [nome, nascoste] of [["visibile", stati.visibile], ["assente", stati.assente]] as const) {
     controlla(`pagine (PVL ${nome}): la gara unita TED+PVL e quella solo PVL si vedono`, garaVisibileAiClienti(unita, nascoste) && garaVisibileAiClienti(soloPvl, nascoste));
