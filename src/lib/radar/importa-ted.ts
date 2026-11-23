@@ -18,6 +18,7 @@ import { cursoreAllAvvio, cursoreDopoPagina, cursoreIniziale, finestraCorrente, 
 import { erroreDaConservare } from "./lavori-calcoli";
 import { datiGiroTed, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
+import { eDoppioRichiamo } from "./programmazione-calcoli";
 
 export type TotaliGiro = {
   pagine: number;
@@ -28,7 +29,7 @@ export type TotaliGiro = {
 };
 
 export type RisultatoImportazioneTed =
-  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   // fermata: la fonte è stata spenta dalla console a metà giro e il giro si è fermato alla pagina dopo (K7)
   | { eseguita: true; fase: CursoreTed["fase"]; giroFinito: boolean; fermata: boolean; totali: TotaliGiro; durataMs: number; errore: string | null; cursore: CursoreTed };
 
@@ -53,7 +54,7 @@ function somma(t: TotaliGiro, b: EsitoPaginaBandi | null, e: EsitoPaginaEsiti | 
   if (e) for (const k of ["letti", "applicati", "senzaBando", "invariati", "senzaStato"] as const) t.esiti[k] += e[k];
 }
 
-type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
+type RigaFonte = { attiva: boolean; ultimo_successo_il: string | null; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
 /** Un giro TED, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere (esecuzioni.ts). */
 export function eseguiImportazioneTed(admin: SupabaseClient, opzioni: OpzioniImportazione): Promise<RisultatoImportazioneTed & { esecuzione: EsitoRegistro }> {
@@ -70,9 +71,12 @@ async function giroTed(admin: SupabaseClient, opzioni: OpzioniImportazione, esec
   const evidenza = registroConEvidenza(opzioni.env ?? process.env);
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
-  const { data: fonte, error } = await admin.from("radar_fonti_stato").select("attiva, cursore, blocco_fino_a, conteggi").eq("fonte", "ted").maybeSingle<RigaFonte>();
+  const { data: fonte, error } = await admin.from("radar_fonti_stato").select("attiva, ultimo_successo_il, cursore, blocco_fino_a, conteggi").eq("fonte", "ted").maybeSingle<RigaFonte>();
   if (error) return { eseguita: false, motivo: schemaAssente(error) ? "schema_assente" : "errore_lettura" };
   if (!fonte || !fonte.attiva) return { eseguita: false, motivo: "fonte_spenta" };
+  // doppio richiamo (K1, 48C §3.1 punto 7): un giro programmato già riuscito da meno di 45 minuti non riparte (nessuna scrittura, nessuna
+  // chiamata alla fonte; la riga «gia_eseguito» va nel registro). Console e script restano ammessi
+  if (eDoppioRichiamo(opzioni.origine, fonte.ultimo_successo_il, inizio)) return { eseguita: false, motivo: "gia_eseguito" };
 
   // blocco: vince una sola esecuzione; scade da solo dopo il tempo massimo più due minuti
   const scadenzaBlocco = new Date(inizio.getTime() + opzioni.tempoMassimoMs + 120_000).toISOString();

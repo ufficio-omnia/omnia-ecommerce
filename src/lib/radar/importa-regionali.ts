@@ -21,15 +21,16 @@ import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
 import { bandoDaAflink, bandoDaSintel, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
 import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
+import { eDoppioRichiamo } from "./programmazione-calcoli";
 
 export type RisultatoImportazioneRegionale =
-  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "schema_assente" | "errore_lettura"; dettaglio?: string }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
   | { eseguita: true; fonte: FonteRegionale; invariataAllaFonte: boolean; sospesa: boolean; statistiche: StatisticheRegionali & { fonte: { richieste: number; byte: number; ms: number }; db: Misure }; durataMs: number; errore: string | null };
 
 // origine: chi lancia il giro (cron, console, script), per il registro dei giri (0128); nuovoIdEsecuzione solo per le prove
 export type OpzioniImportazioneRegionale = { tempoMassimoMs?: number; adesso?: () => Date; fetchFn?: typeof fetch; limiti?: Partial<LimitiFonte>; env?: Record<string, string | undefined>; origine?: OrigineGiro; nuovoIdEsecuzione?: () => string };
 
-type RigaFonte = { attiva: boolean; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
+type RigaFonte = { attiva: boolean; ultimo_successo_il: string | null; cursore: unknown; blocco_fino_a: string | null; conteggi: Record<string, unknown> | null };
 
 const BLOCCO_MS = 10 * 60_000;
 const PAGINE_MASSIME_SINTEL = 4;
@@ -53,10 +54,13 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
 
-  const { data: righe, error } = await admin.from("radar_fonti_stato").select("fonte, attiva, cursore, blocco_fino_a, conteggi, nascosta_ai_clienti").returns<(RigaFonte & { fonte: string; nascosta_ai_clienti: boolean })[]>();
+  const { data: righe, error } = await admin.from("radar_fonti_stato").select("fonte, attiva, ultimo_successo_il, cursore, blocco_fino_a, conteggi, nascosta_ai_clienti").returns<(RigaFonte & { fonte: string; nascosta_ai_clienti: boolean })[]>();
   if (error) return { eseguita: false, motivo: schemaAssente(error) ? "schema_assente" : "errore_lettura" };
   const riga = (righe ?? []).find((r) => r.fonte === fonte);
   if (!riga || !riga.attiva) return { eseguita: false, motivo: "fonte_spenta" };
+  // doppio richiamo (K1, 48C §3.1 punto 7): un giro programmato già riuscito da meno di 45 minuti non riparte (nessuna scrittura, nessuna
+  // chiamata alla fonte; la riga «gia_eseguito» va nel registro). Console e script restano ammessi
+  if (eDoppioRichiamo(opzioni.origine, riga.ultimo_successo_il, inizio)) return { eseguita: false, motivo: "gia_eseguito" };
   const nascoste = new Set((righe ?? []).filter((r) => r.nascosta_ai_clienti).map((r) => r.fonte));
 
   // blocco: solo se libero o scaduto (il semaforo del coordinamento resta chiuso finché il lanciatore autorizzato non lo apre)

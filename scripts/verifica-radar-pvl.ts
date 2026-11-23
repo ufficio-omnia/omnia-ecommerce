@@ -506,7 +506,9 @@ async function principale() {
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
   atteso("nessun cron PVL in vercel.json (serve l'autorizzazione operativa)", !vercel.crons.some((c) => /pvl/.test(c.path)));
   const rotta = leggi("src/app/api/cron/radar-pvl/route.ts");
-  atteso("percorso del cron: segreto, interruttore RADAR_PVL_CRON=attivo, ora italiana", /CRON_SECRET/.test(rotta) && /RADAR_PVL_CRON/.test(rotta) && /"attivo"/.test(rotta) && /eOraDiUnGiroPvl/.test(rotta));
+  // dal K1 (48C §3.1) l'interruttore RADAR_PVL_CRON e l'ora di Roma sono nella porta comune delle rotte cron (giro-programmato.ts)
+  const porta = leggi("src/lib/radar/giro-programmato.ts") + leggi("src/lib/radar/programmazione-calcoli.ts");
+  atteso("percorso del cron: segreto, interruttore RADAR_PVL_CRON=attivo, ora italiana", /CRON_SECRET/.test(rotta) && /portaGiroProgrammato\("pvl"/.test(rotta) && /pvl: "RADAR_PVL_CRON"/.test(porta) && /!== "attivo"/.test(porta) && /eOraDiUnGiro\(fonte, adesso\)/.test(porta));
   atteso("nessun modello AI nel connettore", !/anthropic|openai|@ai-sdk|claude-/i.test(testoSrcPvl + leggi("src/lib/radar/fonti/pvl.ts")));
   const componenti = fs.readdirSync(path.join(RADICE, "src/components/omnia-ai/opportunita")).map((f) => leggi(`src/components/omnia-ai/opportunita/${f}`)).join("\n");
   atteso("nessun controllo periodico nel browser", !/setInterval|refreshInterval|useSWR|router\.refresh\(\)\s*,\s*\d/.test(componenti));
