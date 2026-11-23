@@ -481,6 +481,11 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
             <Link href="/tender-intelligence/email" prefetch={false}>
               Email non consegnate
             </Link>
+            {" · "}
+            {/* 48C §3.5–3.6: stato calcolato, ultimi giri e allarmi delle fonti */}
+            <Link href="/tender-intelligence/fonti" prefetch={false}>
+              Fonti: stato, giri e allarmi
+            </Link>
           </p>
         </div>
       </div>

@@ -25,6 +25,9 @@ const GVC = "src/lib/console/gare-in-verifica-calcoli.ts";
 const GVV = "src/app/site-console/_componenti/gare-in-verifica.tsx";
 const CL = "src/lib/console/tender-intelligence.ts";
 const ST = "src/lib/radar/settori.ts";
+const FC = "src/lib/console/fonti-calcoli.ts";
+const FV = "src/app/site-console/_componenti/fonti-vista.tsx";
+const FP = "src/app/site-console/(app)/tender-intelligence/fonti/page.tsx";
 
 const MUTAZIONI = [
   // 1. Monitorate: filtro delle fonti nelle due letture
@@ -205,6 +208,25 @@ const MUTAZIONI = [
   { nome: "MM96 decidi: esito del riallineamento non nel registro", file: CA, cerca: ' · colonna: ${colonna ? testoRiallineamento(colonna) : "non riallineata"}', con: "", richiede: "MS12." },
   { nome: "MM97 testo: «cambiata nel frattempo» non detto", file: GVC, cerca: '"la colonna dei settori è cambiata nel frattempo"', con: '"colonna non scritta"', richiede: "MS14." },
   { nome: "MM98 testo: «gara non trovata» non detto", file: GVC, cerca: ': "gara non trovata";', con: ': "colonna non scritta";', richiede: "MS14." },
+  // pagina «Fonti» della console (48C §3.5–3.6)
+  { nome: "MF1 stato «in errore» detto «in funzione»", file: FC, cerca: 'in_errore: { testo: "In errore",', con: 'in_errore: { testo: "In funzione",', richiede: "FS1." },
+  { nome: "MF2 accesa e spenta invertite", file: FV, cerca: '{f.attiva ? "Accesa" : "Spenta"}', con: '{f.attiva ? "Spenta" : "Accesa"}', richiede: "FS1." },
+  { nome: "MF3 allarmi in ordine diverso da quello di B2", file: FV, cerca: "{f.allarmi.map((a, i) => (", con: "{[...f.allarmi].reverse().map((a, i) => (", richiede: "FS2." },
+  { nome: "MF4 solo gli allarmi gravi", file: FV, cerca: "{f.allarmi.map((a, i) => (", con: '{f.allarmi.filter((a) => a.gravita === "errore").map((a, i) => (', richiede: "FS2." },
+  { nome: "MF5 prossimo giro anche coi giri programmati spenti", file: FC, cerca: "  if (!attiva || !cronAttivo) return null;", con: "  if (!attiva) return null;", richiede: "FS3." },
+  { nome: "MF6 prossimo giro anche per una fonte spenta", file: FC, cerca: "  if (!attiva || !cronAttivo) return null;", con: "  if (!cronAttivo) return null;", richiede: "FS3." },
+  { nome: "MF7 elenco dei giri senza limite", file: FC, cerca: "    .slice(0, GIRI_PER_FONTE)\n", con: "", richiede: "FS4." },
+  { nome: "MF8 elenco dei giri dal più vecchio", file: FC, cerca: "Date.parse(b.iniziato_il) - Date.parse(a.iniziato_il)", con: "Date.parse(a.iniziato_il) - Date.parse(b.iniziato_il)", richiede: "FS4." },
+  { nome: "MF9 registro assente non detto", file: FV, cerca: "{dati.registroAssente && (", con: "{false && (", richiede: "FS5." },
+  { nome: "MF10 errore di lettura non detto", file: FV, cerca: "{dati.errore && (", con: "{false && (", richiede: "FS5." },
+  { nome: "MF11 conferma non obbligatoria", file: FV, cerca: '<input type="checkbox" name="conferma" value="si" required />', con: '<input type="checkbox" name="conferma" value="si" />', richiede: "FS6." },
+  { nome: "MF12 fonte regionale senza la fonte nel modulo", file: FV, cerca: "campi={{ fonte: f.fonte, azione }}", con: "campi={{ azione }}", richiede: "FS6." },
+  { nome: "MF13 accendi e spegni invertiti", file: FV, cerca: 'const azione = f.attiva ? "spegni" : "accendi";', con: 'const azione = f.attiva ? "accendi" : "spegni";', richiede: "FS6." },
+  { nome: "MF14 una fonte sospesa senza «Riaccendi»", file: FV, cerca: 'f.stato === "sospesa" ? "Riaccendi la fonte" : "Accendi la fonte"', con: '"Accendi la fonte"', richiede: "FS6." },
+  { nome: "MF15 pagina senza la guardia degli amministratori", file: FP, cerca: "  await richiediAdminPagina();\n", con: "", richiede: "FS7." },
+  { nome: "MF16 pagina non collegata da Tender Intelligence", file: CV, cerca: '<Link href="/tender-intelligence/fonti" prefetch={false}>', con: '<Link href="/tender-intelligence" prefetch={false}>', richiede: "FS7." },
+  { nome: "MF17 regionali: nota «dal giro successivo» tolta", file: FV, cerca: '      {f.attiva ? <p className="cn-nota">{`${f.nome} si ferma dal giro successivo: un giro già in corso arriva alla fine.`}</p> : null}\n', con: "", richiede: "FS8." },
+  { nome: "MF18 regionali: nota anche per una fonte spenta", file: FV, cerca: '{f.attiva ? <p className="cn-nota">', con: '{true ? <p className="cn-nota">', richiede: "FS8." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
