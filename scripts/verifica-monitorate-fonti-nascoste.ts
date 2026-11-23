@@ -40,6 +40,8 @@ class DbProva {
   /** tabelle la cui lettura fallisce (guasto simulato) */
   guasti = new Set<string>();
   contatore = 0;
+  /** tabelle che NON esistono in questo database (come una migrazione non applicata): PostgREST risponde PGRST205 */
+  assenti = new Set<string>();
   /** eseguita una volta, subito prima della prossima scrittura (simula un'altra scrittura arrivata nel frattempo) */
   primaDiScrivere: ((tabella: string, db: DbProva) => boolean | void) | null = null;
   constructor(tabelle: Record<string, Riga[]>) {
@@ -244,6 +246,7 @@ class QueryProva implements PromiseLike<Esito> {
   private esegui(): Esito {
     this.db.richieste.push({ tabella: this.tabella, metodo: this.metodo, colonne: this.colonne });
     if (this.db.guasti.has(this.tabella)) return { data: null, error: { code: "08006", message: "guasto simulato" } };
+    if (this.db.assenti.has(this.tabella)) return { data: null, error: { code: "PGRST205", message: `Could not find the table 'public.${this.tabella}' in the schema cache` } };
     // una scrittura «concorrente» simulata subito prima di questa (prova delle scritture condizionate): il gancio resta finché non agisce
     if (this.metodo !== "select" && this.db.primaDiScrivere?.(this.tabella, this.db) === true) this.db.primaDiScrivere = null;
     // colonne semplici e tabelle incorporate («alias:tabella(colonne)»); una tabella incorporata assente dal mondo (le tabelle della 0121 nei
@@ -554,7 +557,13 @@ sostituisci(richiedi.resolve("next/cache"), {
 // la console: un amministratore sintetico (decisione 48E sulla visibilità di SardegnaCAT, sezione O)
 const AMMINISTRATORE = { userId: id(9100), email: "amministratore@prova.test", scadeIl: "2026-12-31T00:00:00Z" };
 let adminAutenticato = true;
-sostituisci(src("lib/console/accesso.ts"), { richiediAdminAzione: async () => (adminAutenticato ? AMMINISTRATORE : null) });
+sostituisci(src("lib/console/accesso.ts"), {
+  richiediAdminAzione: async () => (adminAutenticato ? AMMINISTRATORE : null),
+  richiediAdminPagina: async () => {
+    if (!adminAutenticato) throw new Error("redirect al login (prova)");
+    return AMMINISTRATORE;
+  },
+});
 const dopo: unknown[] = [];
 sostituisci(richiedi.resolve("next/server"), { ...(richiedi("next/server") as Record<string, unknown>), after: (f: unknown) => void dopo.push(f) });
 
@@ -1500,6 +1509,177 @@ async function principale(): Promise<void> {
       calcoliConsole.CASO_DEL_SETTORE === undefined,
     { casiDelTipo, chiaviMotivi, casiPrevisti, motiviDoppi, ritorno, corrispondenzaDalSettore: calcoliConsole.CASO_DEL_SETTORE !== undefined },
   );
+
+  // ═════ S. pagina «Fonti» della console (48C §3.5–3.6, K3 di B2): stato calcolato, ultimi giri, allarmi, accendi e spegni con conferma ═════
+  // Istante FISSO (mercoledì 25/11/2026, 13:00 a Roma): la lettura di B2 (leggiSituazioneFonti) è il riferimento; la pagina deve dire la stessa
+  // cosa. Dati sintetici: nessuna gara, solo righe di stato e del registro dei giri.
+  const ADESSO_F = new Date("2026-11-25T12:00:00Z");
+  const giro = (fonte: string, iniziato: string, esito: string, extra: Riga = {}): Riga => ({
+    fonte,
+    modo: "incrementale",
+    iniziato_il: iniziato,
+    finito_il: new Date(Date.parse(iniziato) + 40_000).toISOString(),
+    esito,
+    finestre: null,
+    fonte_richieste: 3,
+    db_richieste: 20,
+    avvisi: null,
+    gare_nuove: esito === "ok" ? 2 : 0,
+    allarmi: null,
+    errore: esito === "errore" ? "risposta HTTP 500 dalla fonte (dato sintetico)" : null,
+    ...extra,
+  });
+  const statoF = (fonte: string, attiva: boolean, extra: Riga = {}): Riga => ({ fonte, attiva, ultimo_avvio_il: null, ultimo_successo_il: null, ultimo_errore_il: null, ultimo_errore: null, conteggi: {}, nascosta_ai_clienti: false, ...extra });
+  const mondoFonti = () => {
+    const admin = new DbProva({
+      radar_fonti_stato: [
+        statoF("ted", true, { ultimo_successo_il: "2026-11-25T09:16:00Z" }),
+        statoF("pvl", true, { ultimo_successo_il: "2026-11-24T12:06:00Z", ultimo_errore_il: "2026-11-25T07:06:00Z", ultimo_errore: "HTTP 500 (dato sintetico)" }),
+        statoF("sintel", false, { ultimo_successo_il: "2026-11-23T06:41:00Z", conteggi: { sospensione: { il: "2026-11-24T06:41:00Z", motivo: "HTTP 429 (dato sintetico)" } } }),
+        statoF("sardegnacat", false),
+      ],
+      radar_esecuzioni: [
+        giro("ted", "2026-11-25T09:15:00Z", "ok"),
+        giro("ted", "2026-11-24T15:15:00Z", "ok", { gare_nuove: 40, modo: "manuale" }),
+        giro("pvl", "2026-11-25T07:05:00Z", "errore"),
+        giro("pvl", "2026-11-24T17:05:00Z", "errore"),
+        giro("pvl", "2026-11-24T12:05:00Z", "ok", { allarmi: ["fermata_dalla_console"] }),
+        giro("sintel", "2026-11-24T06:40:00Z", "sospesa"),
+        ...Array.from({ length: 12 }, (_, i) => giro("ted", new Date(Date.parse("2026-11-20T09:15:00Z") - i * 86_400_000).toISOString(), "ok")),
+      ],
+      radar_console_registro: [],
+    });
+    return { admin, sessione: new DbProva({}) };
+  };
+  const moduloFonti = ((): Record<string, unknown> => {
+    try {
+      return richiedi(src("lib/console/fonti.ts")) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
+  const vistaFonti = ((): ((p: unknown) => unknown) | null => {
+    try {
+      return (richiedi(src("app/site-console/_componenti/fonti-vista.tsx")) as { default: (p: unknown) => unknown }).default;
+    } catch {
+      return null;
+    }
+  })();
+  type FonteConsoleProva = { fonte: string; nome: string; stato: string; attiva: boolean; allarmi: { codice: string; messaggio: string }[]; prossimoGiro: string | null; giri: { iniziatoIl: string; esito: string }[] };
+  type DatiFontiProva = { fonti: FonteConsoleProva[]; registroAssente: boolean; errore: string | null };
+  const leggiDatiFonti = moduloFonti.leggiDatiFonti as ((admin: unknown, adesso?: Date, env?: Record<string, string | undefined>) => Promise<DatiFontiProva>) | undefined;
+  const { leggiSituazioneFonti } = richiedi(src("lib/radar/esecuzioni.ts")) as { leggiSituazioneFonti: (db: unknown, adesso: Date, env: Record<string, string | undefined>) => Promise<{ situazioni: { fonte: string; stato: string; attiva: boolean; allarmi: { codice: string; messaggio: string }[] }[]; registroAssente: boolean; errore: string | null }> };
+  const { orariPrevisti } = richiedi(src("lib/radar/programmazione-calcoli.ts")) as { orariPrevisti: (f: string, da: Date, a: Date) => Date[] };
+  const ENV_F = { RADAR_PVL_CRON: "attivo" };
+  mondo = mondoFonti();
+  const rif = await leggiSituazioneFonti(mondo.admin, ADESSO_F, ENV_F);
+  mondo = mondoFonti();
+  const datiF = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, ENV_F) : null;
+  const scrittureLettura = mondo.admin.richieste.filter((r) => r.metodo !== "select").length;
+  const albF = vistaFonti && datiF ? vistaFonti({ dati: datiF }) : null;
+  const tF = testi(albF);
+  const pannelli = elementi(albF).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT"].some((n) => String(e.props.titolo).startsWith(n)));
+  const testiPannello = (i: number) => testi(pannelli[i]?.props.children);
+  const STATO_LEGGIBILE: Record<string, RegExp> = { ok: /In funzione/, in_errore: /In errore/, sospesa: /Sospesa/, spenta: /Spenta/ };
+  controlla(
+    "FS1. pagina «Fonti»: le quattro fonti nell'ordine ted, pvl, sintel, sardegnacat, ciascuna con lo stato calcolato da B2 detto in chiaro (ok, in errore, sospesa, spenta) e accesa o spenta; la lettura non scrive nulla",
+    !!datiF &&
+      JSON.stringify(datiF.fonti.map((f) => f.fonte)) === JSON.stringify(["ted", "pvl", "sintel", "sardegnacat"]) &&
+      JSON.stringify(datiF.fonti.map((f) => [f.stato, f.attiva])) === JSON.stringify(rif.situazioni.map((s) => [s.stato, s.attiva])) &&
+      JSON.stringify(rif.situazioni.map((s) => s.stato)) === JSON.stringify(["ok", "in_errore", "sospesa", "spenta"]) &&
+      pannelli.length === 4 &&
+      datiF.fonti.every((f, i) => testiPannello(i).some((t) => STATO_LEGGIBILE[f.stato].test(t)) && testiPannello(i).some((t) => (f.attiva ? /^Accesa/ : /^Spenta/).test(t))) &&
+      scrittureLettura === 0,
+    { stati: datiF?.fonti.map((f) => f.stato), rif: rif.situazioni.map((s) => s.stato), pannelli: pannelli.length, scrittureLettura },
+  );
+  const messaggiRif = rif.situazioni.map((s) => s.allarmi.map((a) => a.messaggio));
+  const messaggiPagina = (datiF?.fonti ?? []).map((_, i) => testiPannello(i).filter((t) => messaggiRif.flat().includes(t)));
+  controlla(
+    "FS2. allarmi: per ogni fonte quelli di B2, con il loro messaggio e nello stesso ordine (per gravità); la PVL con due giri di fila in errore ha «errori_ripetuti»",
+    JSON.stringify(messaggiPagina) === JSON.stringify(messaggiRif) && rif.situazioni[1].allarmi.some((a) => a.codice === "errori_ripetuti") && messaggiRif.flat().length >= 2,
+    { messaggiPagina, messaggiRif },
+  );
+  const prossimoPvl = orariPrevisti("pvl", ADESSO_F, new Date(ADESSO_F.getTime() + 8 * 86_400_000))[0]?.toISOString() ?? null;
+  controlla(
+    "FS3. prossimo giro: dagli orari di B2 per una fonte accesa col cron acceso (PVL 13:05 di Roma); nessuno per una fonte spenta o col cron spento; ultimo giro e ultimo successo nella pagina",
+    !!datiF && datiF.fonti[1].prossimoGiro === prossimoPvl && prossimoPvl === "2026-11-25T12:05:00.000Z" && datiF.fonti[2].prossimoGiro === null && datiF.fonti[3].prossimoGiro === null &&
+      testiPannello(1).some((t) => /Ultimo giro/.test(t)) && testiPannello(1).some((t) => /Ultimo successo/.test(t)) && testiPannello(1).some((t) => /Prossimo giro/.test(t)),
+    { prossimi: datiF?.fonti.map((f) => f.prossimoGiro), prossimoPvl },
+  );
+  const giriTed = datiF?.fonti[0].giri ?? [];
+  controlla(
+    "FS4. ultimi giri della fonte: al più 10, dal più recente, con modo, esito, durata, richieste, gare nuove e allarmi; nessun dato di gare",
+    giriTed.length === 10 && giriTed.every((g, i) => i === 0 || Date.parse(giriTed[i - 1].iniziatoIl) >= Date.parse(g.iniziatoIl)) && giriTed[0].iniziatoIl === "2026-11-25T09:15:00Z" &&
+      ["Modo", "Esito", "Durata", "Richieste", "Gare nuove", "Allarmi"].every((h) => testiPannello(0).includes(h)) &&
+      (datiF?.fonti[1].giri ?? []).some((g) => (g as unknown as { allarmi: string[] }).allarmi.includes("fermata_dalla_console")),
+    { giriTed: giriTed.map((g) => g.iniziatoIl) },
+  );
+  // registro dei giri assente (0128 non applicata) o guasto; stato illeggibile
+  mondo = mondoFonti();
+  mondo.admin.assenti.add("radar_esecuzioni");
+  const datiAssente = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, ENV_F) : null;
+  const tAssente = testi(vistaFonti && datiAssente ? vistaFonti({ dati: datiAssente }) : null);
+  mondo = mondoFonti();
+  mondo.admin.guasti.add("radar_esecuzioni");
+  const datiGuasto = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, ENV_F) : null;
+  const tGuasto = testi(vistaFonti && datiGuasto ? vistaFonti({ dati: datiGuasto }) : null);
+  mondo = mondoFonti();
+  mondo.admin.guasti.add("radar_fonti_stato");
+  const datiStato = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, ENV_F) : null;
+  const tStato = testi(vistaFonti && datiStato ? vistaFonti({ dati: datiStato }) : null);
+  controlla(
+    "FS5. registro dei giri assente: avviso in pagina, stato dal solo radar_fonti_stato, nessun elenco di giri; registro guasto: errore in pagina, stato sì; stato illeggibile: errore, nessuna fonte inventata",
+    !!datiAssente && datiAssente.registroAssente && datiAssente.fonti.length === 4 && datiAssente.fonti.every((f) => f.giri.length === 0) && tAssente.some((t) => /registro dei giri.*(non c'è|assente)/i.test(t)) &&
+      !!datiGuasto && /registro dei giri/.test(datiGuasto.errore ?? "") && datiGuasto.fonti.length === 4 && tGuasto.some((t) => /registro dei giri/.test(t)) &&
+      !!datiStato && /stato delle fonti/.test(datiStato.errore ?? "") && datiStato.fonti.length === 0 && tStato.some((t) => /stato delle fonti/.test(t)),
+    { assente: datiAssente && { r: datiAssente.registroAssente, n: datiAssente.fonti.length }, guasto: datiGuasto?.errore, stato: datiStato && { e: datiStato.errore, n: datiStato.fonti.length } },
+  );
+  // accendi e spegni: le azioni ESISTENTI, con una conferma obbligatoria nel modulo
+  const azioniTi = richiedi(src("app/site-console/azioni/tender-intelligence.ts")) as Record<string, unknown>;
+  const ModuloAzioneConsole = (richiedi(src("app/site-console/_componenti/modulo-azione.tsx")) as { default: unknown }).default;
+  const moduli = (i: number) => elementi(pannelli[i]?.props.children).filter((e) => e.type === ModuloAzioneConsole);
+  const azioniAttese = [
+    { azione: azioniTi.impostaFonteTed, campi: { azione: "spegni" } },
+    { azione: azioniTi.impostaFontePvl, campi: { azione: "spegni" } },
+    { azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sintel", azione: "accendi" } },
+    { azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sardegnacat", azione: "accendi" } },
+  ];
+  const conferme = azioniAttese.map((a, i) => {
+    const m = moduli(i).find((x) => x.props.azione === a.azione);
+    const conferma = m ? elementi(m.props.children).find((e) => e.type === "input" && e.props.name === "conferma") : undefined;
+    return !!m && JSON.stringify(m.props.campi) === JSON.stringify(a.campi) && conferma?.props.required === true && conferma?.props.type === "checkbox";
+  });
+  controlla(
+    "FS6. accendi e spegni con le azioni esistenti (TED, PVL, regionali con la fonte) e una casella di conferma obbligatoria; una fonte sospesa si «riaccende» solo da qui",
+    conferme.every(Boolean) && testiPannello(2).some((t) => /Riaccendi/.test(t)),
+    conferme,
+  );
+  // la pagina vera: guardia degli amministratori, lettura e vista; il collegamento dalla pagina Tender Intelligence
+  const paginaFonti = ((): (() => Promise<unknown>) | null => {
+    try {
+      return (richiedi(src("app/site-console/(app)/tender-intelligence/fonti/page.tsx")) as { default: () => Promise<unknown> }).default;
+    } catch {
+      return null;
+    }
+  })();
+  mondo = mondoFonti();
+  const albPagina = paginaFonti ? await paginaFonti() : null;
+  const elPagina = elementi(albPagina);
+  adminAutenticato = false;
+  let respinta = false;
+  try {
+    if (paginaFonti) await paginaFonti();
+  } catch {
+    respinta = true;
+  }
+  adminAutenticato = true;
+  controlla(
+    "FS7. pagina vera /tender-intelligence/fonti: solo amministratori, legge e passa i dati alla vista; collegata dalla pagina Tender Intelligence",
+    !!paginaFonti && elPagina.some((e) => e.type === vistaFonti && Array.isArray((e.props.dati as DatiFontiProva | undefined)?.fonti) && (e.props.dati as DatiFontiProva).fonti.length === 4) && respinta &&
+      /href="\/tender-intelligence\/fonti"/.test(fs.readFileSync(src("app/site-console/_componenti/tender-intelligence-vista.tsx"), "utf8")),
+    { pagina: !!paginaFonti, respinta },
+  );
+  void tF;
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }
