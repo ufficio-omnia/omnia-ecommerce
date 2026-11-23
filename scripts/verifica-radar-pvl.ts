@@ -30,7 +30,8 @@ import { provinciaDaTesto } from "../src/lib/radar/province";
 import { fusoItaliano } from "../src/lib/radar/fonti/ted-calcoli";
 import { REGIONI } from "../src/lib/radar/territorio";
 import { aperta, rigaDaBando, type RigaProcedura } from "../src/lib/radar/importa-calcoli";
-import { conteggioAnomalo, cursoreDopoPagina, cursoreFinestra, cursoreIncrementale, cursorePvlValido, eOraDiUnGiroPvl, prossimoGiroPvl, rigaDaBandoPvl, CRON_PVL_PROPOSTO } from "../src/lib/radar/importa-pvl-calcoli";
+import { conteggioAnomalo, cursorePvlValido, eOraDiUnGiroPvl, prossimoGiroPvl, rigaDaBandoPvl, CRON_PVL_PROPOSTO } from "../src/lib/radar/importa-pvl-calcoli";
+import { conFinestra, conIncrementale, cursorePvlDaSalvato, cursorePvlNuovo, dopoPaginaFinestra } from "../src/lib/radar/importa-pvl-cursore";
 import { confrontaVersioni, provenienzaImplicita, unisciLotti, unisciVersione, type LottoUnito, type VersioneFonte } from "../src/lib/radar/unione-calcoli";
 import { ambienteDb, scrittureRadarConsentite, PROGETTO_PRODUZIONE, PROGETTO_STAGING } from "../src/lib/radar/ambiente";
 import { validaParametro } from "../src/lib/console/tender-intelligence-calcoli";
@@ -435,24 +436,29 @@ async function principale() {
     uguale("C1: il CIG resta sulla copia (lo mostra la scheda che resta), senza contarlo come scartato", [mem.tabelle.radar_lotti.find((r) => r.procedura_id === "g-resta")?.cig, statC1.bandi.cigScartati], [null, 0]);
   }
 
-  // ───── 9. punto di ripresa e finestre ─────
-  const f7 = cursoreFinestra("2026-11-09", "2026-11-16", null);
-  uguale("finestra controllata di 7 giorni", [f7.modo, f7.da, f7.a, f7.inCorso, f7.token], ["finestra", "2026-11-09", "2026-11-16", true, null]);
-  const c1 = cursoreDopoPagina(f7, 100, "TOK1", 100);
-  uguale("dopo una pagina piena: token salvato", [c1.token, c1.pagine, c1.inCorso], ["TOK1", 1, true]);
-  uguale("pagina più corta del massimo: è l'ultima anche se la fonte dà un token (nessuna richiesta in più)", cursoreDopoPagina(c1, 10, "TOK2", 100).inCorso, false);
+  // ───── 9. punto di ripresa e finestre (cursore v2 dal K4; recupero, buchi e completezza in verifica-radar-pvl-recupero.ts) ─────
+  const ISTANTE = "2026-11-17T07:05:00.000Z";
+  const f7 = conFinestra(cursorePvlNuovo("2026-11-17"), "2026-11-09", "2026-11-16");
+  uguale("finestra controllata di 7 giorni", [f7.finestra?.da, f7.finestra?.a, f7.inCorso, f7.finestra?.token], ["2026-11-09", "2026-11-16", true, null]);
+  const c1 = dopoPaginaFinestra(f7, 100, 150, "TOK1", 100);
+  uguale("dopo una pagina piena: token salvato", [c1.finestra?.token, c1.finestra?.pagine, c1.inCorso], ["TOK1", 1, true]);
+  uguale("pagina più corta del massimo: è l'ultima anche se la fonte dà un token (nessuna richiesta in più)", dopoPaginaFinestra(c1, 10, null, "TOK2", 100).inCorso, false);
   uguale(
     "fine dei risultati senza elenco: pagina vuota, non «struttura cambiata»",
     [leggiPaginaGrezza({ content: null, count: 110, lastPaginationToken: null }), leggiPaginaGrezza({ count: 0 }), leggiPaginaGrezza({ messaggio: "errore" })],
     [{ content: [], count: 110, token: null }, { content: [], count: 0, token: null }, null],
   );
-  const c2 = cursoreDopoPagina(c1, 20, null, 100);
-  uguale("ultima pagina: giro finito, giorno letto", [c2.inCorso, c2.token, c2.ultimoGiorno], [false, null, "2026-11-16"]);
-  uguale("giro programmato: dall'ultimo giorno meno uno a oggi", [cursoreIncrementale(c2, "2026-11-17").da, cursoreIncrementale(c2, "2026-11-17").a], ["2026-11-15", "2026-11-17"]);
-  uguale("dopo un fermo lungo: al massimo 7 giorni indietro (oltre serve una finestra concordata)", cursoreIncrementale({ ...c2, ultimoGiorno: "2026-10-01" }, "2026-11-17").da, "2026-11-10");
-  uguale("giro programmato interrotto: riprende dal suo token", cursoreIncrementale({ ...c1, modo: "incrementale" }, "2026-11-17").token, "TOK1");
-  uguale("cursore illeggibile → giro da ieri a oggi", [cursorePvlValido({ versione: 2 }), cursoreIncrementale({ x: 1 }, "2026-11-17").da], [null, "2026-11-16"]);
-  uguale("numero di avvisi anomalo per la finestra", [conteggioAnomalo(500, f7), conteggioAnomalo(5000, f7), conteggioAnomalo(null, f7)], [false, true, false]);
+  const c2 = dopoPaginaFinestra(c1, 20, null, null, 100);
+  uguale("ultima pagina: giro finito, giorno letto", [c2.inCorso, c2.finestra, c2.ultimoGiorno], [false, null, "2026-11-16"]);
+  const i2 = conIncrementale(c2, "2026-11-17", ISTANTE).incrementale;
+  uguale("giro programmato, primo del giorno: dall'ultimo giorno meno uno a oggi", [i2?.da, i2?.a], ["2026-11-15", "2026-11-17"]);
+  const lungo = conIncrementale({ ...c2, ultimoGiorno: "2026-10-01" }, "2026-11-17", ISTANTE);
+  uguale("dopo un fermo lungo: incrementale al massimo 7 giorni indietro, il resto entra nei buchi (non si perde)", [lungo.incrementale?.da, lungo.buchi.map((b) => `${b.da}/${b.a}/${b.motivo}`)], ["2026-11-10", ["2026-09-30/2026-11-09/fermo"]]);
+  const aMeta = { ...c2, inCorso: true, incrementale: { da: "2026-11-15", a: "2026-11-17", token: "TOK1", pagine: 1, dichiarati: 150, letti: 100 } };
+  uguale("giro programmato interrotto: riprende dal suo token", conIncrementale(aMeta, "2026-11-17", ISTANTE).incrementale?.token, "TOK1");
+  uguale("cursore illeggibile → cursore nuovo, giro da ieri a oggi", [cursorePvlValido({ versione: 2 }), conIncrementale(cursorePvlDaSalvato({ x: 1 }, "2026-11-17"), "2026-11-17", ISTANTE).incrementale?.da], [null, "2026-11-16"]);
+  const finestra7 = { da: "2026-11-09", a: "2026-11-16" };
+  uguale("numero di avvisi anomalo per la finestra", [conteggioAnomalo(500, finestra7), conteggioAnomalo(5000, finestra7), conteggioAnomalo(null, finestra7)], [false, true, false]);
 
   // ───── 10. giri programmati 8, 13, 18 ora italiana, con l'ora legale ─────
   uguale(

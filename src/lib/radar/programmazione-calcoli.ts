@@ -32,6 +32,19 @@ export const ORARI_GIRI: Readonly<Record<FonteEsecuzione, readonly OrarioGiro[]>
   ],
 };
 
+const TESTO_GIORNI: Record<GiorniGiro, string> = { tutti: "tutti i giorni", feriali: "dal lunedì al venerdì", fine_settimana: "il sabato e la domenica" };
+const elenco = (xs: readonly string[]) => (xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
+
+/**
+ * Gli orari dei giri di una fonte in parole, presi da ORARI_GIRI (mai scritti a mano altrove): «alle 08:05, 13:05 e 18:05 tutti i giorni».
+ * Li mostrano la console e, nel riquadro delle fonti, le pagine dei clienti.
+ */
+export function testoOrari(fonte: FonteEsecuzione): string {
+  const gruppi = new Map<GiorniGiro, string[]>();
+  for (const o of ORARI_GIRI[fonte]) gruppi.set(o.giorni, [...(gruppi.get(o.giorni) ?? []), o.ora]);
+  return [...gruppi].map(([g, ore]) => `alle ${elenco(ore)} ${TESTO_GIORNI[g]}`).join("; ");
+}
+
 /** Il giorno della settimana di una data AAAA-MM-GG (0 = domenica … 6 = sabato), dalla data stessa (indipendente dal fuso). */
 export function giornoDellaSettimana(giorno: string): number {
   return new Date(Date.UTC(Number(giorno.slice(0, 4)), Number(giorno.slice(5, 7)) - 1, Number(giorno.slice(8, 10)))).getUTCDay();

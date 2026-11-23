@@ -89,18 +89,24 @@ async function provaPvl(): Promise<void> {
   // avvisi sintetici senza i campi di un avviso vero: letti ed esclusi («avviso_malformato»), nessuna scrittura di gare
   const pagina = (n: number) => (n < 3 ? json({ content: Array.from({ length: 10 }, (_, i) => ({ idAvviso: `prova-${n}-${i}` })), count: null, lastPaginationToken: `token-${n}` }) : json({ content: [{ idAvviso: `prova-${n}-0` }], count: null, lastPaginationToken: null }));
   const giro = (db: DbFinto, fetchFn: typeof fetch) => eseguiImportazionePvl(comeAdmin(db), { modo: "incrementale", tempoMassimoMs: 600_000, env: STAGING, adesso: () => T0, fetchFn, limiti: { avvisiPerPagina: 10, pausaMs: 2_000 } });
+  // cursore v2 (K4) con il recupero dei 90 giorni già finito: qui si prova solo l'incrementale (il recupero ha la sua verifica)
+  const mondoPvl = () => {
+    const db = mondo("pvl");
+    riga(db, "pvl").cursore = { versione: 2, inCorso: false, ultimoGiorno: null, incrementale: null, finestra: null, recupero: { obiettivoDa: null, prossimoA: null, blocco: null, fermo: null }, buchi: [], completezza: [] };
+    return db;
+  };
 
-  const dbc = mondo("pvl");
+  const dbc = mondoPvl();
   const fc = fonteFinta(dbc, "pvl", null, pagina);
   const rc = await giro(dbc, fc.fetchFn);
   controlla("PVL, controllo: senza spegnimento il giro legge le 3 pagine e finisce", rc.eseguita && fc.stato.richieste === 3 && rc.giroFinito && !rc.fermata && !rc.errore, { rc, richieste: fc.stato.richieste });
 
-  const db = mondo("pvl");
+  const db = mondoPvl();
   const f = fonteFinta(db, "pvl", 2, pagina);
   const r = await giro(db, f.fetchFn);
   controlla("PVL, spenta tra due pagine: si ferma alla pagina dopo (2 richieste invece di 3)", f.stato.richieste === 2 && r.eseguita && r.fermata === true && r.errore === null && !r.sospesa, { r, richieste: f.stato.richieste });
   const cursoreDb = copia(riga(db, "pvl").cursore);
-  controlla("PVL, punto di ripresa coerente: resta quello della pagina 1 (token della pagina 2), anche nel risultato", (cursoreDb as { token?: string } | null)?.token === "token-1" && JSON.stringify(cursoreDb) === JSON.stringify(f.stato.cursorePrimaDelloSpegnimento) && r.eseguita && JSON.stringify(copia(r.cursore)) === JSON.stringify(cursoreDb) && !r.giroFinito, { cursoreDb, r: r.eseguita ? r.cursore : null });
+  controlla("PVL, punto di ripresa coerente: resta quello della pagina 1 (token della pagina 2), anche nel risultato", (cursoreDb as { incrementale?: { token?: string } } | null)?.incrementale?.token === "token-1" && JSON.stringify(cursoreDb) === JSON.stringify(f.stato.cursorePrimaDelloSpegnimento) && r.eseguita && JSON.stringify(copia(r.cursore)) === JSON.stringify(cursoreDb) && !r.giroFinito, { cursoreDb, r: r.eseguita ? r.cursore : null });
   const reg = db.t("radar_esecuzioni");
   controlla("PVL, registro: UNA riga, esito «ok» con l'allarme «fermata_dalla_console» (non «sospesa»)", reg.length === 1 && reg[0].esito === "ok" && JSON.stringify(reg[0].allarmi) === '["fermata_dalla_console"]', reg);
   const st = riga(db, "pvl");

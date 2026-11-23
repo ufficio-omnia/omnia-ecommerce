@@ -233,17 +233,34 @@ export type RisultatoPvlPerRegistro =
         esiti: { letti: number; applicati: number; senzaGara: number };
         db: { richiesteDb: number; msDb: number };
       };
-      cursore: { da: string; a: string; pagine: number; ultimoGiorno?: string | null };
+      // cursore v1 (da, a, pagine) o v2 (K4: la finestra del giro è in «letta»)
+      cursore: { da?: string; a?: string; pagine?: number; ultimoGiorno?: string | null };
+      letta?: { da: string; a: string; pagine: number } | null;
+      // K4: recupero dei 90 giorni e dei buchi in questo giro; allarmi del cursore (buco_in_recupero, blocco_incompleto)
+      recupero?: { richieste: number; blocchi: { da: string; a: string; esito: string; letti: number; dichiarati: number | null }[]; giorniBuchi: number; giorniObiettivo: number; fermo: boolean };
+      allarmi?: string[];
     };
 
 export function datiGiroPvl(r: RisultatoPvlPerRegistro): DatiGiro | null {
   if (!r.eseguita) return datiUscita(r, "incrementale");
   const s = r.statistiche;
+  const l = r.letta !== undefined ? r.letta : r.cursore.da && r.cursore.a ? { da: r.cursore.da, a: r.cursore.a, pagine: r.cursore.pagine ?? 0 } : null;
+  const rec = r.recupero;
   return {
     modo: r.modo === "finestra" ? "finestra" : "incrementale",
     esito: esitoDi(r.errore, r.sospesa),
     errore: r.errore,
-    finestre: { modo: r.modo, da: r.cursore.da, a: r.cursore.a, pagine: r.cursore.pagine, dichiarati: s.pvl.conteggioDichiarato, letti: s.avvisi.letti, ultimo_giorno: r.cursore.ultimoGiorno ?? null, giro_finito: r.giroFinito },
+    finestre: {
+      modo: r.modo,
+      da: l?.da ?? null,
+      a: l?.a ?? null,
+      pagine: l?.pagine ?? 0,
+      dichiarati: s.pvl.conteggioDichiarato,
+      letti: s.avvisi.letti,
+      ultimo_giorno: r.cursore.ultimoGiorno ?? null,
+      giro_finito: r.giroFinito,
+      ...(rec ? { recupero: { richieste: rec.richieste, blocchi: rec.blocchi.slice(0, 10), giorni_buchi: rec.giorniBuchi, giorni_obiettivo: rec.giorniObiettivo, fermo: rec.fermo } } : {}),
+    },
     misureFonte: { richieste: s.pvl.richieste, byte: s.pvl.byte, ms: s.pvl.ms, risposte: s.pvl.risposte },
     db: { richieste: s.db.richiesteDb, ms: s.db.msDb },
     avvisi: {
@@ -263,7 +280,7 @@ export function datiGiroPvl(r: RisultatoPvlPerRegistro): DatiGiro | null {
     },
     gare: { nuove: s.bandi.nuoveNazionali + s.bandi.nuoveSopraSogliaSenzaTed, unite: s.bandi.giaPresentiTed, aggiornate: s.bandi.aggiornate, rettifiche: s.bandi.rettifiche, conflitti: s.bandi.conflitti },
     // K7: fonte spenta dalla console a metà giro → esito «ok» più l'allarme (48C §3.6)
-    allarmi: [...(r.sospesa ? ["sospesa"] : []), ...(r.fermata ? ["fermata_dalla_console"] : [])],
+    allarmi: [...(r.sospesa ? ["sospesa"] : []), ...(r.fermata ? ["fermata_dalla_console"] : []), ...(r.allarmi ?? [])],
   };
 }
 
