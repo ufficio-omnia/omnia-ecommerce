@@ -15,7 +15,7 @@
 //   - la decisione di un AMMINISTRATORE non viene mai sostituita da un calcolo automatico: il calcolo diverso resta solo segnalato;
 //   - STATO (D2): «non pertinente» è SOLO una gara classificata con righe C e nessuna A o B. Una gara senza righe, in attesa o con la
 //     classificazione fallita NON è mai non pertinente: né nei suggerimenti, né in Cerca, né nella scheda.
-import type { Livello, SettoreRadar } from "./settori";
+import { MOTIVI_DA_VERIFICARE, type DaVerificare, type Livello, type SettoreRadar } from "./settori";
 import type { ClassificazioneArchivio, ValutazioneSettore } from "./classificazione-unita";
 
 export type Rilevanza = Livello;
@@ -52,6 +52,19 @@ export type RigaClassificazione = {
 // l'amministratore la decide dalla console (decisioneAmministratore) e lo stato torna «classificata».
 export type StatoClassificazione = "in_attesa" | "classificata" | "fallita" | "da_verificare";
 export const REGOLA_DA_VERIFICARE = "da_verificare";
+
+/**
+ * Il caso S4 (immobile con CPV di ristorazione, stabulari, biblioteca) di una riga «da_verificare», dal MOTIVO scritto accanto alla regola:
+ * i tre motivi sono uno per caso e tutti diversi (MOTIVI_DA_VERIFICARE di settori.ts), quindi il caso non dipende dal settore candidato.
+ * null se la riga non ha la regola o se il motivo non è uno dei tre (mai un caso indovinato). Stessa normalizzazione dei motivi delle righe.
+ */
+export function casoDaRigaDaVerificare(riga: Pick<RigaClassificazione, "regole" | "motivi">): DaVerificare["caso"] | null {
+  const i = riga.regole.indexOf(REGOLA_DA_VERIFICARE);
+  if (i < 0) return null;
+  const motivo = (riga.motivi[i] ?? "").trim();
+  const voce = (Object.entries(MOTIVI_DA_VERIFICARE) as [DaVerificare["caso"], string][]).find(([, m]) => m.trim().slice(0, 300) === motivo);
+  return voce ? voce[0] : null;
+}
 export type RigaStato = {
   procedura_id: string;
   stato: StatoClassificazione;

@@ -5,10 +5,12 @@
 import fs from "fs";
 import path from "path";
 import { classificaPerArchivio } from "../src/lib/radar/classificazione-unita";
-import { giaClassificata, pianoGara, type GaraArchivio } from "../src/lib/radar/riclassifica-settori";
-import { COLONNE_GARA_ARCHIVIO } from "../src/lib/radar/riclassificazione";
+import { colonnaDaRigheAttive, giaClassificata, isoDaEsecuzione, pianoGara, tracciaRiallineamento, type GaraArchivio } from "../src/lib/radar/riclassifica-settori";
+import { COLONNE_GARA_ARCHIVIO, riallineaSettoriGara } from "../src/lib/radar/riclassificazione";
 import {
   REGOLA_DA_VERIFICARE,
+  casoDaRigaDaVerificare,
+  righeDaClassificazione,
   eDaVerificare,
   etichettaRilevanza,
   gareSuggeribili,
@@ -18,7 +20,7 @@ import {
   type RigaStato,
 } from "../src/lib/radar/classificazioni-calcoli";
 import { scriviClassificazioni } from "../src/lib/radar/classificazioni";
-import { VERSIONE_REGOLE_SETTORI } from "../src/lib/radar/settori";
+import { MOTIVI_DA_VERIFICARE, VERSIONE_REGOLE_SETTORI, descriviCorrezioneSettori } from "../src/lib/radar/settori";
 import { databaseInMemoria } from "./lib/db-in-memoria";
 
 let ok = 0;
@@ -115,6 +117,80 @@ async function principale(): Promise<void> {
   controlla("situazione: «classificata» con le stesse righe C sarebbe «fuori dai settori» (il caso che «da_verificare» evita)", (() => { const c = situazioneGara({ stato: "classificata", versione_regole: "v", errore: null }, righeBib); return c.tipo === "classificata" && c.fuoriDaiSettori; })());
   controlla("situazione: uno stato sconosciuto non diventa mai «classificata»", situazioneGara({ stato: "sconosciuto" as RigaStato["stato"], versione_regole: "v", errore: null }, righeBib).tipo === "non_classificata");
   controlla("suggerimenti: una gara «da_verificare» non si suggerisce mai, anche con una riga A", gareSuggeribili([{ procedura_id: "BIB", settore: "vigilanza_portierato", rilevanza: "A", attiva: true }], new Map([["BIB", { stato: "da_verificare" as const }]]), ["vigilanza_portierato"]).length === 0);
+  controlla("motore delle notifiche: lo stato letto usa il tipo unico a 4 stati (StatoClassificazione), non un elenco suo", /leggiPer<\{ procedura_id: string; stato: StatoClassificazione \}>\("stato delle classificazioni"/.test(leggi("src/lib/radar/notifiche/motore.ts")));
+
+  await provaRiallineamento(decisa);
+  provaCasoDalMotivo();
+}
+
+// ═════ riallineamento della colonna di UNA gara dopo una decisione dell'amministratore (richiesta del coordinamento, 23/11) ═════
+async function provaRiallineamento(decisa: RigaClassificazione): Promise<void> {
+  const r = (settore: string, rilevanza: "A" | "B" | "C", x: Partial<RigaClassificazione> = {}) => ({ settore: settore as RigaClassificazione["settore"], rilevanza, attiva: true, da: "cpv" as const, ...x });
+  const a = colonnaDaRigheAttive([r("vigilanza_portierato", "A", { da: "parole_chiave" })], { settori: [], metodo: null });
+  controlla("colonna: decisa A una gara senza settori → entra nel settore, metodo dalla riga", JSON.stringify(a) === JSON.stringify({ settori: ["vigilanza_portierato"], metodo: "parole_chiave", cambia: true }), a);
+  controlla("colonna: anche B conta (correlata), C no, una riga NON attiva no", JSON.stringify(colonnaDaRigheAttive([r("pulizia", "B"), r("ristorazione", "C"), r("facchinaggio", "A", { attiva: false })], { settori: [], metodo: null }).settori) === '["pulizia"]');
+  controlla("colonna: righe uguali alla colonna → nessun cambio", colonnaDaRigheAttive([r("pulizia", "A"), r("ristorazione", "B")], { settori: ["ristorazione", "pulizia"], metodo: "cpv" }).cambia === false);
+  const tolta = colonnaDaRigheAttive([r("pulizia", "C", { origine: "amministratore" } as Partial<RigaClassificazione>), r("ristorazione", "A")], { settori: ["pulizia", "ristorazione"], metodo: "cpv" });
+  controlla("colonna: decisa C su un settore della colonna → tolto; l'ordine degli altri resta, il metodo resta", JSON.stringify(tolta) === JSON.stringify({ settori: ["ristorazione"], metodo: "cpv", cambia: true }), tolta);
+  controlla("colonna: i nuovi settori in fondo in ordine alfabetico, quelli di prima nel loro ordine", JSON.stringify(colonnaDaRigheAttive([r("vigilanza_portierato", "A"), r("ristorazione", "A"), r("ausiliariato", "B")], { settori: ["vigilanza_portierato"], metodo: "cpv" }).settori) === '["vigilanza_portierato","ausiliariato","ristorazione"]');
+  controlla("colonna: nessuna riga A o B → colonna vuota, metodo nullo", JSON.stringify(colonnaDaRigheAttive([r("pulizia", "C")], { settori: ["pulizia"], metodo: "cpv" })) === JSON.stringify({ settori: [], metodo: null, cambia: true }));
+  // la traccia: stessa forma delle correzioni, frase per il cliente, mai annullabile come un'esecuzione
+  const t = tracciaRiallineamento("BIB", { settori: [], metodo: null }, { settori: ["vigilanza_portierato"], metodo: "cpv" }, ISO);
+  const idFonte = String(t.id_fonte);
+  controlla("traccia: correzione_dati sul campo «settori», fonte delle regole, MAI notificabile, nota «Decisione dell'amministratore»", t.tipo === "correzione_dati" && t.campo === "settori" && t.fonte === "regole_settori" && t.notificabile === false && /^Decisione dell'amministratore/.test(String(t.nota)), t);
+  controlla("traccia: identificativo «regole-settori-<versione>:aggiunta:amministratore-<istante>» entro 200 caratteri", idFonte === `regole-settori-${VERSIONE_REGOLE_SETTORI}:aggiunta:amministratore-20261123T120000000Z` && idFonte.length <= 200, idFonte);
+  controlla("traccia: la frase per il cliente la legge («abbiamo aggiunto la gara a: vigilanza …»)", /^Il 23\/11\/2026 abbiamo aggiunto la gara a: vigilanza/.test(descriviCorrezioneSettori("23/11/2026", String(t.valore_precedente), String(t.valore_nuovo), idFonte)), descriviCorrezioneSettori("23/11/2026", String(t.valore_precedente), String(t.valore_nuovo), idFonte));
+  controlla("traccia: l'esecuzione «amministratore-…» non è mai un'esecuzione della riclassificazione (non si annulla per sbaglio)", isoDaEsecuzione(idFonte.split(":").slice(2).join(":")) === null);
+  // sul database in memoria
+  const base = () => databaseInMemoria({ radar_procedure: [{ id: "BIB", chiave: "ted:BIB", settori: [], metodo_settore: null, oggetto: "x" }], radar_classificazioni: [{ ...decisa, procedura_id: "BIB", rilevanza: "A" }], radar_aggiornamenti: [] }, { fonti: "0121" });
+  const m = base();
+  const e1 = await riallineaSettoriGara(m.client, "BIB", ISO);
+  const gara = () => m.tabelle.radar_procedure.find((g) => g.id === "BIB");
+  controlla("riallineamento: decisa A → «aggiornata», colonna con il settore, UNA traccia", e1.esito === "aggiornata" && JSON.stringify(gara()?.settori) === '["vigilanza_portierato"]' && m.tabelle.radar_aggiornamenti.length === 1, { e1, gara: gara(), tracce: m.tabelle.radar_aggiornamenti.length });
+  const e2 = await riallineaSettoriGara(m.client, "BIB", "2026-11-23T13:00:00.000Z");
+  controlla("riallineamento: rifatto → «invariata», nessuna scrittura né traccia in più", e2.esito === "invariata" && m.tabelle.radar_aggiornamenti.length === 1);
+  controlla("riallineamento: gara che non c'è → «gara_assente»", (await riallineaSettoriGara(m.client, "NESSUNA", ISO)).esito === "gara_assente");
+  // traccia che non si scrive: la colonna torna com'era (nessun cambio senza traccia)
+  const g2 = base();
+  const conGuasto = { from: (t: string) => (t === "radar_aggiornamenti" ? { upsert: async () => ({ data: null, error: { message: "guasto di prova" } }) } : g2.client.from(t)) } as unknown as typeof g2.client;
+  const e3 = await riallineaSettoriGara(conGuasto, "BIB", ISO);
+  controlla("riallineamento: traccia non scritta → «errore» e colonna rimessa com'era", e3.esito === "errore" && JSON.stringify(g2.tabelle.radar_procedure[0].settori) === "[]" && g2.tabelle.radar_procedure[0].metodo_settore === null, { e3, gara: g2.tabelle.radar_procedure[0] });
+  // colonna cambiata da altri dopo la lettura: la scrittura condizionata non tocca nulla
+  const g3 = base();
+  let letta = false;
+  // la gara è già stata letta quando si leggono le righe: in quel momento qualcun altro cambia la colonna
+  const intanto = {
+    from: (t: string) => {
+      if (t === "radar_classificazioni" && !letta) {
+        letta = true;
+        g3.tabelle.radar_procedure[0].settori = ["pulizia"];
+      }
+      return g3.client.from(t);
+    },
+  } as unknown as typeof g3.client;
+  const e4 = await riallineaSettoriGara(intanto, "BIB", ISO);
+  controlla("riallineamento: colonna cambiata da altri dopo la lettura → «cambiata_nel_frattempo», nessuna scrittura né traccia", e4.esito === "cambiata_nel_frattempo" && JSON.stringify(g3.tabelle.radar_procedure[0].settori) === '["pulizia"]' && g3.tabelle.radar_aggiornamenti.length === 0, { e4, gara: g3.tabelle.radar_procedure[0] });
+}
+
+// ═════ il caso S4 ricavato dal MOTIVO della riga «da_verificare» (non dal settore candidato) ═════
+function provaCasoDalMotivo(): void {
+  const STABULARI = { oggetto: "Gara europea a procedura aperta per l'affidamento dei Servizi di gestione degli stabilimenti utilizzatori di Ateneo (Monitoraggio sanitario, fornitura diete e lettiera, pulizie e cure degli animali) dell'Università degli Studi di Torino (prova sintetica)", cpv_principale: "77400000", cpv_tutti: ["77400000"], natura_contratto: "servizi" };
+  const riga = (dati: typeof BIBLIOTECA) => {
+    const c = classificaPerArchivio(dati, []);
+    return righeDaClassificazione(c, { proceduraId: "G", origine: "riclassificazione", fonti: ["ted"], autore: "prova", adessoIso: ISO, nuovoId, settoriColonna: [] }).find((x) => x.regole.includes(REGOLA_DA_VERIFICARE));
+  };
+  const casi = [["casone", CASONE, "immobile_con_cpv_ristorazione"], ["stabulari", STABULARI, "stabulari"], ["biblioteca", BIBLIOTECA, "biblioteca"]] as const;
+  for (const [nome, dati, atteso] of casi) {
+    const x = riga(dati);
+    controlla(`caso dal motivo (${nome}): dalla riga vera del classificatore → «${atteso}»`, !!x && casoDaRigaDaVerificare(x) === atteso, x ? { regole: x.regole, motivi: x.motivi } : "nessuna riga");
+  }
+  const bib = riga(BIBLIOTECA)!;
+  controlla("caso dal motivo: NON dipende dal settore candidato (stesso motivo su un altro settore → stesso caso)", casoDaRigaDaVerificare({ ...bib, settore: "pulizia" } as RigaClassificazione) === "biblioteca");
+  controlla("caso dal motivo: riga senza la regola «da_verificare» → null", casoDaRigaDaVerificare({ regole: ["concessione_di_immobili"], motivi: [MOTIVI_DA_VERIFICARE.immobile_con_cpv_ristorazione] }) === null);
+  controlla("caso dal motivo: motivo diverso da quelli delle regole → null (mai un caso indovinato)", casoDaRigaDaVerificare({ regole: [REGOLA_DA_VERIFICARE], motivi: ["Servizi di biblioteca da verificare"] }) === null);
+  controlla("caso dal motivo: la regola non per prima (dopo un'altra) → il motivo accanto alla regola", casoDaRigaDaVerificare({ regole: ["x", REGOLA_DA_VERIFICARE], motivi: ["altro", MOTIVI_DA_VERIFICARE.stabulari] }) === "stabulari");
+  const motivi = Object.values(MOTIVI_DA_VERIFICARE);
+  controlla("guardia: tre casi, tre motivi tutti diversi e lunghi meno di 300 caratteri (nessuna ambiguità, nessun taglio)", motivi.length === 3 && new Set(motivi).size === 3 && motivi.every((m) => m.length > 40 && m.length <= 300));
 }
 
 principale()

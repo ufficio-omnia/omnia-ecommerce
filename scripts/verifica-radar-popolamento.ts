@@ -459,7 +459,7 @@ async function principale() {
     atteso("E. libreria: scritture della colonna condizionate ai settori trovati (contiene E contenuto)", /contains\("settori"/.test(lib) && /containedBy\("settori"/.test(lib));
     atteso("E. script: tetto di gare, si ferma prima di scrivere", script.includes("più del massimo autorizzato") && script.includes("MASSIMO_ASSOLUTO = 2000"));
     atteso("E. registro mai notificabile (script, libreria, piano, importazioni)", [lib, leggi("src/lib/radar/riclassifica-settori.ts"), leggi("src/lib/radar/classificazioni-importazione.ts")].every((t) => t.includes("notificabile: false") && !t.includes("notificabile: true")));
-    atteso("E. libreria: cambia SOLO settori e metodo della gara (mai «aggiornata_il»: pacchetto 16, punti 8 e 11)", (lib.match(/from\("radar_procedure"\)\.update\(\{[^}]*\}/g) ?? []).every((u) => /\.update\(\{ settori: [^,]+, metodo_settore: [^,}]+ \}$/.test(u)) && (lib.match(/from\("radar_procedure"\)\.update/g) ?? []).length === 3);
+    atteso("E. libreria: cambia SOLO settori e metodo della gara (mai «aggiornata_il»: pacchetto 16, punti 8 e 11)", (lib.match(/from\("radar_procedure"\)\.update\(\{[^}]*\}/g) ?? []).every((u) => /\.update\(\{ settori: [^,]+, metodo_settore: [^,}]+ \}$/.test(u)) && (lib.match(/from\("radar_procedure"\)\.update/g) ?? []).length === 5); // 3 della riclassificazione, 2 del riallineamento di una gara
     atteso("E. importatori: un cambio dovuto solo alla classificazione non tocca «aggiornata_il»", ["src/lib/radar/importa.ts", "src/lib/radar/importa-fonti-pagina.ts"].every((f) => { const t = leggi(f); const i = t.indexOf("settori: ci.settori, metodo_settore: ci.metodo"); return i > 0 && !t.slice(i, i + 160).includes("aggiornata_il"); }));
     const finto = (metodo: string) => fetchSoloLettura(((() => Promise.resolve(new Response("[]"))) as unknown) as typeof fetch)("https://esempio.test/rest/v1/radar_procedure", { method: metodo });
     const esiti = await Promise.all(["GET", "HEAD", "POST", "PATCH", "DELETE"].map((m) => finto(m).then(() => "ok", () => "rifiutata")));
@@ -801,7 +801,10 @@ async function principale() {
     }
     const scriptAnnulla = leggi("scripts/radar-riclassifica-settori.ts");
     atteso("H. script: un annullamento con errori o interrotto da un'eccezione esce con un codice di errore e «ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando»", /if \(esitoAnnulla\.errori > 0\) \{\s*console\.error\(`\$\{INCOMPLETO\}[^`]*`\);\s*process\.exit\(1\);/.test(scriptAnnulla) && /console\.error\(`\$\{INCOMPLETO\} \(\$\{e instanceof Error \? e\.message : String\(e\)\}\)\.`\);\s*process\.exit\(1\);/.test(scriptAnnulla) && scriptAnnulla.includes('const INCOMPLETO = "ANNULLAMENTO INCOMPLETO: rilanciare lo stesso comando"'));
-    const annLib = leggi("src/lib/radar/riclassificazione.ts").slice(leggi("src/lib/radar/riclassificazione.ts").indexOf("export async function annullaEsecuzione"));
+    // solo la funzione dell'annullamento: dopo c'è il riallineamento di una gara (decisione dell'amministratore), con le sue regole
+    const tuttoLib = leggi("src/lib/radar/riclassificazione.ts");
+    const fineAnn = tuttoLib.indexOf("// ───── riallineamento della colonna di UNA gara");
+    const annLib = tuttoLib.slice(tuttoLib.indexOf("export async function annullaEsecuzione"), fineAnn > 0 ? fineAnn : undefined);
     atteso("H. annullamento: nessuna lettura con l'errore ignorato (ogni «.select(» controlla il suo errore) e l'errore della traccia si conta", (annLib.match(/\.select\(/g) ?? []).length === (annLib.match(/if \((e\w*|error)\) throw new/g) ?? []).length + (annLib.match(/\.update\([^)]*\)[^;]*\.select\("id"\)/g) ?? []).length && annLib.includes("if (eTraccia) esito.errori++;"));
 
     const s = leggi("scripts/radar-riclassifica-settori.ts");

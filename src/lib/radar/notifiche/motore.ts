@@ -9,6 +9,7 @@
 // Gli indirizzi email non si salvano mai: si leggono con la funzione del database (0125) al momento della creazione e dell'invio.
 
 import { createHash } from "node:crypto";
+import type { StatoClassificazione } from "../classificazioni-calcoli";
 import { fontiNascosteDa } from "../fonti-gara-calcoli";
 import { profiloDaRiga, COLONNE_PROFILO, POSIZIONE_PROFILO, TABELLA_PROFILI, type RigaProfilo } from "../profilo-calcoli";
 import type { ProfiloRadar } from "../radar-personalizzato-contratto";
@@ -401,7 +402,7 @@ async function faseEventi(d: DipendenzeMotore, origine: string, oggi: string, pr
       // le gare in sospeso, rilette per identificativo: UNA richiesta in più, e solo se l'elenco non è vuoto
       const sospese = await leggiPer<RigaGara>("gare in sospeso", idsSospesi, (b) => d.admin.from(T.procedure).select(COLONNE_GARA).in("id", b));
       const ids = [...new Set([...nuove.map((r) => r.id), ...sospese.map((r) => r.id)])];
-      const stati = await leggiPer<{ procedura_id: string; stato: "classificata" | "in_attesa" | "fallita" }>("stato delle classificazioni", ids, (b) => d.admin.from(T.stato).select("procedura_id, stato").in("procedura_id", b));
+      const stati = await leggiPer<{ procedura_id: string; stato: StatoClassificazione }>("stato delle classificazioni", ids, (b) => d.admin.from(T.stato).select("procedura_id, stato").in("procedura_id", b));
       const righe = await leggiPer<{ procedura_id: string; settore: string; rilevanza: "A" | "B" | "C"; sottocategorie: string[] | null; attiva: boolean }>("classificazioni", ids, (b) =>
         d.admin.from(T.classificazioni).select("procedura_id, settore, rilevanza, sottocategorie, attiva").in("procedura_id", b).eq("attiva", true),
       );
