@@ -23,6 +23,19 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
 
 const eFonte = eFonteUnita;
 
+/**
+ * Le fonti che, SENZA un'indicazione del database (riga mancante in radar_fonti_stato, o errore di lettura), restano nascoste ai clienti.
+ * SardegnaCAT finché manca il parere sulla licenza del feed; la PVL per la decisione 7.14 (L5a del piano 36: nascosta durante sviluppo,
+ * collaudi e primo deploy protetto). Una riga esplicita del database vale sempre di più (sullo staging la riga «pvl» è «nascosta» dal 23/11).
+ */
+export const FONTI_NASCOSTE_PREDEFINITE: readonly FonteGara[] = ["sardegnacat", "pvl"];
+
+/** LA regola unica delle fonti nascoste (pagine e motore delle notifiche): la riga del database se c'è, altrimenti la predefinita. */
+export function fontiNascosteDa(righe: readonly { fonte: string; nascosta_ai_clienti: boolean | null }[]): FonteGara[] {
+  const indicate = new Map(righe.map((r) => [r.fonte, r.nascosta_ai_clienti]));
+  return FONTI_UNITE.filter((f) => indicate.get(f) ?? FONTI_NASCOSTE_PREDEFINITE.includes(f));
+}
+
 // Righe INTERNE del registro dei cambiamenti: suggerimenti di unione e segnalazioni di classificazione da verificare. Le vede solo
 // l'amministratore in console; nella scheda della gara non compaiono mai (senza questo filtro comparirebbero come «Rettifica»).
 export const CAMPO_CLASSIFICAZIONE_AMBIGUA = "classificazione_ambigua";
