@@ -24,6 +24,7 @@ const GV = "src/lib/console/gare-in-verifica.ts";
 const GVC = "src/lib/console/gare-in-verifica-calcoli.ts";
 const GVV = "src/app/site-console/_componenti/gare-in-verifica.tsx";
 const CL = "src/lib/console/tender-intelligence.ts";
+const ST = "src/lib/radar/settori.ts";
 
 const MUTAZIONI = [
   // 1. Monitorate: filtro delle fonti nelle due letture
@@ -172,6 +173,12 @@ const MUTAZIONI = [
   { nome: "MM84 vista: riquadro non nella pagina", file: CV, cerca: "{dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}", con: "{null}", richiede: "MS10." },
   { nome: "MM85 vista: senza collegamento all'avviso", file: GVV, cerca: "<a href={g.urlAvviso}", con: "<a data-href={g.urlAvviso}", richiede: "MS10." },
   { nome: "MM86 pagina della console: elenco non letto", file: CL, cerca: "    leggiGareInVerifica(admin),\n", con: "    Promise.resolve(null),\n", richiede: "MS4." },
+  // guardia del caso ricavato dal settore (MS11). [B2] = settori.ts del classificatore: mutato SOLO in memoria e ripristinato dal buffer
+  { nome: "MM87 [B2] due casi S4 con lo stesso settore candidato", file: ST, cerca: 'out.push({ settore: "vigilanza_portierato", caso: "biblioteca"', con: 'out.push({ settore: "pulizia", caso: "biblioteca"', richiede: "MS11." },
+  { nome: "MM88 [B2] caso nuovo nel tipo, senza la sua riga", file: ST, cerca: '  caso: "immobile_con_cpv_ristorazione" | "stabulari" | "biblioteca";', con: '  caso: "immobile_con_cpv_ristorazione" | "stabulari" | "biblioteca" | "caso_nuovo";', richiede: "MS11." },
+  { nome: "MM89 [B2] un caso spostato su un settore che la console non conosce", file: ST, cerca: 'out.push({ settore: "pulizia", caso: "stabulari"', con: 'out.push({ settore: "facchinaggio", caso: "stabulari"', richiede: "MS11." },
+  { nome: "MM90 console: un caso mancante nella corrispondenza", file: GVC, cerca: '  vigilanza_portierato: "biblioteca",\n', con: "", richiede: "MS11." },
+  { nome: "MM91 console: un caso senza nome", file: GVC, cerca: '  stabulari: "Appalto misto per stabulari",\n', con: "", richiede: "MS11." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
