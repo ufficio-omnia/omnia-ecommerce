@@ -32,6 +32,14 @@ export function esitoLeggibile(e: string): string {
   return ESITO[e] ?? e;
 }
 
+// Accendere una fonte avvia acquisizioni vere: la conferma (casella «conferma» = «si» del modulo) è controllata anche nel SERVER, nelle tre
+// azioni della console (impostaFonteTed, impostaFontePvl, impostaFonteRegionale), prima di ogni lettura o scrittura (decisione del
+// coordinamento del 23/11). Spegnere resta sempre ammesso senza conferma: è la direzione sicura.
+export const ERRORE_CONFERMA_ACCENSIONE = "Accendere la fonte avvia acquisizioni vere: spunta la casella di conferma e riprova. Nessuna modifica salvata.";
+export function accensioneConfermata(dati: FormData): boolean {
+  return dati.get("conferma") === "si";
+}
+
 export const GIRI_PER_FONTE = 10;
 const GIORNI_PROSSIMO_GIRO = 8;
 

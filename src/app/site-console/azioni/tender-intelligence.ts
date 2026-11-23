@@ -17,6 +17,7 @@ import { decisioneAmministratore, erroriRiga, type RigaClassificazione } from "@
 import { VERSIONE_REGOLE_SETTORI, nomeSettore } from "@/lib/radar/settori";
 import { candidatoDaRighe, testoRiallineamento, validaDecisione } from "@/lib/console/gare-in-verifica-calcoli";
 import { riallineaSettoriGara } from "@/lib/radar/riclassificazione";
+import { ERRORE_CONFERMA_ACCENSIONE, accensioneConfermata } from "@/lib/console/fonti-calcoli";
 
 // Console «Tender Intelligence» (fasi B1 e B1-bis): interruttori, costi e limiti; fonti TED e PVL; imprese abilitate; giri manuali.
 // Ogni azione parte da richiediAdminAzione() (solo amministratori), valida nel server e registra in radar_console_registro chi ha cambiato
@@ -75,12 +76,13 @@ export async function salvaParametriRadar(_stato: StatoAzioneTi, formData: FormD
   return { ok: true, avviso: `${modifiche.length === 1 ? "Salvato 1 valore" : `Salvati ${modifiche.length} valori`}.${registrato ? "" : " ATTENZIONE: il registro non è stato scritto."}` };
 }
 
-// Accende o spegne la fonte TED (l'importazione quotidiana non fa nulla con la fonte spenta).
+// Accende o spegne la fonte TED (l'importazione quotidiana non fa nulla con la fonte spenta). Accendere solo con la conferma (controllata qui).
 export async function impostaFonteTed(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
   const azione = String(formData.get("azione") ?? "");
   if (azione !== "accendi" && azione !== "spegni") return { errore: "Azione non valida." };
+  if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };
   const admin = createAdminClient();
   if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };
   const { data: fonte, error: e1 } = await admin.from("radar_fonti_stato").select("attiva").eq("fonte", "ted").maybeSingle<{ attiva: boolean }>();
@@ -111,11 +113,13 @@ export async function eseguiGiroTed(): Promise<StatoAzioneTi> {
 
 // Accende o spegne la fonte PVL (fase B1-bis). Accendere è possibile SOLO sullo staging (uso sperimentale autorizzato solo lì); spegnere
 // sempre. Una fonte sospesa dal connettore (errori 403/429 o risposta anomala) si riaccende da qui, dopo aver letto il motivo in console.
+// Accendere e riaccendere solo con la conferma (controllata qui); spegnere senza.
 export async function impostaFontePvl(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
   const azione = String(formData.get("azione") ?? "");
   if (azione !== "accendi" && azione !== "spegni") return { errore: "Azione non valida." };
+  if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };
   const attiva = azione === "accendi";
   if (attiva) {
     const permesso = scrittureRadarConsentite("pvl", process.env);
@@ -207,13 +211,14 @@ function fonteRegionale(v: FormDataEntryValue | null): FonteRegionale | null {
 }
 
 // Accende o spegne una fonte regionale: accendere SOLO sullo staging (ambiente.ts); spegnere sempre. Una fonte sospesa dal connettore si
-// riaccende da qui, dopo averne letto il motivo.
+// riaccende da qui, dopo averne letto il motivo. Accendere e riaccendere solo con la conferma (controllata qui); spegnere senza.
 export async function impostaFonteRegionale(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
   const fonte = fonteRegionale(formData.get("fonte"));
   const azione = String(formData.get("azione") ?? "");
   if (!fonte || (azione !== "accendi" && azione !== "spegni")) return { errore: "Richiesta non valida." };
+  if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };
   const attiva = azione === "accendi";
   if (attiva) {
     const permesso = scrittureRadarConsentite(fonte, process.env);

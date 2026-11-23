@@ -121,6 +121,16 @@ function elenco(m: Record<string, number>, etichette: Record<string, string>): s
 
 // Connettore PVL di ANAC (fase B1-bis, SOLO STAGING): stato e sospensione, giri programmati (configurati, non attivi), ultimo giro con
 // richieste, gare importate, doppioni TED/PVL evitati, rettifiche, errori e tempi; limiti di cortesia modificabili entro intervalli fissi.
+// Accendere una fonte avvia acquisizioni vere: casella di conferma obbligatoria, controllata anche nel server (accensioneConfermata nelle tre
+// azioni). Spegnere non la chiede.
+function confermaAccensione(nome: string) {
+  return (
+    <label className="cn-nota">
+      <input type="checkbox" name="conferma" value="si" required /> Confermo: accendo {nome}
+    </label>
+  );
+}
+
 function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceConsole["pvl"]>; attiva: boolean }) {
   const g = pvl.ultimoGiro;
   return (
@@ -140,6 +150,7 @@ function SezionePvl({ pvl, attiva }: { pvl: NonNullable<DatiTenderIntelligenceCo
           {pvl.accensioneConsentita || attiva ? (
             <ModuloAzione azione={impostaFontePvl} etichetta={attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ azione: attiva ? "spegni" : "accendi" }}>
               <span className="cn-nota">Uso sperimentale autorizzato solo sullo staging; non è un&apos;autorizzazione di ANAC né del riuso commerciale.</span>
+              {attiva ? null : confermaAccensione("PVL ANAC")}
             </ModuloAzione>
           ) : (
             <p className="cn-nota">Accensione non consentita in questo database: la PVL è autorizzata solo sullo staging.</p>
@@ -323,7 +334,7 @@ function SezioneRegionali({ regionali }: { regionali: NonNullable<DatiTenderInte
               <>
                 {f.accensioneConsentita || f.attiva ? (
                   <ModuloAzione azione={impostaFonteRegionale} etichetta={f.attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: f.attiva ? "spegni" : "accendi" }}>
-                    {null}
+                    {f.attiva ? null : confermaAccensione(NOME_REGIONALE[f.fonte] ?? f.fonte)}
                   </ModuloAzione>
                 ) : (
                   <p className="cn-nota">Accensione possibile solo sullo staging.</p>
@@ -522,6 +533,7 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
             </p>
             <ModuloAzione azione={impostaFonteTed} etichetta={tedAttiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ azione: tedAttiva ? "spegni" : "accendi" }}>
               <span className="cn-nota">Importazione automatica nei giorni feriali alle 9:15 UTC (cron), solo con la fonte accesa.</span>
+              {tedAttiva ? null : confermaAccensione("TED")}
             </ModuloAzione>
             {tedAttiva && (
               <ModuloAzione azione={eseguiGiroTed} etichetta="Esegui un giro adesso" etichettaInCorso="Importo… (fino a 50 s)">

@@ -1686,6 +1686,137 @@ async function principale(): Promise<void> {
     pannelliRegAccesa.length === 4 && note.sardegnacatAccesa && testi(pannelliRegAccesa[3]?.props.children).some((t) => /^SardegnaCAT si ferma dal giro successivo/.test(t)) && !note.ted && !note.pvl && !note.sintelSpenta && !note.sardegnacatSpenta,
     note,
   );
+
+  // ── conferma dell'accensione controllata nel SERVER (decisione del coordinamento, 23/11): accendere e riaccendere avviano acquisizioni
+  // vere e chiedono «conferma» = «si»; spegnere resta sempre ammesso senza conferma. Le azioni vere, col database in memoria ──
+  const { ERRORE_CONFERMA_ACCENSIONE } = richiedi(src("lib/console/fonti-calcoli.ts")) as { ERRORE_CONFERMA_ACCENSIONE?: string };
+  type EsitoAzioneFonte = { errore?: string; ok?: boolean; avviso?: string };
+  const AZIONI_FONTE = [
+    { fonte: "ted", azione: azioniTi.impostaFonteTed, campi: {} },
+    { fonte: "pvl", azione: azioniTi.impostaFontePvl, campi: {} },
+    { fonte: "sintel", azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sintel" } },
+    { fonte: "sardegnacat", azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sardegnacat" } },
+  ] as { fonte: string; azione: (s: unknown, fd: FormData) => Promise<EsitoAzioneFonte>; campi: Record<string, string> }[];
+  const { PROGETTO_STAGING: stagingF } = richiedi(src("lib/radar/ambiente.ts")) as { PROGETTO_STAGING: string };
+  // PVL e regionali si accendono solo sullo staging (regola invariata): la prova si mette sullo staging solo in memoria e poi ripristina
+  const conStagingF = async <T,>(sullo: boolean, f: () => Promise<T>): Promise<T> => {
+    const prima = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (sullo) process.env.NEXT_PUBLIC_SUPABASE_URL = `https://${stagingF}.supabase.co`;
+    else delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    try {
+      return await f();
+    } finally {
+      if (prima === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+      else process.env.NEXT_PUBLIC_SUPABASE_URL = prima;
+    }
+  };
+  const provaAzioneFonte = async (fonte: string, campi: Record<string, string>, accese: boolean, staging = true) => {
+    mondo = mondoFonti();
+    for (const r of mondo.admin.tabelle.radar_fonti_stato) r.attiva = accese;
+    const a = AZIONI_FONTE.find((x) => x.fonte === fonte)!;
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ ...a.campi, ...campi })) fd.append(k, v);
+    const esito = typeof a.azione === "function" ? await conStagingF(staging, () => a.azione({}, fd)) : { errore: "azione assente" };
+    return {
+      esito,
+      attiva: mondo.admin.tabelle.radar_fonti_stato.find((r) => r.fonte === fonte)?.attiva,
+      richieste: mondo.admin.richieste.length,
+      registro: mondo.admin.tabelle.radar_console_registro.filter((r) => r.oggetto === `fonte:${fonte}:attiva`).map((r) => r.valore_nuovo),
+    };
+  };
+  const FONTI_Q = ["ted", "pvl", "sintel", "sardegnacat"];
+  // una prova alla volta: ognuna ha il suo database in memoria («mondo» è condiviso dalle sostituzioni dei moduli)
+  const inFila = async (campi: Record<string, string>, accese: boolean) => {
+    const esiti = [] as Awaited<ReturnType<typeof provaAzioneFonte>>[];
+    for (const f of FONTI_Q) esiti.push(await provaAzioneFonte(f, campi, accese));
+    return esiti;
+  };
+  const senzaConferma = await inFila({ azione: "accendi" }, false);
+  // «on» è il valore di una casella senza «value»: non vale come conferma
+  const confermaSbagliata = await inFila({ azione: "accendi", conferma: "on" }, false);
+  const conConferma = await inFila({ azione: "accendi", conferma: "si" }, false);
+  const spegniSenza = await inFila({ azione: "spegni" }, true);
+  // fuori dallo staging la PVL non si accende nemmeno con la conferma (regola dell'ambiente invariata, nessuna scrittura)
+  const pvlFuoriStaging = await provaAzioneFonte("pvl", { azione: "accendi", conferma: "si" }, false, false);
+  const rifiutata = (x: Awaited<ReturnType<typeof provaAzioneFonte>>) => x.esito.errore === ERRORE_CONFERMA_ACCENSIONE && x.richieste === 0 && x.attiva === false && x.registro.length === 0;
+  controlla(
+    "FS9. conferma nel server: accendere (e riaccendere la sospesa) senza «conferma» = «si» è rifiutato da tutte e tre le azioni prima di ogni lettura, senza scritture né registro; con la conferma si accende e si registra; spegnere senza conferma è accettato e registrato; fuori dallo staging la PVL resta non accendibile",
+    typeof ERRORE_CONFERMA_ACCENSIONE === "string" &&
+      senzaConferma.every(rifiutata) &&
+      confermaSbagliata.every(rifiutata) &&
+      conConferma.every((x) => x.esito.ok === true && !x.esito.errore && x.attiva === true && JSON.stringify(x.registro) === JSON.stringify(["true"])) &&
+      spegniSenza.every((x) => x.esito.ok === true && !x.esito.errore && x.attiva === false && JSON.stringify(x.registro) === JSON.stringify(["false"])) &&
+      !!pvlFuoriStaging.esito.errore && pvlFuoriStaging.esito.errore !== ERRORE_CONFERMA_ACCENSIONE && /staging/.test(pvlFuoriStaging.esito.errore) && pvlFuoriStaging.attiva === false && pvlFuoriStaging.registro.length === 0,
+    {
+      senzaConferma: senzaConferma.map((x) => [x.esito.errore?.slice(0, 40), x.richieste, x.attiva]),
+      confermaSbagliata: confermaSbagliata.map((x) => [x.esito.errore?.slice(0, 40), x.richieste]),
+      conConferma: conConferma.map((x) => [x.esito.ok, x.esito.errore?.slice(0, 60), x.attiva, x.registro]),
+      spegniSenza: spegniSenza.map((x) => [x.esito.ok, x.esito.errore?.slice(0, 60), x.attiva, x.registro]),
+      pvlFuoriStaging: [pvlFuoriStaging.esito.errore?.slice(0, 60), pvlFuoriStaging.attiva],
+    },
+  );
+
+  // la pagina Tender Intelligence: i moduli «Accendi la fonte» di TED, PVL e regionali hanno la casella di conferma obbligatoria (altrimenti
+  // il server li rifiuterebbe sempre); «Spegni la fonte» no. Vista vera con dati minimi sintetici, sezioni PVL e regionali disegnate
+  const VistaTi = (richiedi(src("app/site-console/_componenti/tender-intelligence-vista.tsx")) as { default: (p: unknown) => unknown }).default;
+  const datiTi = (accese: boolean) => ({
+    schemaPresente: true,
+    parametri: { attivo: false, costi: {}, limiti: {} },
+    fonti: ["ted", "pvl"].map((id) => ({ id, nome: id.toUpperCase(), stato: "attiva", limiti: [], licenza: "[prova]", copertura: "[prova]", aggiornamento: "[prova]", db: { attiva: accese } })),
+    procedure: null,
+    procedureAperte: null,
+    gareCollegate: null,
+    aggiudicazioni: null,
+    coda: null,
+    clientiAbilitati: null,
+    utilizzi30Giorni: null,
+    ted: null,
+    imprese: null,
+    registro: null,
+    pvl: {
+      accensioneConsentita: true,
+      ambiente: "staging",
+      sospensione: null,
+      inCorso: false,
+      ultimoGiorno: null,
+      ultimoGiro: null,
+      limiti: {},
+      giriProgrammati: { attivi: false, orari: "", cronProposto: "", prossimo: "" },
+      archivio: { avvisi: null, gareNateDallaPvl: null, avvisiCheCitanoTed: null, cambiamentiPvl: null },
+      collegamenti: null,
+    },
+    regionali: {
+      fonti: ["sintel", "sardegnacat"].map((fonte) => ({ fonte, attiva: accese, nascosta: false, accensioneConsentita: true, sospensione: null, ultimoSuccesso: null, datiAl: null, ultimoGiro: null, procedure: null })),
+      proposte: null,
+      classificazioni: null,
+      giriProgrammati: false,
+    },
+    gareInVerifica: null,
+  });
+  const moduliAccensioneTi = (accese: boolean) => {
+    try {
+      const alb = VistaTi({ dati: datiTi(accese) });
+      const sezioni = elementi(alb)
+        .filter((e) => typeof e.type === "function" && ["SezionePvl", "SezioneRegionali"].includes((e.type as { name: string }).name))
+        .map((e) => (e.type as (p: unknown) => unknown)(e.props));
+      const azioni = [azioniTi.impostaFonteTed, azioniTi.impostaFontePvl, azioniTi.impostaFonteRegionale];
+      return elementi([alb, ...sezioni])
+        .filter((e) => e.type === ModuloAzioneConsole && azioni.includes(e.props.azione))
+        .map((m) => {
+          const c = elementi(m.props.children).find((e) => e.type === "input" && e.props.name === "conferma");
+          return { azione: (m.props.campi as Record<string, string>).azione, conferma: !!c && c.props.type === "checkbox" && c.props.required === true && c.props.value === "si", casella: !!c };
+        });
+    } catch (e) {
+      return [{ azione: `eccezione: ${e instanceof Error ? e.message : String(e)}`, conferma: false, casella: false }];
+    }
+  };
+  const tiSpente = moduliAccensioneTi(false);
+  const tiAccese = moduliAccensioneTi(true);
+  controlla(
+    "FS10. pagina Tender Intelligence: «Accendi la fonte» di TED, PVL, Sintel e SardegnaCAT con la casella di conferma obbligatoria («si»); «Spegni la fonte» senza",
+    tiSpente.length === 4 && tiSpente.every((m) => m.azione === "accendi" && m.conferma) && tiAccese.length === 4 && tiAccese.every((m) => m.azione === "spegni" && !m.casella),
+    { tiSpente, tiAccese },
+  );
   // la pagina vera: guardia degli amministratori, lettura e vista; il collegamento dalla pagina Tender Intelligence
   const paginaFonti = ((): (() => Promise<unknown>) | null => {
     try {
