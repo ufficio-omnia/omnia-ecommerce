@@ -167,7 +167,32 @@ const PAROLE_INFORMATICHE = /\b(software|applicativ\w*|sistem\w* informativ\w*|s
 const SERVIZIO_ESPLICITO =
   /\b(servizi?o?|appalto|affidamento|gestione) (di |del |della |dei )?(pulizi\w*|sanificazion\w*|disinfe\w*|ristorazion\w*|refezion\w*|mens[ae]|vigilanz\w*|portierat\w*|portineri\w*|guardiani\w*|facchinagg\w*|trasloc\w*|ausiliariat\w*|multiservizi|global service|facility management)\b/;
 
-export function settoriDaParole(testo: string | null | undefined): SettoreRadar[] {
+// ───── nomi di enti e società (regole 2026-11-23b) ─────
+//
+// Una parola del settore che fa parte del NOME di chi fa la gara non è il servizio: «… degli edifici di competenza di Milano Ristorazione
+// S.p.A.» (Sintel, gara a1e9b53f: conduzione degli impianti termici, non ristorazione; segnalato dal coordinamento il 23/11). La parola si
+// neutralizza prima di classificare quando:
+//   - è seguita subito dalla forma giuridica di una società («Ristorazione S.p.A.», «Multiservizi srl», «Pulizie s.c.a r.l.»);
+//   - fa parte del nome dell'ente dopo «di competenza di», «per conto di», «di proprietà di» (al massimo tre parole prima, senza un
+//     «servizio», «affidamento», «appalto» o «gestione» in mezzo).
+// Non si toccano: la parola prima di questi riferimenti («servizio di ristorazione … per conto del Comune»), né la parola seguita da altre
+// parole prima della forma giuridica («servizio di pulizia ATAC S.p.A.»: lì «pulizia» è il servizio e ATAC la società).
+const PAROLE_DEI_SETTORI =
+  "pulizi[ae]|sanificazion[ei]|disinfezion[ei]|disinfestazion[ei]|ausiliariato|facchinaggio|trasloc(?:o|hi)|ristorazione|mens[ae]|refezione|vigilanza|portierato|portineria|guardiania|reception|multiservizi|global service|facility management";
+const FORMA_GIURIDICA =
+  "(?:s\\.?\\s?p\\.?\\s?a|s\\.?\\s?r\\.?\\s?l(?:\\.?\\s?s)?|s\\.?\\s?c\\.?\\s?a\\.?\\s?r\\.?\\s?l|s\\.?\\s?c\\.?\\s?r\\.?\\s?l|s\\.?\\s?a\\.?\\s?s|s\\.?\\s?n\\.?\\s?c|soc\\.?\\s?coop\\p{L}*|societ[aà]\\s+cooperativa|onlus)\\.?(?![\\p{L}\\d])";
+const NELLA_RAGIONE_SOCIALE = new RegExp(`(?<![\\p{L}\\d])(?:${PAROLE_DEI_SETTORI})(?=[\\s,]+${FORMA_GIURIDICA})`, "giu");
+const NEL_NOME_DELL_ENTE = new RegExp(
+  `((?:di competenza|per conto|di propriet[aà])\\s+(?:di|del|della|dello|dei|degli|delle|dell['’]?)\\s*(?:(?!(?:servizi?o?|affidament\\p{L}*|appalt\\p{L}*|gestion\\p{L}*)(?![\\p{L}\\d]))[\\p{L}\\d'’.&-]+\\s+){0,3}?)(?:${PAROLE_DEI_SETTORI})(?![\\p{L}\\d])`,
+  "giu",
+);
+
+export function testoSenzaEnti(testo: string | null | undefined): string {
+  return (testo ?? "").replace(NELLA_RAGIONE_SOCIALE, "ente").replace(NEL_NOME_DELL_ENTE, "$1ente");
+}
+
+export function settoriDaParole(testoOriginale: string | null | undefined): SettoreRadar[] {
+  const testo = testoSenzaEnti(testoOriginale);
   const t = testoPerConfronto(testo);
   // un oggetto informatico entra per parola chiave solo se affida esplicitamente il servizio del settore
   if (!t || (PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t))) return [];
@@ -1284,7 +1309,10 @@ function valutaSettore(settore: SettoreRadar, t: string, contesto: ContestoCpv, 
 // verificare» (dato puro, nessuna riga cambia finché non si decide la rappresentazione). S2: trasporto con imballaggio, montaggio o
 // movimentazione nella descrizione = facchinaggio B («trasporto_con_movimentazione»); vale solo con la descrizione nei dati (campo facoltativo
 // «descrizione», che importatori e popolamento oggi non passano).
-export const VERSIONE_REGOLE_SETTORI = "2026-11-23a";
+// «2026-11-23b»: falso positivo dei primi giri reali di Sintel (gara a1e9b53f, «… degli edifici di competenza di Milano Ristorazione S.p.A.»):
+// le parole dei settori nel nome di una società (seguite subito dalla forma giuridica) o nel nome dell'ente dopo «di competenza di», «per
+// conto di», «di proprietà di» non contano più come servizio (testoSenzaEnti, prima di ogni regola).
+export const VERSIONE_REGOLE_SETTORI = "2026-11-23b";
 const PREFISSO_CORREZIONE = "regole-settori-";
 
 // Settore che le regole non vedono più (né i CPV né l'oggetto lo indicano, nessuna regola di esclusione): la regola della riga C e della
@@ -1503,16 +1531,19 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
   const principale = normalizzaCpv(dati.cpvPrincipale);
   const tutti = [...new Set([principale, ...(dati.cpvTutti ?? []).map(normalizzaCpv)].filter((c): c is string => !!c))];
   const voci = tutti.map((c) => MAPPA_CPV.get(c)).filter((v): v is VoceCpv => !!v);
-  const t = testoPerConfronto(dati.testo);
-  const settoriParole = settoriDaParole(dati.testo);
+  // 2026-11-23b: le parole dei settori nei nomi di enti e società sono neutralizzate PRIMA di ogni regola (parole chiave, affidamento,
+  // esclusioni, correlazioni, sottocategorie, elenchi)
+  const testo = testoSenzaEnti(dati.testo);
+  const t = testoPerConfronto(testo);
+  const settoriParole = settoriDaParole(testo);
   // concessioni di bar, ristoranti, punti ristoro, distributori e chioschi senza CPV del file: entrano per parola SOLO se affidate (fase B2b)
-  if (!settoriParole.includes("ristorazione") && concessioneDiRistoro(t) && !(PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t)) && affidamentoEsplicito("ristorazione", paroleDelServizio("ristorazione"), dati.testo)) {
+  if (!settoriParole.includes("ristorazione") && concessioneDiRistoro(t) && !(PAROLE_INFORMATICHE.test(t) && !SERVIZIO_ESPLICITO.test(t)) && affidamentoEsplicito("ristorazione", paroleDelServizio("ristorazione"), testo)) {
     settoriParole.push("ristorazione");
   }
   // buoni pasto e servizio sostitutivo di mensa senza CPV del file (decisione dell'utente del 18/11, D2): la ristorazione si valuta, e
   // decidono le regole: B se è affidato il servizio, C se solo materiali o badge, A se c'è anche una mensa vera
   if (!settoriParole.includes("ristorazione") && BUONI_PASTO.test(t)) settoriParole.push("ristorazione");
-  const affidamento = (s: SettoreRadar) => affidamentoEsplicito(s, paroleDelServizio(s), dati.testo);
+  const affidamento = (s: SettoreRadar) => affidamentoEsplicito(s, paroleDelServizio(s), testo);
   const contesto = (s: SettoreRadar): ContestoCpv => ({ principale, tutti, delSettore: voci.filter((v) => v.settore === s).map((v) => v.cpv) });
 
   const valutazioniCpv = [...new Set(voci.map((v) => v.settore))].map((s) => valutaSettore(s, t, contesto(s), "cpv"));
@@ -1586,7 +1617,7 @@ function classificaSenzaLotti(dati: DatiGara): Classificazione {
       ? daParole.map((s) => {
           const a = affidamento(s);
           // S1: una parola non affidata ma elencata tra le attività affidate è correlata (B), non citata (C)
-          return valutaSettore(s, t, contesto(s), "parole_chiave", a, !a && servizioInElenco(s, dati.testo));
+          return valutaSettore(s, t, contesto(s), "parole_chiave", a, !a && servizioInElenco(s, testo));
         })
       : [];
   // S3 (decisione dell'utente del 23/11, 49A): la manutenzione integrata di edifici e impianti è multiservizi B («gestione impianti»), mai A

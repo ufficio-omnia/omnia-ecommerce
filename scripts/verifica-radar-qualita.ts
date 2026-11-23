@@ -78,6 +78,10 @@
 //     casi reali che restano citazione: «pulizia casse», «assistenza alla mensa», luoghi, esclusioni), S2 (trasporto con imballaggio o
 //     montaggio nella descrizione B, solo con la descrizione), S3 (manutenzione integrata di edifici multiservizi B, mai A, apparecchiature e
 //     strade no), S4 (tre casi «da verificare» come dato puro, la riga resta quella di oggi).
+// Controlli CAMBIATI con la versione «2026-11-23b» (falso positivo dei primi giri reali di Sintel, segnalato dal coordinamento il 23/11):
+//   - versione delle regole «2026-11-23b». Nessun altro controllo cambiato; nuovi: le parole dei settori nel nome di una società o
+//     dell'ente non contano come servizio (Milano Ristorazione S.p.A., varianti delle forme giuridiche e dei riferimenti), i veri servizi
+//     restano A (anche con la società dopo il servizio o il riferimento dopo il servizio).
 // Controlli SPOSTATI a B2 (accordo PVL e B2 del 17/11, fase B2b): riclassifica-settori.ts e radar-riclassifica-settori.ts sono ora di B2,
 // che li trasforma nello script unico di popolamento (può anche aggiungere settori e scrive le tabelle della 0121). I 19 controlli su quei
 // file passano, aggiornati, in scripts/verifica-radar-popolamento.ts di B2 (livello 1):
@@ -110,6 +114,7 @@ import {
   servizioInElenco,
   settoriDaParole,
   testoPerConfronto,
+  testoSenzaEnti,
   type ContestoCpv,
   type SettoreRadar,
 } from "../src/lib/radar/settori";
@@ -1022,6 +1027,31 @@ uguale("S4: senza quel lotto l'etichetta c'è", classificaGara({ testo: "Servizi
   atteso("0133: il vincolo nuovo ammette tutti gli stati del codice di oggi", statiDelCodice.length === 4 && statiDelCodice.includes("da_verificare") && statiDelCodice.every((s) => istruzioni[1].includes(`'${s}'`)), statiDelCodice.join(","));
 }
 
+// ───── 2026-11-23b: parole dei settori nei nomi di enti e società (Sintel, gara a1e9b53f, segnalata dal coordinamento il 23/11) ─────
+const MILANO_RISTORAZIONE =
+  "Servizio di conduzione e manutenzione ordinaria degli impianti termici e di climatizzazione degli edifici di competenza di Milano Ristorazione S.p.A. con l'assunzione del ruolo di \"Terzo responsabile\"";
+uguale("ente, caso a1e9b53f: «di competenza di Milano Ristorazione S.p.A.» non è ristorazione; resta multiservizi A dal CPV", livelli(gara2b(MILANO_RISTORAZIONE, ["79993100"])), [["multiservizi", "A", "cpv_principale"]]);
+uguale("ente, caso a1e9b53f senza CPV: nessuna valutazione di ristorazione", gara2b(MILANO_RISTORAZIONE).valutazioni.map((v) => v.settore), []);
+uguale("ente, caso a1e9b53f anche come lotto («N/D» a parte)", classificaGara({ testo: `${MILANO_RISTORAZIONE} N/D`, lotti: [{ testo: MILANO_RISTORAZIONE }, { testo: "N/D" }], cpvPrincipale: "79993100", cpvTutti: ["79993100"] }).settori, ["multiservizi"]);
+uguale(
+  "ente: le forme giuridiche (S.p.A., SpA, srl, s.r.l., s.c.a r.l., società cooperativa, Onlus) neutralizzano la parola che le precede",
+  ["Milano Ristorazione S.p.A.", "Milano Ristorazione SpA", "Roma Ristorazione srl", "Ristorazione s.r.l.", "Bologna Multiservizi S.c.a r.l.", "Pulizie Società Cooperativa", "Vigilanza Onlus"].map(testoSenzaEnti),
+  ["Milano ente S.p.A.", "Milano ente SpA", "Roma ente srl", "ente s.r.l.", "Bologna ente S.c.a r.l.", "ente Società Cooperativa", "ente Onlus"],
+);
+uguale(
+  "ente: dopo «per conto di», «di competenza di», «di proprietà di» la parola nel nome dell'ente non conta",
+  [testoSenzaEnti("lavori per conto di Roma Ristorazione"), testoSenzaEnti("immobili di proprietà della Refezione Comunale"), testoSenzaEnti("sedi di competenza dell'Azienda Multiservizi")],
+  ["lavori per conto di Roma ente", "immobili di proprietà della Refezione Comunale".replace("Refezione", "ente"), "sedi di competenza dell'Azienda ente"],
+);
+uguale("ente: «servizio di pulizia degli uffici per conto di Roma Ristorazione srl» è pulizia A, non ristorazione", livelli(gara2b("Servizio di pulizia degli uffici per conto di Roma Ristorazione srl")), [["pulizia", "A", "parole_chiave"]]);
+uguale("ente, veri casi che restano A: il servizio prima del riferimento («servizio di ristorazione scolastica per conto del Comune»)", livelli(gara2b("Servizio di ristorazione scolastica per conto del Comune di Milano")), [["ristorazione", "A", "parole_chiave"]]);
+uguale("ente, veri casi che restano A: la società DOPO il servizio («servizio di ristorazione aziendale per ATM S.p.A.»)", livelli(gara2b("Affidamento del servizio di ristorazione aziendale per ATM S.p.A.")), [["ristorazione", "A", "parole_chiave"]]);
+uguale("ente, veri casi che restano A: «servizio di pulizia ATAC S.p.A.» (una parola tra il servizio e la forma giuridica)", livelli(gara2b("Servizio di pulizia ATAC S.p.A.")), [["pulizia", "A", "parole_chiave"]]);
+uguale("ente, veri casi che restano A: il servizio dopo il riferimento («per conto del Comune del servizio di ristorazione»)", livelli(gara2b("Gestione per conto del Comune del servizio di ristorazione scolastica")), [["ristorazione", "A", "parole_chiave"]]);
+uguale("ente, veri casi che restano A: servizio e nome dell'ente nella stessa gara", livelli(gara2b("Servizio di ristorazione scolastica nei centri di competenza di Milano Ristorazione S.p.A.")), [["ristorazione", "A", "parole_chiave"]]);
+uguale("ente: un testo senza nomi di enti resta identico", [testoSenzaEnti("Servizio di pulizia degli uffici comunali"), testoSenzaEnti(null)], ["Servizio di pulizia degli uffici comunali", ""]);
+uguale("ente: anche le parole chiave da sole lo sanno", [settoriDaParole(MILANO_RISTORAZIONE), settoriDaParole("Servizio di ristorazione per Milano Ristorazione S.p.A.")], [[], ["ristorazione"]]);
+
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
   "manutenzione IN global service delle strutture (TED 54bdd6eb): multiservizi A",
@@ -1343,7 +1373,7 @@ for (const f of ["src/lib/radar/fonti/ted-calcoli.ts", "src/lib/radar/fonti/pvl-
 // sono di B2 e lo script unico ora può anche aggiungere settori (accordo PVL e B2 del 17/11). Qui restano i controlli sulle funzioni di
 // settori.ts. Il registro tiene {"settori": [...], "metodo": ...}.
 const registro = (settori: string[], metodo: string | null) => JSON.stringify({ settori, metodo });
-uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-23a");
+uguale("versione delle regole", VERSIONE_REGOLE_SETTORI, "2026-11-23b");
 uguale(
   "identificativo della correzione: versione e regole",
   idFonteCorrezioneSettori([{ settore: "ristorazione", regola: "forniture_di_beni", motivo: "Fornitura di beni senza un servizio del settore" }]),
