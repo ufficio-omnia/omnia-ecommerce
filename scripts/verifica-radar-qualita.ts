@@ -986,6 +986,9 @@ uguale("S2: senza la descrizione resta C «trasporto_puro» (come oggi)", livell
 uguale("S2: «escluso il montaggio» nella descrizione non basta", livelli(classificaGara({ ...MANN, descrizione: "Trasporto delle opere, escluso il montaggio e l'imballaggio" })), [["facchinaggio", "C", "trasporto_puro"]]);
 uguale("S2: trasporto interbibliotecario senza movimentazione resta C (n. 10)", livelli(classificaGara({ cpvPrincipale: "63100000", cpvTutti: ["63100000"], testo: "AFFIDAMENTO DEL SERVIZIO DI TRASPORTO INTERBIBLIOTECARIO", descrizione: "Trasporto settimanale dei libri tra le biblioteche del sistema" })), [["facchinaggio", "C", "trasporto_puro"]]);
 uguale("S2: imballaggio o montaggio senza trasporto nella descrizione non bastano", livelli(classificaGara({ ...MANN, descrizione: "Allestimento della mostra con montaggio e smontaggio delle opere" })), [["facchinaggio", "C", "trasporto_puro"]]);
+uguale("S2: la descrizione non arriva alle esclusioni («raccolta dei rifiuti» solo nella descrizione di una pulizia)", classificaGara({ testo: "Servizio di pulizia degli uffici comunali", descrizione: "Compresa la raccolta dei rifiuti degli uffici" }).settori, ["pulizia"]);
+uguale("S2: la descrizione non arriva al riconoscimento dell'affidamento né ai lotti", classificaGara({ testo: "Fornitura di arredi per la mensa", descrizione: "Servizio di ristorazione scolastica" }).settori, []);
+uguale("S2: la descrizione non arriva alle parole chiave", classificaGara({ testo: "Servizio di trasporto scolastico", descrizione: "Servizio di pulizia degli scuolabus" }).settori, []);
 uguale("S2: la descrizione non aggiunge altri settori («vigilanza» nella descrizione di una pulizia)", classificaGara({ testo: "Servizio di pulizia degli uffici comunali", descrizione: "Il servizio comprende anche la vigilanza e il portierato degli accessi" }).settori, ["pulizia"]);
 
 // S4: tre casi senza descrizione utile = etichetta «da verificare» (dato puro: la riga resta quella di oggi)
@@ -1003,6 +1006,19 @@ atteso("S4: il campo non c'è nelle classificazioni di sempre", !("daVerificare"
 const bibliotecaConLotti = classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo", lotti: [{ testo: "Servizi di biblioteca" }, { testo: "Servizio di pulizia dei locali delle biblioteche" }] });
 uguale("S4: un lotto che rende la gara pertinente toglie l'etichetta", [bibliotecaConLotti.settori, bibliotecaConLotti.daVerificare], [["pulizia"], undefined]);
 uguale("S4: senza quel lotto l'etichetta c'è", classificaGara({ testo: "Servizi integrati di biblioteca dell'Ateneo" }).daVerificare?.map((d) => d.caso), ["biblioteca"]);
+
+// S4, migrazione 0133 (approvata dall'utente il 23/11, mai applicata): solo il vincolo dello stato, idempotente, con i valori di prima
+{
+  const m0133 = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/0133_radar_classificazioni_da_verificare.sql"), "utf8").replace(/--[^\n]*/g, "");
+  const istruzioni = m0133.split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+  uguale("0133: tre istruzioni, solo il vincolo dello stato e la ricarica dello schema", istruzioni, [
+    "alter table public.radar_classificazioni_stato drop constraint if exists radar_classificazioni_stato_stato_check",
+    "alter table public.radar_classificazioni_stato add constraint radar_classificazioni_stato_stato_check check (stato in ('in_attesa', 'classificata', 'fallita', 'da_verificare'))",
+    "notify pgrst, 'reload schema'",
+  ]);
+  const statiDelCodice = [...(fs.readFileSync(path.join(__dirname, "..", "src/lib/radar/classificazioni-calcoli.ts"), "utf8").match(/export type StatoClassificazione = ([^;]+);/)?.[1] ?? "").matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
+  atteso("0133: il vincolo nuovo ammette tutti gli stati del codice di oggi", statiDelCodice.length === 3 && statiDelCodice.every((s) => istruzioni[1].includes(`'${s}'`)), statiDelCodice.join(","));
+}
 
 uguale("parole chiave: le spiagge non escludono più a monte (c'è la regola C con il motivo)", settoriDaParole("Servizio di pulizia delle spiagge"), ["pulizia"]);
 uguale(
