@@ -40,6 +40,8 @@ class DbProva {
   /** tabelle la cui lettura fallisce (guasto simulato) */
   guasti = new Set<string>();
   contatore = 0;
+  /** eseguita una volta, subito prima della prossima scrittura (simula un'altra scrittura arrivata nel frattempo) */
+  primaDiScrivere: ((tabella: string, db: DbProva) => void) | null = null;
   constructor(tabelle: Record<string, Riga[]>) {
     this.tabelle = structuredClone(tabelle);
   }
@@ -233,6 +235,12 @@ class QueryProva implements PromiseLike<Esito> {
   private esegui(): Esito {
     this.db.richieste.push({ tabella: this.tabella, metodo: this.metodo, colonne: this.colonne });
     if (this.db.guasti.has(this.tabella)) return { data: null, error: { code: "08006", message: "guasto simulato" } };
+    // una scrittura «concorrente» simulata subito prima di questa (prova della scrittura condizionata)
+    if (this.metodo !== "select" && this.db.primaDiScrivere) {
+      const f = this.db.primaDiScrivere;
+      this.db.primaDiScrivere = null;
+      f(this.tabella, this.db);
+    }
     // colonne semplici e tabelle incorporate («alias:tabella(colonne)»); una tabella incorporata assente dal mondo (le tabelle della 0121 nei
     // mondi senza classificazioni) fa fallire la lettura come in PostgREST
     const semplici: string[] = [];
@@ -249,7 +257,9 @@ class QueryProva implements PromiseLike<Esito> {
     const righe = tutte.filter((r) => this.filtri.every((f) => f(r)));
     if (this.metodo === "update") {
       for (const r of righe) Object.assign(r, this.valori);
-      return { data: null, error: null };
+      // con .select(…) PostgREST restituisce le righe cambiate (scrittura condizionata: zero righe = cambiata nel frattempo)
+      if (!this.ritorna) return { data: null, error: null };
+      return { data: righe.map((r) => (this.colonne.trim() === "*" ? { ...r } : Object.fromEntries(this.colonne.split(",").map((k) => [k.trim(), r[k.trim()] ?? null])))), error: null };
     }
     if (this.metodo === "delete") {
       this.db.tabelle[this.tabella] = tutte.filter((r) => !righe.includes(r));
@@ -544,13 +554,26 @@ const dopo: unknown[] = [];
 sostituisci(richiedi.resolve("next/server"), { ...(richiedi("next/server") as Record<string, unknown>), after: (f: unknown) => void dopo.push(f) });
 
 type Elemento = { type: unknown; props: Record<string, unknown> };
-type DatiRiga = { href: string; titolo: string; fonte: string; motivi: string[]; monitorata?: boolean; tipo?: string | null; scadenzaGiorno?: string | null; scadenza?: string | null };
+type DatiRiga = {
+  href: string;
+  titolo: string;
+  fonte: string;
+  motivi: string[];
+  monitorata?: boolean;
+  tipo?: string | null;
+  scadenzaGiorno?: string | null;
+  scadenza?: string | null;
+  rilevanza?: string | null;
+  statoClassificazione?: string | null;
+  settoriDettaglio?: { settore: string; livello: string | null }[];
+};
 const PaginaMonitorate = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/monitorate/page.tsx")) as { default: () => Promise<unknown> }).default;
 const PaginaAggiunta = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/aggiunta/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const PaginaScheda = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/[id]/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const PaginaCerca = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/cerca/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const PaginaPerTe = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/per-te/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
 const RigaGara = (richiedi(src("components/omnia-ai/opportunita/riga-gara.tsx")) as { default: unknown }).default;
+const ClassificazioneGara = (richiedi(src("components/omnia-ai/opportunita/classificazione-gara.tsx")) as { default: unknown }).default;
 const { leggiGaraPubblica } = richiedi(src("lib/radar/gara.ts")) as { leggiGaraPubblica: (admin: unknown, id: string) => Promise<unknown> };
 const calcoliFonti = richiedi(src("lib/radar/fonti-gara-calcoli.ts")) as Record<string, unknown>;
 type Azione = (stato: unknown, formData: FormData) => Promise<{ errore?: string; ok?: boolean; messaggio?: string }>;
@@ -843,7 +866,9 @@ async function principale(): Promise<void> {
     const els = elementi(albero);
     const riquadroFonte = els.find((e) => e.props.etichetta === "Fonte" || e.props.etichetta === "Fonti")?.props.valore;
     const nota = els.find((e) => Array.isArray(e.props.children) && e.props.children[0] === "Fonti: ")?.props.children as unknown[] | undefined;
-    return { testi: testi(albero), riquadroFonte, notaFonti: nota?.[1] };
+    // il riquadro della classificazione si disegna davvero (componente senza stato): il suo testo a schermo entra nei testi
+    const classificazione = els.filter((e) => e.type === ClassificazioneGara).flatMap((e) => testi((ClassificazioneGara as (p: unknown) => unknown)(e.props)));
+    return { testi: [...testi(albero), ...classificazione], riquadroFonte, notaFonti: nota?.[1] };
   };
   mondo = nuovoMondo(false);
   const s1 = (await scheda(G.chiaveIgnota)) ?? { testi: [], riquadroFonte: undefined, notaFonti: undefined };
@@ -1137,6 +1162,228 @@ async function principale(): Promise<void> {
     "MV5. nessun riferimento al parere legale nell'azione, nella vista della console (casella e nota), nel commento di «Cerca» e della ricerca",
     ![testoAzioni, testoVista, testoCerca, testoRicerca].some((t) => /parere/i.test(t)) && !/name="parere"/.test(testoVista),
     { azioni: /parere/i.test(testoAzioni), vista: /parere/i.test(testoVista), cerca: /parere/i.test(testoCerca), ricerca: /parere/i.test(testoRicerca) },
+  );
+
+  // ═════ P. S4 (49C §4.2): gare «da_verificare». Per i clienti mai «non pertinente», mai in «Per te»; in console l'elenco e «Decidi» ═════
+  const modulo4 = (campi: Record<string, string | string[]>) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(campi)) for (const x of Array.isArray(v) ? v : [v]) fd.append(k, x);
+    return fd;
+  };
+  const conClassificazioni = async <T,>(f: () => Promise<T>): Promise<T> => {
+    const prima = { RADAR_CLASSIFICAZIONI: process.env.RADAR_CLASSIFICAZIONI, NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL };
+    const { PROGETTO_STAGING: staging } = richiedi(src("lib/radar/ambiente.ts")) as { PROGETTO_STAGING: string };
+    Object.assign(process.env, { RADAR_CLASSIFICAZIONI: "attive", NEXT_PUBLIC_SUPABASE_URL: `https://${staging}.supabase.co` });
+    try {
+      return await f();
+    } finally {
+      for (const [k, v] of Object.entries(prima)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  };
+  const V = { stabulari: id(401), biblioteca: id(402), classificata: id(403), senzaCaso: id(404), inAttesa: id(405), senzaCandidato: id(406) };
+  let nRiga = 0;
+  const rigaCl = (pid: string, settore: string, rilevanza: string, regole: string[], motivi: string[], extra: Riga = {}): Riga => ({
+    id: id(4500 + ++nRiga),
+    procedura_id: pid,
+    settore,
+    rilevanza,
+    sottocategorie: [],
+    regole,
+    motivi,
+    da: "cpv",
+    cpv: [],
+    versione_regole: "2026-11-23a",
+    origine: "importazione",
+    fonti: ["ted"],
+    per_fonte: { dati_uniti: rilevanza },
+    ambigua: false,
+    nota: null,
+    autore: null,
+    attiva: true,
+    valida_dal: "2026-11-23T08:00:00Z",
+    sostituita_il: null,
+    sostituita_da: null,
+    ...extra,
+  });
+  const MOTIVO_STABULARI = "Appalto misto per stabulari con le «pulizie» tra le attività: da verificare nei documenti (dato sintetico)";
+  const statoCl = (pid: string, stato: string): Riga => ({ procedura_id: pid, stato, versione_regole: stato === "in_attesa" ? null : "2026-11-23a", classificata_il: stato === "classificata" ? "2026-11-23T08:00:00Z" : null, tentativi: 1, tentativo_il: "2026-11-23T08:00:00Z", errore: null, aggiornata_il: "2026-11-23T08:00:00Z" });
+  const mondoS4 = () => {
+    nRiga = 0;
+    const g = (pid: string, titolo: string) => ({ ...gara("ted", `ted:SINT-V-${pid.slice(-3)}`, ["ted"]), id: pid, oggetto: `[SINTETICO] ${titolo}`, sa_denominazione: "[SINTETICO] Università di prova", url_avviso: `https://esempio.invalid/avviso-${pid.slice(-3)}` });
+    const admin = new DbProva({
+      radar_fonti_stato: statoFonti(false),
+      radar_procedure: [g(V.stabulari, "Servizi per lo stabulario"), g(V.biblioteca, "Servizi integrati di biblioteca"), g(V.classificata, "Pulizia degli uffici"), g(V.senzaCaso, "Concessione del casone"), g(V.inAttesa, "Gara in attesa"), g(V.senzaCandidato, "Gara da verificare senza candidato")],
+      radar_procedure_fonti: Object.values(V).map((pid) => ({ procedura_id: pid, fonte: "ted", id_fonte: `SINT-V-${pid.slice(-3)}`, url: null, pubblicato_il: "2026-11-10", tipo_avviso: "cn-standard", rilevato_il: "2026-11-10T06:00:00Z", aggiornato_il: null })),
+      radar_aggiornamenti: [],
+      radar_lotti: [],
+      radar_console_registro: [],
+      omnia_ai_radar_utilizzi: [],
+      radar_classificazioni_stato: [statoCl(V.stabulari, "da_verificare"), statoCl(V.biblioteca, "da_verificare"), statoCl(V.classificata, "classificata"), statoCl(V.senzaCaso, "da_verificare"), statoCl(V.inAttesa, "in_attesa"), statoCl(V.senzaCandidato, "da_verificare")],
+      radar_classificazioni: [
+        rigaCl(V.stabulari, "pulizia", "C", ["da_verificare_stabulari", "cura_degli_animali"], [MOTIVO_STABULARI, "Cura degli animali (dato sintetico)"]),
+        rigaCl(V.stabulari, "ristorazione", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
+        rigaCl(V.biblioteca, "vigilanza_portierato", "C", ["da_verificare_biblioteca"], ["Servizi di biblioteca senza descrizione (dato sintetico)"]),
+        rigaCl(V.classificata, "pulizia", "A", ["cpv_pulizia"], ["CPV di pulizia (dato sintetico)"]),
+        rigaCl(V.senzaCaso, "ristorazione", "C", ["da_verificare"], ["Concessione di un immobile con un CPV di ristorazione (dato sintetico)"]),
+        rigaCl(V.senzaCandidato, "pulizia", "C", ["cpv_di_altro_settore"], ["CPV di un altro settore (dato sintetico)"]),
+      ],
+    });
+    const sessione = new DbProva({
+      omnia_ai_radar_salvate: [V.stabulari, V.classificata].map((pid, i) => ({ id: id(4900 + i), user_id: IMPRESA, procedura_id: pid, aggiunta_id: null, monitorata: true, ultimo_aggiornamento_visto_il: null, creata_il: "2026-11-20T06:00:00Z", salvata_da: IMPRESA })),
+      omnia_ai_radar_gare_aggiunte: [],
+      omnia_ai_radar_profili: [{ user_id: IMPRESA, posizione: 1, settori: ["pulizia"], sottocategorie: null, regioni: [], tipi_procedura: [], importo_min: null, importo_max: null, vedere_correlate: true, aggiornato_il: "2026-11-20T06:00:00Z" }],
+    });
+    return { admin, sessione };
+  };
+  const lettura = richiedi(src("lib/radar/classificazioni-lettura.ts")) as { classificazioneDaRiga: (r: unknown) => { stato: string; settori: { settore: string; livello: string }[] }; messaggioStato: (c: unknown) => string | null };
+  const ricercaCalcoli = richiedi(src("lib/radar/ricerca-calcoli.ts")) as { etichettaRicerca: (c: unknown, f: unknown) => string | null; etichettaStatoClassificazione: (c: unknown) => string | null; coerenteConFiltroSettori: (c: unknown, f: unknown) => boolean; settoriDellaRiga: (c: unknown) => unknown[] };
+  const letta = lettura.classificazioneDaRiga({ classificazione_stato: { stato: "da_verificare", versione_regole: "2026-11-23a" }, classificazioni: [{ settore: "pulizia", rilevanza: "C", sottocategorie: [], attiva: true, regole: ["da_verificare_stabulari"], motivi: [MOTIVO_STABULARI] }, { settore: "ristorazione", rilevanza: "C", sottocategorie: [], attiva: true }] });
+  const msg = lettura.messaggioStato(letta) ?? "";
+  controlla(
+    "MS1. lettura: lo stato «da_verificare» resta tale; nessun settore «non pertinente» (le righe C calcolate non si mostrano); il testo è «Classificazione in verifica», non quello di «fallita»",
+    letta.stato === "da_verificare" && letta.settori.every((s) => s.livello !== "C") && msg.startsWith("Classificazione in verifica") && !/Classificazione da verificare/.test(msg),
+    { letta, msg },
+  );
+  const candidatoRicerca = { settori: ["pulizia"], rilevanza: { stato: "da_verificare", perSettore: {}, sottocategorie: {} } };
+  controlla(
+    "MS2. riga dei risultati: distintivo «Classificazione in verifica», mai «Fuori dai settori monitorati» né «Classificazione da verificare»; col filtro di settore non si toglie",
+    ricercaCalcoli.etichettaStatoClassificazione(candidatoRicerca) === "Classificazione in verifica" && ricercaCalcoli.etichettaRicerca(candidatoRicerca, { settori: ["pulizia"] }) === null && ricercaCalcoli.coerenteConFiltroSettori(candidatoRicerca, { settori: ["pulizia"] }) === true,
+    { stato: ricercaCalcoli.etichettaStatoClassificazione(candidatoRicerca), rilevanza: ricercaCalcoli.etichettaRicerca(candidatoRicerca, { settori: ["pulizia"] }) },
+  );
+  mondo = mondoS4();
+  const cS = await conClassificazioni(() => cerca());
+  const rigaS = cS.get(hrefG(V.stabulari));
+  const pS = await perTe();
+  const sS = await conClassificazioni(() => scheda(V.stabulari));
+  controlla(
+    "MS3. «Cerca» la trova (senza filtro di settore) con «Classificazione in verifica»; «Per te» no (vuole «classificata»), la gara classificata sì; la scheda non dice «non pertinente»",
+    !!rigaS && rigaS.statoClassificazione === "Classificazione in verifica" && rigaS.rilevanza !== "Fuori dai settori monitorati" && !pS.has(hrefG(V.stabulari)) && pS.has(hrefG(V.classificata)) && !!sS && !sS.testi.some((t) => /Non pertinente/.test(t)) && sS.testi.some((t) => t.startsWith("Classificazione in verifica")),
+    { rigaS: rigaS && { stato: rigaS.statoClassificazione, rilevanza: rigaS.rilevanza }, perTe: [...pS.keys()].map((h) => h.slice(-3)), scheda: sS?.testi.filter((t) => /pertinente|verifica/i.test(t)) },
+  );
+
+  // la console: l'elenco
+  const moduloGiv = ((): Record<string, unknown> => {
+    try {
+      return richiedi(src("lib/console/gare-in-verifica.ts")) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
+  const leggiGareInVerifica = moduloGiv.leggiGareInVerifica as ((admin: unknown) => Promise<{ id: string; titolo: string; ente: string | null; urlAvviso: string | null; settoreCandidato: string | null; caso: string | null; motivo: string | null; righe: { settore: string; rilevanza: string }[]; sottocategorie: { id: string; nome: string }[] }[] | null>) | undefined;
+  mondo = mondoS4();
+  const elencoS4 = leggiGareInVerifica ? await leggiGareInVerifica(mondo.admin) : null;
+  const vocePer = (pid: string) => elencoS4?.find((g) => g.id === pid);
+  const vS = vocePer(V.stabulari);
+  const { vociCatalogo } = richiedi(src("lib/radar/settori-catalogo.ts")) as { vociCatalogo: (s: string) => { id: string; nome: string }[] };
+  controlla(
+    "MS4. console, elenco: solo le gare «da_verificare» con oggetto, ente, collegamento all'avviso, settore candidato, caso, motivo, righe di oggi e sottocategorie del catalogo",
+    !!elencoS4 &&
+      JSON.stringify(elencoS4.map((g) => g.id).sort()) === JSON.stringify([V.stabulari, V.biblioteca, V.senzaCaso, V.senzaCandidato].sort()) &&
+      !!vS && vS.titolo === "[SINTETICO] Servizi per lo stabulario" && vS.ente === "[SINTETICO] Università di prova" && vS.urlAvviso === `https://esempio.invalid/avviso-${V.stabulari.slice(-3)}` &&
+      vS.settoreCandidato === "pulizia" && vS.caso === "stabulari" && vS.motivo === MOTIVO_STABULARI && vS.righe.length === 2 &&
+      JSON.stringify(vS.sottocategorie.map((x) => x.id)) === JSON.stringify(vociCatalogo("pulizia").map((x) => x.id)) &&
+      vocePer(V.biblioteca)?.settoreCandidato === "vigilanza_portierato" && vocePer(V.biblioteca)?.caso === "biblioteca" &&
+      vocePer(V.senzaCaso)?.settoreCandidato === "ristorazione" && vocePer(V.senzaCaso)?.caso === null &&
+      vocePer(V.senzaCandidato)?.settoreCandidato === null,
+    elencoS4?.map((g) => ({ id: g.id.slice(-3), settore: g.settoreCandidato, caso: g.caso, righe: g.righe.length })) ?? "modulo assente",
+  );
+
+  // la console: «Decidi»
+  const decidi = (azioniConsole as Record<string, unknown>).decidiGaraInVerifica as AzioneConsole | undefined;
+  const SOTTO = vociCatalogo("pulizia")[0]?.id ?? "x";
+  const NOTA = "Verificato sui documenti: pulizia dei locali dello stabulario (prova sintetica)";
+  const righeClassDi = (pid: string) => mondo.admin.tabelle.radar_classificazioni.filter((r) => r.procedura_id === pid);
+  const statoDiGara = (pid: string) => mondo.admin.tabelle.radar_classificazioni_stato.find((r) => r.procedura_id === pid);
+  mondo = mondoS4();
+  tagSvuotati.length = 0;
+  const esitoDecidi = decidi ? await decidi(undefined, modulo4({ gara: V.stabulari, settore: "pulizia", rilevanza: "B", sottocategoria: [SOTTO], nota: NOTA })) : { errore: "azione assente" };
+  const vecchia = righeClassDi(V.stabulari).find((r) => r.settore === "pulizia" && r.origine === "importazione");
+  const nuova = righeClassDi(V.stabulari).find((r) => r.settore === "pulizia" && r.origine === "amministratore");
+  const st = statoDiGara(V.stabulari);
+  const regDecidi = mondo.admin.tabelle.radar_console_registro;
+  controlla(
+    "MS5. «Decidi»: riga dell'amministratore (B, sottocategoria del catalogo, nota, autore) al posto di quella candidata, che resta nello storico; le altre righe intatte; stato di nuovo «classificata»; registro",
+    esitoDecidi.ok === true && !!vecchia && vecchia.attiva === false && !!nuova && vecchia.sostituita_da === nuova.id && nuova.attiva === true && nuova.rilevanza === "B" && JSON.stringify(nuova.sottocategorie) === JSON.stringify([SOTTO]) &&
+      nuova.nota === NOTA && nuova.autore === `console:${AMMINISTRATORE.email}` && JSON.stringify(nuova.regole) === JSON.stringify(["decisione_amministratore"]) &&
+      righeClassDi(V.stabulari).filter((r) => r.attiva).length === 2 && righeClassDi(V.stabulari).some((r) => r.settore === "ristorazione" && r.attiva === true) &&
+      st?.stato === "classificata" && typeof st?.classificata_il === "string" && st?.versione_regole === "2026-11-23a" && st?.errore === null &&
+      regDecidi.length === 1 && regDecidi[0].oggetto === "gara:decisione_classificazione" && regDecidi[0].autore_id === AMMINISTRATORE.userId && String(regDecidi[0].valore_nuovo).includes("pulizia: B"),
+    { esitoDecidi, nuova: nuova && { rilevanza: nuova.rilevanza, sotto: nuova.sottocategorie, autore: nuova.autore }, stato: st?.stato, registro: regDecidi.map((r) => r.oggetto) },
+  );
+  // dopo la decisione la scheda è quella di una gara classificata (correlata), non più «in verifica»
+  const sDopo = await conClassificazioni(() => scheda(V.stabulari));
+  controlla("MS6. dopo «Decidi» la gara è classificata: la scheda mostra il settore deciso e non dice più «in verifica»", !!sDopo && sDopo.testi.some((t) => t === "Correlata") && !sDopo.testi.some((t) => t.startsWith("Classificazione in verifica")), sDopo?.testi.filter((t) => /Correlata|verifica|Pertinente/.test(t)));
+
+  // rifiuti: nessuna scrittura
+  const nessunaScrittura = () => !mondo.admin.richieste.some((r) => r.metodo !== "select" && r.tabella !== "radar_console_registro") && mondo.admin.tabelle.radar_console_registro.length === 0;
+  const prova = async (campi: Record<string, string | string[]>, prepara?: () => void) => {
+    mondo = mondoS4();
+    prepara?.();
+    const e = decidi ? await decidi(undefined, modulo4(campi)) : { errore: "azione assente" };
+    return { e, pulito: nessunaScrittura(), statoInVerifica: statoDiGara(String(campi.gara))?.stato };
+  };
+  const base = { gara: V.stabulari, settore: "pulizia", rilevanza: "B", sottocategoria: [SOTTO], nota: NOTA };
+  const rifiuti = {
+    notaVuota: await prova({ ...base, nota: "   " }),
+    rilevanzaSbagliata: await prova({ ...base, rilevanza: "D" }),
+    sottocategoriaFuoriCatalogo: await prova({ ...base, sottocategoria: ["non_nel_catalogo"] }),
+    cConSottocategorie: await prova({ ...base, rilevanza: "C" }),
+    altroSettore: await prova({ ...base, settore: "ristorazione", sottocategoria: [] }),
+    garaClassificata: await prova({ ...base, gara: V.classificata }),
+    garaNonValida: await prova({ ...base, gara: "non-un-id" }),
+    senzaRegistro: await prova(base, () => mondo.admin.guasti.add("radar_console_registro")),
+  };
+  adminAutenticato = false;
+  const nonAdminS4 = await prova(base);
+  adminAutenticato = true;
+  const sbagliati = Object.entries(rifiuti).filter(([, r]) => !r.e.errore || !r.pulito || (r.statoInVerifica !== undefined && r.statoInVerifica !== "da_verificare" && r.statoInVerifica !== "classificata"));
+  controlla(
+    "MS7. «Decidi» rifiuta senza scrivere: nota vuota, rilevanza non valida, sottocategoria fuori catalogo, C con sottocategorie, settore diverso dal candidato, gara non da verificare, identificativo non valido, registro assente, non amministratori",
+    sbagliati.length === 0 && nonAdminS4.e.errore === "Non autorizzato." && nonAdminS4.pulito,
+    { sbagliati: sbagliati.map(([k, r]) => [k, r.e, r.pulito]), nonAdminS4 },
+  );
+  // concorrenza: la riga candidata cambia tra la lettura e la scrittura → nessuna riga nuova, stato invariato
+  const concorrente = await prova(base, () => {
+    mondo.admin.primaDiScrivere = (tabella, db) => {
+      if (tabella !== "radar_classificazioni") return;
+      const r = db.tabelle.radar_classificazioni.find((x) => x.procedura_id === V.stabulari && x.settore === "pulizia" && x.attiva === true);
+      if (r) r.attiva = false;
+    };
+  });
+  controlla(
+    "MS8. «Decidi» con la riga cambiata nel frattempo: errore, nessuna riga nuova, stato ancora «da_verificare», niente registro",
+    !!concorrente.e.errore && !righeClassDi(V.stabulari).some((r) => r.origine === "amministratore") && statoDiGara(V.stabulari)?.stato === "da_verificare" && mondo.admin.tabelle.radar_console_registro.length === 0,
+    concorrente.e,
+  );
+  // senza caso o senza candidato
+  mondo = mondoS4();
+  const eCaso = decidi ? await decidi(undefined, modulo4({ gara: V.senzaCaso, settore: "ristorazione", rilevanza: "C", nota: "Concessione del solo immobile, nessun servizio di ristorazione (prova sintetica)" })) : { errore: "azione assente" };
+  const eSenza = decidi ? await decidi(undefined, modulo4({ gara: V.senzaCandidato, settore: "pulizia", rilevanza: "A", sottocategoria: [SOTTO], nota: "Pulizia vera e propria (prova sintetica)" })) : { errore: "azione assente" };
+  controlla(
+    "MS9. «Decidi» anche senza caso indicato (riga «da_verificare» semplice) e, senza riga candidata, per un settore scelto; C senza sottocategorie",
+    eCaso.ok === true && eSenza.ok === true && statoDiGara(V.senzaCaso)?.stato === "classificata" && statoDiGara(V.senzaCandidato)?.stato === "classificata" && righeClassDi(V.senzaCaso).some((r) => r.origine === "amministratore" && r.rilevanza === "C" && JSON.stringify(r.sottocategorie) === "[]"),
+    { eCaso, eSenza },
+  );
+  // la vista della console
+  const componente = ((): ((p: unknown) => unknown) | null => {
+    try {
+      return (richiedi(src("app/site-console/_componenti/gare-in-verifica.tsx")) as { default: (p: unknown) => unknown }).default;
+    } catch {
+      return null;
+    }
+  })();
+  const albV = componente && elencoS4 ? componente({ gare: elencoS4 }) : null;
+  const elV = elementi(albV);
+  const campiDi = (nome: string) => elV.filter((e) => (e.type === "input" || e.type === "textarea" || e.type === "select") && e.props.name === nome);
+  const testoVistaTi = fs.readFileSync(src("app/site-console/_componenti/tender-intelligence-vista.tsx"), "utf8");
+  controlla(
+    "MS10. vista: per ogni gara il modulo «Decidi» (A/B/C, sottocategorie del catalogo, nota obbligatoria, gara e settore nascosti), collegamento all'avviso; il riquadro è nella pagina Tender Intelligence",
+    !!albV && campiDi("rilevanza").length === 3 * 4 && campiDi("nota").length === 4 && campiDi("nota").every((e) => e.props.required === true) && campiDi("sottocategoria").length >= vociCatalogo("pulizia").length &&
+      elV.some((e) => e.type === "a" && e.props.href === `https://esempio.invalid/avviso-${V.stabulari.slice(-3)}`) && /<GareInVerifica gare=\{dati\.gareInVerifica\}/.test(testoVistaTi),
+    { rilevanza: campiDi("rilevanza").length, nota: campiDi("nota").length, sotto: campiDi("sottocategoria").length },
   );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);

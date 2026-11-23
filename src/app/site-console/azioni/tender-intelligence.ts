@@ -13,6 +13,9 @@ import { confermaProposta, rifiutaProposta, scollegaGara } from "@/lib/radar/col
 import { eseguiImportazioneRegionale } from "@/lib/radar/importa-regionali";
 import { FONTI_REGIONALI, type FonteRegionale } from "@/lib/radar/importa-regionali-calcoli";
 import { TAG_FONTI_RADAR } from "@/lib/radar/fonti-nascoste";
+import { decisioneAmministratore, erroriRiga, type RigaClassificazione } from "@/lib/radar/classificazioni-calcoli";
+import { VERSIONE_REGOLE_SETTORI, nomeSettore } from "@/lib/radar/settori";
+import { candidatoDaRighe, validaDecisione } from "@/lib/console/gare-in-verifica-calcoli";
 
 // Console «Tender Intelligence» (fasi B1 e B1-bis): interruttori, costi e limiti; fonti TED e PVL; imprese abilitate; giri manuali.
 // Ogni azione parte da richiediAdminAzione() (solo amministratori), valida nel server e registra in radar_console_registro chi ha cambiato
@@ -297,4 +300,61 @@ export async function decidiPropostaCollegamento(_stato: StatoAzioneTi, formData
   }
   ricarica();
   return { ok: true, avviso: decisione === "conferma" ? "Gare unite (annullabile dall'elenco delle gare collegate)." : "Suggerimento rifiutato: le due gare non verranno più proposte né unite." };
+}
+
+// ───── schema S4 (49C §4.2): una gara «da verificare» decisa a mano ─────
+
+// «Decidi»: rilevanza A, B o C per il settore candidato, sottocategorie dal catalogo per A e B, nota obbligatoria. La riga la prepara
+// decisioneAmministratore di B2 (origine «amministratore», 0121): la riga candidata si disattiva (resta nello storico) con una scrittura
+// condizionata, poi si inserisce la nuova; le altre righe calcolate restano come spiegazione. Lo stato torna «classificata» (solo se era
+// ancora «da_verificare»). La colonna «settori» della gara non si tocca: la allinea la riclassificazione di B2, che segue le decisioni.
+export async function decidiGaraInVerifica(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+  const proceduraId = String(formData.get("gara") ?? "");
+  if (!UUID_GARA.test(proceduraId)) return { errore: "Richiesta non valida." };
+  const admin = createAdminClient();
+  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };
+  const [{ data: stato, error: e1 }, { data: attive, error: e2 }] = await Promise.all([
+    admin.from("radar_classificazioni_stato").select("stato, versione_regole").eq("procedura_id", proceduraId).maybeSingle<{ stato: string; versione_regole: string | null }>(),
+    admin.from("radar_classificazioni").select("*").eq("procedura_id", proceduraId).eq("attiva", true).returns<RigaClassificazione[]>(),
+  ]);
+  if (e1 || e2) return { errore: "Lettura della classificazione non riuscita." };
+  if (!stato || stato.stato !== "da_verificare") return { errore: "La gara non è (più) da verificare: ricarica la pagina." };
+  const candidato = candidatoDaRighe(attive ?? []);
+  const v = validaDecisione({ settore: formData.get("settore"), rilevanza: formData.get("rilevanza"), sottocategorie: formData.getAll("sottocategoria"), nota: formData.get("nota") }, candidato.settore);
+  if (!v.ok) return { errore: v.errore };
+  const d = v.decisione;
+  const attiva = (attive ?? []).find((r) => r.settore === d.settore) ?? null;
+  const adesso = new Date().toISOString();
+  const versione = stato.versione_regole ?? VERSIONE_REGOLE_SETTORI;
+  const agg = decisioneAmministratore(attiva, { proceduraId, settore: d.settore, rilevanza: d.rilevanza, sottocategorie: d.sottocategorie, nota: d.nota, autore: `console:${sessione.email}`, versione, adessoIso: adesso, nuovoId: () => crypto.randomUUID() });
+  const nuova = agg.inserisci[0];
+  const errori = erroriRiga(nuova);
+  if (errori.length) return { errore: `Decisione non valida: ${errori.join("; ")}.` };
+  // 1) la riga di oggi si disattiva solo se è ancora attiva (una scrittura arrivata nel frattempo ferma tutto)
+  for (const x of agg.disattiva) {
+    const { data, error } = await admin.from("radar_classificazioni").update({ attiva: false, sostituita_il: x.sostituita_il, sostituita_da: x.sostituita_da }).eq("id", x.id).eq("attiva", true).select("id");
+    if (error || (data ?? []).length === 0) return { errore: "La classificazione è cambiata nel frattempo: ricarica la pagina, nulla è stato salvato." };
+  }
+  // 2) la riga dell'amministratore; se non si scrive, la riga di prima torna attiva
+  const { error: e3 } = await admin.from("radar_classificazioni").insert(nuova);
+  if (e3) {
+    for (const x of agg.disattiva) await admin.from("radar_classificazioni").update({ attiva: true, sostituita_il: null, sostituita_da: null }).eq("id", x.id).eq("sostituita_da", nuova.id);
+    return { errore: "Salvataggio della decisione non riuscito: nulla è cambiato." };
+  }
+  // 3) lo stato torna «classificata», solo se era ancora «da_verificare»
+  const { data: st, error: e4 } = await admin
+    .from("radar_classificazioni_stato")
+    .update({ stato: "classificata", versione_regole: versione, classificata_il: adesso, errore: null, aggiornata_il: adesso })
+    .eq("procedura_id", proceduraId)
+    .eq("stato", "da_verificare")
+    .select("procedura_id");
+  const statoAggiornato = !e4 && (st ?? []).length > 0;
+  const prima = `${proceduraId} · ${d.settore}: da verificare${candidato.caso ? ` (${candidato.caso})` : ""}${attiva ? ` · riga ${attiva.rilevanza}` : ""}`;
+  const dopo = `${d.settore}: ${d.rilevanza}${d.sottocategorie.length ? ` · ${d.sottocategorie.join(", ")}` : ""} · nota: ${d.nota}`.slice(0, 2000);
+  await registra(admin, [{ oggetto: "gara:decisione_classificazione", valore_precedente: prima, valore_nuovo: dopo }], sessione);
+  ricarica();
+  if (!statoAggiornato) return { errore: "Decisione salvata, ma lo stato della gara non è tornato «classificata»: ricarica la pagina e riprova." };
+  return { ok: true, avviso: `Decisione salvata: ${nomeSettore(d.settore)}, ${d.rilevanza === "A" ? "pertinente" : d.rilevanza === "B" ? "correlata" : "non pertinente"}. La gara torna classificata.` };
 }

@@ -16,6 +16,7 @@ import { FONTI_REGIONALI, type FonteRegionale, type StatisticheRegionali } from 
 import { leggiProposteAperte } from "@/lib/radar/collegamenti";
 import { CAMPO_CLASSIFICAZIONE_AMBIGUA } from "@/lib/radar/fonti-gara-calcoli";
 import { leggiSegnalazioneClassificazione, type SegnalazioneClassificazioneConsole } from "./tender-intelligence-calcoli";
+import { leggiGareInVerifica, type GaraInVerificaConsole } from "./gare-in-verifica";
 
 export type StatoFonteDb = {
   attiva: boolean;
@@ -49,6 +50,8 @@ export type DatiTenderIntelligenceConsole = {
   pvl: DatiPvlConsole | null;
   // fase B2a (migrazione 0120): fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione da verificare
   regionali: DatiRegionaliConsole | null;
+  // schema S4 (49C §4.2, migrazione 0133): gare «da verificare», decise a mano da un amministratore
+  gareInVerifica: GaraInVerificaConsole[] | null;
 };
 
 export type UltimoGiroPvl = StatistichePvl & {
@@ -121,7 +124,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
   });
 
   if (!schemaPresente) {
-    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, gareCollegate: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null };
+    return { schemaPresente, parametri, fonti, procedure: null, procedureAperte: null, gareCollegate: null, aggiudicazioni: null, coda: null, clientiAbilitati: null, utilizzi30Giorni: null, ted: null, imprese: null, registro: null, pvl: null, regionali: null, gareInVerifica: null };
   }
 
   // conteggio con un filtro di uguaglianza facoltativo; null = conteggio non riuscito
@@ -133,7 +136,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
 
   const adesso = new Date().toISOString();
   const dal = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [procedure, procedureAperte, gareCollegate, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl, regionali] = await Promise.all([
+  const [procedure, procedureAperte, gareCollegate, aggiudicazioni, clientiAbilitati, statiCoda, utilizzi, statoTed, impostazioni, registroRaw, pvl, regionali, gareInVerifica] = await Promise.all([
     // senza le copie collegate (0117)
     (async () => {
       const { count, error } = await admin.from("radar_procedure").select("id", { count: "exact", head: true }).is("unita_a", null);
@@ -157,6 +160,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     admin.from("radar_console_registro").select("oggetto, cliente_id, valore_precedente, valore_nuovo, autore_email, creato_il").order("creato_il", { ascending: false }).limit(30).returns<{ oggetto: string; cliente_id: string | null; valore_precedente: string | null; valore_nuovo: string | null; autore_email: string; creato_il: string }[]>(),
     leggiDatiPvl(admin),
     leggiDatiRegionali(admin),
+    leggiGareInVerifica(admin),
   ]);
 
   // email delle imprese (abilitate e citate nel registro), lette in una volta sola
@@ -180,6 +184,7 @@ export async function leggiDatiTenderIntelligence(): Promise<DatiTenderIntellige
     registro: registroRaw.error ? null : (registroRaw.data ?? []).map((r) => ({ oggetto: r.oggetto, clienteEmail: r.cliente_id ? (emailDi.get(r.cliente_id) ?? "(utente non trovato)") : null, prima: r.valore_precedente, dopo: r.valore_nuovo, autore: r.autore_email, il: r.creato_il })),
     pvl,
     regionali,
+    gareInVerifica,
     schemaPresente,
     parametri,
     fonti,

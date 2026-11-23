@@ -19,6 +19,7 @@ import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-
 import { ETICHETTE_LIMITI_PVL, erroreAncoraAttuale } from "@/lib/console/tender-intelligence-calcoli";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
 import ModuloAzione from "./modulo-azione";
+import GareInVerifica from "./gare-in-verifica";
 
 // Vista della pagina «Tender Intelligence». Fase B1: interruttore generale, costi e limiti modificabili (solo amministratori, validati nel
 // server, ogni modifica nel registro con autore, data, valore precedente e nuovo), fonte TED accendibile con giro manuale e misure dell'ultimo
@@ -59,6 +60,7 @@ const ETICHETTA_OGGETTO: Record<string, string> = {
   "fonte:sintel:nascosta_ai_clienti": "Sintel nascosta ai clienti",
   "fonte:sardegnacat:nascosta_ai_clienti": "SardegnaCAT nascosta ai clienti",
   "cliente:attivo": "Modulo per l'impresa",
+  "gara:decisione_classificazione": "Decisione su una gara da verificare",
 };
 
 function etichettaOggetto(o: string): string {
@@ -569,6 +571,7 @@ export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderInte
       {dati.pvl && <SezionePvl pvl={dati.pvl} attiva={dati.fonti.find((f) => f.id === "pvl")?.db?.attiva === true} />}
 
       {dati.regionali && <SezioneRegionali regionali={dati.regionali} />}
+      {dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}
 
       <div className="cn-sezione">
         <Pannello titolo="Fonti">
