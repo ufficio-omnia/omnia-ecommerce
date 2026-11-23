@@ -3,10 +3,9 @@
 //
 // Regole:
 //   - un adattatore legge solo fonti ufficiali; non scrive sul database: restituisce record già normalizzati e il nuovo cursore;
-//   - l'interfaccia del sito della piattaforma di pubblicità legale di ANAC (PVL) si usa SOLO sullo staging, in via sperimentale e con limiti
-//     dichiarati (decisione del titolare del 16/11/2026, che aggiorna la D5): non è un'autorizzazione di ANAC né del riuso commerciale; la
-//     produzione resta esclusa (guardia in ambiente.ts) finché non arrivano le verifiche formali e legali. La fornitura ANAC entrerà come
-//     fonte a sé quando l'istanza sarà accolta;
+//   - la piattaforma di pubblicità legale di ANAC (PVL) è una fonte visibile ai clienti (direttiva 48A del 23/11/2026, che revoca la 7.14);
+//     dove si può scrivere lo decide la guardia di produzione per fonte e per ambiente (ambiente.ts, L6 del piano 36, pacchetto K8). La
+//     fornitura ANAC entrerà come fonte a sé quando l'istanza sarà accolta;
 //   - ogni campo di una gara conserva la fonte da cui viene (radar_procedure.provenienza_campi, migrazione 0115).
 
 // gli orari dei giri vengono da ORARI_GIRI (programmazione-calcoli.ts): frase neutra («giri previsti»), vera anche finché i giri sono spenti
@@ -51,12 +50,14 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     copertura: "Bandi italiani sopra e sotto la soglia europea pubblicati sulla piattaforma nazionale (con CIG e collegamento ai documenti)",
     aggiornamento: `Giri previsti ${testoOrari("pvl")} (ora italiana)`,
     limiti: [
-      "Uso sperimentale solo sullo staging: manca la conferma di ANAC all'uso automatico e il parere sul riuso commerciale",
+      // testo scelto dall'utente il 23/11 («Frase neutra proposta»), da usare così
+      "Dati letti dalla piattaforma pubblica di ANAC; fa fede l'avviso pubblicato sulla piattaforma",
       "Il CPV è scritto come descrizione: si riconosce solo se è una voce del file approvato",
       "La durata del contratto non ha unità di misura e non si usa",
       "Indagini di mercato, negoziate senza bando e affidamenti diretti non entrano",
     ],
-    licenza: "Da verificare con ANAC e con il legale prima di ogni uso in produzione",
+    // testo scelto dall'utente il 23/11 («Frase neutra proposta»), da usare così
+    licenza: "Avvisi di pubblicità legale pubblicati da ANAC: solo dati di fatto, con il collegamento all'avviso ufficiale e la citazione della fonte",
     porta: { bandi: true, esiti: true, cig: "sempre", documenti: "collegamento" },
   },
   // Fase B2a: piattaforme regionali. Testi senza dichiarazioni di copertura nazionale (decisione 9 del 16/11): ogni fonte dice quale parte

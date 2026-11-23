@@ -87,6 +87,12 @@ function provaRigheCron(): void {
     const t = descrizioneFonte(f).aggiornamento;
     controlla(`fonte ${f}: «aggiornamento» con gli orari veri (da ORARI_GIRI), frase neutra «giri previsti», niente «non ancora attivi» né orari a mano`, t.startsWith("Giri previsti ") && t.includes(testoOrari(f)) && !/non ancora attiv|alle 8, alle 13|staging/i.test(t), t);
   }
+  // testi della PVL scelti dall'utente il 23/11 («Frase neutra proposta»): esatti, e i vecchi non compaiono più (lo vedono i clienti)
+  const pvl = descrizioneFonte("pvl");
+  const testoPvl = [pvl.copertura, pvl.aggiornamento, ...pvl.limiti, pvl.licenza].join(" | ");
+  controlla("PVL: il limite «Dati letti dalla piattaforma pubblica di ANAC; fa fede l'avviso pubblicato sulla piattaforma» è esatto e al primo posto", pvl.limiti[0] === "Dati letti dalla piattaforma pubblica di ANAC; fa fede l'avviso pubblicato sulla piattaforma", pvl.limiti);
+  controlla("PVL: la licenza è esatta", pvl.licenza === "Avvisi di pubblicità legale pubblicati da ANAC: solo dati di fatto, con il collegamento all'avviso ufficiale e la citazione della fonte", pvl.licenza);
+  controlla("PVL: i testi vecchi («sperimentale», «solo sullo staging», «da verificare con ANAC», «parere») non compaiono più; la riga sulle indagini di mercato resta (cambia con C1)", !/sperimental|solo sullo staging|da verificare con anac|parere/i.test(testoPvl) && pvl.limiti.includes("Indagini di mercato, negoziate senza bando e affidamenti diretti non entrano"), testoPvl);
 }
 
 // ═════ guardie 2 e 3, in ordine ═════
