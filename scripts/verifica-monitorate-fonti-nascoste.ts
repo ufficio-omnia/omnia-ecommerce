@@ -2109,6 +2109,71 @@ async function principale(): Promise<void> {
     motiviOk.length === 8 && motiviOk.every((m) => m.ok) && frasiMotivi.length === 8 && new Set(frasiMotivi).size === 8,
     motiviOk.filter((m) => !m.ok),
   );
+
+  // ═════ K8: accendere TED dalla console solo dove TED si può scrivere (fonteAutorizzata, la regola di importatori e notifiche); il motivo
+  // in chiaro all'amministratore; spegnere sempre. Ambienti SOLO in memoria (il database è quello finto, la rete è bloccata) ═════
+  const { fonteAutorizzata, PROGETTO_PRODUZIONE: produzioneF } = richiedi(src("lib/radar/ambiente.ts")) as {
+    fonteAutorizzata: (f: string, uso: string, env: Record<string, string | undefined>) => { ok: boolean; motivo?: string };
+    PROGETTO_PRODUZIONE: string;
+  };
+  const CHIAVI_AMBIENTE = ["NEXT_PUBLIC_SUPABASE_URL", "VERCEL_ENV"] as const;
+  const conAmbienteF = async <T,>(env: Partial<Record<(typeof CHIAVI_AMBIENTE)[number], string>>, f: () => Promise<T>): Promise<T> => {
+    const prima = Object.fromEntries(CHIAVI_AMBIENTE.map((k) => [k, process.env[k]]));
+    for (const k of CHIAVI_AMBIENTE) {
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+    }
+    try {
+      return await f();
+    } finally {
+      for (const k of CHIAVI_AMBIENTE) {
+        if (prima[k] === undefined) delete process.env[k];
+        else process.env[k] = prima[k];
+      }
+    }
+  };
+  const AMBIENTI_TED = {
+    locale: {},
+    anteprima: { NEXT_PUBLIC_SUPABASE_URL: `https://${stagingF}.supabase.co`, VERCEL_ENV: "preview" },
+    produzioneDaLocale: { NEXT_PUBLIC_SUPABASE_URL: `https://${produzioneF}.supabase.co` },
+    deployProduzione: { NEXT_PUBLIC_SUPABASE_URL: `https://${produzioneF}.supabase.co`, VERCEL_ENV: "production" },
+  } as const;
+  const provaTed = async (ambiente: keyof typeof AMBIENTI_TED, campi: Record<string, string>, accesa: boolean) => {
+    mondo = mondoFonti();
+    for (const r of mondo.admin.tabelle.radar_fonti_stato) if (r.fonte === "ted") r.attiva = accesa;
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(campi)) fd.append(k, v);
+    const azione = azioniTi.impostaFonteTed as (s: unknown, fd: FormData) => Promise<{ errore?: string; ok?: boolean }>;
+    const esito = await conAmbienteF(AMBIENTI_TED[ambiente], () => azione({}, fd));
+    return {
+      esito,
+      richieste: mondo.admin.richieste.length,
+      attiva: mondo.admin.tabelle.radar_fonti_stato.find((r) => r.fonte === "ted")?.attiva,
+      registro: mondo.admin.tabelle.radar_console_registro.filter((r) => r.oggetto === "fonte:ted:attiva").map((r) => r.valore_nuovo),
+      motivoAtteso: fonteAutorizzata("ted", "importazione", AMBIENTI_TED[ambiente]).motivo ?? null,
+    };
+  };
+  const tedRifiutati = [] as (Awaited<ReturnType<typeof provaTed>> & { ambiente: string })[];
+  for (const amb of ["locale", "anteprima", "produzioneDaLocale"] as const) tedRifiutati.push({ ambiente: amb, ...(await provaTed(amb, { azione: "accendi", conferma: "si" }, false)) });
+  const tedDeploy = await provaTed("deployProduzione", { azione: "accendi", conferma: "si" }, false);
+  const tedSpegni = [] as Awaited<ReturnType<typeof provaTed>>[];
+  for (const amb of ["locale", "anteprima", "produzioneDaLocale"] as const) tedSpegni.push(await provaTed(amb, { azione: "spegni" }, true));
+  // senza conferma vale prima la conferma (l'ordine: amministratore, conferma, ambiente)
+  const tedSenzaConferma = await provaTed("locale", { azione: "accendi" }, false);
+  controlla(
+    "FS16. K8: accendere TED dalla console fuori dagli ambienti consentiti (computer locale, anteprima, database di produzione da locale) è rifiutato col motivo di fonteAutorizzata, prima di ogni lettura e senza scritture né registro; dal deploy di produzione si accende; spegnere è sempre ammesso; senza conferma vale prima la conferma",
+    tedRifiutati.every((x) => !!x.motivoAtteso && x.esito.errore === x.motivoAtteso && x.richieste === 0 && x.attiva === false && x.registro.length === 0) &&
+      new Set(tedRifiutati.map((x) => x.motivoAtteso)).size >= 2 &&
+      tedDeploy.motivoAtteso === null && tedDeploy.esito.ok === true && tedDeploy.attiva === true && JSON.stringify(tedDeploy.registro) === JSON.stringify(["true"]) &&
+      tedSpegni.every((x) => x.esito.ok === true && x.attiva === false && JSON.stringify(x.registro) === JSON.stringify(["false"])) &&
+      tedSenzaConferma.esito.errore === ERRORE_CONFERMA_ACCENSIONE && tedSenzaConferma.richieste === 0,
+    {
+      rifiutati: tedRifiutati.map((x) => [x.ambiente, x.esito.errore?.slice(0, 60), x.richieste, x.attiva]),
+      deploy: [tedDeploy.esito, tedDeploy.attiva, tedDeploy.registro],
+      spegni: tedSpegni.map((x) => [x.esito.ok, x.esito.errore?.slice(0, 40), x.attiva]),
+      senzaConferma: tedSenzaConferma.esito.errore?.slice(0, 40),
+    },
+  );
   // la pagina vera: guardia degli amministratori, lettura e vista; il collegamento dalla pagina Tender Intelligence
   const paginaFonti = ((): (() => Promise<unknown>) | null => {
     try {

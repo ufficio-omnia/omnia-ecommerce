@@ -77,13 +77,18 @@ export async function salvaParametriRadar(_stato: StatoAzioneTi, formData: FormD
   return { ok: true, avviso: `${modifiche.length === 1 ? "Salvato 1 valore" : `Salvati ${modifiche.length} valori`}.${registrato ? "" : " ATTENZIONE: il registro non è stato scritto."}` };
 }
 
-// Accende o spegne la fonte TED (l'importazione quotidiana non fa nulla con la fonte spenta). Accendere solo con la conferma (controllata qui).
+// Accende o spegne la fonte TED (l'importazione quotidiana non fa nulla con la fonte spenta). Accendere solo con la conferma (controllata qui)
+// e solo dove TED si può scrivere (K8: la stessa regola di importatori e notifiche, fonteAutorizzata); spegnere sempre.
 export async function impostaFonteTed(_stato: StatoAzioneTi, formData: FormData): Promise<StatoAzioneTi> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
   const azione = String(formData.get("azione") ?? "");
   if (azione !== "accendi" && azione !== "spegni") return { errore: "Azione non valida." };
   if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };
+  if (azione === "accendi") {
+    const permesso = scrittureRadarConsentite("ted", process.env);
+    if (!permesso.ok) return { errore: permesso.motivo };
+  }
   const admin = createAdminClient();
   if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };
   const { data: fonte, error: e1 } = await admin.from("radar_fonti_stato").select("attiva").eq("fonte", "ted").maybeSingle<{ attiva: boolean }>();
