@@ -42,7 +42,7 @@ uguale("blocco automatico alla scadenza: «scaduta»", scegli([rilascio("AUT-202
 uguale("usi finiti: «esaurita»", scegli([rilascio("AUT-20261124-01"), ...usi("AUT-20261124-01", 11)]), "esaurita");
 uguale("revocata dal coordinatore: «revocata»", scegli([rilascio("AUT-20261124-01"), { evento: "revoca", id: "AUT-20261124-01" }]), "revocata");
 uguale("un giro ancora aperto (processo caduto o in corso): «esecuzione_aperta»", scegli([rilascio("AUT-20261124-01"), ...usi("AUT-20261124-01", 2, true)]), "esecuzione_aperta");
-uguale("senza commit o impronta dello script nell'autorizzazione: «senza_commit»", scegli([rilascio("AUT-20261124-01", { ambiente: { PIANIFICAZIONE_COMMIT: COMMIT } })]), "senza_commit");
+uguale("senza commit o impronta dello script nell'autorizzazione: «senza_commit»", [scegli([rilascio("AUT-20261124-01", { ambiente: { PIANIFICAZIONE_COMMIT: COMMIT } })]), scegli([rilascio("AUT-20261124-01", { ambiente: { PIANIFICAZIONE_SCRIPT_SHA256: SHA } })]), scegli([rilascio("AUT-20261124-01", { ambiente: { PIANIFICAZIONE_COMMIT: "abc1234", PIANIFICAZIONE_SCRIPT_SHA256: SHA } })])], ["senza_commit", "senza_commit", "senza_commit"]);
 uguale("autorizzazioni di altre cartelle, sessioni, comandi, fonti del semaforo, tipi: non contano",
   [scegli([rilascio("AUT-20261124-01", { cartella: "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/.claude/worktrees/tender-intelligence-b2" })]), scegli([rilascio("AUT-20261124-01", { sessione: "local_111a987d-5f2c-4ab4-b9f8-67988c64940d" })]),
     scegli([rilascio("AUT-20261124-01", { comandi: [["npx", "tsx", "scripts/radar-importa-pvl.ts", "finestra", "2026-11-01", "2026-11-02"]] })]), scegli([rilascio("AUT-20261124-01", { semaforo: ["pvl", "ted"] })]),
@@ -64,7 +64,7 @@ uguale("cartella: commit dell'autorizzazione, albero pulito (la cartella della C
 const STG = { STAGING_PROJECT_REF: "ryawdldqiumqsskrnyps", STAGING_SUPABASE_URL: "https://ryawdldqiumqsskrnyps.supabase.co", STAGING_SECRET_KEY: "chiave-sintetica" };
 const base = {
   PATH: "p", RADAR_CONTATTO_FONTI: "x@prova.test", RADAR_NOTIFICHE_EMAIL: "attivo", RADAR_REGISTRO_EVIDENZA: "no", VERCEL: "1", VERCEL_ENV: "production", RADAR_PVL_PRODUZIONE: "autorizzata",
-  RADAR_TED_CRON: "attivo", TI_REGISTRO: "x", TI_AUTORIZZAZIONE: "x", TI_USO: "x", RADAR_CLASSIFICAZIONI: "spente", NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "altra", ALTRO: "valore con bihfrzspqxsrzlbqqvqa",
+  RADAR_TED_CRON: "attivo", RADAR_QUALUNQUE: "x", TI_REGISTRO: "x", TI_AUTORIZZAZIONE: "x", TI_USO: "x", RADAR_CLASSIFICAZIONI: "spente", NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "altra", ALTRO: "valore con bihfrzspqxsrzlbqqvqa",
 };
 const env = ambienteDelGiro(base, STG) as Record<string, string>;
 uguale("ambiente: tolte le variabili vietate e ogni valore della produzione; staging SOLO dalla guardia; classificazioni ed evidenza ACCESE (C12); npx senza rete",
