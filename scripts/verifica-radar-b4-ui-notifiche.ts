@@ -183,14 +183,17 @@ atteso("I2 avviso «non ancora attivi»: il motore si considera acceso solo con 
         if (pagina) accese.push(JSON.stringify([RADAR_NOTIFICHE_EMAIL, VERCEL_ENV, NEXT_PUBLIC_SUPABASE_URL]));
       }
   atteso(`A4.1 matrice delle variabili (${combinazioni} combinazioni): l'avviso della pagina coincide SEMPRE con l'interruttore unico di B2`, diverse.length === 0, diverse.slice(0, 3).join(" ; "));
-  // atteso scritto a mano, senza chiedere alla funzione: «attivo» esatto, mai «preview», solo il database dello staging
-  const indispensabili = [undefined, "production", "development"].map((v) => JSON.stringify(["attivo", v, STAGING]));
+  // atteso scritto a mano, senza chiedere alla funzione (pacchetto P del go-live, 55 §2): «attivo» esatto; mai «preview»; sul database dello
+  // staging, oppure sul database di produzione SOLO dal deploy di produzione (VERCEL_ENV=production); mai un database sconosciuto
+  const indispensabili = [...[undefined, "production", "development"].map((v) => JSON.stringify(["attivo", v, STAGING])), JSON.stringify(["attivo", "production", PRODUZIONE])];
   atteso(
-    "A4.2 acceso SOLO con «attivo» esatto, fuori dalle anteprime di Vercel e sul database dello staging",
+    "A4.2 acceso SOLO con «attivo» esatto, fuori dalle anteprime di Vercel: sul database dello staging, o su quello di produzione solo dal deploy di produzione",
     indispensabili.every((a) => accese.includes(a)) &&
       accese.every((a) => {
         const [v, e, u] = JSON.parse(a) as [string, string | null, string | null];
-        return v === "attivo" && e !== "preview" && typeof u === "string" && u.toLowerCase().startsWith(STAGING) && ![PRODUZIONE, "https://altro-progetto.supabase.co", "http://localhost:54321"].includes(u);
+        const staging = typeof u === "string" && u.toLowerCase().startsWith(STAGING) && e !== "preview";
+        const produzioneDalDeploy = u === PRODUZIONE && e === "production";
+        return v === "attivo" && (staging || produzioneDalDeploy) && !["https://altro-progetto.supabase.co", "http://localhost:54321"].includes(u ?? "");
       }),
     accese.join(" ; "),
   );
