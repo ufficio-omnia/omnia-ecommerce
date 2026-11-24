@@ -12,9 +12,20 @@
 //     dentro la stessa fonte vince la versione più recente; una fonte riempie i campi che l'altra non indica;
 //   - un cambiamento si REGISTRA (rettifica, proroga, annullamento) solo se arriva da una versione strettamente più recente; la stessa
 //     notizia ripubblicata da un'altra fonte non genera né cambiamenti né notifiche;
-//   - una gara letta da una sola fonte si comporta esattamente come prima (stesse regole di importa-calcoli.ts).
+//   - una gara letta da una sola fonte si comporta esattamente come prima (stesse regole di importa-calcoli.ts), salvo la regola sotto;
+//   - ENTE E LUOGO (difetto del giro PVL del 24/11, documento 54; lezione del C8: «l'unione non toglie mai un'informazione»):
+//       · la SEDE dell'ente (sa_comune, sa_provincia, sa_regione) è un'unità a sé. TED, Sintel e SardegnaCAT indicano la sede; la PVL solo
+//         il luogo di esecuzione del primo lotto (pvl-calcoli.ts). La sede vince sempre sul luogo di esecuzione, in entrambe le direzioni;
+//         tra due fonti dello stesso tipo valgono le regole dei dati complementari;
+//       · i campi vuoti della sede scelta si riempiono dall'altra fonte solo se è la stessa sede (stesso comune, oppure una fonte con la
+//         sede, senza comune e con la regione compatibile): mai indovinati, mai il comune di un luogo con la provincia di un altro;
+//       · le regioni del luogo di esecuzione (luogo_regioni) sono un gruppo proprio: chi non le dà non le toglie, chi le dà riempie quelle
+//         vuote, tra due fonti che le danno vale la precedenza;
+//       · ente (codice fiscale e nome), sede, regioni e codice NUTS: un valore presente non si perde mai, campo per campo, nemmeno con una
+//         versione più recente della stessa fonte.
 import { ordinePubblicazione } from "./fonti/ted-calcoli";
 import { cambiamentiTraVersioni, cambioDiScadenza, scadenzaDaValore, type Cambiamento, type RigaProcedura, type Scadenza } from "./importa-calcoli";
+import { nomeDiConfronto } from "./province";
 
 // Fase B2a: anche Sintel e SardegnaCAT (e le fonti future) passano da QUESTO motore, nessun altro.
 export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat";
@@ -28,6 +39,15 @@ export function eFonteUnita(x: unknown): x is FonteUnita {
 // Precedenza per i dati descrittivi e, a pari versione, per quelli sostanziali. Tra TED e PVL resta quella della B1-bis (PVL prima di TED).
 // Le piattaforme stanno tra le due: ordine PROVVISORIO, finché l'utente non decide la S8 (documento 10, §8).
 export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 4, sardegnacat: 3, sintel: 2, ted: 1 };
+
+// Quali fonti indicano la SEDE dell'ente (comune, provincia e regione dell'amministrazione): TED (buyer-city, buyer-country-sub), Sintel e
+// SardegnaCAT («Comune di …» e la regione della piattaforma). La PVL no: il suo comune e la sua provincia sono quelli del luogo di esecuzione
+// del primo lotto, e valgono come sede solo finché nessun'altra fonte la indica. Una fonte sconosciuta vale come sede (regole di sempre).
+export const SEDE_DELL_ENTE: Record<FonteUnita, boolean> = { ted: true, sintel: true, sardegnacat: true, pvl: false };
+
+export function indicaLaSede(fonte: string): boolean {
+  return SEDE_DELL_ENTE[fonte as FonteUnita] !== false;
+}
 
 export type VersioneFonte = {
   fonte: FonteUnita;
@@ -91,7 +111,10 @@ export const GRUPPI_CAMPI: readonly Gruppo[] = [
   { nome: "url_documenti", colonne: ["url_documenti", "piattaforma_host"], tipo: "descrittivo" },
   { nome: "url_avviso", colonne: ["url_avviso"], tipo: "descrittivo" },
   { nome: "ente", colonne: ["sa_codice_fiscale", "sa_denominazione"], tipo: "complementare" },
-  { nome: "luogo", colonne: ["sa_comune", "sa_provincia", "sa_regione", "luogo_regioni"], tipo: "complementare" },
+  // «luogo» è la SEDE dell'ente (il nome resta per la provenienza già scritta); le regioni del luogo di esecuzione hanno un gruppo proprio.
+  // Le gare scritte prima del 24/11 hanno un'unica provenienza «luogo» per entrambi: per le regioni vale quella finché non ne hanno una.
+  { nome: "luogo", colonne: ["sa_comune", "sa_provincia", "sa_regione"], tipo: "complementare" },
+  { nome: "luogo_regioni", colonne: ["luogo_regioni"], tipo: "complementare" },
   { nome: "codice_nuts", colonne: ["codice_nuts"], tipo: "complementare" },
   { nome: "ente_tipo", colonne: ["ente_tipo"], tipo: "complementare" },
   { nome: "tipo_avviso", colonne: ["tipo_avviso"], tipo: "complementare" },
@@ -108,14 +131,52 @@ export const GRUPPI_CAMPI: readonly Gruppo[] = [
 // Il campo del registro dei cambiamenti → gruppo.
 const GRUPPO_DEL_CAMBIAMENTO: Record<string, string> = { scadenza_offerte: "scadenza", valore_stimato: "valore_stimato", n_lotti: "n_lotti", oggetto: "oggetto", url_documenti: "url_documenti" };
 
+// Gruppi in cui un valore presente non si perde mai, campo per campo, nemmeno con una versione più recente della stessa fonte (24/11).
+const MAI_SVUOTATI: ReadonlySet<string> = new Set(["ente", "luogo", "luogo_regioni", "codice_nuts"]);
+
+const COLONNE_SEDE = ["sa_comune", "sa_provincia", "sa_regione"] as const;
+
 function vuoto(v: unknown): boolean {
   return v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
 }
 
-// Il valore «principale» del gruppo, per dire se è vuoto (la scadenza conta per il giorno, il luogo per le regioni o il comune).
+/**
+ * Riempie i campi VUOTI della sede scelta («r») con quelli dell'altra fonte, solo se è la stessa sede: stesso comune; oppure, se uno dei due
+ * comuni manca, l'altra fonte indica la sede e la regione è compatibile. Mai il comune di un luogo con la provincia o la regione di un altro.
+ * Restituisce true se ha cambiato qualcosa.
+ */
+export function completaSede(r: Pick<RigaProcedura, (typeof COLONNE_SEDE)[number]>, altra: Pick<RigaProcedura, (typeof COLONNE_SEDE)[number]>, altraIndicaLaSede: boolean): boolean {
+  const stessaSede =
+    !vuoto(r.sa_comune) && !vuoto(altra.sa_comune)
+      ? nomeDiConfronto(r.sa_comune) === nomeDiConfronto(altra.sa_comune)
+      : altraIndicaLaSede && (vuoto(r.sa_regione) || vuoto(altra.sa_regione) || r.sa_regione === altra.sa_regione);
+  if (!stessaSede) return false;
+  let cambiato = false;
+  for (const c of COLONNE_SEDE) {
+    if (vuoto(r[c]) && !vuoto(altra[c])) {
+      r[c] = altra[c];
+      cambiato = true;
+    }
+  }
+  return cambiato;
+}
+
+// Ente: un codice fiscale o un nome presente non si perde mai (campo per campo).
+function completaColonne(r: RigaProcedura, altra: RigaProcedura, g: Gruppo): boolean {
+  let cambiato = false;
+  for (const c of g.colonne) {
+    if (vuoto(r[c]) && !vuoto(altra[c])) {
+      (r as Record<string, unknown>)[c] = altra[c];
+      cambiato = true;
+    }
+  }
+  return cambiato;
+}
+
+// Il valore «principale» del gruppo, per dire se è vuoto (la scadenza conta per il giorno, la sede per uno qualunque dei suoi campi).
 function valoreGruppo(r: RigaProcedura, g: Gruppo): unknown {
   if (g.nome === "scadenza") return r.scadenza_giorno;
-  if (g.nome === "luogo") return r.luogo_regioni.length > 0 ? r.luogo_regioni : r.sa_comune;
+  if (g.nome === "luogo") return COLONNE_SEDE.map((c) => r[c]).find((v) => !vuoto(v)) ?? null;
   if (g.nome === "ente") return r.sa_denominazione ?? r.sa_codice_fiscale;
   if (g.nome === "settori") return r.settori;
   if (g.nome === "n_lotti") return r.n_lotti > 0 ? r.n_lotti : null;
@@ -168,12 +229,16 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
 
   const riga: RigaProcedura = { ...precedente };
   const presi: string[] = [];
+  // la provenienza del vecchio gruppo «luogo» PRIMA di questa versione (il ciclo la aggiorna per la sede prima di arrivare alle regioni)
+  const luogoPrima = prov.luogo;
   const conCambio = new Set<string>();
 
   for (const g of GRUPPI_CAMPI) {
     const vecchio = valoreGruppo(precedente, g);
     const nuovo = valoreGruppo(nuova, g);
-    const cur = prov[g.nome] ?? (vuoto(vecchio) ? null : implicita);
+    // le regioni delle gare scritte prima del 24/11 hanno la provenienza del vecchio gruppo «luogo» (erano copiate insieme alla sede)
+    const ereditata = g.nome === "luogo_regioni" && !vuoto(vecchio) ? luogoPrima : undefined;
+    const cur = prov[g.nome] ?? ereditata ?? (vuoto(vecchio) ? null : implicita);
     let prendi = false;
     let cambio = false;
     if (g.tipo === "unione") {
@@ -212,8 +277,9 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
       prendi = c > 0 || (c === 0 && !vuoto(nuovo));
       // con una sola fonte si registra come prima (anche un dato che compare o sparisce); con due, solo il cambio di un dato presente
       cambio = c > 0 && (unaSolaFonte || (!vuoto(vecchio) && !vuoto(nuovo)));
-      // una fonte che smette di indicare un dato non cancella quello dell'altra (che resta registrato solo per questa)
-      if (prendi && vuoto(nuovo) && !unaSolaFonte) prendi = false;
+      // una fonte che smette di indicare un dato non cancella quello dell'altra (che resta registrato solo per questa); ente, sede, regioni
+      // e NUTS non si svuotano nemmeno con una sola fonte (24/11)
+      if (prendi && vuoto(nuovo) && (!unaSolaFonte || MAI_SVUOTATI.has(g.nome))) prendi = false;
     } else if (vuoto(vecchio)) {
       prendi = true;
     } else if (vuoto(nuovo)) {
@@ -231,13 +297,24 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
     } else {
       prendi = PRECEDENZA_FONTI[versione.fonte] > PRECEDENZA_FONTI[cur.f];
     }
+    // la sede dell'ente vince sempre sul luogo di esecuzione (PVL), in entrambe le direzioni; tra fonti dello stesso tipo, le regole sopra
+    if (g.nome === "luogo" && cur && !vuoto(vecchio) && !vuoto(nuovo) && indicaLaSede(cur.f) !== indicaLaSede(versione.fonte)) prendi = indicaLaSede(versione.fonte);
     if (prendi) {
       copia(nuova, riga, g);
+      // dentro il gruppo, un campo vuoto della versione nuova non toglie quello di prima (sede: solo se è la stessa sede)
+      if (g.nome === "luogo") completaSede(riga, precedente, cur ? indicaLaSede(cur.f) : true);
+      else if (g.nome === "ente") completaColonne(riga, precedente, g);
       presi.push(g.nome);
       if (vuoto(nuovo)) delete prov[g.nome];
       else prov[g.nome] = pv;
       if (cambio) conCambio.add(g.nome);
+    } else if (cur && cur.f !== versione.fonte && !vuoto(vecchio) && !vuoto(nuovo) && (g.nome === "luogo" || g.nome === "ente")) {
+      // resta il dato di prima: un'altra fonte riempie solo i suoi campi vuoti (sede: solo se è la stessa sede); la provenienza resta
+      const riempito = g.nome === "luogo" ? completaSede(riga, nuova, indicaLaSede(versione.fonte)) : completaColonne(riga, nuova, g);
+      if (riempito) presi.push(g.nome);
     }
+    // ente, sede e regioni: la provenienza di un dato rimasto diventa esplicita (una provenienza implicita cambia con l'ultima versione)
+    if (!prendi && cur && !vuoto(vecchio) && !prov[g.nome] && MAI_SVUOTATI.has(g.nome)) prov[g.nome] = cur;
   }
 
   // stato: l'annullamento vale se arriva da una versione non più vecchia dell'ultima applicata; gli esiti già registrati non tornano «aperta»
