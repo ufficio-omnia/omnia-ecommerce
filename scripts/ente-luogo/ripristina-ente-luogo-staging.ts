@@ -13,10 +13,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import type { ClientDb } from "../../src/lib/radar/notifiche/motore";
+import type { ProvenienzaCampo } from "../../src/lib/radar/unione-calcoli";
 import { FermoCollaudo, PRODUZIONE_REF, STAGING_REF, installaOsservatore } from "../collaudo-z8/collaudo-motore-z8";
 
 type Sede = { sa_comune: string | null; sa_provincia: string | null; sa_regione: string | null; luogo_regioni: string[] };
-type Provenienza = { f: string; id: string; g: string; t: string | null; ted: string | null };
+type Provenienza = ProvenienzaCampo;
 // prima = valori della fotografia di prima del giro (solo per la prova che ricalcola il piano); giro = valori e provenienza della sede lasciati
 // dal giro (quelli che lo script si aspetta di trovare); atteso = valori da scrivere; provenienza = sede e regioni da scrivere
 export type GaraDelPiano = { id: string; parte: "A" | "B"; valori: boolean; prima: Sede; giro: Sede & { luogo: Provenienza }; atteso: Sede; provenienza: { luogo: Provenienza; luogo_regioni: Provenienza } };

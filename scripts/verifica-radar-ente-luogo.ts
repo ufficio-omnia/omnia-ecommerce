@@ -48,8 +48,9 @@ const vPvl: VersioneFonte = { fonte: "pvl", id: "avviso-sintetico-1", giorno: "2
 const vPvl2: VersioneFonte = { fonte: "pvl", id: "avviso-sintetico-2", giorno: "2026-11-20", istante: "2026-11-20T07:00:00.000Z", ted: null };
 const vTed2: VersioneFonte = { fonte: "ted", id: "800200-2026", giorno: "2026-11-22", istante: null, ted: "800200-2026" };
 const vSintel: VersioneFonte = { fonte: "sintel", id: "900001", giorno: "2026-11-18", istante: null, ted: null };
-const ted = (s: Sede, ente = { cf: "00000000001", nome: "Ente sintetico - Ufficio acquisti" }) => conSede({ ...BASE, chiave: "ted:proc-sintetica", ultima_versione_id: vTed.id, ultima_versione_il: vTed.giorno }, s, ente);
-const pvl = (s: Sede, ente = { cf: "00000000001", nome: "ENTE SINTETICO" }) => conSede(BASE, s, ente);
+type Ente = { cf: string | null; nome: string | null };
+const ted = (s: Sede, ente: Ente = { cf: "00000000001", nome: "Ente sintetico - Ufficio acquisti" }) => conSede({ ...BASE, chiave: "ted:proc-sintetica", ultima_versione_id: vTed.id, ultima_versione_il: vTed.giorno }, s, ente);
+const pvl = (s: Sede, ente: Ente = { cf: "00000000001", nome: "ENTE SINTETICO" }) => conSede(BASE, s, ente);
 const sintel = (s: Sede) => conSede({ ...BASE, chiave: "sintel:900001" }, s, { cf: "00000000001", nome: "Comune sintetico" });
 /** Prima una fonte (gara nuova, provenienza esplicita), poi l'altra. */
 function unite(r1: RigaProcedura, v1: VersioneFonte, r2: RigaProcedura, v2: VersioneFonte) {
