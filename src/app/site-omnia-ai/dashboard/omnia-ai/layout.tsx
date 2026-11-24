@@ -20,8 +20,12 @@ import {
   MESSAGGIO_UFFICIO_GARE_GARE_FINITE,
   MESSAGGIO_UFFICIO_GARE_SOSPESO,
   MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA,
+  VOCI_MENU_TITOLARE,
   VOCI_MENU_UFFICIO_GARE,
 } from "@/lib/omnia-ai-account-calcoli";
+import { radarNelMenu } from "@/lib/radar/visibilita";
+import { vociConOpportunita } from "@/lib/radar/area-cliente";
+import { ufficioGareRadarAttivo } from "@/lib/radar/interruttori-b4";
 import { avvisaTitolareDopoLaRisposta } from "@/lib/omnia-ai-ufficio-gare-quota";
 import { surplusSeInVendita } from "@/lib/piano-lavoro-offerta";
 import type { User } from "@supabase/supabase-js";
@@ -37,7 +41,10 @@ function ProfiloAziendaAvviso() {
     <div className="omnia-avviso-profilo">
       Il tuo profilo azienda è vuoto: compilalo per permettere a OMNIA AI di scrivere l&apos;offerta
       tecnica con i dati reali della tua impresa.{" "}
-      <Link href="/dashboard/omnia-ai/profilo-azienda">Compila il profilo azienda →</Link>
+      {/* prefetch={false} sui collegamenti degli avvisi: sono in cima a ogni pagina, vedi sidebar-nav.tsx */}
+      <Link href="/dashboard/omnia-ai/profilo-azienda" prefetch={false}>
+        Compila il profilo azienda →
+      </Link>
     </div>
   );
 }
@@ -55,7 +62,9 @@ function FatturazioneAvviso() {
       Per poterti fatturare l&apos;abbonamento dobbiamo trasmettere la fattura allo SDI: completa il
       codice destinatario o la PEC nel profilo azienda. Finché mancano entrambi non potrai scaricare
       i documenti generati.{" "}
-      <Link href="/dashboard/omnia-ai/profilo-azienda">Completa i dati di fatturazione →</Link>
+      <Link href="/dashboard/omnia-ai/profilo-azienda" prefetch={false}>
+        Completa i dati di fatturazione →
+      </Link>
     </div>
   );
 }
@@ -75,7 +84,9 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
       sono già estinti con la cessazione. Se non riattivi l&apos;abbonamento, tutti i contenuti
       verranno cancellati in modo irreversibile il{" "}
       <strong>{dataCancellazione.toLocaleDateString("it-IT")}</strong>.{" "}
-      <Link href="/dashboard/omnia-ai/abbonamento">Riattiva abbonamento →</Link>
+      <Link href="/dashboard/omnia-ai/abbonamento" prefetch={false}>
+        Riattiva abbonamento →
+      </Link>
     </div>
   );
 }
@@ -88,7 +99,10 @@ function SolaLetturaAvviso({ dataCancellazione }: { dataCancellazione: Date }) {
 function PilotAvviso({ promemoria, prezzoPieno, gareDopo }: { promemoria: PromemoriaPilot; prezzoPieno: number; gareDopo?: number }) {
   return (
     <div className="omnia-avviso-profilo">
-      {testoPromemoriaPilot(promemoria, prezzoPieno, gareDopo)} <Link href="/dashboard/omnia-ai/abbonamento">Vai all&apos;abbonamento →</Link>
+      {testoPromemoriaPilot(promemoria, prezzoPieno, gareDopo)}{" "}
+      <Link href="/dashboard/omnia-ai/abbonamento" prefetch={false}>
+        Vai all&apos;abbonamento →
+      </Link>
     </div>
   );
 }
@@ -98,7 +112,9 @@ function ProvaAvviso({ gare }: { gare: GareGratuite }) {
   return (
     <div className="omnia-avviso-profilo">
       {testo}{" "}
-      <Link href="/dashboard/omnia-ai/abbonamento">{esaurite ? "Scegli un abbonamento →" : "Scopri i piani →"}</Link>
+      <Link href="/dashboard/omnia-ai/abbonamento" prefetch={false}>
+        {esaurite ? "Scegli un abbonamento →" : "Scopri i piani →"}
+      </Link>
     </div>
   );
 }
@@ -137,7 +153,12 @@ async function VistaUfficioGare({ user, contesto, children }: { user: User; cont
     return <SchermataFermo email={email} titolo="Abbonamento non attivo" testo={MESSAGGIO_UFFICIO_GARE_ABBONAMENTO_NON_ATTIVO} />;
   }
 
-  const { data: company } = await admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>();
+  // Fase B4 (grado 2): con RADAR_UFFICIO_GARE acceso (staging o deploy di produzione, interruttori-b4.ts) e il Radar visibile per l'impresa, anche la voce «Opportunità». A
+  // interruttore spento nessuna lettura in più; acceso, radarNelMenu passa dalla cache dei dati (come per il titolare).
+  const [{ data: company }, conOpportunita] = await Promise.all([
+    admin.from("companies").select("ragione_sociale").eq("user_id", contesto.accountId).maybeSingle<{ ragione_sociale: string | null }>(),
+    ufficioGareRadarAttivo(process.env) ? radarNelMenu(contesto.accountId) : Promise.resolve(false),
+  ]);
 
   const avviso =
     stato.stato === "sola_lettura"
@@ -153,7 +174,7 @@ async function VistaUfficioGare({ user, contesto, children }: { user: User; cont
       nomeSaluto={email}
       email={email}
       nomeAzienda={company?.ragione_sociale ?? null}
-      voci={VOCI_MENU_UFFICIO_GARE}
+      voci={conOpportunita ? vociConOpportunita(VOCI_MENU_UFFICIO_GARE) : VOCI_MENU_UFFICIO_GARE}
       ufficioGare
       avvisi={avviso ? <div className="omnia-avviso-profilo">{avviso}</div> : undefined}
     >
@@ -197,7 +218,9 @@ async function LayoutInterno({
   // Tre letture indipendenti in parallelo invece che una dopo l'altra (ogni lettura è un giro fino al database): stato
   // dell'abbonamento, dati dell'azienda per saluto e avvisi, offerta pilot acquistata. Il pilot si legge sempre ma vale
   // solo con l'abbonamento attivo (come prima); la lettura non solleva mai errori (in caso di problemi restituisce null).
-  const [stato, { data: company }, pilotAcquistato] = await Promise.all([
+  // La quarta lettura (voce «Opportunità» di Tender Intelligence) passa dalla cache dei dati: a modulo spento non tocca il database.
+  const [conOpportunita, stato, { data: company }, pilotAcquistato] = await Promise.all([
+    radarNelMenu(user.id),
     getOmniaAiAccessState(user.id, supabase),
     supabase
       .from("companies")
@@ -269,6 +292,7 @@ async function LayoutInterno({
       nomeSaluto={company?.ragione_sociale || user.email || ""}
       email={user.email ?? ""}
       nomeAzienda={company?.ragione_sociale ?? null}
+      voci={conOpportunita ? vociConOpportunita(VOCI_MENU_TITOLARE) : undefined}
       avvisi={
         <>
           {pilot && promemoriaDelPilot && pilot.prezzoPienoCentesimi !== null && <PilotAvviso promemoria={promemoriaDelPilot} prezzoPieno={pilot.prezzoPienoCentesimi} gareDopo={pilot.gareIncluse !== null ? PIANI[pilot.piano].gareIncluse : undefined} />}

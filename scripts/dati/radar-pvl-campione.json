@@ -1,0 +1,1200 @@
+{
+ "nota": "Avvisi reali della PVL di ANAC (prova autorizzata del 16/11/2026), solo campi pubblici, senza aggiudicatari. Per le prove del connettore.",
+ "avvisi": [
+  {
+   "codiceScheda": "P1_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-10T07:00:00.096+00:00",
+   "dataScadenza": "2026-12-10T11:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:776475-2026:TEXT:IT:HTML",
+       "titolo": "PROCEDURA APERTA PER AFFIDAMENTO DI UN ACCORDO QUADRO PER SERVIZIO DI PULIZIA, LAVAGGIO, DISINFEZIONE E PICCOLA MANUTENZIONE DEI SERBATOI NEGLI EDIFICI CIVICI - RISERVATO ALLE COOP. SOCIALI AI SENSI DELL'ART. 61 D. Lgs. 36/2023",
+       "descrizione": "PROCEDURA APERTA PER AFFIDAMENTO DI UN ACCORDO QUADRO PER SERVIZIO DI PULIZIA, LAVAGGIO, DISINFEZIONE E PICCOLA MANUTENZIONE DEI SERBATOI NEGLI EDIFICI CIVICI - RISERVATO ALLE COOP. SOCIALI AI SENSI DELL'ART. 61 D. Lgs. 36/2023"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "00856930102",
+           "denominazione_amministrazione": "COMUNE DI GENOVA"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://appalti.comune.genova.it/PortaleAppalti/it/procedure/codice/G11913",
+         "accordo_quadro": "Accordo quadro, senza riapertura della gara",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDAEC5A4B8",
+          "natura_principale": "Servizi",
+          "descrizione": "Servizio di pulizia, lavaggio, disinfezione, e piccola manutenzione dei serbatoi presenti negli edifici di proprietà del Comune di Genova - Municipi di Ponente, Medio Ponente e Valpolcevera",
+          "cpv": "Servizi di pulitura di serbatoi",
+          "valore_complessivo_stimato": 240000,
+          "documenti_di_gara_link": "https://appalti.comune.genova.it/PortaleAppalti/it/procedure/codice/G11913",
+          "luogo_nuts": "Genova",
+          "luogo_istat": "GENOVA",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-10+01:00",
+          "durata": "24",
+          "accordo_quadro": "Accordo quadro, senza riapertura della gara",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         },
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDAEC5B58B",
+          "natura_principale": "Servizi",
+          "descrizione": "Servizio di pulizia, lavaggio, disinfezione, e piccola manutenzione dei serbatoi di proprietà del Comune di Genova  Municipi Centro Ovest  Centro Est",
+          "cpv": "Servizi di pulitura di serbatoi",
+          "valore_complessivo_stimato": 240000,
+          "documenti_di_gara_link": "https://appalti.comune.genova.it/PortaleAppalti/it/procedure/codice/G11913",
+          "luogo_nuts": "Genova",
+          "luogo_istat": "GENOVA",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-10+01:00",
+          "durata": "24",
+          "accordo_quadro": "Accordo quadro, senza riapertura della gara",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         },
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDAEC5C65E",
+          "natura_principale": "Servizi",
+          "descrizione": "Servizio di pulizia, lavaggio, disinfezione, e piccola manutenzione dei serbatoi di proprietà del Comune di Genova  Municipi Medio Levante, Levante, Bassa e Media Bassa Val Bisagno",
+          "cpv": "Servizi di pulitura di serbatoi",
+          "valore_complessivo_stimato": 240000,
+          "documenti_di_gara_link": "https://appalti.comune.genova.it/PortaleAppalti/it/procedure/codice/G11913",
+          "luogo_nuts": "Genova",
+          "luogo_istat": "GENOVA",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-10+01:00",
+          "durata": "24",
+          "accordo_quadro": "Accordo quadro, senza riapertura della gara",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "560583c4-ac90-4e7e-bfb7-cbd656b11269",
+   "oscurato": false,
+   "idAppalto": "194486c3-4660-4b96-b881-4b583af44acc",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-08T16:15:12.000+00:00",
+   "dataCreazione": "2026-11-08T15:15:13.097+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "16",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P1_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-13T07:00:00.463+00:00",
+   "dataScadenza": "2026-12-14T12:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:787530-2026:TEXT:IT:HTML",
+       "titolo": "APPALTO 64/2026 PROCEDURA APERTA\r\nper l'affidamento del servizio triennale di pulizia ordinaria e straordinaria della sede centrale di Veneto Strade S.p.A. in Mestre  Venezia.",
+       "descrizione": "APPALTO 64/2026 PROCEDURA APERTA\r\nper l'affidamento del servizio triennale di pulizia ordinaria e straordinaria della sede centrale di Veneto Strade S.p.A. in Mestre  Venezia."
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "03345230274",
+           "denominazione_amministrazione": "VENETO STRADE S.P.A."
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://venetostrade.maggiolicloud.it/PortaleAppalti/it/procedure/codice/G03639",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDBDB123F0",
+          "natura_principale": "Servizi",
+          "descrizione": "APPALTO 64/2026 PROCEDURA APERTA\r\nper l'affidamento del servizio triennale di pulizia ordinaria e straordinaria della sede centrale di Veneto Strade S.p.A. in Mestre  Venezia.",
+          "cpv": "Servizi di pulizia di uffici",
+          "valore_complessivo_stimato": 334750,
+          "documenti_di_gara_link": "https://venetostrade.maggiolicloud.it/PortaleAppalti/it/procedure/codice/G03639",
+          "luogo_nuts": "Venezia",
+          "luogo_istat": "VENEZIA",
+          "durata_contratto": "36",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-14+01:00",
+          "durata": "36",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "b4486fda-a0ea-4bec-bfa2-14010d9c6711",
+   "oscurato": false,
+   "idAppalto": "b4716aaa-c8b1-45be-9ee0-5bff85dd4ec6",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-11T23:00:00.000+00:00",
+   "dataCreazione": "2026-11-12T03:15:07.464+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "16",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P1_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-12T07:00:00.051+00:00",
+   "dataScadenza": "2026-12-14T11:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:783248-2026:TEXT:IT:HTML",
+       "titolo": "PROCEDURA APERTA, AI SENSI DELLART. 71, D.LGS. N. 36/2023, CON INVERSIONE PROCEDIMENTALE PER L'AFFIDAMENTO DEL SERVIZIO DI PULIZIA DEGLI IMMOBILI DI PROPRIETA' DI ASM VOGHERA S.P.A. E SOCIETA' DEL GRUPPO SITI NEL COMUNE DI VOGHERA E ZONE LIMITROFE, CON LE MODALITA' DESCRITTE NEL CAPITOLATO SPECIALE DAPPALTO - DURATA DEL CONTRATTO 24 MESI.",
+       "descrizione": "PROCEDURA APERTA, AI SENSI DELLART. 71, D.LGS. N. 36/2023, CON INVERSIONE PROCEDIMENTALE PER L'AFFIDAMENTO DEL SERVIZIO DI PULIZIA DEGLI IMMOBILI DI PROPRIETA' DI ASM VOGHERA S.P.A. E SOCIETA' DEL GRUPPO SITI NEL COMUNE DI VOGHERA E ZONE LIMITROFE, CON LE MODALITA' DESCRITTE NEL CAPITOLATO SPECIALE DAPPALTO - DURATA DEL CONTRATTO 24 MESI."
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "01429910183",
+           "denominazione_amministrazione": "A.S.M. VOGHERA S.P.A."
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://appalti.asmvoghera.it/PortaleAppalti/it/procedure/codice/G03675",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDBC90810C",
+          "natura_principale": "Servizi",
+          "descrizione": "PROCEDURA APERTA, AI SENSI DELLART. 71, D.LGS. N. 36/2023, CON INVERSIONE PROCEDIMENTALE PER L'AFFIDAMENTO DEL SERVIZIO DI PULIZIA DEGLI IMMOBILI DI PROPRIETA' DI ASM VOGHERA S.P.A. E SOCIETA' DEL GRUPPO SITI NEL COMUNE DI VOGHERA E ZONE LIMITROFE, CON LE MODALITA' DESCRITTE NEL CAPITOLATO SPECIALE DAPPALTO - DURATA DEL CONTRATTO 24 MESI.",
+          "cpv": "Servizi di pulizia",
+          "valore_complessivo_stimato": 467964.28,
+          "documenti_di_gara_link": "https://appalti.asmvoghera.it/PortaleAppalti/it/procedure/codice/G03675",
+          "luogo_nuts": "Pavia",
+          "luogo_istat": "VOGHERA",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-14+01:00",
+          "durata": "24",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "6baa523c-943f-4245-9508-e4bfe2b5a749",
+   "oscurato": false,
+   "idAppalto": "5a57ad2e-9f88-423f-882b-df78ae24af97",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-10T23:00:00.000+00:00",
+   "dataCreazione": "2026-11-11T03:30:26.052+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "16",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P1_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-11T07:00:00.682+00:00",
+   "dataScadenza": "2026-12-14T11:30:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:781699-2026:TEXT:IT:HTML",
+       "titolo": "PROT. 7170/27-10-26 - PROCEDURA APERTA AI SENSI DELL'ART. 71 DEL D.LGS. 31 MARZO 2023, N. 36 - AFFIDAMENTO DEL SERVIZIO DI PULIZIA, IGIENIZZAZIONE E SANIFICAZIONE DELLE SEDI CONSORTILI – SUDDIVISO IN N. 3 LOTTI",
+       "descrizione": "PROT. 7170/27-10-26 - PROCEDURA APERTA AI SENSI DELL'ART. 71 DEL D.LGS. 31 MARZO 2023, N. 36 - AFFIDAMENTO DEL SERVIZIO DI PULIZIA, IGIENIZZAZIONE E SANIFICAZIONE DELLE SEDI CONSORTILI – SUDDIVISO IN N. 3 LOTTI"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "01706580204",
+           "denominazione_amministrazione": "CONSORZIO DI BONIFICA GARDA CHIESE"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://gardachiese.acquistitelematici.it/",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BD920D606D",
+          "natura_principale": "Servizi",
+          "descrizione": "PROT. 7170/27-10-26 - PROCEDURA APERTA AI SENSI DELL'ART. 71 DEL D.LGS. 31 MARZO 2023, N. 36 - AFFIDAMENTO DEL SERVIZIO DI PULIZIA, IGIENIZZAZIONE E SANIFICAZIONE DELLE SEDI CONSORTILI – SUDDIVISO IN N. 3 LOTTI (lotto 1)",
+          "cpv": "Servizi di pulizia di alloggi, edifici e finestre",
+          "valore_complessivo_stimato": 129213.68,
+          "documenti_di_gara_link": "https://gardachiese.acquistitelematici.it/",
+          "luogo_nuts": "Mantova",
+          "luogo_istat": "MANTOVA",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-14+01:00",
+          "durata": "24",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         },
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BD920D7140",
+          "natura_principale": "Servizi",
+          "descrizione": "PROT. 7170/27-10-26 - PROCEDURA APERTA AI SENSI DELL'ART. 71 DEL D.LGS. 31 MARZO 2023, N. 36 - AFFIDAMENTO DEL SERVIZIO DI PULIZIA, IGIENIZZAZIONE E SANIFICAZIONE DELLE SEDI CONSORTILI – SUDDIVISO IN N. 3 LOTTI (lotto 2)",
+          "cpv": "Servizi di pulizia di alloggi, edifici e finestre",
+          "valore_complessivo_stimato": 68085.63,
+          "documenti_di_gara_link": "https://gardachiese.acquistitelematici.it/",
+          "luogo_nuts": "Mantova",
+          "luogo_istat": "MONZAMBANO",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-14+01:00",
+          "durata": "24",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         },
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BD920D8213",
+          "natura_principale": "Servizi",
+          "descrizione": "PROT. 7170/27-10-26 - PROCEDURA APERTA AI SENSI DELL'ART. 71 DEL D.LGS. 31 MARZO 2023, N. 36 - AFFIDAMENTO DEL SERVIZIO DI PULIZIA, IGIENIZZAZIONE E SANIFICAZIONE DELLE SEDI CONSORTILI – SUDDIVISO IN N. 3 LOTTI (lotto 3)",
+          "cpv": "Servizi di pulizia di alloggi, edifici e finestre",
+          "valore_complessivo_stimato": 26864.8,
+          "documenti_di_gara_link": "https://gardachiese.acquistitelematici.it/",
+          "luogo_nuts": "Mantova",
+          "luogo_istat": "PIUBEGA",
+          "durata_contratto": "24",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-14+01:00",
+          "durata": "24",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "f906425a-ea06-4af5-9a5e-1604866f14a7",
+   "oscurato": false,
+   "idAppalto": "e283a982-7178-48e1-87dd-40b78b43c332",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-09T23:00:00.000+00:00",
+   "dataCreazione": "2026-11-10T03:30:34.683+00:00",
+   "tipo": "rettifica",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "16",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P2_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-11T07:00:00.828+00:00",
+   "dataScadenza": "2026-11-13T11:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "SERVIZIO DI CUSTODIA, PULIZIA E SORVEGLIANZA ANTINCENDIO DEL PALAZZETTO DELLO SPORT DI PIAZZALE LANCIERI D’AOSTA PER IL PERIODO 01/01/2027 – 31/12/2028"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "81000730309",
+           "denominazione_amministrazione": "COMUNE DI CERVIGNANO DEL FRIULI"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://eappalti.regione.fvg.it/go/1242312601A0CD607E34",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Negoziata con previa indizione di gara / competitiva con negoziazione",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BD37874223",
+          "natura_principale": "Servizi",
+          "descrizione": "SERVIZIO DI CUSTODIA, PULIZIA E SORVEGLIANZA ANTINCENDIO DEL PALAZZETTO DELLO SPORT DI PIAZZALE LANCIERI D’AOSTA PER IL PERIODO 01/01/2027 – 31/12/2028.",
+          "cpv": "Servizi di pulizia di alloggi, edifici e finestre",
+          "valore_complessivo_stimato": 211066.5,
+          "documenti_di_gara_link": "https://eappalti.regione.fvg.it/go/1242312601A0CD607E34",
+          "luogo_nuts": "Udine",
+          "luogo_istat": "CERVIGNANO DEL FRIULI",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-11-13T12:00:00+01:00",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "4d9d2556-81f8-476d-8416-32f0442213f2",
+   "oscurato": false,
+   "idAppalto": "0f6be7b2-a9a1-4140-a2df-f42e811e719b",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-10T08:32:52.000+00:00",
+   "dataCreazione": "2026-11-10T07:32:52.829+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P2_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-16T07:00:00.274+00:00",
+   "dataScadenza": "2026-11-30T22:59:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "Affidamento del servizio di refezione scolastica della Scuola dell’Infanzia «Aldo Moro» e del Micronido comunale, per i periodi 7 gennaio–30 giugno 2027 e 1° ottobre 2027–30 giugno 2028"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "00070680947",
+           "denominazione_amministrazione": "COMUNE DI FROSOLONE"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://frosolone.traspare.com/announcements/502",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDCE27C43C",
+          "natura_principale": "Servizi",
+          "descrizione": " l’affidamento del servizio di refezione scolastica della Scuola dell’Infanzia «Aldo Moro» e del Micronido comunale, per i periodi 7 gennaio–30 giugno 2027 e 1° ottobre 2027–30 giugno 2028",
+          "cpv": "Servizi di ristorazione scolastica",
+          "valore_complessivo_stimato": 121000,
+          "documenti_di_gara_link": "https://frosolone.traspare.com/announcements/502",
+          "luogo_nuts": "Isernia",
+          "luogo_istat": "FROSOLONE",
+          "asta_elettronica": "false",
+          "termine_ricezione": "2026-11-30T23:59:00+01:00",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "d9961489-00d9-4830-a926-c311cd0855e0",
+   "oscurato": false,
+   "idAppalto": "d6c62b20-d093-4b9e-a229-647724a42b0a",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-13T16:54:02.000+00:00",
+   "dataCreazione": "2026-11-13T15:54:02.275+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P2_16",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-13T07:00:00.644+00:00",
+   "dataScadenza": "2026-12-17T11:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "SERVIZIO DI REFEZIONE SCOLASTICA A FAVORE DEGLI ALUNNI DELLE SCUOLE DELL’INFANZIA E PRIMARIA, PERSONALE SCOLASTICO, DIPENDENTI DEL COMUNE DI VISCHE E DI ALTRE EVENTUALI TIPOLOGIE DI UTENTI INDIVIDUATE DALL’AMMINISTRAZIONE COMUNALE.PERIODO CONTRATTUALE: 1° GENNAIO 2027 – 31 DICEMBRE 2032 (SEI ANNI). ANNI SCOLASTICI INTERESSATI: DAL 2026/2027 AL 2032/2033"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "CFAVCP-000085B",
+           "denominazione_amministrazione": "ASSOCIAZIONE CONSORTILE TRA I COMUNI DI LOMBARDORE FELETTO FOGLIZZO LUSIGLIE SCARMAGNO"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://associazioneconsortile.acquistitelematici.it/tender/1174",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDC5D89DA7",
+          "natura_principale": "Servizi",
+          "descrizione": "SERVIZIO DI REFEZIONE SCOLASTICA A FAVORE DEGLI ALUNNI DELLE SCUOLE DELL’INFANZIA E PRIMARIA, PERSONALE SCOLASTICO, DIPENDENTI DEL COMUNE DI VISCHE E DI ALTRE EVENTUALI TIPOLOGIE DI UTENTI INDIVIDUATE DALL’AMMINISTRAZIONE COMUNALE.PERIODO CONTRATTUALE: 1° GENNAIO 2027 – 31 DICEMBRE 2032 (SEI ANNI). ANNI SCOLASTICI INTERESSATI: DAL 2026/2027 AL 2032/2033",
+          "cpv": "Servizi di ristorazione scolastica",
+          "valore_complessivo_stimato": 382193,
+          "documenti_di_gara_link": "https://associazioneconsortile.acquistitelematici.it/tender/1174",
+          "luogo_istat": "VISCHE",
+          "asta_elettronica": "false",
+          "termine_ricezione": "2026-12-17T11:00:00Z",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "8cbae2d5-899b-4659-83ca-05da3536b1b0",
+   "oscurato": false,
+   "idAppalto": "65e2f4a5-64e1-4296-a0a4-acf166cac47f",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-12T11:12:14.000+00:00",
+   "dataCreazione": "2026-11-12T10:12:14.644+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P2_19",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-09T07:00:00.055+00:00",
+   "dataScadenza": "2026-11-24T11:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "AFFIDAMENTO IN CONCESSIONE DEL SERVIZIO DI RISTORAZIONE SCOLASTICA A RIDOTTO IMPATTO AMBIENTALE. AA.SS. 2026/2027 - 2027/2028 - 2028/2029"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "82002770285",
+           "denominazione_amministrazione": "COMUNE DI BOARA PISANI"
+          },
+          {
+           "codice_fiscale": "80002910703",
+           "denominazione_amministrazione": "COMUNE DI RIPALIMOSANI"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://piattaforma.asmecomm.it/gare/dettaglio.php?codice=123689",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDB2BAF81B",
+          "natura_principale": "Servizi",
+          "descrizione": "AFFIDAMENTO IN CONCESSIONE DEL SERVIZIO DI RISTORAZIONE SCOLASTICA A RIDOTTO IMPATTO AMBIENTALE. AA.SS. 2026/2027 - 2027/2028 - 2028/2029",
+          "cpv": "Servizi di mensa scolastica",
+          "valore_complessivo_stimato": 224903.25,
+          "documenti_di_gara_link": "https://piattaforma.asmecomm.it/gare/dettaglio.php?codice=123689",
+          "luogo_istat": "BOARA PISANI",
+          "durata_contratto": "3 ANNI SCOLASTICI",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-11-24T12:00:00+01:00",
+          "durata": "3 ANNI SCOLASTICI",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "cb8096a2-0ca1-4de3-98bd-b2ae57a70c11",
+   "oscurato": false,
+   "idAppalto": "93674000-4c3f-4185-bf28-1028d87eedfb",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-06T13:45:36.000+00:00",
+   "dataCreazione": "2026-11-06T12:45:37.055+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P1_17",
+   "tipologia": "BANDI",
+   "dataPubblicazione": "2026-11-12T07:00:00.592+00:00",
+   "dataScadenza": "2026-12-16T09:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:785343-2026:TEXT:IT:HTML",
+       "titolo": "Procedura aperta sopra-soglia per il servizio di pulizia presso sede contrale e sedi periferiche di AGS. Progetto 26134",
+       "descrizione": "Procedura aperta sopra-soglia per il servizio di pulizia presso la sede contrale e le sedi periferiche di AGS S.p.A. Progetto 26134"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "80019800236",
+           "denominazione_amministrazione": "AZIENDA GARDESANA SERVIZI S.P.A. IN BREVE A.G.S. S.P.A."
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://www.ags.vr.it/avvisi-e-bandi",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta",
+         "asta_elettronica": "false"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDBBEBB0ED",
+          "natura_principale": "Servizi",
+          "descrizione": "VALORE A BASE D'ASTA",
+          "cpv": "Servizi di pulizia di edifici",
+          "valore_complessivo_stimato": 468115.2,
+          "documenti_di_gara_link": "https://www.ags.vr.it/avvisi-e-bandi",
+          "luogo_nuts": "Verona",
+          "luogo_istat": "PESCHIERA DEL GARDA",
+          "durata_contratto": "2192",
+          "asta_elettronica": "false",
+          "criteri_aggiudicazione": "Qualità",
+          "termine_ricezione": "2026-12-16+01:00",
+          "durata": "2192",
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "452ea9bc-5734-47bf-8148-e10be7807e3f",
+   "oscurato": false,
+   "idAppalto": "4f91a94a-9f02-4ecd-bd52-db42ab2d5db0",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-10T23:00:00.000+00:00",
+   "dataCreazione": "2026-11-11T03:30:22.592+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "17",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "A1_29",
+   "tipologia": "RISULTATI",
+   "dataPubblicazione": "2026-11-12T07:00:00.638+00:00",
+   "dataScadenza": null,
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:785904-2026:TEXT:IT:HTML",
+       "titolo": "Servizio pulizia in conformità ai CAM della APSP \"Valle del Vanoi\" di Canal S. Bovo (TN)",
+       "descrizione": "AFFIDAMENTO SOPRA SOGLIA COMUNITARIA DEL SERVIZIO DI PULIZIA E SANIFICAZIONE AMBIENTALE, ORDINARIA E STRAORDINARIA A RIDOTTO IMPATTO AMBIENTALE - NEL RISPETTO DEI VIGENTI CRITERI AMBIENTALI MINIMI PER L’AFFIDAMENTO DEL SERVIZIO DI PULIZIA E SANIFICAZIONE DI EDIFICI ED AMBIENTI AD USO CIVILE, SANITARIO E PER PRODOTTI DETERGENTI (DECRETO MINISTERIALE 29/01/2021 E SS.MM.) DA EFFETTUARE A FAVORE DELL’APSP “VALLE DEL VANOI” DI CANAL SAN BOVO (TN)."
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "81002610228",
+           "denominazione_amministrazione": "AZIENDA PUBBLICA DI SERVIZI ALLA PERSONA VALLE DEL VANOI"
+          },
+          {
+           "codice_fiscale": "00337460224",
+           "denominazione_amministrazione": "PROVINCIA AUTONOMA DI TRENTO"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://sicopat2.provincia.tn.it/trasparenza-fe/#/procedura?uuid=4b9e1400-7251-433f-8fa7-9b2c547e5708",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "aggiudicazione",
+          "cig": "BBC85B0F92",
+          "natura_principale": "Servizi",
+          "descrizione": "Servizio pulizia in conformità ai CAM della APSP \"Valle del Vanoi\" di Canal San Bovo (TN)",
+          "cpv": "Servizi di pulizia",
+          "valore_complessivo_stimato": 1122731.13,
+          "luogo_nuts": "Trento",
+          "luogo_istat": "CANAL SAN BOVO",
+          "valore_offerta_vincente": 1079316.22,
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "70956b5c-7f24-4766-beb3-fe3aaad6c40d",
+   "oscurato": false,
+   "idAppalto": "cc4d8271-ffdd-4d2b-8efa-3c02bb5c90e2",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-10T23:00:00.000+00:00",
+   "dataCreazione": "2026-11-11T03:30:27.639+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "29",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "A1_29",
+   "tipologia": "RISULTATI",
+   "dataPubblicazione": "2026-11-12T07:00:00.100+00:00",
+   "dataScadenza": null,
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": "https://ted.europa.eu/udl?uri=TED:NOTICE:783496-2026:TEXT:IT:HTML",
+       "titolo": "SERVIZIO DEL SERVIZIO DI PULIZA DEGLI IMMOBILI DEL COMUNE DI MONTEFORTE DALPONE (VR)  PER UN PERIODO DI TRE ANNI OLTRE OPZIONI",
+       "descrizione": "SERVIZIO DEL SERVIZIO DI PULIZA DEGLI IMMOBILI DEL COMUNE DI MONTEFORTE DALPONE (VR)  PER UN PERIODO DI TRE ANNI OLTRE OPZIONI"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "CFAVCP-0000DF5",
+           "denominazione_amministrazione": "CENTRALE UNICA COMMITTENZA CONSORZIO LE VALLI"
+          },
+          {
+           "codice_fiscale": "00278010236",
+           "denominazione_amministrazione": "COMUNE DI MONTEFORTE D'ALPONE"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://cuclevalli-appalti.maggiolicloud.it/PortaleAppalti/it/procedure/codice/G03450",
+         "accordo_quadro": "Nulla",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Aperta"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "aggiudicazione",
+          "cig": "BBA8F59455",
+          "natura_principale": "Servizi",
+          "descrizione": "SERVIZIO DEL SERVIZIO DI PULIZA DEGLI IMMOBILI DEL COMUNE DI MONTEFORTE DALPONE (VR)  PER UN PERIODO DI TRE ANNI OLTRE OPZIONI",
+          "cpv": "Servizi di pulizia",
+          "valore_complessivo_stimato": 271783.91,
+          "luogo_nuts": "Verona",
+          "luogo_istat": "MONTEFORTE D'ALPONE",
+          "valore_offerta_vincente": 92316.27,
+          "accordo_quadro": "Nulla",
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "9731214b-46cb-43b5-852c-8eafd8952e43",
+   "oscurato": false,
+   "idAppalto": "5a4f49f9-6ac6-4009-b0ba-820613daeb89",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-10T23:00:00.000+00:00",
+   "dataCreazione": "2026-11-11T03:30:10.100+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": "29",
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "P7_1_3",
+   "tipologia": "INDAGINI_DI_MERCATO_SOTTO_SOGLIA",
+   "dataPubblicazione": "2026-11-16T07:00:00.345+00:00",
+   "dataScadenza": "2026-12-04T10:00:00.000+00:00",
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "Servizio di pulizia scale e delle aree comuni delle palazzine Bisagno, Giorgis, Pedretti 1 e Pedretti 2 anno 2027"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "80004080497",
+           "denominazione_amministrazione": "ACCADEMIA NAVALE"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://www.marina.difesa.it/documentazione/gare/marinaccad_livorno/Pagine/Servizio-di-pulizia-scale-e-delle-aree-comuni-delle-palazzine-Bisagno,-Giorgis,-Pedretti-1-e-Pedretti-2-anno-2027.aspx"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "lotto",
+          "cig": "BDCE3FF399",
+          "natura_principale": "Servizi",
+          "descrizione": "Servizio di pulizia scale e delle aree comuni delle palazzine Bisagno, Giorgis, Pedretti 1 e Pedretti 2 anno 2027",
+          "cpv": "Servizi di pulizia di edifici",
+          "valore_complessivo_stimato": 10000,
+          "documenti_di_gara_link": "https://www.marina.difesa.it/documentazione/gare/marinaccad_livorno/Pagine/Servizio-di-pulizia-scale-e-delle-aree-comuni-delle-palazzine-Bisagno,-Giorgis,-Pedretti-1-e-Pedretti-2-anno-2027.aspx",
+          "luogo_nuts": "Livorno",
+          "luogo_istat": "LIVORNO",
+          "termine_invito": "2026-12-04T10:00:00Z",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "1db3c720-4ea0-4783-a226-380c76129ad6",
+   "oscurato": false,
+   "idAppalto": "ffb6e894-37a3-4be2-a1ec-b10a34609983",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-13T17:55:46.000+00:00",
+   "dataCreazione": "2026-11-13T16:55:46.346+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "M2",
+   "tipologia": "MODIFICHE_CONTRATTUALI",
+   "dataPubblicazione": "2026-11-13T07:00:00.676+00:00",
+   "dataScadenza": null,
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "Affidamento diretto del servizio di pulizia degli immobili di competenza del Comune di Arezzo, ai sensi dell’art. 50, comma 1, lettera b) del D.lgs. n. 36 2023"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "00176820512",
+           "denominazione_amministrazione": "COMUNE DI AREZZO"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://webs.rete.toscana.it/sitat/trasparenza/#/procedura?uuid=START_67300029-971f-4d2e-10f1e-40c4e9aebcfc"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "aggiudicazione",
+          "cig": "BC2F0AC4FC",
+          "natura_principale": "Servizi",
+          "descrizione": "Affidamento diretto del servizio di pulizia degli immobili di competenza del Comune di Arezzo, ai sensi dell’art. 50, comma 1, lettera b) del D.lgs. n. 36 2023",
+          "cpv": "Servizi di pulizia di edifici",
+          "documenti_di_gara_link": "https://webs.rete.toscana.it/sitat/trasparenza/#/procedura?uuid=START_67300029-971f-4d2e-10f1e-40c4e9aebcfc",
+          "luogo_nuts": "Arezzo",
+          "luogo_istat": "AREZZO",
+          "motivazione_modifica": "Necessità di ulteriori lavori, forniture e servizi eseguiti dall'appaltatore originale."
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "d34940c7-5888-4019-8665-2183c6ccc9fa",
+   "oscurato": false,
+   "idAppalto": "cbbf9fc5-e3b9-4c26-a604-8eecd4f9b621",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-12T10:35:30.000+00:00",
+   "dataCreazione": "2026-11-12T09:35:30.677+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  },
+  {
+   "codiceScheda": "AD2_25",
+   "tipologia": "RISULTATI",
+   "dataPubblicazione": "2026-11-13T07:00:00.743+00:00",
+   "dataScadenza": null,
+   "templates": [
+    {
+     "template": {
+      "metadata": {
+       "link_eform_ted": null,
+       "titolo": null,
+       "descrizione": "SERVIZIO DI DISINFESTAZIONBE MEDIANTE CONTROLLO E ALLONTANAMENTO DEI VOLATILI INFESTANTI (BIRD CONTROL)"
+      },
+      "sections": [
+       {
+        "name": "SEZ. A - Committente",
+        "fields": {
+         "soggetti_sa": [
+          {
+           "codice_fiscale": "83003310725",
+           "denominazione_amministrazione": "TRIBUNALE DI TRANI"
+          }
+         ]
+        }
+       },
+       {
+        "name": "SEZ. B - Dati Generali",
+        "fields": {
+         "documenti_di_gara_link": "https://www.acquistinretepa.it/bandi/negoziata/rdo-td/6ee2fad1eb56919d",
+         "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+         "tipo_procedura_aggiudicazione": "Altra procedura a fase unica"
+        }
+       },
+       {
+        "name": "SEZ. C - Oggetto",
+        "items": [
+         {
+          "tipo_oggetto": "aggiudicazione",
+          "cig": "BDC46E91F5",
+          "natura_principale": "Servizi",
+          "descrizione": "SERVIZIO DI DISINFESTAZIONBE MEDIANTE CONTROLLO E ALLONTANAMENTO DEI VOLATILI INFESTANTI (BIRD CONTROL)",
+          "cpv": "Servizi di disinfestazione",
+          "documenti_di_gara_link": "https://www.acquistinretepa.it/bandi/negoziata/rdo-td/6ee2fad1eb56919d",
+          "luogo_nuts": "Barletta-Andria-Trani",
+          "luogo_istat": "TRANI",
+          "valore_affidamento": 25560,
+          "sistema_dinamico_acquisizione": "Nessun sistema dinamico di acquisizione",
+          "categorie": [
+           {
+            "codice": "FS",
+            "descrizione": "FORNITURA DI SERVIZI"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "lingua": "it"
+    }
+   ],
+   "idAvviso": "70ed7341-bb5e-45bc-b844-c6f8994f53b8",
+   "oscurato": false,
+   "idAppalto": "135fb23e-d252-4981-a1ce-cbc611e01f3f",
+   "dataPubblicazioneNuovoAvviso": null,
+   "tipoNuovoAvviso": null,
+   "dataPCP": "2026-11-12T09:22:16.000+00:00",
+   "dataCreazione": "2026-11-12T08:22:16.743+00:00",
+   "tipo": "avviso",
+   "attivo": true,
+   "nuovoAvviso": null,
+   "codiceEform": null,
+   "stato": "NON_VERIFICATO"
+  }
+ ]
+}

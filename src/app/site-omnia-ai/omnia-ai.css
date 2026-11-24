@@ -5369,3 +5369,508 @@ html.omnia-scorrimento-bloccato body {
     animation: none;
   }
 }
+
+/* ───── Tender Intelligence: «Opportunità» (fase B1). Testi a sinistra, stesse variabili del tema chiaro e scuro. ───── */
+.omnia-opp-titolo-riga {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.omnia-opp-titolo-riga .omnia-btn {
+  margin-top: 22px;
+  text-decoration: none;
+}
+.omnia-opp-schede {
+  display: flex;
+  gap: 6px;
+  margin-top: 18px;
+  border-bottom: 1px solid var(--bordo);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.omnia-opp-scheda {
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--fioco);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+}
+.omnia-opp-scheda:hover {
+  color: var(--testo);
+}
+.omnia-opp-scheda.attiva {
+  color: var(--testo);
+  border-bottom-color: var(--viola);
+  font-weight: 600;
+}
+.omnia-opp-ricerca {
+  margin-top: 22px;
+}
+.omnia-opp-barra {
+  display: flex;
+  gap: 10px;
+}
+.omnia-opp-barra .omnia-input {
+  flex: 1;
+  min-width: 0;
+}
+.omnia-opp-colonne {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 18px;
+  align-items: start;
+}
+.omnia-opp-filtri {
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: var(--vetro);
+}
+.omnia-opp-filtri > summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--testo);
+}
+.omnia-opp-filtri-corpo {
+  display: grid;
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+.omnia-opp-gruppo {
+  border: 0;
+  border-top: 1px solid var(--bordo);
+  padding: 12px 0 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.omnia-opp-gruppo > legend,
+.omnia-opp-gruppo > summary {
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fioco);
+  padding: 0;
+  cursor: pointer;
+}
+.omnia-opp-gruppo > legend {
+  cursor: default;
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+}
+.omnia-opp-scelta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--testo-2);
+  cursor: pointer;
+}
+.omnia-opp-regioni {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.omnia-opp-due {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.omnia-opp-gruppo .omnia-etichetta {
+  margin-bottom: 4px;
+}
+.omnia-opp-risultati {
+  min-width: 0;
+}
+.omnia-opp-chip-riga {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.omnia-opp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--bordo-f);
+  font-size: 12.5px;
+  color: var(--testo);
+  text-decoration: none;
+}
+.omnia-opp-chip:hover {
+  background: var(--vetro-2);
+}
+.omnia-opp-azzera {
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-opp-sinonimi {
+  font-size: 13.5px;
+  color: var(--testo-2);
+  margin-bottom: 10px;
+}
+.omnia-opp-conteggio {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 13.5px;
+  color: var(--fioco);
+  margin-bottom: 12px;
+}
+.omnia-opp-ordina a,
+.omnia-opp-ordina strong {
+  margin-left: 8px;
+}
+.omnia-opp-ordina strong {
+  color: var(--testo);
+}
+.omnia-opp-elenco {
+  display: grid;
+  gap: 10px;
+}
+.omnia-opp-riga {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--bordo);
+  background: var(--vetro);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.omnia-opp-riga:hover {
+  border-color: var(--bordo-f);
+  background: var(--vetro-2);
+}
+.omnia-opp-riga-testa {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.omnia-opp-riga-titolo {
+  font-weight: 700;
+  font-size: 15.5px;
+  color: var(--testo);
+  line-height: 1.35;
+}
+.omnia-opp-riga-scadenza {
+  display: grid;
+  justify-items: end;
+  font-size: 12.5px;
+  color: var(--fioco);
+  text-align: right;
+  white-space: nowrap;
+}
+.omnia-opp-riga-scadenza strong {
+  color: var(--testo);
+  font-size: 13px;
+}
+.omnia-opp-riga-scadenza.urgente strong {
+  color: var(--ambra);
+}
+.omnia-opp-riga-ente {
+  font-size: 13px;
+  color: var(--testo-2);
+}
+.omnia-opp-riga-ente span {
+  color: var(--fioco);
+}
+.omnia-opp-riga-dati {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  color: var(--testo-2);
+}
+/* Tender Intelligence, fase B3: settore correlato (B) nella riga e titoletto delle fasce nell'ordinamento per rilevanza */
+.omnia-opp-settore-correlato {
+  color: var(--fioco);
+  font-style: italic;
+}
+.omnia-opp-separatore {
+  margin: 14px 0 4px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--bordo);
+  font-size: 13px;
+  color: var(--testo-2);
+  line-height: 1.45;
+}
+.omnia-opp-separatore strong {
+  color: var(--testo);
+  margin-right: 6px;
+}
+/* Tender Intelligence, fase B3: «Perché questa gara è qui» nella scheda */
+.omnia-opp-classificazione {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+.omnia-opp-classificazione-elenco {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.omnia-opp-classificazione-testa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.omnia-opp-classificazione-sotto {
+  font-size: 13px;
+  color: var(--testo-2);
+  margin-top: 2px;
+}
+.omnia-opp-classificazione-motivi {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--testo-2);
+  line-height: 1.5;
+}
+.omnia-opp-riga-novita {
+  font-size: 13px;
+  color: var(--ambra);
+}
+.omnia-opp-riga-indicatori {
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--testo-2);
+}
+.omnia-opp-indicatore span {
+  color: var(--verde);
+  margin-right: 4px;
+}
+.omnia-opp-indicatore.fioco,
+.omnia-opp-indicatore.fioco span {
+  color: var(--fioco);
+}
+.omnia-opp-riga-piede {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.omnia-opp-badge-gruppo {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.omnia-opp-fonte {
+  font-size: 11.5px;
+  color: var(--fioco);
+}
+.omnia-opp-pagine {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-top: 16px;
+  font-size: 13.5px;
+  color: var(--fioco);
+}
+.omnia-opp-nota {
+  font-size: 12.5px;
+  color: var(--fioco);
+  line-height: 1.5;
+}
+.omnia-opp-fonti {
+  margin-top: 22px;
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  background: rgba(var(--pannello-rgb), 0.4);
+  font-size: 13px;
+}
+.omnia-opp-fonti > summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  color: var(--testo-2);
+}
+.omnia-opp-fonti-corpo {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.omnia-opp-fonti-corpo p {
+  margin-top: 4px;
+}
+.omnia-opp-briciole {
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-opp-scheda-titolo {
+  margin-top: 10px;
+  font-size: clamp(22px, 2.6vw, 28px);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.omnia-opp-ufficiale {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--fioco);
+}
+.omnia-opp-ufficiale summary {
+  cursor: pointer;
+}
+.omnia-opp-ufficiale p {
+  margin-top: 6px;
+  color: var(--testo-2);
+}
+.omnia-opp-scheda-corpo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+.omnia-opp-scheda-corpo > .omnia-riquadro {
+  margin-top: 20px;
+}
+.omnia-opp-insintesi {
+  display: grid;
+  gap: 2px;
+}
+.omnia-opp-sintesi-riga {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bordo);
+}
+.omnia-opp-sintesi-riga:last-child {
+  border-bottom: 0;
+}
+.omnia-opp-sintesi-etichetta {
+  font-size: 12.5px;
+  color: var(--fioco);
+}
+.omnia-opp-sintesi-valore {
+  font-size: 14.5px;
+  color: var(--testo);
+  overflow-wrap: anywhere;
+}
+.omnia-opp-scheda-azioni {
+  display: grid;
+  gap: 12px;
+}
+.omnia-opp-scheda-azioni .omnia-btn {
+  text-decoration: none;
+  text-align: center;
+}
+.omnia-opp-azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.omnia-opp-esito {
+  font-size: 12.5px;
+  color: var(--verde);
+}
+.omnia-opp-esito.errore {
+  color: var(--rosso);
+}
+.omnia-opp-prosa {
+  margin-top: 10px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--testo-2);
+}
+.omnia-opp-prosa p + p {
+  margin-top: 4px;
+}
+.omnia-opp-sottotitolo {
+  margin-top: 22px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--testo);
+}
+.omnia-opp-elenco-semplice {
+  margin-top: 8px;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+  color: var(--testo-2);
+  overflow-wrap: anywhere;
+}
+.omnia-opp-gruppo-monitorate {
+  margin-top: 8px;
+}
+.omnia-opp-gruppo-monitorate .omnia-opp-sottotitolo {
+  margin-bottom: 10px;
+}
+.omnia-opp-aggiungi {
+  display: grid;
+  gap: 14px;
+}
+.omnia-opp-aggiungi .omnia-btn {
+  justify-self: start;
+}
+
+@media (max-width: 900px) {
+  .omnia-opp-colonne,
+  .omnia-opp-scheda-corpo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .omnia-opp-scheda-corpo > .omnia-opp-scheda-azioni {
+    margin-top: 12px;
+  }
+}
+@media (max-width: 560px) {
+  .omnia-opp-barra {
+    flex-direction: column;
+  }
+  .omnia-opp-riga-testa {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .omnia-opp-riga-scadenza {
+    justify-items: start;
+    text-align: left;
+    white-space: normal;
+  }
+  .omnia-opp-sintesi-riga {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .omnia-opp-due,
+  .omnia-opp-aggiungi .omnia-campo-riga {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .omnia-opp-titolo-riga .omnia-btn {
+    margin-top: 0;
+  }
+}
+
+/* Tender Intelligence, fase B1-bis: fonti di una gara nella scheda (TED, PVL), una per riga con data di pubblicazione e di verifica */
+.omnia-opp-fonti-gara {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.omnia-opp-fonti-gara li {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}

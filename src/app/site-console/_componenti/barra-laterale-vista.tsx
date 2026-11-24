@@ -44,9 +44,12 @@ export default function BarraLateraleVista({
                 );
               }
               return (
+                // prefetch={false}: come nel menu dell'area clienti (components/omnia-ai/sidebar-nav.tsx), le voci non si precaricano a
+                // ogni pagina; ogni pagina della console verifica comunque sessione e ruolo per conto suo.
                 <Link
                   key={voce.href}
                   href={voce.href}
+                  prefetch={false}
                   className={`cn-nav-voce${attiva ? " attiva" : ""}`}
                   aria-current={attiva ? "page" : undefined}
                 >
