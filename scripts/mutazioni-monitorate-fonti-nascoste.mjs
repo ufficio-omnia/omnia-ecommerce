@@ -104,6 +104,11 @@ const MUTAZIONI = [
   { nome: "MZ5 Ufficio Gare: interruttore letto anche senza il grado 2", file: "src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx", cerca: "ufficioGareRadarAttivo(process.env) ? radarNelMenu(contesto.accountId) : Promise.resolve(false),", con: "radarNelMenu(contesto.accountId),", richiede: "MC3." },
   { nome: "MZ6 pagine di Opportunità senza la porta", file: "src/lib/radar/area-cliente.ts", cerca: "  if (!contesto.diritto.visibile) notFound();\n", con: "", richiede: "MC4." },
   { nome: "MZ7 cliente abilitato anche a modulo spento", file: "src/lib/radar/diritto-calcoli.ts", cerca: "const abilitato = dati.parametri.attivo && dati.cliente?.attivo === true;", con: "const abilitato = dati.cliente?.attivo === true;", richiede: "MC4." },
+  // F7 solo account interni (D-D, documento 57 §5-bis)
+  { nome: "MZ8 menu: «Opportunità» a tutti appena l'interruttore generale è acceso", file: "src/lib/radar/visibilita.ts", cerca: "  return attivoCliente(accountId);", con: "  return true;", richiede: "MC5." },
+  { nome: "MZ9 console: Ufficio Gare abilitato al posto del titolare", file: CA, cerca: "  if (membro) return { errore: \"Questo utente è un Ufficio Gare: va abilitato il titolare dell'account.\" };\n", con: "", richiede: "MC6." },
+  { nome: "MZ10 console: abilitato anche chi non è cliente", file: CA, cerca: '  if (utente.role !== "cliente") return { errore: "Il modulo si abilita solo per i clienti." };\n', con: "", richiede: "MC6." },
+  { nome: "MZ11 console: cache del menu delle imprese non svuotata", file: CA, cerca: "  updateTag(TAG_CLIENTI_RADAR);\n", con: "", richiede: "MC6." },
   // pacchetto P del go-live (55 §2): interruttori della B4
   { nome: "MQ1 P: interruttore acceso sulle anteprime", file: "src/lib/radar/interruttori-b4.ts", cerca: '  if (env.VERCEL_ENV === "preview") return false;\n', con: "", richiede: "P1." },
   { nome: "MQ2 P: produzione accesa anche da un computer locale", file: "src/lib/radar/interruttori-b4.ts", cerca: '  return ambiente === "produzione" && env.VERCEL_ENV === "production";', con: '  return ambiente === "produzione";', richiede: "P1." },
