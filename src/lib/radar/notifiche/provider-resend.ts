@@ -54,9 +54,9 @@ type Richiedi = (url: string, init: { method: "POST"; headers: Record<string, st
   headers: { get(nome: string): string | null };
 }>;
 
-/** L'adattatore. Nella B4 NON si costruisce: lancia sempre, perché resendConsentito() è false. */
-export function creaProviderResend(chiave: string, richiedi: Richiedi): ProviderEmail {
-  if (!resendConsentito()) throw new Error("Resend non è autorizzato nella B4: il motore usa solo il provider finto");
+/** L'adattatore. Si costruisce SOLO se resendConsentito(env): produzione, deploy di produzione, interruttore acceso (pacchetto P). */
+export function creaProviderResend(chiave: string, richiedi: Richiedi, env: Record<string, string | undefined>): ProviderEmail {
+  if (!resendConsentito(env)) throw new Error("Resend non è autorizzato in questo ambiente: il motore usa solo il provider finto");
   let quota: number | null = null;
   return {
     nome: "resend",

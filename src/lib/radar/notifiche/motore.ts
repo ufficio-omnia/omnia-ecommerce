@@ -42,6 +42,12 @@ import {
   type RigaSalvata,
 } from "./eventi-calcoli";
 import { statoInvioEmail } from "./interruttore";
+import { ambienteDb } from "../ambiente";
+
+// pacchetto P: l'ambiente scritto nei giri del motore (la 0125 ammette staging, produzione e locale)
+function ambienteDelGiro(env: Record<string, string | undefined>): "staging" | "produzione" {
+  return ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "produzione" ? "produzione" : "staging";
+}
 import { origineAreaClienti, urlPreferenze } from "./origine";
 import {
   AFFITTO_MINUTI,
@@ -277,7 +283,7 @@ async function apriGiro(d: DipendenzeMotore, fase: "eventi" | "invio", oggi: str
     esito: "in_corso",
     iniziato_il: adesso.toISOString(),
     in_corso_fino_il: new Date(adesso.getTime() + BLOCCO_GIRO_MINUTI * 60_000).toISOString(),
-    ambiente: "staging",
+    ambiente: ambienteDelGiro(d.env),
     provider: d.provider.nome,
   });
   if (r.error?.code === "23505") return null;
@@ -841,7 +847,9 @@ async function faseInvio(d: DipendenzeMotore, origine: string, oggi: string, sol
 export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassaggio> {
   const stato = statoInvioEmail(d.env);
   if (!stato.acceso) return { eseguito: false, motivo: stato.motivo };
-  if (d.provider.nome !== "finto") return { eseguito: false, motivo: "provider_non_autorizzato" };
+  // pacchetto P: sullo staging SOLO il provider finto; in produzione SOLO Resend (un finto in produzione segnerebbe «inviate» email mai
+  // spedite). Qualunque altro abbinamento: nessun passaggio, nessuna richiesta al database
+  if (d.provider.nome !== (stato.ambiente === "produzione" ? "resend" : "finto")) return { eseguito: false, motivo: "provider_non_autorizzato" };
   const o = origineAreaClienti(d.env);
   if (!o.ok) return { eseguito: false, motivo: "origine_non_valida" };
   const inizio = d.adesso().getTime();
@@ -921,7 +929,7 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
         iniziato_il: new Date(inizio).toISOString(),
         in_corso_fino_il: ora,
         finito_il: ora,
-        ambiente: "staging",
+        ambiente: ambienteDelGiro(d.env),
         provider: d.provider.nome,
         conteggi: invio,
         errore: erroreInvio,
@@ -933,11 +941,12 @@ export async function eseguiPassaggio(d: DipendenzeMotore): Promise<EsitoPassagg
 
 // ───────────────────────── avviso «ravvicinato» (aggancio di ravvicinata.ts) ─────────────────────────
 
-/** Il corpo dell'aggancio: legge la sola gara entrata nella lista, crea l'evento e le consegne, e le invia subito con il provider finto. */
+/** Il corpo dell'aggancio: legge la sola gara entrata nella lista, crea l'evento e le consegne, e le invia subito (finto sullo staging, Resend in produzione). */
 export async function eseguiRavvicinata(d: DipendenzeMotore, g: GaraEntrataInLista): Promise<EsitoRavvicinata> {
   const stato = statoInvioEmail(d.env);
   if (!stato.acceso) return { esito: "spento" };
-  if (d.provider.nome !== "finto") return { esito: "non_dovuta", motivo: "provider_non_autorizzato" };
+  // pacchetto P: la stessa regola del passaggio giornaliero (finto sullo staging, Resend in produzione)
+  if (d.provider.nome !== (stato.ambiente === "produzione" ? "resend" : "finto")) return { esito: "non_dovuta", motivo: "provider_non_autorizzato" };
   const o = origineAreaClienti(d.env);
   if (!o.ok) return { esito: "non_dovuta", motivo: "origine_non_valida" };
   const c: Conteggi = {};
@@ -968,10 +977,11 @@ export async function eseguiRavvicinata(d: DipendenzeMotore, g: GaraEntrataInLis
 
 /** Le dipendenze reali (rotta e aggancio): client di servizio, provider finto, modello di B1, stato d'accesso delle pagine. */
 export async function dipendenzeReali(env: Record<string, string | undefined>, parametri: ParametriNotifiche): Promise<DipendenzeMotore> {
-  const [{ createAdminClient }, { componiEmailRadar }, { sceltaProvider }, { getOmniaAiAccessState }] = await Promise.all([
+  const [{ createAdminClient }, { componiEmailRadar }, { sceltaProvider }, { creaProviderResend }, { getOmniaAiAccessState }] = await Promise.all([
     import("@/lib/supabase/admin"),
     import("../email-modelli"),
     import("./provider"),
+    import("./provider-resend"),
     import("@/lib/omnia-ai-access"),
   ]);
   const client = createAdminClient();
@@ -979,7 +989,8 @@ export async function dipendenzeReali(env: Record<string, string | undefined>, p
   return {
     admin,
     env,
-    provider: sceltaProvider(),
+    // pacchetto P: il finto ovunque, Resend solo in produzione con l'interruttore acceso (resendConsentito)
+    provider: sceltaProvider(env, (chiave) => creaProviderResend(chiave, fetch as unknown as Parameters<typeof creaProviderResend>[1], env)),
     componi: componiEmailRadar,
     parametri,
     statoAccesso: async (id) => (await getOmniaAiAccessState(id, client)).stato as StatoAccesso,

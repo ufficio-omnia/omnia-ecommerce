@@ -30,6 +30,11 @@ export type MisuraRicercaPvl = {
   codici: MisuraCodiceRicerca[];
   // SOLO a misura completa: i codici con 0 gare A o B e più di 50 avvisi letti, da far VALUTARE all'utente (mai tolti in automatico)
   daValutare: string[];
+  // R4 (decisione dell'utente del 23/11): su tutti i giri con la misura, le coppie codice → descrizione scritte dalla PVL per i codici
+  // ancora senza descrizione nel file (la prima vista), e le descrizioni sconosciute degli avvisi non attribuiti, dalla più frequente.
+  // Il file si completa a mano, con un commit, dopo la verifica: niente si scrive da solo
+  descrizioniDaCompletare: Record<string, string>;
+  descrizioniSconosciute: { testo: string; volte: number }[];
 };
 
 type RigaRegistro = { fonte: string; iniziato_il: string; esito: string; avvisi: Record<string, unknown> | null };
@@ -60,6 +65,14 @@ export function misuraCodiciRicercaPvl(righe: readonly RigaRegistro[], adesso: D
       t.fuori_settore += numero(x.fuori_settore);
     }
   }
+  const senzaDescrizione = new Set(CPV_RICERCA_PVL.filter((r) => !r.descrizione).map((r) => r.cpv));
+  const descrizioniDaCompletare: Record<string, string> = {};
+  const sconosciute = new Map<string, number>();
+  for (const r of [...conMisura].sort((x, y) => x.iniziato_il.localeCompare(y.iniziato_il))) {
+    for (const [cpv, t] of Object.entries(oggetto(oggetto(r.avvisi).descrizioni_da_completare)))
+      if (senzaDescrizione.has(cpv) && typeof t === "string" && t && !(cpv in descrizioniDaCompletare)) descrizioniDaCompletare[cpv] = t;
+    for (const [t, n] of Object.entries(oggetto(oggetto(r.avvisi).descrizioni_sconosciute))) sconosciute.set(t, (sconosciute.get(t) ?? 0) + numero(n));
+  }
   const codici = [...somma.values()];
   return {
     dal: dentro.length ? [...dentro].map((r) => r.iniziato_il).sort()[0] : null,
@@ -68,5 +81,7 @@ export function misuraCodiciRicercaPvl(righe: readonly RigaRegistro[], adesso: D
     nonAttribuiti,
     codici,
     daValutare: completa ? codici.filter((c) => c.a + c.b === 0 && c.letti > SOGLIA_AVVISI_DA_VALUTARE).map((c) => c.cpv) : [],
+    descrizioniDaCompletare,
+    descrizioniSconosciute: [...sconosciute].map(([testo, volte]) => ({ testo, volte })).sort((x, y) => y.volte - x.volte || x.testo.localeCompare(y.testo)),
   };
 }

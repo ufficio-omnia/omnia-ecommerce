@@ -8,8 +8,8 @@ import { analizzaCsvRicercaPvl, campiCsv, leggiCsvRicercaPvl } from "./lib/cpv-r
 import { CPV_RICERCA_PVL } from "../src/lib/radar/cpv-ricerca-pvl-dati";
 import { CPV_SETTORI_OMNIA } from "../src/lib/radar/settori-dati";
 import { vociCpv } from "../src/lib/radar/settori";
-import { attribuzioneRicercaPvl, cpvDaDescrizione, cpvRicercaPvl, eCodiceDivisione, leggiAvvisoPvl, LIMITI_PVL_INTERVALLI, LIMITI_PVL_PREDEFINITI } from "../src/lib/radar/fonti/pvl-calcoli";
-import { AVVISI_ANOMALI_PER_GIORNO, misuraPerCodicePvl, statistichePvlVuote } from "../src/lib/radar/importa-pvl-calcoli";
+import { attribuzioneRicercaPvl, cpvDaDescrizione, cpvRicercaPvl, descrizioniDaRaccogliere, eCodiceDivisione, leggiAvvisoPvl, LIMITI_PVL_INTERVALLI, LIMITI_PVL_PREDEFINITI, LUNGHEZZA_DESCRIZIONE_RACCOLTA } from "../src/lib/radar/fonti/pvl-calcoli";
+import { AVVISI_ANOMALI_PER_GIORNO, MASSIMO_DESCRIZIONI_RACCOLTE, misuraPerCodicePvl, statistichePvlVuote } from "../src/lib/radar/importa-pvl-calcoli";
 import { datiGiroPvl, type RisultatoPvlPerRegistro } from "../src/lib/radar/esecuzioni-calcoli";
 import { allarmiFonti, SOGLIE_ALLARMI, type RigaEsecuzioneLetta } from "../src/lib/radar/stato-fonti-calcoli";
 import { misuraCodiciRicercaPvl } from "../src/lib/radar/ricerca-pvl-calcoli";
@@ -146,6 +146,42 @@ uguale("R2: da valutare SOLO i codici con 0 gare A o B e PIÙ di 50 avvisi letti
 uguale("R3: i codici di divisione sono segnati a parte nella tabella", misura.codici.filter((c) => c.divisione).map((c) => c.cpv), ["55000000", "85000000", "50000000", "63000000", "79000000"]);
 const incompleta = misuraCodiciRicercaPvl([rigaMisura(10, { "80110000": { letti: 300 } })], ADESSO);
 uguale("R2: prima delle 4 settimane nessun codice da valutare", [incompleta.completa, incompleta.daValutare, incompleta.codici.find((c) => c.cpv === "80110000")?.letti], [false, [], 300]);
+
+// ───── 10. R4 (decisione dell'utente del 23/11, «Dagli avvisi PVL nel collaudo»): raccolta delle descrizioni mancanti, solo testo del CPV ─────
+const conCpv = (...cpv: string[]) => con(0, (a) => { const e = elementi(a); cpv.forEach((c, i) => { e[i].cpv = c; }); for (let i = cpv.length; i < e.length; i++) e[i].cpv = cpv[0]; });
+uguale("R4: «codice_descrizione» di un codice ancora senza descrizione → coppia certa; l'avviso si attribuisce al codice",
+  [descrizioniDaRaccogliere(conCpv("90460000_Servizi di pulizia di pozzi neri")), attribuzioneRicercaPvl(conCpv("90460000_Servizi di pulizia di pozzi neri")).codici], [{ coppie: { "90460000": "Servizi di pulizia di pozzi neri" }, sconosciute: [] }, ["90460000"]]);
+uguale("R4: anche «codice-cifra testo» e «codice - testo»",
+  [descrizioniDaRaccogliere(conCpv("90460000-6 Servizi di pulizia di pozzi neri")).coppie, descrizioniDaRaccogliere(conCpv("90460000 - Servizi di pulizia di pozzi neri")).coppie], [{ "90460000": "Servizi di pulizia di pozzi neri" }, { "90460000": "Servizi di pulizia di pozzi neri" }]);
+uguale("R4: nessuna coppia per un codice che ha già la descrizione, per un codice del file, per il solo codice senza testo",
+  [descrizioniDaRaccogliere(conCpv("85311000_Servizi di assistenza sociale con alloggio")), descrizioniDaRaccogliere(conCpv("90911200_Servizi di pulizia di edifici")), descrizioniDaRaccogliere(conCpv("90460000"))],
+  [{ coppie: {}, sconosciute: [] }, { coppie: {}, sconosciute: [] }, { coppie: {}, sconosciute: [] }]);
+uguale("R4: descrizione non riconosciuta → sconosciuta (il codice non si indovina); descrizioni note del file o dell'elenco → niente",
+  [descrizioniDaRaccogliere(conCpv("Servizi di sgombero neve")).sconosciute, descrizioniDaRaccogliere(conCpv("Servizi di pulizia di edifici")).sconosciute, descrizioniDaRaccogliere(conCpv("Servizi cimiteriali")).sconosciute], [["Servizi di sgombero neve"], [], []]);
+const statR4 = statistichePvlVuote();
+const paginaR4 = [conCpv("90460000_Servizi di pulizia di pozzi neri"), conCpv("Servizi di sgombero neve"), conCpv("Servizi di sgombero neve"), conCpv("Servizi cimiteriali", "Servizi di sgombero neve")];
+misuraPerCodicePvl(statR4.avvisi, paginaR4, paginaR4.map(leggiAvvisoPvl));
+uguale("R4: nel giro le coppie da qualunque avviso, le sconosciute SOLO dagli avvisi non attribuiti (con quante volte)",
+  [statR4.avvisi.descrizioniDaCompletare, statR4.avvisi.descrizioniSconosciute, statR4.avvisi.nonAttribuiti, statR4.avvisi.perCodice["90460000"]?.letti, statR4.avvisi.perCodice["98371110"]?.letti],
+  [{ "90460000": "Servizi di pulizia di pozzi neri" }, { "Servizi di sgombero neve": 2 }, 2, 1, 1]);
+const testoRegistro = JSON.stringify([statR4.avvisi.descrizioniDaCompletare, statR4.avvisi.descrizioniSconosciute]);
+const datiGara = paginaR4.flatMap((a) => [...elementi(a).map((e) => String(e.cig ?? "")), String(metadati(a).titolo ?? ""), String(metadati(a).descrizione ?? "")]).filter((x) => x.length > 5);
+atteso("R4: nel registro solo il testo del CPV, nessun dato della gara (CIG, titolo, descrizione)", datiGara.length > 0 && datiGara.every((x) => !testoRegistro.includes(x)), testoRegistro);
+const statLimiti = statistichePvlVuote();
+const tante = Array.from({ length: 60 }, (_, i) => conCpv(`Servizio sconosciuto numero ${i} ${"x".repeat(i === 0 ? 300 : 0)}`));
+misuraPerCodicePvl(statLimiti.avvisi, tante, tante.map(leggiAvvisoPvl));
+uguale("R4: al più 50 descrizioni per giro, ciascuna al più di 200 caratteri", [Object.keys(statLimiti.avvisi.descrizioniSconosciute).length, Math.max(...Object.keys(statLimiti.avvisi.descrizioniSconosciute).map((t) => t.length)), MASSIMO_DESCRIZIONI_RACCOLTE, LUNGHEZZA_DESCRIZIONE_RACCOLTA], [50, 200, 50, 200]);
+const giroR4 = datiGiroPvl({ eseguita: true, modo: "incrementale", giroFinito: true, sospesa: false, errore: null, statistiche: { ...statR4, db: { richiesteDb: 0, msDb: 0 } }, cursore: {}, letta: { da: "2026-11-21", a: "2026-11-23", pagine: 1 } } as unknown as RisultatoPvlPerRegistro);
+const avvisiGiro = (g: unknown) => (g as { avvisi: Record<string, unknown> }).avvisi;
+const giroVuoto = datiGiroPvl({ eseguita: true, modo: "incrementale", giroFinito: true, sospesa: false, errore: null, statistiche: { ...statistichePvlVuote(), db: { richiesteDb: 0, msDb: 0 } }, cursore: {}, letta: { da: "2026-11-21", a: "2026-11-23", pagine: 1 } } as unknown as RisultatoPvlPerRegistro);
+uguale("R4: il registro dei giri porta le due raccolte solo se ci sono", [avvisiGiro(giroR4).descrizioni_da_completare, avvisiGiro(giroR4).descrizioni_sconosciute, "descrizioni_da_completare" in avvisiGiro(giroVuoto), "descrizioni_sconosciute" in avvisiGiro(giroVuoto)],
+  [{ "90460000": "Servizi di pulizia di pozzi neri" }, { "Servizi di sgombero neve": 2 }, false, false]);
+const misuraR4 = misuraCodiciRicercaPvl([
+  { fonte: "pvl", esito: "ok", iniziato_il: "2026-11-20T08:00:00Z", avvisi: { per_codice: {}, descrizioni_da_completare: { "90460000": "Prima vista", "85311000": "Già nel file" }, descrizioni_sconosciute: { "Altro": 3, "Servizi di sgombero neve": 1 } } },
+  { fonte: "pvl", esito: "ok", iniziato_il: "2026-11-22T08:00:00Z", avvisi: { per_codice: {}, descrizioni_da_completare: { "90460000": "Vista dopo", "50225000": "Servizi di manutenzione" }, descrizioni_sconosciute: { "Servizi di sgombero neve": 4 } } },
+], ADESSO);
+uguale("R4: per la console la prima coppia vista per ogni codice ancora senza descrizione; le sconosciute sommate, dalla più frequente",
+  [misuraR4.descrizioniDaCompletare, misuraR4.descrizioniSconosciute], [{ "90460000": "Prima vista", "50225000": "Servizi di manutenzione" }, [{ testo: "Servizi di sgombero neve", volte: 5 }, { testo: "Altro", volte: 3 }]]);
 
 // ───── 9. R6: regole verso la fonte invariate ─────
 uguale("R6: limiti predefiniti della PVL invariati (100 avvisi per pagina, pausa 3 s, 30 s, 2 tentativi, tetto 20 richieste per giro)", LIMITI_PVL_PREDEFINITI, { avvisiPerPagina: 100, pausaMs: 3_000, timeoutMs: 30_000, tentativi: 2, richiesteMassime: 20 });

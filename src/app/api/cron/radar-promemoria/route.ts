@@ -7,8 +7,9 @@ import { statoInvioEmail } from "@/lib/radar/notifiche/interruttore";
 //   - questo percorso NON è in vercel.json (la voce consigliata, ogni 30 minuti dalle 05:30 alle 19:30 UTC, si aggiunge solo con
 //     un'autorizzazione dell'utente);
 //   - prima di qualunque lettura: il segreto del cron (CRON_SECRET), poi l'interruttore unico RADAR_NOTIFICHE_EMAIL («attivo», mai sulle
-//     anteprime, solo con il database dello staging). Spento = risposta immediata, nessun modulo del database caricato;
-//   - il motore usa SOLO il provider finto (Resend chiuso nel codice).
+//     anteprime; database dello staging, oppure col pacchetto P quello di produzione sul deploy di produzione). Spento = risposta immediata,
+//     nessun modulo del database caricato. Di base è spento (55A D-C: email ai clienti solo in F8, con la sua autorizzazione);
+//   - il motore usa il provider finto sullo staging e Resend SOLO in produzione (resendConsentito, provider.ts).
 // La risposta contiene solo numeri e motivi: nessun indirizzo, nessun testo delle email.
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;

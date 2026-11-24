@@ -186,15 +186,19 @@ async function principale(): Promise<void> {
     const m = mondo();
     const e = await eseguiPassaggio({ ...m.d, provider: { nome: "resend", invia: async () => ({ esito: "inviata", providerId: "x" }), quotaResidua: () => null } });
     controlla("guardia: un provider diverso dal finto non parte (Resend chiuso)", e.eseguito === false && m.db.conta() === 0);
-    controlla("resendConsentito() è sempre falso", resendConsentito() === false);
-    controlla("sceltaProvider() dà sempre il finto", sceltaProvider().nome === "finto");
+    // pacchetto P: Resend SOLO in produzione, sul deploy di produzione, con l'interruttore acceso; altrove mai (staging, anteprime, locale)
+    const PROD = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
+    const NIENTE_RESEND = [{}, STAGING, { ...STAGING, VERCEL_ENV: "preview" }, { NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_NOTIFICHE_EMAIL: "attivo" }, { NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "preview" }, { NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "production" }];
+    controlla("resendConsentito: falso sullo staging, sulle anteprime, in locale verso la produzione e senza l'interruttore", NIENTE_RESEND.every((env) => resendConsentito(env) === false));
+    controlla("resendConsentito: vero SOLO in produzione, sul deploy di produzione, con RADAR_NOTIFICHE_EMAIL=attivo", resendConsentito({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "production" }) === true);
+    controlla("sceltaProvider: il finto in ogni ambiente senza Resend consentito", NIENTE_RESEND.every((env) => sceltaProvider(env).nome === "finto"));
     let lanciato = false;
     try {
-      creaProviderResend("chiave-finta", async () => ({ status: 200, json: async () => ({}), headers: { get: () => null } }));
+      creaProviderResend("chiave-finta", async () => ({ status: 200, json: async () => ({}), headers: { get: () => null } }), STAGING);
     } catch {
       lanciato = true;
     }
-    controlla("creaProviderResend non si costruisce nella B4", lanciato);
+    controlla("creaProviderResend non si costruisce sullo staging", lanciato);
     const dr = await dipendenzeReali({}, PARAMETRI_PROPOSTI).catch(() => null);
     controlla("dipendenzeReali usa il provider finto", !dr || dr.provider.nome === "finto");
   }
@@ -1356,7 +1360,8 @@ function provaTesto(): void {
   const senzaCommenti = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
   const motore = senzaCommenti(leggi("motore.ts"));
   controlla("motore: l'interruttore unico prima di qualunque lettura", motore.indexOf("statoInvioEmail(d.env)") > 0 && motore.indexOf("statoInvioEmail(d.env)") < motore.indexOf("await ultimiGiriEventi(d)"));
-  controlla("motore: provider diverso dal finto rifiutato", /d\.provider\.nome !== "finto"/.test(motore));
+  controlla("motore: provider sbagliato per l'ambiente rifiutato (finto sullo staging, Resend in produzione), nel passaggio e nella ravvicinata",
+    (motore.match(/d\.provider\.nome !== \(stato\.ambiente === "produzione" \? "resend" : "finto"\)/g) ?? []).length === 2 && !/d\.provider\.nome !== "finto"/.test(motore));
   const rotta = fs.readFileSync(path.join(__dirname, "..", "src", "app", "api", "cron", "radar-promemoria", "route.ts"), "utf8");
   const r = senzaCommenti(rotta);
   controlla("rotta: CRON_SECRET controllato prima dell'interruttore e prima di caricare il motore", r.indexOf("cronAutorizzato(") > 0 && r.indexOf("cronAutorizzato(") < r.indexOf("statoInvioEmail(") && r.indexOf("statoInvioEmail(") < r.indexOf('import("@/lib/radar/notifiche/motore")'));
@@ -1364,8 +1369,8 @@ function provaTesto(): void {
   controlla("rotta: NON in vercel.json", !fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8").includes("radar-promemoria"));
   const resend = senzaCommenti(leggi("provider-resend.ts"));
   controlla("provider-resend: nessuna chiamata di rete diretta (solo la funzione iniettata)", !/\bfetch\s*\(/.test(resend) && /richiedi\(r\.url/.test(resend));
-  controlla("provider-resend: si costruisce solo con resendConsentito()", /if \(!resendConsentito\(\)\) throw/.test(resend));
-  controlla("provider: resendConsentito restituisce false", /export function resendConsentito\(\): false \{\s*return false;/.test(leggi("provider.ts")));
+  controlla("provider-resend: si costruisce solo con resendConsentito(env)", /if \(!resendConsentito\(env\)\) throw/.test(resend));
+  controlla("provider: resendConsentito vero solo con l'interruttore acceso in produzione", /export function resendConsentito\(env[^)]*\): boolean \{\s*const s = statoInvioEmail\(env\);\s*return s\.acceso && s\.ambiente === "produzione";/.test(leggi("provider.ts")));
   const ravv = senzaCommenti(leggi("ravvicinata.ts"));
   controlla("ravvicinata: il motore si carica solo dopo l'interruttore", ravv.indexOf("invioEmailAcceso(env)") > 0 && ravv.indexOf("invioEmailAcceso(env)") < ravv.indexOf('await import("./motore")'));
   for (const f of ["motore.ts", "eventi-calcoli.ts", "provider.ts", "provider-resend.ts", "parametri.ts"]) {
