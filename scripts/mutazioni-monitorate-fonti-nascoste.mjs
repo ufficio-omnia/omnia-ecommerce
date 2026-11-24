@@ -96,6 +96,14 @@ const MUTAZIONI = [
   { nome: "MM43 filtro «iscrizioni»: senza il ripiego dal tipo dell'avviso (qu-sy, P7_3)", file: TG, cerca: ",and(tipo_opportunita.is.null,tipo_avviso.in.${ISCRIZIONI_DALL_AVVISO})", con: "", richiede: "MT5." },
   { nome: "MP1 C1: indagine PVL P7_1_3 fuori dalle candidature", file: TG, cerca: ",and(tipo_opportunita.is.null,tipo_avviso.eq.${CANDIDATURE_DALL_AVVISO})", con: "", richiede: "MT5." },
   { nome: "MP2 C1: elenco PVL P7_3 fuori dalle iscrizioni", file: TG, cerca: 'const ISCRIZIONI_DALL_AVVISO = "(qu-sy,P7_3)";', con: 'const ISCRIZIONI_DALL_AVVISO = "(qu-sy)";', richiede: "MT5." },
+  // modulo chiuso in produzione (documento 57 §1)
+  { nome: "MZ1 menu: tabella dei clienti letta anche a modulo spento", file: "src/lib/radar/visibilita.ts", cerca: "  if (!(await attivoGenerale())) return false;\n", con: "", richiede: "MC1." },
+  { nome: "MZ2 apertura di sviluppo valida anche su Vercel", file: "src/lib/radar/diritto-calcoli.ts", cerca: '  return env.NODE_ENV !== "production" && !env.VERCEL;', con: '  return env.NODE_ENV !== "production";', richiede: "MC1." },
+  { nome: "MZ3 titolare: «Opportunità» sempre nel menu", file: "src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx", cerca: "voci={conOpportunita ? vociConOpportunita(VOCI_MENU_TITOLARE) : undefined}", con: "voci={vociConOpportunita(VOCI_MENU_TITOLARE)}", richiede: "MC2." },
+  { nome: "MZ4 Ufficio Gare: «Opportunità» sempre nel menu", file: "src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx", cerca: "voci={conOpportunita ? vociConOpportunita(VOCI_MENU_UFFICIO_GARE) : VOCI_MENU_UFFICIO_GARE}", con: "voci={vociConOpportunita(VOCI_MENU_UFFICIO_GARE)}", richiede: "MC3." },
+  { nome: "MZ5 Ufficio Gare: interruttore letto anche senza il grado 2", file: "src/app/site-omnia-ai/dashboard/omnia-ai/layout.tsx", cerca: "ufficioGareRadarAttivo(process.env) ? radarNelMenu(contesto.accountId) : Promise.resolve(false),", con: "radarNelMenu(contesto.accountId),", richiede: "MC3." },
+  { nome: "MZ6 pagine di Opportunità senza la porta", file: "src/lib/radar/area-cliente.ts", cerca: "  if (!contesto.diritto.visibile) notFound();\n", con: "", richiede: "MC4." },
+  { nome: "MZ7 cliente abilitato anche a modulo spento", file: "src/lib/radar/diritto-calcoli.ts", cerca: "const abilitato = dati.parametri.attivo && dati.cliente?.attivo === true;", con: "const abilitato = dati.cliente?.attivo === true;", richiede: "MC4." },
   // pacchetto P del go-live (55 §2): interruttori della B4
   { nome: "MQ1 P: interruttore acceso sulle anteprime", file: "src/lib/radar/interruttori-b4.ts", cerca: '  if (env.VERCEL_ENV === "preview") return false;\n', con: "", richiede: "P1." },
   { nome: "MQ2 P: produzione accesa anche da un computer locale", file: "src/lib/radar/interruttori-b4.ts", cerca: '  return ambiente === "produzione" && env.VERCEL_ENV === "production";', con: '  return ambiente === "produzione";', richiede: "P1." },
