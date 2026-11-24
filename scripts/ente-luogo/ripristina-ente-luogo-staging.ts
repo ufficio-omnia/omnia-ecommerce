@@ -5,14 +5,17 @@
 //     unisciVersione dalla fotografia del coordinamento di prima del giro e dai valori del giro) e la provenienza della sede alla fonte che la
 //     indica (TED o Sintel). Le 15 gare «solo provenienza» hanno già i valori giusti.
 //   PARTE B (7 gare unite alla PVL prima del 17/11, SENZA regioni del luogo di esecuzione): SOLO luogo_regioni, calcolate AL LANCIO dallo
-//     stato attuale, in modo deterministico: TED → regioneDaNuts(codice_nuts) (la funzione dell'importatore TED), solo se il codice_nuts
-//     viene da TED; Sintel → ["lombardia"], la regione che l'importatore Sintel assegna di suo a ogni bando. La sede non si tocca.
+//     stato attuale, in modo deterministico: TED → regioneDaNuts del codice_nuts registrato (primo NUTS della procedura o dell'ente):
+//     approssimazione deterministica, una sola regione; solo se il codice_nuts viene da TED. Sintel → ["lombardia"], esattamente la regione
+//     che l'importatore Sintel assegna di suo a ogni bando. La sede non si tocca.
 // Modi:
 //   prima   → solo letture: gara per gara il valore ATTUALE, quello ripristinato e il motivo; si ferma se lo stato non è quello atteso;
-//   applica → per ogni gara UNA scrittura condizionata su radar_procedure (where id = X and aggiornata_il = <letto>), poi una traccia
-//             «correzione_dati» non notificabile in radar_aggiornamenti (una per gara, mai doppia); idempotente. Solo con
-//             esegui-autorizzato.mjs e un'autorizzazione «correzione_dati» (porta del registro);
-//   dopo    → solo letture: ogni gara ha il valore ripristinato e la sua provenienza, e una sola traccia; nessuna traccia su altre gare.
+//   applica → per ogni gara UNA scrittura condizionata su radar_procedure (where id = X and aggiornata_il = <letto>); idempotente. NESSUNA
+//             riga in radar_aggiornamenti (rilievo 1 di B2: i clienti la vedrebbero nella cronologia; come il 52A): l'esito, gara per gara
+//             (valori prima e dopo, provenienza, ora), va in un file JSON in TENDER_INTELLIGENCE_FASE0/allegati/ente-luogo/, riscritto a ogni
+//             passo, anche se si ferma a metà. Solo dati pubblici delle gare. Solo con esegui-autorizzato.mjs e un'autorizzazione
+//             «correzione_dati» (porta del registro);
+//   dopo    → solo letture: ogni gara ha il valore ripristinato e la sua provenienza; nessuna riga «ente_luogo» nel registro dei cambiamenti.
 // Stato atteso al lancio, per ogni gara (altrimenti FERMO, nessuna scrittura per nessuna gara):
 //   parte A: sede, regioni e provenienza della sede ESATTAMENTE come le ha lasciate il giro (o già ripristinate);
 //   parte B: regioni vuote (o già ripristinate), la fonte presente nella gara, il NUTS di TED riconosciuto. Non tocca aggiornata_il.
@@ -33,10 +36,14 @@ export type GaraParteB = { id: string; parte: "B"; fonte: "ted" | "sintel" };
 export type GaraDelPiano = GaraParteA | GaraParteB;
 export type PianoFile = { conteggi: { gare: number; parte_a: number; con_valori: number; solo_provenienza: number; parte_b: number }; gare: GaraDelPiano[] };
 type Letta = Sede & { id: string; codice_nuts: string | null; fonti: string[] | null; provenienza_campi: Record<string, Provenienza> | null; aggiornata_il: string };
-export type Piano = { gara: string; parte: "A" | "B"; prima: Sede; dopo: Sede; colonne: (keyof Sede)[]; provenienza: Record<string, Provenienza>; aggiornataIl: string; giaAPosto: boolean; motivo: string };
-export type EsitoRipristino = { piani: Piano[]; cambiate: number; giaAPosto: number; tracce: number };
+export type Piano = { gara: string; parte: "A" | "B"; prima: Sede; dopo: Sede; colonne: (keyof Sede)[]; provenienza: Record<string, Provenienza>; provenienzaPrima: Record<string, Provenienza | null>; provenienzaScritta: Record<string, Provenienza>; aggiornataIl: string; giaAPosto: boolean; motivo: string };
+export type EsitoRipristino = { piani: Piano[]; cambiate: number; giaAPosto: number };
+// Il file dell'esito di «applica»: una riga per gara, solo dati pubblici delle gare (identificativo, sede, regioni, provenienza della fonte).
+export type RigaEsito = { id: string; parte: "A" | "B"; motivo: string; prima: Sede; dopo: Sede; provenienza_prima: Record<string, Provenienza | null>; provenienza_scritta: Record<string, Provenienza>; esito: "da scrivere" | "scritta" | "già a posto"; ora: string | null };
+export type FileEsito = { documento: string; script: string; avviato_il: string; aggiornato_il: string; stato: "in corso" | "completato" | "fermato"; motivo_fermo: string | null; conteggi: { gare: number; scritte: number; gia_a_posto: number }; gare: RigaEsito[] };
+export type Diario = (e: FileEsito) => void;
 
-export const ID_TRACCIA = "ripristino-ente-luogo-20261124";
+export const CARTELLA_ESITO = "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/allegati/ente-luogo";
 // La regione che l'importatore Sintel assegna a OGNI bando (sintel-calcoli.ts, «regioni: ["lombardia"]»; la prova lo confronta col lettore vero)
 export const REGIONI_SINTEL: readonly string[] = ["lombardia"];
 const COLONNE_SEDE: (keyof Sede)[] = ["sa_comune", "sa_provincia", "sa_regione", "luogo_regioni"];
@@ -75,7 +82,19 @@ function pianoParteA(g: GaraParteA, letta: Letta): Piano {
   if (!giaAPosto && !(uguali(letta, g.giro) && stessaProvenienza(prov.luogo, g.giro.luogo))) {
     throw new FermoCollaudo(`gara ${g.id} (parte A): sede, regioni o provenienza non sono quelle lasciate dal giro PVL (${JSON.stringify({ ...sede(letta), luogo: prov.luogo ? { f: prov.luogo.f, id: prov.luogo.id } : null })})`);
   }
-  return { gara: g.id, parte: "A", prima: sede(letta), dopo: sede(g.atteso), colonne: COLONNE_SEDE, provenienza: { ...prov, luogo: g.provenienza.luogo, luogo_regioni: g.provenienza.luogo_regioni }, aggiornataIl: letta.aggiornata_il, giaAPosto, motivo: motivoParteA(g) };
+  return {
+    gara: g.id,
+    parte: "A",
+    prima: sede(letta),
+    dopo: sede(g.atteso),
+    colonne: COLONNE_SEDE,
+    provenienza: { ...prov, luogo: g.provenienza.luogo, luogo_regioni: g.provenienza.luogo_regioni },
+    provenienzaPrima: { luogo: prov.luogo ?? null, luogo_regioni: prov.luogo_regioni ?? null },
+    provenienzaScritta: { luogo: g.provenienza.luogo, luogo_regioni: g.provenienza.luogo_regioni },
+    aggiornataIl: letta.aggiornata_il,
+    giaAPosto,
+    motivo: motivoParteA(g),
+  };
 }
 
 function pianoParteB(g: GaraParteB, letta: Letta): Piano {
@@ -91,7 +110,7 @@ function pianoParteB(g: GaraParteB, letta: Letta): Piano {
     if (!provenienza || provenienza.f !== "ted") throw new FermoCollaudo(`gara ${g.id} (parte B): il codice NUTS non viene da TED (${provenienza?.f ?? "nessuna provenienza"})`);
     if (!regione) throw new FermoCollaudo(`gara ${g.id} (parte B): codice NUTS ${letta.codice_nuts ?? "vuoto"} non riconosciuto`);
     regioni = [regione];
-    motivo = `regioni vuote → regione del NUTS TED ${letta.codice_nuts} (regioneDaNuts, come l'importatore TED); sede non toccata`;
+    motivo = `regioni vuote → regioneDaNuts del codice_nuts registrato ${letta.codice_nuts} (primo NUTS della procedura o dell'ente): approssimazione deterministica, una sola regione; sede non toccata`;
   } else {
     provenienza = prov._versione?.f === "sintel" ? prov._versione : Object.keys(prov).sort().map((k) => prov[k]).find((p) => p?.f === "sintel");
     if (!provenienza) throw new FermoCollaudo(`gara ${g.id} (parte B): nessuna provenienza Sintel nella gara`);
@@ -101,7 +120,19 @@ function pianoParteB(g: GaraParteB, letta: Letta): Piano {
   const dopo = { ...sede(letta), luogo_regioni: regioni };
   const giaAPosto = uguali(letta, dopo) && stessaProvenienza(prov.luogo_regioni, provenienza);
   if (!giaAPosto && letta.luogo_regioni.length > 0) throw new FermoCollaudo(`gara ${g.id} (parte B): le regioni non sono più vuote (${letta.luogo_regioni.join(",")})`);
-  return { gara: g.id, parte: "B", prima: sede(letta), dopo, colonne: ["luogo_regioni"], provenienza: { ...prov, luogo_regioni: provenienza }, aggiornataIl: letta.aggiornata_il, giaAPosto, motivo };
+  return {
+    gara: g.id,
+    parte: "B",
+    prima: sede(letta),
+    dopo,
+    colonne: ["luogo_regioni"],
+    provenienza: { ...prov, luogo_regioni: provenienza },
+    provenienzaPrima: { luogo_regioni: prov.luogo_regioni ?? null },
+    provenienzaScritta: { luogo_regioni: provenienza },
+    aggiornataIl: letta.aggiornata_il,
+    giaAPosto,
+    motivo,
+  };
 }
 
 /** Le letture e i controlli sullo stato ATTUALE: il piano per ogni gara, oppure FERMO senza scrivere nulla. */
@@ -117,55 +148,75 @@ export async function pianoRipristino(admin: ClientDb, gare: readonly GaraDelPia
   return piani;
 }
 
-/** Le scritture: solo dopo che il piano è passato per TUTTE le gare. */
-export async function ripristinaEnteLuogo(admin: ClientDb, adesso: Date, gare: readonly GaraDelPiano[]): Promise<EsitoRipristino> {
+/**
+ * Le scritture: solo dopo che il piano è passato per TUTTE le gare. Nessuna riga nel registro dei cambiamenti: l'esito va al «diario» (il
+ * file JSON), chiamato col piano prima della prima scrittura, dopo ogni gara scritta e alla fine («completato» o «fermato»).
+ */
+export async function ripristinaEnteLuogo(admin: ClientDb, orologio: () => Date, gare: readonly GaraDelPiano[], diario: Diario = () => undefined): Promise<EsitoRipristino> {
   const piani = await pianoRipristino(admin, gare);
+  const avviato = orologio().toISOString();
+  const righe: RigaEsito[] = piani.map((p) => ({ id: p.gara, parte: p.parte, motivo: p.motivo, prima: p.prima, dopo: p.dopo, provenienza_prima: p.provenienzaPrima, provenienza_scritta: p.provenienzaScritta, esito: p.giaAPosto ? "già a posto" : "da scrivere", ora: null }));
+  const scrivi = (stato: FileEsito["stato"], motivo: string | null) =>
+    diario({
+      documento: "Esito del ripristino ente/luogo dopo il giro di prova PVL del 24/11/2026 (solo dati pubblici delle gare)",
+      script: "scripts/ente-luogo/ripristina-ente-luogo-staging.ts applica",
+      avviato_il: avviato,
+      aggiornato_il: orologio().toISOString(),
+      stato,
+      motivo_fermo: motivo,
+      conteggi: { gare: righe.length, scritte: righe.filter((r) => r.esito === "scritta").length, gia_a_posto: righe.filter((r) => r.esito === "già a posto").length },
+      gare: righe.map((r) => ({ ...r })),
+    });
+  scrivi("in corso", null);
   let cambiate = 0;
-  let tracce = 0;
-  for (const p of piani) {
-    if (!p.giaAPosto) {
+  try {
+    for (const [i, p] of piani.entries()) {
+      if (p.giaAPosto) continue;
       const valori: Record<string, unknown> = Object.fromEntries(p.colonne.map((c) => [c, p.dopo[c]]));
       const r = await admin.from("radar_procedure").update({ ...valori, provenienza_campi: p.provenienza }).eq("id", p.gara).eq("aggiornata_il", p.aggiornataIl).select("id");
       if (r.error) throw new FermoCollaudo(`scrittura della gara ${p.gara}: ${r.error.message ?? ""}`);
       const n = ((r.data ?? []) as unknown[]).length;
       if (n !== 1) throw new FermoCollaudo(`gara ${p.gara}: cambiate ${n} righe invece di una (gara riscritta nel frattempo?)`);
       cambiate++;
+      righe[i] = { ...righe[i], esito: "scritta", ora: orologio().toISOString() };
+      scrivi("in corso", null);
     }
-    // la traccia: una per gara, mai notificabile, mai doppia (indice unico procedura_id, tipo, campo, id_fonte)
-    const t = await admin
-      .from("radar_aggiornamenti")
-      .upsert(
-        [{ procedura_id: p.gara, tipo: "correzione_dati", campo: "ente_luogo", valore_precedente: JSON.stringify(p.prima), valore_nuovo: JSON.stringify(p.dopo), fonte: "manuale", id_fonte: ID_TRACCIA, nota: `Ripristino dopo il giro di prova PVL del 24/11/2026 (parte ${p.parte}): ${p.motivo}`.slice(0, 1000), notificabile: false, rilevato_il: adesso.toISOString() }],
-        { onConflict: "procedura_id,tipo,campo,id_fonte", ignoreDuplicates: true },
-      )
-      .select("procedura_id");
-    if (t.error) throw new FermoCollaudo(`traccia della gara ${p.gara}: ${t.error.message ?? ""}`);
-    tracce += ((t.data ?? []) as unknown[]).length;
+    const dopo = await pianoRipristino(admin, gare);
+    if (dopo.some((p) => !p.giaAPosto)) throw new FermoCollaudo("dopo la scrittura qualche gara non ha ancora il valore corretto");
+  } catch (e) {
+    scrivi("fermato", e instanceof Error ? e.message : String(e));
+    throw e;
   }
-  const dopo = await pianoRipristino(admin, gare);
-  if (dopo.some((p) => !p.giaAPosto)) throw new FermoCollaudo("dopo la scrittura qualche gara non ha ancora il valore corretto");
-  return { piani, cambiate, giaAPosto: piani.filter((p) => p.giaAPosto).length, tracce };
+  scrivi("completato", null);
+  return { piani, cambiate, giaAPosto: piani.filter((p) => p.giaAPosto).length };
 }
 
-/** «dopo»: solo letture. Ogni gara del piano ripristinata (valori e provenienza), una sola traccia per gara, nessuna traccia su altre gare. */
-export async function verificaDopo(admin: ClientDb, gare: readonly GaraDelPiano[]): Promise<{ piani: Piano[]; tracce: number }> {
+/** Il diario vero: il file JSON dell'esito nella cartella degli allegati, riscritto a ogni passo (stesso nome per tutto il lancio). */
+// La cartella si crea solo alla prima scrittura del diario (cioè dopo porta, guardie e piano superati).
+export function diarioSuFile(cartella: string, adesso: Date): { diario: Diario; file: string } {
+  const file = path.join(cartella, `esito-ripristino-ente-luogo-${adesso.toISOString().replace(/[-:.]/g, "")}.json`);
+  return {
+    file,
+    diario: (e) => {
+      fs.mkdirSync(cartella, { recursive: true });
+      fs.writeFileSync(file, `${JSON.stringify(e, null, 1)}\n`);
+    },
+  };
+}
+
+/** «dopo»: solo letture. Ogni gara del piano ripristinata (valori e provenienza); nessuna riga «ente_luogo» nel registro dei cambiamenti. */
+export async function verificaDopo(admin: ClientDb, gare: readonly GaraDelPiano[]): Promise<{ piani: Piano[] }> {
   const piani = await pianoRipristino(admin, gare);
   const non = piani.filter((p) => !p.giaAPosto).map((p) => p.gara);
   if (non.length > 0) throw new FermoCollaudo(`dopo: ${non.length} gare non ripristinate (${non.join(", ")})`);
-  const t = await admin.from("radar_aggiornamenti").select("procedura_id, tipo, campo, notificabile").eq("id_fonte", ID_TRACCIA);
-  if (t.error) throw new FermoCollaudo(`lettura delle tracce: ${t.error.message ?? ""}`);
-  const righe = (t.data ?? []) as { procedura_id: string; tipo: string; campo: string; notificabile: boolean }[];
-  const ids = new Set(gare.map((g) => g.id));
-  const perGara = new Map<string, number>();
-  for (const x of righe) perGara.set(x.procedura_id, (perGara.get(x.procedura_id) ?? 0) + 1);
-  if (righe.some((x) => !ids.has(x.procedura_id))) throw new FermoCollaudo("dopo: tracce del ripristino su gare fuori dal piano");
-  if (gare.some((g) => perGara.get(g.id) !== 1)) throw new FermoCollaudo("dopo: non tutte le gare hanno una e una sola traccia del ripristino");
-  if (righe.some((x) => x.tipo !== "correzione_dati" || x.campo !== "ente_luogo" || x.notificabile !== false)) throw new FermoCollaudo("dopo: una traccia del ripristino non è «correzione_dati» non notificabile");
-  return { piani, tracce: righe.length };
+  const t = await admin.from("radar_aggiornamenti").select("procedura_id").eq("campo", "ente_luogo").in("procedura_id", gare.map((g) => g.id));
+  if (t.error) throw new FermoCollaudo(`lettura del registro dei cambiamenti: ${t.error.message ?? ""}`);
+  if (((t.data ?? []) as unknown[]).length > 0) throw new FermoCollaudo("dopo: righe «ente_luogo» nel registro dei cambiamenti (i clienti le vedrebbero nella cronologia)");
+  return { piani };
 }
 
 export type Modo = "prima" | "applica" | "dopo";
-export async function lancia(modo: Modo, ambiente: Record<string, string | undefined>, registro: { controllaPorta: (x: { script: string }) => unknown } | null, gare: readonly GaraDelPiano[]): Promise<EsitoRipristino> {
+export async function lancia(modo: Modo, ambiente: Record<string, string | undefined>, registro: { controllaPorta: (x: { script: string }) => unknown } | null, gare: readonly GaraDelPiano[], diario: Diario = () => undefined): Promise<EsitoRipristino> {
   if (modo === "applica") {
     if (!registro) throw new FermoCollaudo("applica: solo con esegui-autorizzato.mjs e un'autorizzazione registrata");
     registro.controllaPorta({ script: "ripristina-ente-luogo-staging.ts" });
@@ -178,11 +229,11 @@ export async function lancia(modo: Modo, ambiente: Record<string, string | undef
   try {
     const client = createClient(url, String(ambiente.SUPABASE_SERVICE_ROLE_KEY ?? ""), { auth: { autoRefreshToken: false, persistSession: false } }) as unknown as ClientDb;
     let esito: EsitoRipristino;
-    if (modo === "applica") esito = await ripristinaEnteLuogo(client, new Date(), gare);
+    if (modo === "applica") esito = await ripristinaEnteLuogo(client, () => new Date(), gare, diario);
     else if (modo === "dopo") {
       const d = await verificaDopo(client, gare);
-      esito = { piani: d.piani, cambiate: 0, giaAPosto: d.piani.length, tracce: d.tracce };
-    } else esito = { piani: await pianoRipristino(client, gare), cambiate: 0, giaAPosto: 0, tracce: 0 };
+      esito = { piani: d.piani, cambiate: 0, giaAPosto: d.piani.length };
+    } else esito = { piani: await pianoRipristino(client, gare), cambiate: 0, giaAPosto: 0 };
     if (fermo.motivo) throw new FermoCollaudo(fermo.motivo);
     return esito;
   } finally {
@@ -210,12 +261,14 @@ async function principale(): Promise<number> {
   const { caricaStaging } = (await import(GUARDIA)) as { caricaStaging: () => Record<string, string> };
   const v = caricaStaging();
   if (v.STAGING_PROJECT_REF !== STAGING_REF) throw new FermoCollaudo("guardia: non è lo staging");
-  const e = await lancia(modo, { NEXT_PUBLIC_SUPABASE_URL: v.STAGING_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: v.STAGING_SECRET_KEY, VERCEL_ENV: process.env.VERCEL_ENV }, registro, piano.gare);
+  const esitoSuFile = modo === "applica" ? diarioSuFile(CARTELLA_ESITO, new Date()) : null;
+  if (esitoSuFile) console.log(`esito di applica: ${esitoSuFile.file}`);
+  const e = await lancia(modo, { NEXT_PUBLIC_SUPABASE_URL: v.STAGING_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: v.STAGING_SECRET_KEY, VERCEL_ENV: process.env.VERCEL_ENV }, registro, piano.gare, esitoSuFile?.diario);
   const testo = (s: Sede) => `${s.sa_comune ?? "–"} (${s.sa_provincia ?? "–"}) ${s.sa_regione ?? "–"} [${s.luogo_regioni.join(",")}]`;
   for (const p of e.piani) console.log(`${p.gara.slice(0, 8)} ${p.parte}: ${p.giaAPosto ? `già a posto: ${testo(p.dopo)}` : `${testo(p.prima)} → ${testo(p.dopo)} — ${p.motivo}`}`);
   const a = e.piani.filter((p) => p.parte === "A").length;
-  if (modo === "applica") console.log(`Ripristino ente/luogo: gare cambiate ${e.cambiate}, già a posto ${e.giaAPosto}, tracce nuove ${e.tracce}`);
-  else if (modo === "dopo") console.log(`DOPO: tutte le ${e.piani.length} gare ripristinate (parte A ${a}, parte B ${e.piani.length - a}), ${e.tracce} tracce, nessuna fuori dal piano`);
+  if (modo === "applica") console.log(`Ripristino ente/luogo: gare cambiate ${e.cambiate}, già a posto ${e.giaAPosto}; nessuna riga nel registro dei cambiamenti; esito in ${esitoSuFile?.file}`);
+  else if (modo === "dopo") console.log(`DOPO: tutte le ${e.piani.length} gare ripristinate (parte A ${a}, parte B ${e.piani.length - a}); nessuna riga «ente_luogo» nel registro dei cambiamenti`);
   else console.log(`PRIMA: nessuna scrittura; ${e.piani.length} gare (parte A ${a}: ${piano.conteggi.con_valori} con valori e ${piano.conteggi.solo_provenienza} solo provenienza; parte B ${e.piani.length - a}), da scrivere ${e.piani.filter((p) => !p.giaAPosto).length}`);
   return 0;
 }

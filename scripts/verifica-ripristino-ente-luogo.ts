@@ -3,7 +3,7 @@
 // fonti lette sullo staging il 24/11). Controlla anche che la parte A sia quella che il motore CORRETTO produce dai valori di prima e da
 // quelli del giro, che un nuovo giro PVL non la riporti indietro, e che le regioni della parte B siano quelle degli importatori TED e Sintel.
 // Uso: npx tsx scripts/verifica-ripristino-ente-luogo.ts
-import { ID_TRACCIA, REGIONI_SINTEL, lancia, leggiPiano, pianoRipristino, ripristinaEnteLuogo, verificaDopo, type GaraParteA, type GaraParteB } from "./ente-luogo/ripristina-ente-luogo-staging";
+import { CARTELLA_ESITO, REGIONI_SINTEL, diarioSuFile, lancia, leggiPiano, pianoRipristino, ripristinaEnteLuogo, verificaDopo, type FileEsito, type GaraParteA, type GaraParteB } from "./ente-luogo/ripristina-ente-luogo-staging";
 import { FermoCollaudo } from "./collaudo-z8/collaudo-motore-z8";
 import { DbFinto } from "./lib/db-finto-motore";
 import type { ClientDb } from "../src/lib/radar/notifiche/motore";
@@ -14,6 +14,7 @@ import { leggiProceduraSintel, type BandoSintel } from "../src/lib/radar/fonti/s
 import { regioneDaNuts } from "../src/lib/radar/territorio";
 import type { RigaProcedura } from "../src/lib/radar/importa-calcoli";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 let ok = 0;
@@ -109,7 +110,7 @@ async function principale(): Promise<void> {
   const piani = await pianoRipristino(dbP as unknown as ClientDb, GARE);
   controlla("prima: 33 piani, nessuna scrittura, nessuna già a posto, un motivo per ognuna", piani.length === 33 && scritture(dbP).length === 0 && piani.every((p) => !p.giaAPosto && p.motivo.length > 10), { n: piani.length, scritture: scritture(dbP).length });
   controlla("prima: i motivi dicono che cosa si corregge (sede, regioni svuotate, provincia tolta, solo provenienza, NUTS, Sintel)", ["56a35499", "a8f5c7db", "39d1677f", "2d30227b", "5f6adcdd"].every((x) => !!piani.find((p) => p.gara.startsWith(x))) &&
-    /regioni svuotate dal giro/.test(piani.find((p) => p.gara.startsWith("56a35499"))!.motivo) && /regione svuotata dal giro/.test(piani.find((p) => p.gara.startsWith("d1e67ebf"))?.motivo ?? "") && /sede presa dal luogo di esecuzione PVL → sede TED/.test(piani.find((p) => p.gara.startsWith("63e0b112"))?.motivo ?? "") &&/provincia di un altro comune tolta/.test(piani.find((p) => p.gara.startsWith("a8f5c7db"))!.motivo) && /valori già giusti/.test(piani.find((p) => p.gara.startsWith("39d1677f"))!.motivo) && /NUTS TED ITH36/.test(piani.find((p) => p.gara.startsWith("2d30227b"))!.motivo) && /importatore Sintel/.test(piani.find((p) => p.gara.startsWith("5f6adcdd"))!.motivo));
+    /regioni svuotate dal giro/.test(piani.find((p) => p.gara.startsWith("56a35499"))!.motivo) && /regione svuotata dal giro/.test(piani.find((p) => p.gara.startsWith("d1e67ebf"))?.motivo ?? "") && /sede presa dal luogo di esecuzione PVL → sede TED/.test(piani.find((p) => p.gara.startsWith("63e0b112"))?.motivo ?? "") &&/provincia di un altro comune tolta/.test(piani.find((p) => p.gara.startsWith("a8f5c7db"))!.motivo) && /valori già giusti/.test(piani.find((p) => p.gara.startsWith("39d1677f"))!.motivo) && /regioneDaNuts del codice_nuts registrato ITH36 \(primo NUTS della procedura o dell.ente\): approssimazione deterministica, una sola regione/.test(piani.find((p) => p.gara.startsWith("2d30227b"))!.motivo) && /importatore Sintel/.test(piani.find((p) => p.gara.startsWith("5f6adcdd"))!.motivo));
   let dopoPrima = false;
   try {
     await verificaDopo(dbP as unknown as ClientDb, GARE);
@@ -121,8 +122,11 @@ async function principale(): Promise<void> {
   // ───── applica ─────
   const db = mondo();
   const altraPrima = JSON.stringify(gara(db, "altra-gara"));
-  const e = await ripristinaEnteLuogo(db as unknown as ClientDb, ORA, GARE);
-  controlla("applica: 33 gare riscritte, 33 tracce", e.cambiate === 33 && e.tracce === 33 && e.giaAPosto === 0, { cambiate: e.cambiate, tracce: e.tracce });
+  const fogli: FileEsito[] = [];
+  let minuto = 0;
+  const orologio = () => new Date(ORA.getTime() + 1000 * minuto++);
+  const e = await ripristinaEnteLuogo(db as unknown as ClientDb, orologio, GARE, (f) => fogli.push(structuredClone(f)));
+  controlla("applica: 33 gare riscritte", e.cambiate === 33 && e.giaAPosto === 0, { cambiate: e.cambiate });
   controlla("applica A: ogni gara ha sede e regioni del piano", GARE_A.every((g) => sedeDi(gara(db, g.id)) === sedePiano(g.atteso)), GARE_A.filter((g) => sedeDi(gara(db, g.id)) !== sedePiano(g.atteso)).map((g) => g.id));
   controlla("applica A: provenienza della sede e delle regioni del piano; gli altri campi della provenienza intatti", GARE_A.every((g) => {
     const p = gara(db, g.id).provenienza_campi as ProvenienzaCampi;
@@ -135,17 +139,44 @@ async function principale(): Promise<void> {
   }));
   controlla("applica: aggiornata_il e gli altri campi delle gare non cambiano", GARE.every((g) => gara(db, g.id).aggiornata_il === AGGIORNATA && String(gara(db, g.id).oggetto).startsWith("(gara sintetica")));
   controlla("applica: una gara fuori dal piano (senza regioni anche lei) non cambia", JSON.stringify(gara(db, "altra-gara")) === altraPrima);
-  const tracce = db.t("radar_aggiornamenti");
-  controlla("applica: tracce «correzione_dati» mai notificabili, una per gara, con prima, dopo e parte nella nota", tracce.length === 33 && tracce.every((t) => t.tipo === "correzione_dati" && t.notificabile === false && t.campo === "ente_luogo" && t.id_fonte === ID_TRACCIA && t.fonte === "manuale" && typeof t.valore_precedente === "string" && typeof t.valore_nuovo === "string" && /\(parte [AB]\)/.test(String(t.nota))) && new Set(tracce.map((t) => t.procedura_id)).size === 33);
-  controlla("applica: solo radar_procedure (33 aggiornamenti) e radar_aggiornamenti (33 tracce)", scritture(db).length === 66 && scritture(db).filter((r) => r.tabella === "radar_procedure" && r.metodo === "update").length === 33 && scritture(db).filter((r) => r.tabella === "radar_aggiornamenti").length === 33);
+  // rilievo 1 di B2: NESSUNA riga nel registro dei cambiamenti (i clienti la vedrebbero nella cronologia della scheda)
+  controlla("applica: nessuna riga in radar_aggiornamenti; solo 33 aggiornamenti di radar_procedure", db.t("radar_aggiornamenti").length === 0 && scritture(db).length === 33 && scritture(db).every((r) => r.tabella === "radar_procedure" && r.metodo === "update"));
+  // l'esito su file: piano prima della prima scrittura, una riga per gara con prima, dopo, provenienza e ora, «completato» alla fine
+  const ultimo = fogli[fogli.length - 1];
+  controlla("esito: scritto prima della prima scrittura (33 «da scrivere», stato «in corso»), dopo ogni gara e alla fine (35 volte)", fogli.length === 35 && fogli[0].stato === "in corso" && fogli[0].gare.length === 33 && fogli[0].gare.every((r) => r.esito === "da scrivere" && r.ora === null) && fogli[1].conteggi.scritte === 1, { n: fogli.length });
+  controlla("esito finale: «completato», 33 gare scritte, ognuna con l'ora della sua scrittura", ultimo.stato === "completato" && ultimo.motivo_fermo === null && ultimo.conteggi.scritte === 33 && ultimo.gare.every((r) => r.esito === "scritta" && typeof r.ora === "string") && new Set(ultimo.gare.map((r) => r.ora)).size === 33);
+  controlla("esito: per ogni gara id, parte, motivo, valori prima e dopo, provenienza prima e scritta", ultimo.gare.every((r) => {
+    const g = GARE.find((x) => x.id === r.id)!;
+    const sedeOk = g.parte === "A" ? sedePiano(r.dopo) === sedePiano(g.atteso) && sedePiano(r.prima) === sedePiano(g.giro) && r.provenienza_scritta.luogo?.f === g.provenienza.luogo.f && r.provenienza_prima.luogo?.f === "pvl" : JSON.stringify(r.dopo.luogo_regioni) === JSON.stringify(attesoB(g)) && r.prima.luogo_regioni.length === 0 && !!r.provenienza_scritta.luogo_regioni;
+    return sedeOk && r.parte === g.parte && r.motivo.length > 10;
+  }));
+  const testoEsito = JSON.stringify(ultimo);
+  controlla("esito: solo dati pubblici delle gare (nessun utente, email, impresa, chiave)", Object.keys(ultimo.gare[0]).join(",") === "id,parte,motivo,prima,dopo,provenienza_prima,provenienza_scritta,esito,ora" && !/[\w.+-]+@[\w-]+\.[a-z]{2,}|user_id|utente|impresa|email|secret|sb_secret|sb_publishable/i.test(testoEsito));
   const d1 = await verificaDopo(db as unknown as ClientDb, GARE);
-  controlla("dopo: tutte le 33 gare ripristinate, 33 tracce", d1.piani.length === 33 && d1.piani.every((p) => p.giaAPosto) && d1.tracce === 33);
+  controlla("dopo: tutte le 33 gare ripristinate, nessuna riga «ente_luogo» nel registro", d1.piani.length === 33 && d1.piani.every((p) => p.giaAPosto));
   const foto = JSON.stringify(db.tabelle);
-  const e2 = await ripristinaEnteLuogo(db as unknown as ClientDb, new Date("2026-11-26T08:00:00Z"), GARE);
-  controlla("ripetuto: idempotente (0 gare cambiate, 33 già a posto, nessuna traccia nuova, nulla cambia)", e2.cambiate === 0 && e2.giaAPosto === 33 && e2.tracce === 0 && JSON.stringify(db.tabelle) === foto, { cambiate: e2.cambiate, giaAPosto: e2.giaAPosto, tracce: e2.tracce });
+  const fogli2: FileEsito[] = [];
+  const e2 = await ripristinaEnteLuogo(db as unknown as ClientDb, () => new Date("2026-11-26T08:00:00Z"), GARE, (f) => fogli2.push(f));
+  controlla("ripetuto: idempotente (0 gare cambiate, 33 già a posto, nulla cambia; l'esito dice «già a posto»)", e2.cambiate === 0 && e2.giaAPosto === 33 && JSON.stringify(db.tabelle) === foto && fogli2[fogli2.length - 1].stato === "completato" && fogli2[fogli2.length - 1].conteggi.gia_a_posto === 33, { cambiate: e2.cambiate, giaAPosto: e2.giaAPosto });
+  {
+    // il diario vero: file JSON nella cartella indicata (qui una cartella temporanea), creata solo alla prima scrittura, riscritto a ogni passo
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "ti-esito-"));
+    const cartella = path.join(base, "allegati", "ente-luogo");
+    const { diario, file } = diarioSuFile(cartella, new Date("2026-11-25T08:30:00.000Z"));
+    const primaDellaScrittura = fs.existsSync(cartella);
+    const dF = mondo();
+    await ripristinaEnteLuogo(dF as unknown as ClientDb, orologio, GARE, diario);
+    const letto = JSON.parse(fs.readFileSync(file, "utf8")) as FileEsito;
+    controlla("diario su file: cartella creata solo scrivendo, nome con l'ora del lancio, contenuto = esito finale", !primaDellaScrittura && path.basename(file) === "esito-ripristino-ente-luogo-20261125T083000000Z.json" && letto.stato === "completato" && letto.gare.length === 33 && letto.conteggi.scritte === 33);
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  {
+    // CARTELLA_ESITO: quella degli allegati del coordinamento
+    controlla("cartella dell'esito: TENDER_INTELLIGENCE_FASE0/allegati/ente-luogo", CARTELLA_ESITO.replace(/\\/g, "/").endsWith("/TENDER_INTELLIGENCE_FASE0/allegati/ente-luogo"));
+  }
   const dopoRotto = async (nome: string, rompi: (d: DbFinto) => void, motivo: RegExp) => {
     const d = mondo();
-    await ripristinaEnteLuogo(d as unknown as ClientDb, ORA, GARE);
+    await ripristinaEnteLuogo(d as unknown as ClientDb, orologio, GARE);
     rompi(d);
     let fermo = false;
     try {
@@ -155,10 +186,21 @@ async function principale(): Promise<void> {
     }
     controlla(`dopo: si ferma con ${nome}`, fermo);
   };
-  await dopoRotto("una traccia del ripristino su una gara fuori dal piano", (d) => d.t("radar_aggiornamenti").push({ procedura_id: "altra-gara", tipo: "correzione_dati", campo: "ente_luogo", id_fonte: ID_TRACCIA, notificabile: false }), /fuori dal piano/);
-  await dopoRotto("una gara senza traccia", (d) => { d.tabelle.radar_aggiornamenti = d.t("radar_aggiornamenti").slice(1); }, /una e una sola traccia/);
-  await dopoRotto("una traccia notificabile", (d) => { d.t("radar_aggiornamenti")[0].notificabile = true; }, /non notificabile/);
-  await dopoRotto("una gara tornata al valore del giro", (d) => { Object.assign(d.t("radar_procedure").find((r) => String(r.id).startsWith("a092afc1"))!, { sa_comune: "Trieste", sa_provincia: "TS", sa_regione: "friuli_venezia_giulia" }); }, /./);
+  await dopoRotto("una riga «ente_luogo» nel registro dei cambiamenti di una gara del piano", (d) => d.t("radar_aggiornamenti").push({ procedura_id: GARE[0].id, tipo: "correzione_dati", campo: "ente_luogo", id_fonte: "x", notificabile: false }), /registro dei cambiamenti/);
+  await dopoRotto("una gara tornata al valore del giro", (d) => { Object.assign(d.t("radar_procedure").find((r) => String(r.id).startsWith("a092afc1"))!, { sa_comune: "Trieste", sa_provincia: "TS", sa_regione: "friuli_venezia_giulia" }); }, /non sono quelle lasciate dal giro|non ripristinate/);
+  {
+    // una riga «ente_luogo» su una gara FUORI dal piano non riguarda il ripristino: «dopo» non si ferma
+    const d = mondo();
+    await ripristinaEnteLuogo(d as unknown as ClientDb, orologio, GARE);
+    d.t("radar_aggiornamenti").push({ procedura_id: "altra-gara", tipo: "correzione_dati", campo: "ente_luogo", id_fonte: "x", notificabile: false });
+    let fermo = false;
+    try {
+      await verificaDopo(d as unknown as ClientDb, GARE);
+    } catch {
+      fermo = true;
+    }
+    controlla("dopo: le righe di gare fuori dal piano non contano", !fermo);
+  }
 
   // FERMO: qualunque differenza dallo stato lasciato dal giro, senza scrivere nulla per NESSUNA gara
   const quale = (prefisso: string) => (d: DbFinto) => d.t("radar_procedure").find((r) => String(r.id).startsWith(prefisso))!;
@@ -178,7 +220,7 @@ async function principale(): Promise<void> {
     const d = mondo(rompi);
     let fermo = false;
     try {
-      await ripristinaEnteLuogo(d as unknown as ClientDb, ORA, GARE);
+      await ripristinaEnteLuogo(d as unknown as ClientDb, () => ORA, GARE);
     } catch (x) {
       fermo = x instanceof FermoCollaudo;
     }
@@ -194,12 +236,16 @@ async function principale(): Promise<void> {
       return originale(nome);
     };
     let fermo = false;
+    const foglio: FileEsito[] = [];
     try {
-      await ripristinaEnteLuogo(d as unknown as ClientDb, ORA, GARE);
+      await ripristinaEnteLuogo(d as unknown as ClientDb, () => ORA, GARE, (f) => foglio.push(structuredClone(f)));
     } catch (x) {
       fermo = x instanceof FermoCollaudo && /cambiate 0 righe/.test(x.message);
     }
     controlla("FERMO se una gara è riscritta tra lettura e scrittura (aggiornata_il diversa): quella gara non cambia", fermo && quale("a0c6c4b0")(d).sa_comune === "Firenze");
+    const f = foglio[foglio.length - 1];
+    const scritteDavvero = d.t("radar_procedure").filter((r) => GARE.some((g) => g.id === r.id) && r.aggiornata_il === AGGIORNATA && JSON.stringify((r.provenienza_campi as ProvenienzaCampi).luogo_regioni ?? null) !== "null").map((r) => r.id).sort();
+    controlla("esito fermato a metà: stato «fermato» col motivo, e le gare già scritte sono esattamente quelle segnate «scritta»", f.stato === "fermato" && /cambiate 0 righe/.test(f.motivo_fermo ?? "") && JSON.stringify(f.gare.filter((r) => r.esito === "scritta").map((r) => r.id).sort()) === JSON.stringify(scritteDavvero) && scritteDavvero.length > 0, { scritte: f.conteggi.scritte, davvero: scritteDavvero.length });
   }
   {
     // il database risponde «1 riga» ma non salva nulla (per esempio un trigger che riporta i valori): solo la verifica finale lo vede
@@ -215,7 +261,7 @@ async function principale(): Promise<void> {
     };
     let fermo = false;
     try {
-      await ripristinaEnteLuogo(d as unknown as ClientDb, ORA, GARE);
+      await ripristinaEnteLuogo(d as unknown as ClientDb, () => ORA, GARE);
     } catch (x) {
       fermo = x instanceof FermoCollaudo && /dopo la scrittura/.test(x.message);
     }
