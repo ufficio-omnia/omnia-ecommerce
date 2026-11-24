@@ -117,7 +117,16 @@ const misure = () => ({ richiesteDb: 0, msDb: 0 });
   // interruttore dell'evidenza
   controlla("interruttore dell'evidenza: spento di base", !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: STAGING }));
   controlla("interruttore dell'evidenza: «attivo» sullo staging", registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: STAGING, RADAR_REGISTRO_EVIDENZA: "attivo" }));
-  controlla("interruttore dell'evidenza: mai sulle anteprime né in produzione", !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: STAGING, RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "preview" }) && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "production" }));
+  // pacchetto P (piano 55 §2, D-F; coordinamento 24/11, dopo ebf4314 di B2): in produzione SOLO dal deploy di produzione, sul database
+  // di produzione, con «attivo» esatto; mai sulle anteprime, mai da locale o da un'anteprima verso la produzione, mai con un altro valore
+  controlla("interruttore dell'evidenza: mai sulle anteprime", !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: STAGING, RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "preview" }) && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "preview" }));
+  controlla("interruttore dell'evidenza: in produzione solo dal deploy di produzione con «attivo» esatto",
+    registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "production" })
+      && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_REGISTRO_EVIDENZA: "attivo" })
+      && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "development" })
+      && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "production" })
+      && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: PROD, RADAR_REGISTRO_EVIDENZA: "attiva", VERCEL_ENV: "production" })
+      && !registroConEvidenza({ NEXT_PUBLIC_SUPABASE_URL: "https://sconosciuto0000000000.supabase.co", RADAR_REGISTRO_EVIDENZA: "attivo", VERCEL_ENV: "production" }));
   controlla("PVL: campi del registro (scadenza, lotto, avviso)", campoRegistroPvl({ campo: "scadenza", lotto: null }) === "scadenza_offerte" && campoRegistroPvl({ campo: "scadenza_lotto", lotto: "ABCDEFGHIJ" }) === "scadenza_offerte@ABCDEFGHIJ" && campoRegistroPvl({ campo: null, lotto: null }) === "avviso");
 }
 
