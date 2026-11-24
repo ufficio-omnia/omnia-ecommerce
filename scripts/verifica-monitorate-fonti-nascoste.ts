@@ -2469,11 +2469,13 @@ async function principale(): Promise<void> {
   })();
   const calcoli = richiedi(src("lib/omnia-ai-account-calcoli.ts")) as { VOCI_MENU_UFFICIO_GARE: { href: string; etichetta: string }[] };
   // disegna il layout: i componenti asincroni del server (LayoutInterno, VistaUfficioGare) si chiamano a mano; il risultato è il DashboardShell
-  const menuDelLayout = async (ruolo: "titolare" | "ufficio_gare") => {
+  const menuDelLayout = async (ruolo: "titolare" | "ufficio_gare" | "interno") => {
     sessioneMC =
       ruolo === "titolare"
         ? { user: { id: TITOLARE_MC, email: "titolare@prova.test" }, contesto: { userId: TITOLARE_MC, accountId: TITOLARE_MC, ruolo: "titolare", sospeso: false } }
-        : { user: { id: UFFICIO_MC, email: "ufficio@prova.test" }, contesto: { userId: UFFICIO_MC, accountId: TITOLARE_MC, ruolo: "ufficio_gare", sospeso: false } };
+        : ruolo === "interno"
+          ? { user: { id: id(9202), email: "interno@prova.test" }, contesto: { userId: id(9202), accountId: id(9202), ruolo: "titolare", sospeso: false } }
+          : { user: { id: UFFICIO_MC, email: "ufficio@prova.test" }, contesto: { userId: UFFICIO_MC, accountId: TITOLARE_MC, ruolo: "ufficio_gare", sospeso: false } };
     if (!layoutVero.default) return { errore: "layout non caricato" };
     let nodo: unknown = layoutVero.default({ children: "[contenuto]" });
     for (let giro = 0; giro < 4; giro++) {
@@ -2565,6 +2567,88 @@ async function principale(): Promise<void> {
     pSpento === "404" && pSpentoAbilitato === "404" && pAccesoNonAbilitato === "404" && pAccesoAbilitato === "aperta",
     { pSpento, pSpentoAbilitato, pAccesoNonAbilitato, pAccesoAbilitato },
   );
+
+  // ═════ MC5–MC6. F7 con la decisione D-D dell'utente («Prima solo account interni»): interruttore generale ACCESO e una sola impresa interna
+  // abilitata. Tutti gli altri clienti (titolare e Ufficio Gare) restano identici a oggi; la console abilita un'impresa alla volta. ═════
+  const INTERNO_MC = id(9202);
+  const mondoF7 = () => ({
+    admin: new DbProva({
+      console_impostazioni: [{ chiave: "radar_attivo", valore: "1" }],
+      omnia_ai_radar_impostazioni: [{ user_id: INTERNO_MC, attivo: true, limiti: null }],
+      companies: [AZIENDA_MC],
+      radar_procedure: [],
+      radar_fonti_stato: [],
+      radar_esecuzioni: [],
+    }),
+    sessione: new DbProva({ companies: [AZIENDA_MC] }),
+  });
+  const layoutF7 = async (ruolo: "titolare" | "ufficio_gare" | "interno") => {
+    mondo = mondoF7();
+    try {
+      const r = await conAmbienteMC(AMBIENTE_PRODUZIONE_TUTTO_ACCESO, () => menuDelLayout(ruolo));
+      const tabelle = [...letture(mondo.admin), ...letture(mondo.sessione)];
+      return { ...r, altreTabelleRadar: tabelle.filter((t) => TABELLE_RADAR.test(t) && t !== "omnia_ai_radar_impostazioni"), rigaCliente: tabelle.filter((t) => t === "omnia_ai_radar_impostazioni").length };
+    } catch (e) {
+      return { errore: e instanceof Error ? e.message.slice(0, 120) : String(e), altreTabelleRadar: [] as string[], rigaCliente: -1 };
+    }
+  };
+  // la sessione del layout per titolare e Ufficio Gare è quella dell'impresa TITOLARE_MC (non abilitata)
+  const f7Titolare = await layoutF7("titolare");
+  const f7Ufficio = await layoutF7("ufficio_gare");
+  const f7Interno = await layoutF7("interno");
+  controlla(
+    "MC5. F7 solo account interni (D-D): interruttore generale acceso e una sola impresa interna abilitata; per il cliente non abilitato menu identico a oggi (titolare: nessuna voce; Ufficio Gare: VOCI_MENU_UFFICIO_GARE), nessuna lettura di tabelle del radar oltre alla propria riga di abilitazione (in cache in produzione); l'impresa interna vede «Opportunità»",
+    "voci" in f7Titolare && f7Titolare.voci === undefined && f7Titolare.altreTabelleRadar.length === 0 && f7Titolare.rigaCliente <= 1 &&
+      "voci" in f7Ufficio && JSON.stringify(f7Ufficio.voci) === JSON.stringify(calcoli.VOCI_MENU_UFFICIO_GARE) && f7Ufficio.altreTabelleRadar.length === 0 && f7Ufficio.rigaCliente <= 1 &&
+      "voci" in f7Interno && conOpportunita(f7Interno.voci),
+    { f7Titolare, f7Ufficio, f7Interno },
+  );
+
+  // MC6. l'azione VERA della console «Imprese abilitate»: abilita UNA impresa (titolare cliente) alla volta, rifiuta l'Ufficio Gare e chi non è
+  // cliente, scrive il registro e svuota subito la cache del menu delle imprese
+  const imposta = azioniTi.impostaImpresaRadar as ((s: unknown, fd: FormData) => Promise<{ errore?: string; ok?: boolean; avviso?: string }>) | undefined;
+  const CLIENTE_VERO = id(9203);
+  const UFFICIO_VERO = id(9204);
+  const ADMIN_SITO = id(9205);
+  const mondoConsoleF7 = () => ({
+    admin: new DbProva({
+      users: [
+        { id: INTERNO_MC, email: "interno@prova.test", role: "cliente" },
+        { id: CLIENTE_VERO, email: "cliente@prova.test", role: "cliente" },
+        { id: UFFICIO_VERO, email: "ufficio@prova.test", role: "cliente" },
+        { id: ADMIN_SITO, email: "admin@prova.test", role: "admin" },
+      ],
+      omnia_ai_membri: [{ membro_id: UFFICIO_VERO, titolare_id: CLIENTE_VERO, attivo: true }],
+      omnia_ai_radar_impostazioni: [],
+      radar_console_registro: [],
+    }),
+    sessione: new DbProva({}),
+  });
+  const abilita = async (email: string, azione = "abilita") => {
+    const fd = new FormData();
+    fd.append("email", email);
+    fd.append("azione", azione);
+    const tagPrima = tagSvuotati.length;
+    const esito = imposta ? await imposta({}, fd) : { errore: "azione assente" };
+    return { esito, tag: tagSvuotati.slice(tagPrima) };
+  };
+  mondo = mondoConsoleF7();
+  const aInterno = await abilita("interno@prova.test");
+  const righeDopoInterno = mondo.admin.tabelle.omnia_ai_radar_impostazioni.map((r) => [r.user_id, r.attivo]);
+  const registroInterno = mondo.admin.tabelle.radar_console_registro.filter((r) => r.oggetto === "cliente:attivo").map((r) => [r.cliente_id, r.valore_nuovo]);
+  const aUfficio = await abilita("ufficio@prova.test");
+  const aAdmin = await abilita("admin@prova.test");
+  const righeDopoRifiuti = mondo.admin.tabelle.omnia_ai_radar_impostazioni.map((r) => [r.user_id, r.attivo]);
+  const aChiudi = await abilita("interno@prova.test", "disabilita");
+  const righeDopoChiusura = mondo.admin.tabelle.omnia_ai_radar_impostazioni.map((r) => [r.user_id, r.attivo]);
+  controlla(
+    "MC6. console «Imprese abilitate» (azione vera): abilita solo l'impresa indicata (una riga, nel registro, cache del menu delle imprese svuotata subito); rifiuta l'Ufficio Gare (va abilitato il titolare) e chi non è cliente senza scrivere; disabilitare richiude",
+    aInterno.esito.ok === true && JSON.stringify(righeDopoInterno) === JSON.stringify([[INTERNO_MC, true]]) && JSON.stringify(registroInterno) === JSON.stringify([[INTERNO_MC, "true"]]) && aInterno.tag.includes("radar-clienti") &&
+      /Ufficio Gare/.test(aUfficio.esito.errore ?? "") && /solo per i clienti/.test(aAdmin.esito.errore ?? "") && JSON.stringify(righeDopoRifiuti) === JSON.stringify([[INTERNO_MC, true]]) &&
+      aChiudi.esito.ok === true && JSON.stringify(righeDopoChiusura) === JSON.stringify([[INTERNO_MC, false]]) && aChiudi.tag.includes("radar-clienti"),
+    { aInterno, righeDopoInterno, registroInterno, aUfficio: aUfficio.esito, aAdmin: aAdmin.esito, righeDopoRifiuti, aChiudi: aChiudi.esito, righeDopoChiusura },
+  );
+  void CLIENTE_VERO;
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }
