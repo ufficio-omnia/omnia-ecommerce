@@ -129,21 +129,41 @@ async function principale(): Promise<void> {
     }
     controlla("FERMO se una gara è riscritta tra lettura e scrittura (aggiornata_il diversa): quella gara non cambia", fermo && quale("a0c6c4b0")(d).sa_comune === "Firenze");
   }
+  {
+    // il database risponde «1 riga» ma non salva nulla (per esempio un trigger che riporta i valori): solo la verifica finale lo vede
+    const d = mondo();
+    const originale = d.from.bind(d);
+    d.from = (nome: string) => {
+      const q = originale(nome);
+      if (nome === "radar_procedure") {
+        const aggiorna = q.update.bind(q);
+        q.update = (v: Record<string, unknown>) => aggiorna(v.sa_comune === "Roma" ? {} : v);
+      }
+      return q;
+    };
+    let fermo = false;
+    try {
+      await ripristinaEnteLuogo(d as unknown as ClientDb, ORA, GARE);
+    } catch (x) {
+      fermo = x instanceof FermoCollaudo && /dopo la scrittura/.test(x.message);
+    }
+    controlla("FERMO se dopo la scrittura una gara non ha il valore del piano (verifica finale)", fermo);
+  }
 
   // guardie del lancio vero
   const ambiente = { NEXT_PUBLIC_SUPABASE_URL: "https://ryawdldqiumqsskrnyps.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sb_secret_finto_per_la_prova", VERCEL_ENV: undefined as string | undefined };
   const porta = { controllaPorta: () => undefined };
-  const rifiuta = async (nome: string, f: () => Promise<unknown>) => {
+  const rifiuta = async (nome: string, f: () => Promise<unknown>, motivo?: RegExp) => {
     const n = chiamate.length;
     let errore = false;
     try {
       await f();
-    } catch {
-      errore = true;
+    } catch (x) {
+      errore = !motivo || (x instanceof FermoCollaudo && motivo.test(x.message));
     }
     controlla(`${nome} → rifiutato senza nessuna richiesta`, errore && chiamate.length === n);
   };
-  await rifiuta("applica senza autorizzazione registrata", () => lancia("applica", ambiente, null, GARE));
+  await rifiuta("applica senza autorizzazione registrata (FERMO esplicito)", () => lancia("applica", ambiente, null, GARE), /autorizzazione registrata/);
   await rifiuta("applica con la porta che nega", () => lancia("applica", ambiente, { controllaPorta: () => { throw new Error("negata"); } }, GARE));
   await rifiuta("database di produzione", () => lancia("prova", { ...ambiente, NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co" }, porta, GARE));
   await rifiuta("su Vercel", () => lancia("applica", { ...ambiente, VERCEL_ENV: "production" }, porta, GARE));
