@@ -1,5 +1,5 @@
 {
- "documento": "Ripristino ente/luogo dopo il giro di prova PVL del 24/11/2026 (AUT-20261124-04, USO-3a3518880a5a)",
+ "documento": "Ripristino ente/luogo dopo il giro di prova PVL del 24/11/2026 (AUT-20261124-04, USO-3a3518880a5a): parte A (gare del giro) e parte B (gare senza regioni unite alla PVL prima del 17/11, solo luogo_regioni, calcolate al lancio)",
  "generato_da": "motore corretto (unisciVersione) su riga di prima + riga PVL del giro",
  "fotografia_prima": {
   "il": "2026-11-24T14:31:40.725Z",
@@ -12,9 +12,11 @@
   "file": "coordinamento pvl-54/dopo-completa.json"
  },
  "conteggi": {
-  "gare": 26,
+  "gare": 33,
+  "parte_a": 26,
   "con_valori": 11,
-  "solo_provenienza": 15
+  "solo_provenienza": 15,
+  "parte_b": 7
  },
  "gare": [
   {
@@ -1365,6 +1367,41 @@
      "ted": "803244-2026"
     }
    }
+  },
+  {
+   "id": "2d30227b-b3bd-4c09-bc87-c01c3ec97984",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "43efcd03-11a6-496c-b724-d95abb165b68",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "86f0633c-2576-4771-ba39-e5e6a169fce3",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "dcacc017-9a16-4062-8427-93e0ee206a52",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "fb3cfbf0-02f3-4515-9c79-6981d5d441ff",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "5f6adcdd-79f8-4385-8269-62dd56918cfc",
+   "parte": "B",
+   "fonte": "sintel"
+  },
+  {
+   "id": "865c1977-0207-4459-b26d-019844b5041a",
+   "parte": "B",
+   "fonte": "sintel"
   }
  ]
 }

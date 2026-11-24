@@ -131,6 +131,25 @@ async function principale() {
     uguale("… e la versione PVL successiva non la tocca", sedeDi(u4.riga).slice(0, 3), ["Roma", "RM", "lazio"]);
   }
 
+  // ───── 3bis. Sintel dopo la PVL, e la gara della sola PVL invariata ─────
+  {
+    // 56a35499 al contrario: gara nata dalla PVL (esecuzione a Taino, regione non riconosciuta), poi Sintel con la sede del comune
+    const { dopo } = unite(pvl({ comune: "Taino", provincia: null, regione: null, regioni: [] }), vPvl, sintel({ comune: "Cassano Magnago", provincia: null, regione: "lombardia", regioni: ["lombardia"] }), vSintel);
+    uguale("prima la PVL, poi Sintel: sede Sintel (Cassano Magnago, Lombardia) e regioni lombarde", [...sedeDi(dopo.riga), fonte(dopo.provenienza, "luogo"), fonte(dopo.provenienza, "luogo_regioni")], ["Cassano Magnago", null, "lombardia", ["lombardia"], "sintel", "sintel"]);
+    // stesso comune: la sede è di Sintel, la provincia mancante arriva dalla PVL; le regioni PVL restano (precedenza)
+    const { dopo: stesso } = unite(pvl({ comune: "Magnago", provincia: "MI", regione: "lombardia", regioni: ["lombardia"] }), vPvl, sintel({ comune: "Magnago", provincia: null, regione: "lombardia", regioni: ["lombardia"] }), vSintel);
+    uguale("prima la PVL, poi Sintel, stesso comune: sede Sintel completata con la provincia PVL", [...sedeDi(stesso.riga), fonte(stesso.provenienza, "luogo"), fonte(stesso.provenienza, "luogo_regioni")], ["Magnago", "MI", "lombardia", ["lombardia"], "sintel", "pvl"]);
+  }
+  {
+    // gara della sola PVL: sede = luogo di esecuzione come prima, provenienza PVL; una seconda lettura della stessa versione non cambia nulla
+    const sola = unisciVersione(null, null, pvl({ comune: "Genova", provincia: "GE", regione: "liguria", regioni: ["liguria"] }), vPvl, ISO);
+    uguale("sola PVL: sede e regioni = luogo di esecuzione, provenienza PVL (come prima)", [...sedeDi(sola.riga), fonte(sola.provenienza, "luogo"), fonte(sola.provenienza, "luogo_regioni")], ["Genova", "GE", "liguria", ["liguria"], "pvl", "pvl"]);
+    const riletta = unisciVersione(sola.riga, sola.provenienza, pvl({ comune: "Genova", provincia: "GE", regione: "liguria", regioni: ["liguria"] }), vPvl, ISO);
+    // (rileggere la stessa versione riprende i gruppi con gli stessi valori: comportamento di sempre, qui si controllano i dati)
+    const dati = (r: RigaProcedura) => [...sedeDi(r), r.sa_codice_fiscale, r.sa_denominazione, r.oggetto, r.valore_stimato, r.scadenza_offerte, r.codice_nuts];
+    uguale("sola PVL riletta: dati invariati, provenienza PVL, nessun cambiamento", [dati(riletta.riga), fonte(riletta.provenienza, "luogo"), fonte(riletta.provenienza, "luogo_regioni"), riletta.cambiamenti.length], [dati(sola.riga), "pvl", "pvl", 0]);
+  }
+
   // ───── 4. una sola fonte: nulla di presente si svuota; il resto come prima ─────
   {
     const a = unisciVersione(null, null, pvl({ comune: "Roma", provincia: "RM", regione: "lazio", regioni: ["lazio"] }), vPvl, ISO);

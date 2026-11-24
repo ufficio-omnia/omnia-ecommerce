@@ -1,14 +1,17 @@
 // Verifica dello script che ripristina sede dell'ente e regioni delle gare dello staging dopo il giro di prova PVL del 24/11/2026: su un
-// database IN MEMORIA, senza rete, con le righe costruite dal piano (gli stessi id e valori lasciati dal giro). Controlla anche che il piano
-// sia quello che il motore CORRETTO produce dai valori di prima e da quelli del giro, e che un nuovo giro PVL non lo riporti indietro.
+// database IN MEMORIA, senza rete, con le righe costruite dal piano (gli stessi id e i valori lasciati dal giro; per la parte B il NUTS e le
+// fonti lette sullo staging il 24/11). Controlla anche che la parte A sia quella che il motore CORRETTO produce dai valori di prima e da
+// quelli del giro, che un nuovo giro PVL non la riporti indietro, e che le regioni della parte B siano quelle degli importatori TED e Sintel.
 // Uso: npx tsx scripts/verifica-ripristino-ente-luogo.ts
-import { ID_TRACCIA, lancia, leggiPiano, pianoRipristino, ripristinaEnteLuogo, type GaraDelPiano } from "./ente-luogo/ripristina-ente-luogo-staging";
+import { ID_TRACCIA, REGIONI_SINTEL, lancia, leggiPiano, pianoRipristino, ripristinaEnteLuogo, verificaDopo, type GaraParteA, type GaraParteB } from "./ente-luogo/ripristina-ente-luogo-staging";
 import { FermoCollaudo } from "./collaudo-z8/collaudo-motore-z8";
 import { DbFinto } from "./lib/db-finto-motore";
 import type { ClientDb } from "../src/lib/radar/notifiche/motore";
 import { unisciVersione, versioneDa, type ProvenienzaCampi } from "../src/lib/radar/unione-calcoli";
 import { rigaDaBandoPvl } from "../src/lib/radar/importa-pvl-calcoli";
 import { leggiAvvisoPvl, type BandoPvl } from "../src/lib/radar/fonti/pvl-calcoli";
+import { leggiProceduraSintel, type BandoSintel } from "../src/lib/radar/fonti/sintel-calcoli";
+import { regioneDaNuts } from "../src/lib/radar/territorio";
 import type { RigaProcedura } from "../src/lib/radar/importa-calcoli";
 import fs from "fs";
 import path from "path";
@@ -29,13 +32,37 @@ const ORA = new Date("2026-11-25T08:00:00Z");
 const AGGIORNATA = "2026-11-24T14:32:58.000+00:00";
 const piano = leggiPiano();
 const GARE = piano.gare;
+const GARE_A = GARE.filter((g): g is GaraParteA => g.parte === "A");
+const GARE_B = GARE.filter((g): g is GaraParteB => g.parte === "B");
+type SedePiano = GaraParteA["atteso"];
 const sedeDi = (r: Record<string, unknown>) => JSON.stringify([r.sa_comune ?? null, r.sa_provincia ?? null, r.sa_regione ?? null, r.luogo_regioni ?? []]);
-const sedePiano = (s: GaraDelPiano["atteso"]) => JSON.stringify([s.sa_comune, s.sa_provincia, s.sa_regione, s.luogo_regioni]);
+const sedePiano = (s: SedePiano) => JSON.stringify([s.sa_comune, s.sa_provincia, s.sa_regione, s.luogo_regioni]);
+// parte B: NUTS letto sullo staging il 24/11 (sola lettura) e regione attesa
+const NUTS_B: Record<string, [string, string]> = { "2d30227b": ["ITH36", "veneto"], "43efcd03": ["ITC41", "lombardia"], "86f0633c": ["ITC4D", "lombardia"], dcacc017: ["ITC41", "lombardia"], fb3cfbf0: ["ITI12", "toscana"] };
+const PV_PVL = { f: "pvl", id: "avviso-vecchio", g: "2026-11-16", t: "2026-11-16T07:00:00.000Z", ted: null };
+const pvTed = (id: string) => ({ f: "ted", id, g: "2026-11-05", t: null, ted: id });
+const PV_SINTEL = { f: "sintel", id: "219294960@2026-11-23", g: "2026-11-23", t: null, ted: null };
+const rigaB = (g: GaraParteB) => {
+  const nuts = NUTS_B[g.id.slice(0, 8)];
+  return {
+    id: g.id,
+    sa_comune: "Comune sintetico",
+    sa_provincia: null,
+    sa_regione: null,
+    luogo_regioni: [],
+    codice_nuts: g.fonte === "ted" ? nuts[0] : null,
+    fonti: ["pvl", g.fonte],
+    provenienza_campi: g.fonte === "ted" ? { _versione: PV_PVL, luogo: PV_PVL, ente: PV_PVL, codice_nuts: pvTed("769589-2026") } : { _versione: PV_SINTEL, luogo: PV_PVL, ente: PV_PVL, valore_base: PV_SINTEL },
+    aggiornata_il: AGGIORNATA,
+    oggetto: "(gara sintetica B)",
+  };
+};
 function mondo(modifica?: (db: DbFinto) => void): DbFinto {
   const db = new DbFinto();
   db.tabelle.radar_procedure = [
-    ...GARE.map((g) => ({ id: g.id, sa_comune: g.giro.sa_comune, sa_provincia: g.giro.sa_provincia, sa_regione: g.giro.sa_regione, luogo_regioni: [...g.giro.luogo_regioni], provenienza_campi: { _versione: g.giro.luogo, luogo: g.giro.luogo, ente: g.giro.luogo, oggetto: { f: "ted", id: "000001-2026", g: "2026-11-17", t: null, ted: "000001-2026" } }, aggiornata_il: AGGIORNATA, oggetto: "(gara sintetica)" })),
-    { id: "altra-gara", sa_comune: "Taino", sa_provincia: null, sa_regione: null, luogo_regioni: [], provenienza_campi: { luogo: { f: "pvl", id: "x", g: "2026-11-20", t: null, ted: null } }, aggiornata_il: AGGIORNATA, oggetto: "(fuori dal piano)" },
+    ...GARE_A.map((g) => ({ id: g.id, sa_comune: g.giro.sa_comune, sa_provincia: g.giro.sa_provincia, sa_regione: g.giro.sa_regione, luogo_regioni: [...g.giro.luogo_regioni], codice_nuts: "ITC4C", fonti: ["pvl", g.provenienza.luogo.f], provenienza_campi: { _versione: g.giro.luogo, luogo: g.giro.luogo, ente: g.giro.luogo, oggetto: { f: "ted", id: "000001-2026", g: "2026-11-17", t: null, ted: "000001-2026" } }, aggiornata_il: AGGIORNATA, oggetto: "(gara sintetica)" })),
+    ...GARE_B.map(rigaB),
+    { id: "altra-gara", sa_comune: "Taino", sa_provincia: null, sa_regione: null, luogo_regioni: [], codice_nuts: "ITC41", fonti: ["pvl", "ted"], provenienza_campi: { luogo: PV_PVL, codice_nuts: pvTed("700000-2026") }, aggiornata_il: AGGIORNATA, oggetto: "(fuori dal piano)" },
   ];
   db.tabelle.radar_aggiornamenti = [];
   modifica?.(db);
@@ -43,22 +70,30 @@ function mondo(modifica?: (db: DbFinto) => void): DbFinto {
 }
 const gara = (db: DbFinto, id: string) => db.t("radar_procedure").find((r) => r.id === id)!;
 const scritture = (db: DbFinto) => db.richieste.filter((r) => r.metodo !== "select");
+const attesoB = (g: GaraParteB) => (g.fonte === "ted" ? [NUTS_B[g.id.slice(0, 8)][1]] : ["lombardia"]);
 
 async function principale(): Promise<void> {
-  // il piano
-  controlla("piano: 26 gare, 11 con valori e 15 solo con la provenienza della sede, tutte della parte A", piano.conteggi.gare === 26 && GARE.length === 26 && GARE.filter((g) => g.valori).length === 11 && GARE.filter((g) => !g.valori).length === 15 && GARE.every((g) => g.parte === "A"), piano.conteggi);
-  controlla("piano: valori diversi dal giro esattamente nelle 11 gare «con valori»", GARE.every((g) => (sedePiano(g.giro) !== sedePiano(g.atteso)) === g.valori));
-  controlla("piano: il giro aveva sempre la sede della PVL; il ripristino la dà a TED o Sintel (mai alla PVL)", GARE.every((g) => g.giro.luogo.f === "pvl" && ["ted", "sintel"].includes(g.provenienza.luogo.f)));
-  const regioniSvuotate = GARE.filter((g) => g.giro.luogo_regioni.length === 0).map((g) => g.id.slice(0, 8)).sort();
-  controlla("piano: le 3 gare con le regioni svuotate tornano con le regioni di prima", JSON.stringify(regioniSvuotate) === JSON.stringify(["56a35499", "aa7b73ba", "d1e67ebf"]) && GARE.filter((g) => g.giro.luogo_regioni.length === 0).every((g) => JSON.stringify(g.atteso.luogo_regioni) === JSON.stringify(g.prima.luogo_regioni) && g.atteso.luogo_regioni.length > 0), regioniSvuotate);
-  controlla("piano: nessuna gara perde un valore che aveva prima del giro, tranne la provincia di un altro comune", GARE.every((g) => (["sa_comune", "sa_regione"] as const).every((c) => !g.prima[c] || g.atteso[c] === g.prima[c]) && (!g.prima.sa_provincia || g.atteso.sa_provincia === g.prima.sa_provincia)));
+  // ───── il piano ─────
+  controlla("piano: 33 gare; parte A 26 (11 con valori, 15 solo provenienza), parte B 7 (5 TED, 2 Sintel)", piano.conteggi.gare === 33 && GARE_A.length === 26 && GARE_A.filter((g) => g.valori).length === 11 && GARE_B.length === 7 && GARE_B.filter((g) => g.fonte === "ted").length === 5 && GARE_B.filter((g) => g.fonte === "sintel").length === 2, piano.conteggi);
+  controlla("piano B: esattamente le 7 gare senza regioni indicate dal coordinamento", JSON.stringify(GARE_B.map((g) => `${g.id.slice(0, 8)}:${g.fonte}`)) === JSON.stringify(["2d30227b:ted", "43efcd03:ted", "86f0633c:ted", "dcacc017:ted", "fb3cfbf0:ted", "5f6adcdd:sintel", "865c1977:sintel"]));
+  controlla("piano A: valori diversi dal giro esattamente nelle 11 gare «con valori»", GARE_A.every((g) => (sedePiano(g.giro) !== sedePiano(g.atteso)) === g.valori));
+  controlla("piano A: il giro aveva sempre la sede della PVL; il ripristino la dà a TED o Sintel (mai alla PVL)", GARE_A.every((g) => g.giro.luogo.f === "pvl" && ["ted", "sintel"].includes(g.provenienza.luogo.f)));
+  const regioniSvuotate = GARE_A.filter((g) => g.giro.luogo_regioni.length === 0).map((g) => g.id.slice(0, 8)).sort();
+  controlla("piano A: le 3 gare con le regioni svuotate tornano con le regioni di prima", JSON.stringify(regioniSvuotate) === JSON.stringify(["56a35499", "aa7b73ba", "d1e67ebf"]) && GARE_A.filter((g) => g.giro.luogo_regioni.length === 0).every((g) => JSON.stringify(g.atteso.luogo_regioni) === JSON.stringify(g.prima.luogo_regioni) && g.atteso.luogo_regioni.length > 0), regioniSvuotate);
+  controlla("piano A: nessuna gara perde un valore che aveva prima del giro", GARE_A.every((g) => (["sa_comune", "sa_regione", "sa_provincia"] as const).every((c) => !g.prima[c] || g.atteso[c] === g.prima[c])));
+  // la regione della parte B è quella degli importatori: TED con regioneDaNuts, Sintel sempre «lombardia» (lettore Sintel vero)
+  const ted = fs.readFileSync(path.join(process.cwd(), "src/lib/radar/fonti/ted-calcoli.ts"), "utf8");
+  controlla("parte B TED: l'importatore TED ricava le regioni con regioneDaNuts (stessa funzione dello script)", /import \{[^}]*\bregioneDaNuts\b[^}]*\} from "\.\.\/territorio"/.test(ted) && /\.map\(regioneDaNuts\)/.test(ted));
+  controlla("parte B TED: ITH36 veneto, ITC41 e ITC4D lombardia, ITI12 toscana", Object.values(NUTS_B).every(([n, r]) => regioneDaNuts(n) === r));
+  const sintel = (stazione: string) => (leggiProceduraSintel("900000001", [{ id_procedura: "900000001", id_lotto: "N/D", multilotto: "NO", cig: "PRV0000001", codice_cpv: "90910000-9", data_inizio_negoziazione: "2026-11-10T00:00:00.000", data_fine_negoziazione: "2026-12-15T00:00:00.000", modalita_scelta_contraente: "Procedura Aperta", ambito_merceologico: "Procedura per forniture/servizi", stato_procedura: "Pubblicata", stato_lotto: "N/D", valore_economico_procedura: "120000", cf_stazione_appaltante: "00000000002", stazione_appaltante: stazione, nome_procedura: "Servizio di pulizia (prova sintetica)", link_procedura: { url: "http://www.sintel.regione.lombardia.it/eprocdata/auctionDetail.xhtml?id=900000001" } }] as never, "2026-11-12") as BandoSintel).regioni;
+  controlla("parte B Sintel: il lettore Sintel assegna di suo «lombardia» a ogni bando (comune o altro ente), uguale allo script", [sintel("COMUNE DI SINTETICO"), sintel("ASST SINTETICA"), [...REGIONI_SINTEL]].every((r) => JSON.stringify(r) === JSON.stringify(["lombardia"])));
 
-  // il piano è quello del motore corretto: riga di prima (sede della fonte di prima) + riga PVL del giro → valori attesi; e un nuovo giro
+  // la parte A è quella del motore corretto: riga di prima (sede della fonte di prima) + riga PVL del giro → valori attesi; e un nuovo giro
   // della stessa versione PVL sul valore ripristinato non cambia nulla
   const campione = JSON.parse(fs.readFileSync(path.join(process.cwd(), "scripts/dati/radar-pvl-campione.json"), "utf8")) as { avvisi: Record<string, unknown>[] };
   const base = rigaDaBandoPvl(leggiAvvisoPvl(campione.avvisi[1]) as BandoPvl, ORA);
-  const conSede = (s: GaraDelPiano["atteso"], p: Partial<RigaProcedura> = {}): RigaProcedura => ({ ...base, ...p, sa_comune: s.sa_comune, sa_provincia: s.sa_provincia, sa_regione: s.sa_regione, luogo_regioni: [...s.luogo_regioni] });
-  const ricalcolate = GARE.map((g) => {
+  const conSede = (s: SedePiano, p: Partial<RigaProcedura> = {}): RigaProcedura => ({ ...base, ...p, sa_comune: s.sa_comune, sa_provincia: s.sa_provincia, sa_regione: s.sa_regione, luogo_regioni: [...s.luogo_regioni] });
+  const ricalcolate = GARE_A.map((g) => {
     const provPrima: ProvenienzaCampi = { _versione: g.provenienza.luogo, luogo: g.provenienza.luogo };
     const prima = conSede(g.prima, { chiave: `${g.provenienza.luogo.f}:sintetica`, ultima_versione_id: g.provenienza.luogo.id });
     const u = unisciVersione(prima, provPrima, conSede(g.giro), versioneDa(g.giro.luogo), "2026-11-24T14:32:30.000Z");
@@ -66,32 +101,64 @@ async function principale(): Promise<void> {
     return { id: g.id, motore: sedeDi(u.riga as unknown as Record<string, unknown>), piano: sedePiano(g.atteso), stabile: sedeDi(ancora.riga as unknown as Record<string, unknown>) === sedePiano(g.atteso) && ancora.provenienza.luogo?.f === g.provenienza.luogo.f };
   });
   const diverse = ricalcolate.filter((r) => r.motore !== r.piano);
-  controlla("piano = motore corretto (unisciVersione) per tutte le 26 gare", diverse.length === 0, diverse.slice(0, 3));
-  controlla("un nuovo giro della stessa versione PVL non riporta indietro nessuna gara", ricalcolate.every((r) => r.stabile), ricalcolate.filter((r) => !r.stabile).map((r) => r.id));
+  controlla("piano A = motore corretto (unisciVersione) per tutte le 26 gare", diverse.length === 0, diverse.slice(0, 3));
+  controlla("un nuovo giro della stessa versione PVL non riporta indietro nessuna gara della parte A", ricalcolate.every((r) => r.stabile), ricalcolate.filter((r) => !r.stabile).map((r) => r.id));
 
-  // prova: solo letture
+  // ───── prima: solo letture, valore attuale → valore ripristinato e motivo ─────
   const dbP = mondo();
   const piani = await pianoRipristino(dbP as unknown as ClientDb, GARE);
-  controlla("prova: 26 piani, nessuna scrittura, nessuna già a posto", piani.length === 26 && scritture(dbP).length === 0 && piani.every((p) => !p.giaAPosto), { n: piani.length, scritture: scritture(dbP).length });
+  controlla("prima: 33 piani, nessuna scrittura, nessuna già a posto, un motivo per ognuna", piani.length === 33 && scritture(dbP).length === 0 && piani.every((p) => !p.giaAPosto && p.motivo.length > 10), { n: piani.length, scritture: scritture(dbP).length });
+  controlla("prima: i motivi dicono che cosa si corregge (sede, regioni svuotate, provincia tolta, solo provenienza, NUTS, Sintel)", ["56a35499", "a8f5c7db", "39d1677f", "2d30227b", "5f6adcdd"].every((x) => !!piani.find((p) => p.gara.startsWith(x))) &&
+    /regioni svuotate dal giro/.test(piani.find((p) => p.gara.startsWith("56a35499"))!.motivo) && /provincia di un altro comune tolta/.test(piani.find((p) => p.gara.startsWith("a8f5c7db"))!.motivo) && /valori già giusti/.test(piani.find((p) => p.gara.startsWith("39d1677f"))!.motivo) && /NUTS TED ITH36/.test(piani.find((p) => p.gara.startsWith("2d30227b"))!.motivo) && /importatore Sintel/.test(piani.find((p) => p.gara.startsWith("5f6adcdd"))!.motivo));
+  let dopoPrima = false;
+  try {
+    await verificaDopo(dbP as unknown as ClientDb, GARE);
+  } catch (x) {
+    dopoPrima = x instanceof FermoCollaudo && /non ripristinate/.test(x.message);
+  }
+  controlla("dopo, lanciato PRIMA del ripristino: si ferma (33 gare non ripristinate)", dopoPrima);
 
-  // applica
+  // ───── applica ─────
   const db = mondo();
   const altraPrima = JSON.stringify(gara(db, "altra-gara"));
   const e = await ripristinaEnteLuogo(db as unknown as ClientDb, ORA, GARE);
-  controlla("applica: 26 gare riscritte (11 valori, 15 provenienza), 26 tracce", e.cambiate === 26 && e.tracce === 26 && e.giaAPosto === 0, { cambiate: e.cambiate, tracce: e.tracce });
-  controlla("applica: ogni gara ha sede e regioni del piano", GARE.every((g) => sedeDi(gara(db, g.id)) === sedePiano(g.atteso)), GARE.filter((g) => sedeDi(gara(db, g.id)) !== sedePiano(g.atteso)).map((g) => g.id));
-  controlla("applica: provenienza della sede e delle regioni del piano; gli altri campi della provenienza intatti", GARE.every((g) => {
+  controlla("applica: 33 gare riscritte, 33 tracce", e.cambiate === 33 && e.tracce === 33 && e.giaAPosto === 0, { cambiate: e.cambiate, tracce: e.tracce });
+  controlla("applica A: ogni gara ha sede e regioni del piano", GARE_A.every((g) => sedeDi(gara(db, g.id)) === sedePiano(g.atteso)), GARE_A.filter((g) => sedeDi(gara(db, g.id)) !== sedePiano(g.atteso)).map((g) => g.id));
+  controlla("applica A: provenienza della sede e delle regioni del piano; gli altri campi della provenienza intatti", GARE_A.every((g) => {
     const p = gara(db, g.id).provenienza_campi as ProvenienzaCampi;
     return JSON.stringify(p.luogo) === JSON.stringify(g.provenienza.luogo) && JSON.stringify(p.luogo_regioni) === JSON.stringify(g.provenienza.luogo_regioni) && p.oggetto?.id === "000001-2026" && JSON.stringify(p.ente) === JSON.stringify(g.giro.luogo);
   }));
-  controlla("applica: aggiornata_il e gli altri campi delle gare non cambiano", GARE.every((g) => gara(db, g.id).aggiornata_il === AGGIORNATA && gara(db, g.id).oggetto === "(gara sintetica)"));
-  controlla("applica: una gara fuori dal piano non cambia", JSON.stringify(gara(db, "altra-gara")) === altraPrima);
+  controlla("applica B: solo le regioni (TED dal NUTS, Sintel lombardia); la sede NON si tocca", GARE_B.every((g) => sedeDi(gara(db, g.id)) === JSON.stringify(["Comune sintetico", null, null, attesoB(g)])), GARE_B.map((g) => sedeDi(gara(db, g.id))));
+  controlla("applica B: provenienza delle regioni = quella del NUTS TED o della versione Sintel; sede e resto della provenienza intatti", GARE_B.every((g) => {
+    const p = gara(db, g.id).provenienza_campi as ProvenienzaCampi;
+    return JSON.stringify(p.luogo_regioni) === JSON.stringify(g.fonte === "ted" ? pvTed("769589-2026") : PV_SINTEL) && JSON.stringify(p.luogo) === JSON.stringify(PV_PVL) && JSON.stringify(p.ente) === JSON.stringify(PV_PVL);
+  }));
+  controlla("applica: aggiornata_il e gli altri campi delle gare non cambiano", GARE.every((g) => gara(db, g.id).aggiornata_il === AGGIORNATA && String(gara(db, g.id).oggetto).startsWith("(gara sintetica")));
+  controlla("applica: una gara fuori dal piano (senza regioni anche lei) non cambia", JSON.stringify(gara(db, "altra-gara")) === altraPrima);
   const tracce = db.t("radar_aggiornamenti");
-  controlla("applica: tracce «correzione_dati» mai notificabili, una per gara, con prima e dopo", tracce.length === 26 && tracce.every((t) => t.tipo === "correzione_dati" && t.notificabile === false && t.campo === "ente_luogo" && t.id_fonte === ID_TRACCIA && t.fonte === "manuale" && typeof t.valore_precedente === "string" && typeof t.valore_nuovo === "string") && new Set(tracce.map((t) => t.procedura_id)).size === 26);
-  controlla("applica: solo radar_procedure (26 aggiornamenti) e radar_aggiornamenti (26 tracce)", scritture(db).length === 52 && scritture(db).filter((r) => r.tabella === "radar_procedure" && r.metodo === "update").length === 26 && scritture(db).filter((r) => r.tabella === "radar_aggiornamenti").length === 26);
+  controlla("applica: tracce «correzione_dati» mai notificabili, una per gara, con prima, dopo e parte nella nota", tracce.length === 33 && tracce.every((t) => t.tipo === "correzione_dati" && t.notificabile === false && t.campo === "ente_luogo" && t.id_fonte === ID_TRACCIA && t.fonte === "manuale" && typeof t.valore_precedente === "string" && typeof t.valore_nuovo === "string" && /\(parte [AB]\)/.test(String(t.nota))) && new Set(tracce.map((t) => t.procedura_id)).size === 33);
+  controlla("applica: solo radar_procedure (33 aggiornamenti) e radar_aggiornamenti (33 tracce)", scritture(db).length === 66 && scritture(db).filter((r) => r.tabella === "radar_procedure" && r.metodo === "update").length === 33 && scritture(db).filter((r) => r.tabella === "radar_aggiornamenti").length === 33);
+  const d1 = await verificaDopo(db as unknown as ClientDb, GARE);
+  controlla("dopo: tutte le 33 gare ripristinate, 33 tracce", d1.piani.length === 33 && d1.piani.every((p) => p.giaAPosto) && d1.tracce === 33);
   const foto = JSON.stringify(db.tabelle);
   const e2 = await ripristinaEnteLuogo(db as unknown as ClientDb, new Date("2026-11-26T08:00:00Z"), GARE);
-  controlla("ripetuto: idempotente (0 gare cambiate, 26 già a posto, nessuna traccia nuova, nulla cambia)", e2.cambiate === 0 && e2.giaAPosto === 26 && e2.tracce === 0 && JSON.stringify(db.tabelle) === foto, { cambiate: e2.cambiate, giaAPosto: e2.giaAPosto, tracce: e2.tracce });
+  controlla("ripetuto: idempotente (0 gare cambiate, 33 già a posto, nessuna traccia nuova, nulla cambia)", e2.cambiate === 0 && e2.giaAPosto === 33 && e2.tracce === 0 && JSON.stringify(db.tabelle) === foto, { cambiate: e2.cambiate, giaAPosto: e2.giaAPosto, tracce: e2.tracce });
+  const dopoRotto = async (nome: string, rompi: (d: DbFinto) => void, motivo: RegExp) => {
+    const d = mondo();
+    await ripristinaEnteLuogo(d as unknown as ClientDb, ORA, GARE);
+    rompi(d);
+    let fermo = false;
+    try {
+      await verificaDopo(d as unknown as ClientDb, GARE);
+    } catch (x) {
+      fermo = x instanceof FermoCollaudo && motivo.test(x.message);
+    }
+    controlla(`dopo: si ferma con ${nome}`, fermo);
+  };
+  await dopoRotto("una traccia del ripristino su una gara fuori dal piano", (d) => d.t("radar_aggiornamenti").push({ procedura_id: "altra-gara", tipo: "correzione_dati", campo: "ente_luogo", id_fonte: ID_TRACCIA, notificabile: false }), /fuori dal piano/);
+  await dopoRotto("una gara senza traccia", (d) => { d.tabelle.radar_aggiornamenti = d.t("radar_aggiornamenti").slice(1); }, /una e una sola traccia/);
+  await dopoRotto("una traccia notificabile", (d) => { d.t("radar_aggiornamenti")[0].notificabile = true; }, /non notificabile/);
+  await dopoRotto("una gara tornata al valore del giro", (d) => { Object.assign(d.t("radar_procedure").find((r) => String(r.id).startsWith("a092afc1"))!, { sa_comune: "Trieste", sa_provincia: "TS", sa_regione: "friuli_venezia_giulia" }); }, /./);
 
   // FERMO: qualunque differenza dallo stato lasciato dal giro, senza scrivere nulla per NESSUNA gara
   const quale = (prefisso: string) => (d: DbFinto) => d.t("radar_procedure").find((r) => String(r.id).startsWith(prefisso))!;
@@ -101,6 +168,11 @@ async function principale(): Promise<void> {
     ["regioni diverse da quelle del giro", (d) => { quale("d1e67ebf")(d).luogo_regioni = ["lazio", "umbria"]; }],
     ["la sede già passata a un'altra versione PVL", (d) => { (quale("dc2b688a")(d).provenienza_campi as ProvenienzaCampi).luogo = { f: "pvl", id: "altro-avviso", g: "2026-11-25", t: null, ted: null }; }],
     ["la sede tornata a TED ma con valori diversi dal piano", (d) => { Object.assign(quale("f66becb6")(d), { sa_comune: "Verbania", sa_provincia: null }); }],
+    ["parte B: il NUTS non viene da TED", (d) => { (quale("43efcd03")(d).provenienza_campi as ProvenienzaCampi).codice_nuts = { f: "pvl", id: "x", g: "2026-11-16", t: null, ted: null }; }],
+    ["parte B: NUTS non riconosciuto", (d) => { quale("fb3cfbf0")(d).codice_nuts = "ITZZZ"; }],
+    ["parte B: regioni non più vuote (date da un altro giro)", (d) => { quale("86f0633c")(d).luogo_regioni = ["piemonte"]; }],
+    ["parte B: la fonte Sintel non è più tra le fonti della gara", (d) => { quale("865c1977")(d).fonti = ["pvl"]; }],
+    ["parte B: nessuna provenienza Sintel nella gara", (d) => { quale("5f6adcdd")(d).provenienza_campi = { luogo: { f: "pvl", id: "x", g: "2026-11-16", t: null, ted: null } }; }],
   ];
   for (const [nome, rompi] of casi) {
     const d = mondo(rompi);
@@ -165,7 +237,7 @@ async function principale(): Promise<void> {
   };
   await rifiuta("applica senza autorizzazione registrata (FERMO esplicito)", () => lancia("applica", ambiente, null, GARE), /autorizzazione registrata/);
   await rifiuta("applica con la porta che nega", () => lancia("applica", ambiente, { controllaPorta: () => { throw new Error("negata"); } }, GARE));
-  await rifiuta("database di produzione", () => lancia("prova", { ...ambiente, NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co" }, porta, GARE));
+  await rifiuta("database di produzione", () => lancia("prima", { ...ambiente, NEXT_PUBLIC_SUPABASE_URL: "https://bihfrzspqxsrzlbqqvqa.supabase.co" }, porta, GARE));
   await rifiuta("su Vercel", () => lancia("applica", { ...ambiente, VERCEL_ENV: "production" }, porta, GARE));
   let nomeScript = "";
   await lancia("applica", ambiente, { controllaPorta: ({ script }) => { nomeScript = script; } }, GARE).catch(() => undefined);
@@ -173,11 +245,11 @@ async function principale(): Promise<void> {
   const n = chiamate.length;
   let fermato = false;
   try {
-    await lancia("prova", ambiente, null, GARE);
+    await lancia("prima", ambiente, null, GARE);
   } catch {
     fermato = true;
   }
-  controlla("prova: guardie superate, una lettura solo verso lo staging (qui fallisce e si ferma)", fermato && chiamate.slice(n).length === 1 && chiamate.slice(n).every((u) => u.startsWith("https://ryawdldqiumqsskrnyps.supabase.co/rest/v1/radar_procedure?select")), chiamate.slice(n));
+  controlla("prima: guardie superate, una lettura solo verso lo staging (qui fallisce e si ferma)", fermato && chiamate.slice(n).length === 1 && chiamate.slice(n).every((u) => u.startsWith("https://ryawdldqiumqsskrnyps.supabase.co/rest/v1/radar_procedure?select")), chiamate.slice(n));
 }
 principale()
   .catch((e) => falliti.push(`eccezione: ${e instanceof Error ? e.stack ?? e.message : String(e)}`))
