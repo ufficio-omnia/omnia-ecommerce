@@ -921,6 +921,10 @@ async function principale(): Promise<void> {
     Object.assign(process.env, { RADAR_PER_TE: "attivo", RADAR_CLASSIFICAZIONI: "attive", NEXT_PUBLIC_SUPABASE_URL: `https://${staging}.supabase.co` });
     try {
       return righeDi(await PaginaPerTe({ searchParams: Promise.resolve({}) }));
+    } catch (e) {
+      // una pagina 404 (interruttore spento per errore) è una pagina senza righe: i controlli che seguono falliscono, la prova non si ferma
+      if (String((e as { digest?: unknown }).digest ?? "").startsWith("NEXT_HTTP_ERROR_FALLBACK;404")) return new Map<string, DatiRiga>();
+      throw e;
     } finally {
       for (const [k, v] of Object.entries(prima)) {
         if (v === undefined) delete process.env[k];
