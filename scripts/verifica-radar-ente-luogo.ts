@@ -117,6 +117,12 @@ async function principale() {
     const legacy2 = pvl({ comune: "Padova", provincia: "PD", regione: "veneto", regioni: ["veneto"] });
     const u2 = unisciVersione(legacy2, provVecchia, ted({ comune: "Venezia", provincia: "VE", regione: "veneto", regioni: ["lazio"] }), vTed, ISO);
     uguale("gara PVL di prima del 24/11 con regioni, poi TED: sede TED, regioni PVL (provenienza ereditata, resa esplicita)", [...sedeDi(u2.riga), fonte(u2.provenienza, "luogo"), fonte(u2.provenienza, "luogo_regioni")], ["Venezia", "VE", "veneto", ["veneto"], "ted", "pvl"]);
+    // gara TED unita alla PVL prima del 24/11 (regioni PVL sotto la provenienza «luogo», ultima versione TED): una rettifica TED più
+    // recente con altre regioni non le sostituisce (la PVL ha la precedenza sulle regioni di esecuzione; senza l'eredità TED le prenderebbe)
+    const pvTed = { f: "ted" as const, id: vTed.id, g: vTed.giorno, t: null, ted: vTed.id };
+    const legacy3 = ted({ comune: "Venezia", provincia: "VE", regione: "veneto", regioni: ["veneto"] });
+    const u5 = unisciVersione(legacy3, { _versione: pvTed, luogo: pvVecchia, ente: pvTed, scadenza: pvTed }, ted({ comune: "Venezia", provincia: "VE", regione: "veneto", regioni: ["lazio"] }), vTed2, ISO);
+    uguale("gara TED unita alla PVL prima del 24/11: una rettifica TED non sostituisce le regioni PVL (provenienza ereditata)", [u5.riga.luogo_regioni, fonte(u5.provenienza, "luogo_regioni")], [["veneto"], "pvl"]);
     // gara TED importata prima della 0115 (provenienza vuota), poi la PVL: la sede resta TED e la sua provenienza diventa esplicita
     const u3 = unisciVersione(ted({ comune: "Roma", provincia: "RM", regione: "lazio", regioni: ["lazio"] }), null, pvl({ comune: "Firenze", provincia: "FI", regione: "toscana", regioni: ["toscana"] }), vPvl, ISO);
     uguale("gara TED senza provenienza, poi la PVL: sede TED con provenienza esplicita TED (non cambia con l'ultima versione)", [...sedeDi(u3.riga), fonte(u3.provenienza, "luogo"), u3.riga.ultima_versione_id.startsWith("pvl:")], ["Roma", "RM", "lazio", ["toscana"], "ted", true]);
