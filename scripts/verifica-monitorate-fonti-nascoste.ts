@@ -50,6 +50,11 @@ class DbProva {
   from(tabella: string) {
     return new QueryProva(this, tabella);
   }
+  /** funzioni del database: nessuna è prevista nella prova; risponde come PostgREST a una funzione che non c'è (chi chiama gestisce l'errore) */
+  rpc(nome: string) {
+    this.richieste.push({ tabella: `rpc:${nome}`, metodo: "rpc", colonne: "" });
+    return Promise.resolve({ data: null, error: { code: "PGRST202", message: `funzione ${nome} non prevista nella prova` } });
+  }
 }
 
 const confronta = (a: unknown, b: unknown) => {
@@ -916,6 +921,10 @@ async function principale(): Promise<void> {
     Object.assign(process.env, { RADAR_PER_TE: "attivo", RADAR_CLASSIFICAZIONI: "attive", NEXT_PUBLIC_SUPABASE_URL: `https://${staging}.supabase.co` });
     try {
       return righeDi(await PaginaPerTe({ searchParams: Promise.resolve({}) }));
+    } catch (e) {
+      // una pagina 404 (interruttore spento per errore) è una pagina senza righe: i controlli che seguono falliscono, la prova non si ferma
+      if (String((e as { digest?: unknown }).digest ?? "").startsWith("NEXT_HTTP_ERROR_FALLBACK;404")) return new Map<string, DatiRiga>();
+      throw e;
     } finally {
       for (const [k, v] of Object.entries(prima)) {
         if (v === undefined) delete process.env[k];
@@ -2203,6 +2212,164 @@ async function principale(): Promise<void> {
     { pagina: !!paginaFonti, respinta },
   );
   void tF;
+
+  // ═════ PACCHETTO P del go-live (55 §2, D-F): gli interruttori della B4 (RADAR_PER_TE, RADAR_UFFICIO_GARE, RADAR_NOTIFICHE_PREFERENZE)
+  // valgono con «attivo» esatto sullo staging, oppure in produzione SOLO dal deploy di produzione (VERCEL_ENV=production + database di
+  // produzione); anteprime, database sconosciuto e computer locale verso la produzione sempre esclusi. Ambienti SOLO in memoria. ═════
+  const b4 = richiedi(src("lib/radar/interruttori-b4.ts")) as {
+    INTERRUTTORI_B4: readonly string[];
+    interruttoreB4: (n: string, env: Record<string, string | undefined>) => boolean;
+    perTeAttivo: (env: Record<string, string | undefined>) => boolean;
+    ufficioGareRadarAttivo: (env: Record<string, string | undefined>) => boolean;
+    preferenzeNotificheAttive: (env: Record<string, string | undefined>) => boolean;
+  };
+  const URL_STAGING_P = `https://${stagingF}.supabase.co`;
+  const URL_PRODUZIONE_P = `https://${produzioneF}.supabase.co`;
+  // i database, con l'ambiente riconosciuto scritto a mano (non chiesto ad ambienteDb)
+  const DATABASE_P: [string | undefined, "staging" | "produzione" | "sconosciuto"][] = [
+    [URL_STAGING_P, "staging"],
+    [`${URL_STAGING_P}/`, "staging"],
+    [URL_STAGING_P.toUpperCase(), "staging"],
+    [URL_PRODUZIONE_P, "produzione"],
+    [URL_PRODUZIONE_P.toUpperCase(), "produzione"],
+    ["https://altro-progetto.supabase.co", "sconosciuto"],
+    ["http://localhost:54321", "sconosciuto"],
+    ["", "sconosciuto"],
+    [undefined, "sconosciuto"],
+  ];
+  const VERCEL_P = [undefined, "", "production", "preview", "development"];
+  const VALORI_P = [undefined, "", "attivo", "1", "true", "si", "ATTIVO", "Attivo", " attivo", "attivo ", "attivi"];
+  const accesoAtteso = (valore: string | undefined, vercel: string | undefined, db: string) => valore === "attivo" && vercel !== "preview" && (db === "staging" || (db === "produzione" && vercel === "production"));
+  let combinazioniP = 0;
+  const sbagliateP: string[] = [];
+  const involucriP: string[] = [];
+  const INVOLUCRO: Record<string, (env: Record<string, string | undefined>) => boolean> = { RADAR_PER_TE: b4.perTeAttivo, RADAR_UFFICIO_GARE: b4.ufficioGareRadarAttivo, RADAR_NOTIFICHE_PREFERENZE: b4.preferenzeNotificheAttive };
+  for (const nome of b4.INTERRUTTORI_B4)
+    for (const [url, db] of DATABASE_P)
+      for (const vercel of VERCEL_P)
+        for (const valore of VALORI_P) {
+          const env = { [nome]: valore, VERCEL_ENV: vercel, NEXT_PUBLIC_SUPABASE_URL: url };
+          combinazioniP++;
+          const acceso = b4.interruttoreB4(nome, env);
+          if (acceso !== accesoAtteso(valore, vercel, db)) sbagliateP.push(JSON.stringify({ nome, url, vercel, valore, acceso }));
+          if (INVOLUCRO[nome]?.(env) !== acceso) involucriP.push(nome);
+        }
+  // i cinque ambienti del go-live, per il rapporto
+  const SCENARI_P: Record<string, Record<string, string | undefined>> = {
+    staging: { NEXT_PUBLIC_SUPABASE_URL: URL_STAGING_P },
+    produzioneDaDeploy: { NEXT_PUBLIC_SUPABASE_URL: URL_PRODUZIONE_P, VERCEL_ENV: "production" },
+    produzioneDaLocale: { NEXT_PUBLIC_SUPABASE_URL: URL_PRODUZIONE_P },
+    anteprimaSulloStaging: { NEXT_PUBLIC_SUPABASE_URL: URL_STAGING_P, VERCEL_ENV: "preview" },
+    anteprimaSullaProduzione: { NEXT_PUBLIC_SUPABASE_URL: URL_PRODUZIONE_P, VERCEL_ENV: "preview" },
+    sconosciuto: { NEXT_PUBLIC_SUPABASE_URL: "https://altro-progetto.supabase.co", VERCEL_ENV: "production" },
+  };
+  const tabellaP = Object.fromEntries(
+    Object.entries(SCENARI_P).map(([s, e]) => [s, ["assente", "attivo", "1"].map((v) => b4.interruttoreB4("RADAR_PER_TE", { ...e, RADAR_PER_TE: v === "assente" ? undefined : v }))]),
+  );
+  const tabellaAttesa = {
+    staging: [false, true, false],
+    produzioneDaDeploy: [false, true, false],
+    produzioneDaLocale: [false, false, false],
+    anteprimaSulloStaging: [false, false, false],
+    anteprimaSullaProduzione: [false, false, false],
+    sconosciuto: [false, false, false],
+  };
+  // ogni interruttore legge solo il proprio nome, anche in produzione
+  const soloIlSuo = b4.INTERRUTTORI_B4.every((n) => b4.INTERRUTTORI_B4.every((m) => b4.interruttoreB4(m, { ...SCENARI_P.produzioneDaDeploy, [n]: "attivo" }) === (m === n)));
+  controlla(
+    `P1. interruttori della B4 (pacchetto P): matrice di ${combinazioniP} combinazioni (3 interruttori × 9 database × 5 VERCEL_ENV × 11 valori) uguale all'atteso scritto a mano: «attivo» esatto, mai sulle anteprime, staging sì, produzione solo dal deploy di produzione; gli involucri uguali; ogni interruttore legge solo il suo nome`,
+    combinazioniP === 3 * 9 * 5 * 11 && sbagliateP.length === 0 && involucriP.length === 0 && JSON.stringify(tabellaP) === JSON.stringify(tabellaAttesa) && soloIlSuo,
+    { sbagliate: sbagliateP.slice(0, 4), involucri: involucriP.slice(0, 3), tabella: tabellaP, soloIlSuo },
+  );
+
+  // le pagine vere «Per te», «Profilo» e «Notifiche»: 404 a interruttore spento, disegnate a interruttore acceso, negli stessi ambienti
+  const CHIAVI_P = ["NEXT_PUBLIC_SUPABASE_URL", "VERCEL_ENV", "RADAR_PER_TE", "RADAR_UFFICIO_GARE", "RADAR_NOTIFICHE_PREFERENZE", "RADAR_CLASSIFICAZIONI"] as const;
+  const conAmbienteP = async <T,>(env: Record<string, string | undefined>, f: () => Promise<T>): Promise<T> => {
+    const prima = Object.fromEntries(CHIAVI_P.map((k) => [k, process.env[k]]));
+    for (const k of CHIAVI_P) {
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+    }
+    try {
+      return await f();
+    } finally {
+      for (const k of CHIAVI_P) {
+        if (prima[k] === undefined) delete process.env[k];
+        else process.env[k] = prima[k];
+      }
+    }
+  };
+  const PaginaProfilo = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/profilo/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
+  const PaginaNotifiche = (richiedi(src("app/site-omnia-ai/dashboard/omnia-ai/opportunita/notifiche/page.tsx")) as { default: (p: unknown) => Promise<unknown> }).default;
+  const esitoPagina = async (pagina: (p: unknown) => Promise<unknown>, env: Record<string, string | undefined>): Promise<string> => {
+    mondo = nuovoMondo(false, { classificazioni: true });
+    try {
+      const alb = await conAmbienteP(env, () => pagina({ searchParams: Promise.resolve({}) }));
+      return alb ? "pagina" : "vuota";
+    } catch (e) {
+      const digest = String((e as { digest?: unknown }).digest ?? "");
+      if (digest.startsWith("NEXT_HTTP_ERROR_FALLBACK;404")) return "404";
+      return `errore: ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`;
+    }
+  };
+  const PAGINE_P: [string, (p: unknown) => Promise<unknown>, string][] = [
+    ["perTe", PaginaPerTe, "RADAR_PER_TE"],
+    ["profilo", PaginaProfilo, "RADAR_PER_TE"],
+    ["notifiche", PaginaNotifiche, "RADAR_NOTIFICHE_PREFERENZE"],
+  ];
+  const esitiPagine: Record<string, string> = {};
+  const pagineSbagliate: string[] = [];
+  for (const [nomePagina, pagina, variabile] of PAGINE_P)
+    for (const [scenario, env] of Object.entries(SCENARI_P))
+      for (const valore of [undefined, "attivo", "1"]) {
+        const e = await esitoPagina(pagina, { ...env, [variabile]: valore, RADAR_CLASSIFICAZIONI: "attive" });
+        const chiave = `${nomePagina}|${scenario}|${valore ?? "assente"}`;
+        esitiPagine[chiave] = e;
+        const attesa = (tabellaAttesa as Record<string, boolean[]>)[scenario][[undefined, "attivo", "1"].indexOf(valore)] ? "pagina" : "404";
+        if (e !== attesa) pagineSbagliate.push(`${chiave}: ${e}`);
+      }
+  controlla(
+    "P2. pagine vere «Per te», «Profilo» e «Notifiche» (database in memoria): disegnate solo con «attivo» sullo staging o dal deploy di produzione; 404 dalla produzione da un computer locale, sulle anteprime (anche sullo staging), con un database sconosciuto, a variabile assente o con un altro valore",
+    Object.keys(esitiPagine).length === 3 * 6 * 3 && pagineSbagliate.length === 0,
+    pagineSbagliate.slice(0, 6),
+  );
+
+  // le guardie VERE di Opportunità (il resto della prova usa un sostituto): caricate a parte, con le guardie dell'account al posto di segnaposti
+  const percorsoGuardie = richiedi.resolve(src("lib/radar/guardie-opportunita.ts"));
+  const percorsoAccount = richiedi.resolve(src("lib/omnia-ai-account-guardie.ts"));
+  const salvaGuardie = richiedi.cache[percorsoGuardie];
+  const salvaAccount = richiedi.cache[percorsoAccount];
+  type GuardieVere = { richiediOpportunitaPagina: () => Promise<unknown>; richiediOpportunitaAzione: () => Promise<unknown> };
+  let guardieVere = null as GuardieVere | null;
+  try {
+    delete richiedi.cache[percorsoGuardie];
+    sostituisci(percorsoAccount, {
+      richiediAccountPagina: async () => "account",
+      richiediTitolarePagina: async () => "titolare",
+      richiediAccountAzione: async () => "account",
+      richiediTitolareAzione: async () => "titolare",
+    });
+    guardieVere = richiedi(percorsoGuardie) as GuardieVere;
+  } finally {
+    if (salvaGuardie) richiedi.cache[percorsoGuardie] = salvaGuardie;
+    else delete richiedi.cache[percorsoGuardie];
+    if (salvaAccount) richiedi.cache[percorsoAccount] = salvaAccount;
+    else delete richiedi.cache[percorsoAccount];
+  }
+  const esitiGuardie: Record<string, string[]> = {};
+  const gv = guardieVere;
+  for (const [scenario, env] of Object.entries(SCENARI_P)) {
+    const r: string[] = [];
+    for (const valore of [undefined, "attivo", "1"])
+      r.push(gv ? `${String(await conAmbienteP({ ...env, RADAR_UFFICIO_GARE: valore }, () => gv.richiediOpportunitaPagina()))}/${String(await conAmbienteP({ ...env, RADAR_UFFICIO_GARE: valore }, () => gv.richiediOpportunitaAzione()))}` : "assente");
+    esitiGuardie[scenario] = r;
+  }
+  const guardieAttese = Object.fromEntries(Object.entries(tabellaAttesa).map(([s, v]) => [s, v.map((acceso) => (acceso ? "account/account" : "titolare/titolare"))]));
+  controlla(
+    "P3. guardie vere di Opportunità: l'Ufficio Gare entra (pagine e azioni) solo con RADAR_UFFICIO_GARE «attivo» sullo staging o dal deploy di produzione; altrimenti solo il titolare",
+    JSON.stringify(esitiGuardie) === JSON.stringify(guardieAttese),
+    esitiGuardie,
+  );
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }

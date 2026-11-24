@@ -2,10 +2,12 @@
 // provider con la CHIUSURA FORZATA di Resend.
 //
 // Decisione dell'utente del 19/11: «Preview e staging devono usare provider finto, senza inviare email reali»; «Riutilizzare Resend, ma solo
-// nel futuro ambiente di produzione autorizzato». In tutta la B4 resendConsentito() restituisce SEMPRE false: per accendere Resend servirà
-// una modifica di codice autorizzata, non basta una variabile. Il modulo non chiama mai la rete; il modulo src/lib/email.ts non si usa.
+// nel futuro ambiente di produzione autorizzato». Pacchetto P (piano 55 §2, decisione D-F del 23/11): Resend vale SOLO in produzione con
+// l'interruttore acceso (resendConsentito(env)); di base è spento, e l'accensione delle email è la fase F8 con la sua autorizzazione. Questo
+// modulo non chiama mai la rete (l'adattatore di Resend sta in provider-resend.ts); il modulo src/lib/email.ts non si usa.
 
 import { createHash } from "node:crypto";
+import { statoInvioEmail } from "./interruttore";
 
 /** Una email pronta da consegnare. `a` esiste solo in memoria durante l'invio: non si salva mai. */
 export type MessaggioEmail = {
@@ -43,9 +45,29 @@ export interface ProviderEmail {
   quotaResidua(): number | null;
 }
 
-/** In tutta la B4: MAI. Accendere Resend richiede una modifica di codice autorizzata (decisione del 19/11, piano 26B §5.4). */
-export function resendConsentito(): false {
-  return false;
+/**
+ * Resend (email VERE) solo in PRODUZIONE e solo con l'interruttore acceso (statoInvioEmail: RADAR_NOTIFICHE_EMAIL=attivo, deploy di
+ * produzione, database di produzione). Sullo staging, sulle anteprime e in locale MAI: lì il motore usa il provider finto (decisione del
+ * 19/11, piano 26B §5.4; pacchetto P, piano 55 §2). Di base è spento perché l'interruttore è spento (55A D-C: accensione in F8).
+ */
+export function resendConsentito(env: Record<string, string | undefined>): boolean {
+  const s = statoInvioEmail(env);
+  return s.acceso && s.ambiente === "produzione";
+}
+
+// F8 (55A D-C: «prima una prova con un indirizzo interno»): con RADAR_EMAIL_DESTINATARIO_PROVA ogni email va SOLO a quell'indirizzo, con
+// «[PROVA] » davanti all'oggetto e una chiave di idempotenza propria (nessun conflitto con gli invii veri di dopo). Gli eventi del giro
+// risultano consegnati: la prova si fa quando il modulo è aperto solo a utenti interni o di prova.
+export const VARIABILE_DESTINATARIO_PROVA = "RADAR_EMAIL_DESTINATARIO_PROVA";
+const INDIRIZZO = /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i;
+
+export function conDestinatarioDiProva(base: ProviderEmail, indirizzo: string): ProviderEmail {
+  if (!INDIRIZZO.test(indirizzo)) throw new Error(`${VARIABILE_DESTINATARIO_PROVA} non è un indirizzo email valido: nessun invio`);
+  return {
+    nome: base.nome,
+    quotaResidua: () => base.quotaResidua(),
+    invia: (m: MessaggioEmail) => base.invia({ ...m, a: indirizzo, oggetto: `[PROVA] ${m.oggetto}`, chiaveIdempotenza: `prova-${m.chiaveIdempotenza}` }),
+  };
 }
 
 function impronta(testo: string): string {
@@ -89,8 +111,16 @@ export class ProviderFinto implements ProviderEmail {
   }
 }
 
-/** La scelta del provider: nella B4 SEMPRE il finto (staging, anteprime, prove, locale). */
-export function sceltaProvider(): ProviderEmail {
-  if (resendConsentito()) throw new Error("Resend non è autorizzato nella B4");
-  return new ProviderFinto();
+/**
+ * La scelta del provider: il finto ovunque (staging, anteprime, prove, locale), Resend SOLO se resendConsentito(env). `creaResend` è
+ * l'adattatore (provider-resend.ts), passato da chi chiama per non legare questo file alla rete. Senza la chiave RESEND_API_KEY Resend
+ * non parte; con RADAR_EMAIL_DESTINATARIO_PROVA ogni email va solo all'indirizzo di prova (F8).
+ */
+export function sceltaProvider(env: Record<string, string | undefined> = {}, creaResend?: (chiave: string) => ProviderEmail): ProviderEmail {
+  if (!resendConsentito(env)) return new ProviderFinto();
+  const chiave = env.RESEND_API_KEY;
+  if (!chiave) throw new Error("RESEND_API_KEY mancante: le email vere non partono");
+  if (!creaResend) throw new Error("adattatore di Resend non passato: le email vere non partono");
+  const prova = env[VARIABILE_DESTINATARIO_PROVA];
+  return prova !== undefined ? conDestinatarioDiProva(creaResend(chiave), prova) : creaResend(chiave);
 }

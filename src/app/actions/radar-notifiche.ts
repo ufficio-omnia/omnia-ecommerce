@@ -11,7 +11,7 @@ import { CATEGORIE_NOTIFICA } from "@/lib/radar/notifiche/tipi";
 import { categorieDaModulo, validaModificaPreferenze } from "@/lib/radar/notifiche-preferenze-calcoli";
 import { leggiPersoneDellImpresa, leggiPreferenzePersona, scriviEmailImpresa, scriviPreferenze } from "@/lib/radar/notifiche-preferenze";
 
-// Fase B4 (B1), grado 3 — Azioni della pagina «Notifiche» (RADAR_NOTIFICHE_PREFERENZE acceso solo sullo staging). Decisione dell'utente del
+// Fase B4 (B1), grado 3 — Azioni della pagina «Notifiche» (RADAR_NOTIFICHE_PREFERENZE: staging o deploy di produzione, interruttori-b4.ts). Decisione dell'utente del
 // 19/11 §3 e approvazione definitiva (D-E3, D-E4):
 //   - l'interruttore delle email dell'IMPRESA lo cambia solo il titolare dell'impresa;
 //   - le preferenze personali: il titolare per tutte le persone della sua impresa; l'Ufficio Gare (con il grado 2 acceso) solo le proprie e

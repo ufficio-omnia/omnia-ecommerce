@@ -96,9 +96,22 @@ export function scrittureRadarConsentite(fonte: FonteRadar, env: Record<string, 
   return fonteAutorizzata(fonte, "importazione", env);
 }
 
+// Pacchetto P (piano 55 §2, decisione dell'utente D-F del 23/11): un interruttore del radar con lo STESSO schema di K8. Acceso SOLO con il
+// valore ESATTO della sua variabile (né «1», né «true», né spazi, né maiuscole diverse) e:
+//   - sullo staging, come prima. `anteprimaSulloStaging` dice se vale anche sulle anteprime di Vercel, che leggono lo staging: sì per ciò che
+//     le pagine solo LEGGONO (classificazioni), no per ciò che SCRIVE (evidenza);
+//   - oppure in produzione, SOLO sul deploy di produzione di Vercel (VERCEL_ENV=production) con il database di produzione.
+// Sempre spento su un database sconosciuto, da un ambiente locale o da un'anteprima verso la produzione. Senza la variabile: spento.
+export function interruttoreRadar(env: Record<string, string | undefined>, variabile: string, valore: string, opzioni: { anteprimaSulloStaging: boolean }): boolean {
+  if (env[variabile] !== valore) return false;
+  const ambiente = ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL);
+  if (ambiente === "staging") return opzioni.anteprimaSulloStaging || env.VERCEL_ENV !== "preview";
+  return ambiente === "produzione" && env.VERCEL_ENV === "production";
+}
+
 // Fase B2b (17/11/2026): gli importatori tengono coerenti la colonna «settori», le righe della 0121 e lo stato della classificazione SOLO con
-// l'interruttore acceso: RADAR_CLASSIFICAZIONI=attive e SOLO sullo staging. Di base è SPENTO (il modulo resta disattivato durante la
-// costruzione); in produzione resta spento finché l'utente non lo autorizza.
+// l'interruttore acceso: RADAR_CLASSIFICAZIONI=attive. Di base è SPENTO. Sullo staging come prima (anche sulle anteprime, che leggono); in
+// produzione col pacchetto P solo sul deploy di produzione (interruttoreRadar). Le pagine lo usano per leggere le classificazioni.
 export function classificazioniAttive(env: Record<string, string | undefined>): boolean {
-  return env.RADAR_CLASSIFICAZIONI === "attive" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";
+  return interruttoreRadar(env, "RADAR_CLASSIFICAZIONI", "attive", { anteprimaSulloStaging: true });
 }

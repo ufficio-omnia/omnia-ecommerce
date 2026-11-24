@@ -6,7 +6,7 @@ import { perTeAttivo } from "@/lib/radar/interruttori-b4";
 import { leggiProfiloRadar } from "@/lib/radar/profilo";
 import { profiloVuoto } from "@/lib/radar/profilo-calcoli";
 
-// «Opportunità»: si apre su «Cerca». Fase B4 (grado 1): con RADAR_PER_TE acceso (solo staging) e un profilo con almeno un settore, si apre
+// «Opportunità»: si apre su «Cerca». Fase B4 (grado 1): con RADAR_PER_TE acceso (staging o deploy di produzione, interruttori-b4.ts) e un profilo con almeno un settore, si apre
 // su «Per te» (1 lettura per chiave del profilo, con la sessione dell'utente).
 export default async function OpportunitaPage() {
   const sessione = await richiediOpportunitaPagina();

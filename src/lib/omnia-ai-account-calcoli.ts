@@ -41,7 +41,7 @@ export function vociMenuPer(ruolo: RuoloAccount): VoceMenu[] {
 // Le sole sezioni (sotto la radice dell'area) aperte all'Ufficio Gare. Tutto il resto è del titolare.
 export const SEZIONI_UFFICIO_GARE = ["gare", "assistenza"] as const;
 
-// Fase B4 (Tender Intelligence, grado 2): «opportunita» si apre all'Ufficio Gare SOLO con RADAR_UFFICIO_GARE acceso (solo staging; la guardia
+// Fase B4 (Tender Intelligence, grado 2): «opportunita» si apre all'Ufficio Gare SOLO con RADAR_UFFICIO_GARE acceso (staging o deploy di produzione, interruttori-b4.ts; la guardia
 // vera è src/lib/radar/guardie-opportunita.ts). Spento, resta chiusa come oggi.
 export const SEZIONI_UFFICIO_GARE_CON_RADAR = [...SEZIONI_UFFICIO_GARE, "opportunita"] as const;
 

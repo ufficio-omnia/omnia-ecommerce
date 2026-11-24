@@ -57,12 +57,20 @@ const PRODUZIONE = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
 const IMPRESA = "00000000-0000-4000-a000-00000000a1fa";
 const UFFICIO = "00000000-0000-4000-a000-0000000a1fa2";
 
-// ───── I. Interruttori: solo «attivo» e solo con lo staging ─────
+// ───── I. Interruttori: solo «attivo»; staging, oppure produzione SOLO dal deploy di produzione (pacchetto P del go-live, 55 §2) ─────
 
 for (const nome of INTERRUTTORI_B4) {
   atteso(`I1 ${nome}: acceso con «attivo» sullo staging`, interruttoreB4(nome, { [nome]: "attivo", NEXT_PUBLIC_SUPABASE_URL: STAGING }));
-  atteso(`I2 ${nome}: spento in produzione anche con «attivo»`, !interruttoreB4(nome, { [nome]: "attivo", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }));
+  atteso(`I2 ${nome}: spento in produzione da un computer locale anche con «attivo»`, !interruttoreB4(nome, { [nome]: "attivo", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }));
   atteso(`I3 ${nome}: spento con un database sconosciuto`, !interruttoreB4(nome, { [nome]: "attivo", NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co" }));
+  atteso(`I7 ${nome}: acceso con «attivo» dal deploy di produzione (VERCEL_ENV=production e database di produzione)`, interruttoreB4(nome, { [nome]: "attivo", VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }));
+  atteso(
+    `I8 ${nome}: spento sulle anteprime di Vercel, anche sullo staging`,
+    !interruttoreB4(nome, { [nome]: "attivo", VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: STAGING }) && !interruttoreB4(nome, { [nome]: "attivo", VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }),
+  );
+  atteso(`I9 ${nome}: spento con un database sconosciuto anche dal deploy di produzione`, !interruttoreB4(nome, { [nome]: "attivo", VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co" }));
+  atteso(`I10 ${nome}: spento sul database di produzione con un ambiente Vercel diverso da «production»`, !interruttoreB4(nome, { [nome]: "attivo", VERCEL_ENV: "development", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }));
+  atteso(`I11 ${nome}: dal deploy di produzione spento senza «attivo» esatto`, !interruttoreB4(nome, { [nome]: "1", VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }) && !interruttoreB4(nome, { VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: PRODUZIONE }));
   for (const valore of ["1", "true", "ATTIVO", " attivo", "attivo ", "acceso", ""]) {
     atteso(`I4 ${nome}: spento con «${valore}»`, !interruttoreB4(nome, { [nome]: valore, NEXT_PUBLIC_SUPABASE_URL: STAGING }));
   }

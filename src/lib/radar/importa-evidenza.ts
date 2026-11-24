@@ -10,14 +10,17 @@
 // Evidenza (0123): scritta SOLO con l'interruttore RADAR_REGISTRO_EVIDENZA («attivo», solo staging, mai sulle anteprime), perché le colonne
 // esistono solo dopo la 0123: prima della sua applicazione gli importatori scrivono esattamente come oggi.
 
-import { ambienteDb } from "./ambiente";
+import { interruttoreRadar } from "./ambiente";
 import { giornoDiRoma } from "./fonti/ted-calcoli";
 import { collegamentoNormalizzato } from "./modifiche-pvl";
 import { testoPerConfronto } from "./settori";
 
-/** Le colonne della 0123 si scrivono solo con l'interruttore acceso, sullo staging, fuori dalle anteprime (dopo l'applicazione della 0123). */
+/**
+ * Le colonne della 0123 si scrivono solo con l'interruttore acceso (RADAR_REGISTRO_EVIDENZA=attivo, dopo l'applicazione della 0123): sullo
+ * staging fuori dalle anteprime, come prima; in produzione col pacchetto P SOLO sul deploy di produzione (interruttoreRadar, schema di K8).
+ */
 export function registroConEvidenza(env: Record<string, string | undefined>): boolean {
-  return env.RADAR_REGISTRO_EVIDENZA === "attivo" && env.VERCEL_ENV !== "preview" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";
+  return interruttoreRadar(env, "RADAR_REGISTRO_EVIDENZA", "attivo", { anteprimaSulloStaging: false });
 }
 
 const ENTITA: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };

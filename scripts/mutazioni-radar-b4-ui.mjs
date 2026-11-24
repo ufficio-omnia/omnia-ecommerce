@@ -24,10 +24,13 @@ const F = {
 };
 
 const MUTAZIONI = [
-  { nome: "M1 interruttore acceso con qualunque valore", file: F.interruttori, cerca: 'return env[nome] === "attivo" && ambienteDb', con: "return !!env[nome] && ambienteDb" },
-  // (dal grado 3 all'A9 del 20/11 la stessa coda compariva anche in invioEmailDichiaratoAcceso, oggi delegata a B2: il punto da mutare
-  // comprende comunque «return env[nome]»)
-  { nome: "M2 interruttore valido anche fuori dallo staging", file: F.interruttori, cerca: 'return env[nome] === "attivo" && ambienteDb(env.NEXT_PUBLIC_SUPABASE_URL) === "staging";', con: 'return env[nome] === "attivo";' },
+  { nome: "M1 interruttore acceso con qualunque valore", file: F.interruttori, cerca: '  if (env[nome] !== "attivo") return false;', con: "  if (!env[nome]) return false;" },
+  // pacchetto P del go-live (55 §2): produzione SOLO dal deploy di produzione; anteprime e database sconosciuti sempre esclusi
+  { nome: "M2 interruttore acceso in produzione anche da un computer locale", file: F.interruttori, cerca: '  return ambiente === "produzione" && env.VERCEL_ENV === "production";', con: '  return ambiente === "produzione";' },
+  { nome: "M2b interruttore acceso sulle anteprime", file: F.interruttori, cerca: '  if (env.VERCEL_ENV === "preview") return false;\n', con: "" },
+  { nome: "M2c interruttore acceso con un database sconosciuto dal deploy di produzione", file: F.interruttori, cerca: '  return ambiente === "produzione" && env.VERCEL_ENV === "production";', con: '  return ambiente !== "staging" && env.VERCEL_ENV === "production";' },
+  { nome: "M2d interruttore spento sullo staging", file: F.interruttori, cerca: '  if (ambiente === "staging") return true;', con: '  if (ambiente === "staging") return false;' },
+  { nome: "M2e interruttore acceso in produzione con qualunque ambiente Vercel", file: F.interruttori, cerca: '  return ambiente === "produzione" && env.VERCEL_ENV === "production";', con: '  return ambiente === "produzione" && !!env.VERCEL_ENV;' },
   { nome: "M3 pagine di Opportunità aperte all'Ufficio Gare a interruttore spento", file: F.guardie, cerca: "? richiediAccountPagina() : richiediTitolarePagina();", con: "? richiediAccountPagina() : richiediAccountPagina();" },
   { nome: "M4 azioni di Opportunità aperte all'Ufficio Gare a interruttore spento", file: F.guardie, cerca: "? richiediAccountAzione() : richiediTitolareAzione();", con: "? richiediAccountAzione() : richiediAccountAzione();" },
   { nome: "M5 gare senza luogo escluse da «Per te»", file: F.profilo, cerca: "},luogo_regioni.eq.{}`;", con: "}`;" },

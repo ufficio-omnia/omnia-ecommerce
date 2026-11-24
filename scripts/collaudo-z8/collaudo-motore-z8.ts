@@ -178,7 +178,7 @@ export async function collaudo(c: Contesto): Promise<EsitoCollaudo> {
   };
 
   // ───── 1. prerequisiti (sola lettura) ─────
-  if (resendConsentito()) return ferma("resend_consentito");
+  if (resendConsentito(c.env)) return ferma("resend_consentito");
   const accese = await leggi<{ impresa_id: string }[]>("imprese con le email accese", c.admin.from("omnia_ai_radar_notifiche_impresa").select("impresa_id").eq("email_attive", true));
   const destinatari = await leggi<{ impresa_id: string; user_id: string; ruolo: string; email: string | null }[]>(
     "destinatari", c.admin.rpc("radar_notifiche_destinatari", { p_imprese: accese.map((r) => r.impresa_id) }) as PromiseLike<{ data: unknown; error: { message?: string } | null }>,
