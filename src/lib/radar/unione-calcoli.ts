@@ -17,8 +17,9 @@
 //       · la SEDE dell'ente (sa_comune, sa_provincia, sa_regione) è un'unità a sé. TED, Sintel e SardegnaCAT indicano la sede; la PVL solo
 //         il luogo di esecuzione del primo lotto (pvl-calcoli.ts). La sede vince sempre sul luogo di esecuzione, in entrambe le direzioni;
 //         tra due fonti dello stesso tipo valgono le regole dei dati complementari;
-//       · i campi vuoti della sede scelta si riempiono dall'altra fonte solo se è la stessa sede (stesso comune, oppure una fonte con la
-//         sede, senza comune e con la regione compatibile): mai indovinati, mai il comune di un luogo con la provincia di un altro;
+//       · i campi vuoti della sede scelta si riempiono dall'altra fonte (o dalla versione precedente della stessa fonte) solo se è la
+//         stessa sede (stesso comune, oppure senza comune con provincia e regione compatibili e una fonte dello stesso tipo): mai
+//         indovinati, mai il comune di un luogo con la provincia di un altro;
 //       · le regioni del luogo di esecuzione (luogo_regioni) sono un gruppo proprio: chi non le dà non le toglie, chi le dà riempie quelle
 //         vuote, tra due fonti che le danno vale la precedenza;
 //       · ente (codice fiscale e nome), sede, regioni e codice NUTS: un valore presente non si perde mai, campo per campo, nemmeno con una
@@ -141,15 +142,16 @@ function vuoto(v: unknown): boolean {
 }
 
 /**
- * Riempie i campi VUOTI della sede scelta («r») con quelli dell'altra fonte, solo se è la stessa sede: stesso comune; oppure, se uno dei due
- * comuni manca, l'altra fonte indica la sede e la regione è compatibile. Mai il comune di un luogo con la provincia o la regione di un altro.
- * Restituisce true se ha cambiato qualcosa.
+ * Riempie i campi VUOTI della sede scelta («r») con quelli dell'altra («altra»), solo se è la stessa sede: stesso comune; oppure, se uno dei
+ * due comuni manca, «altra» è dello stesso tipo (una sede, o la versione precedente della STESSA fonte) e provincia e regione sono compatibili
+ * (uguali o una delle due vuota). Mai il comune di un luogo con la provincia o la regione di un altro. Restituisce true se ha cambiato qualcosa.
  */
 export function completaSede(r: Pick<RigaProcedura, (typeof COLONNE_SEDE)[number]>, altra: Pick<RigaProcedura, (typeof COLONNE_SEDE)[number]>, altraIndicaLaSede: boolean): boolean {
+  const compatibili = (a: string | null, b: string | null) => vuoto(a) || vuoto(b) || a === b;
   const stessaSede =
     !vuoto(r.sa_comune) && !vuoto(altra.sa_comune)
       ? nomeDiConfronto(r.sa_comune) === nomeDiConfronto(altra.sa_comune)
-      : altraIndicaLaSede && (vuoto(r.sa_regione) || vuoto(altra.sa_regione) || r.sa_regione === altra.sa_regione);
+      : altraIndicaLaSede && compatibili(r.sa_provincia, altra.sa_provincia) && compatibili(r.sa_regione, altra.sa_regione);
   if (!stessaSede) return false;
   let cambiato = false;
   for (const c of COLONNE_SEDE) {
@@ -302,7 +304,9 @@ export function unisciVersione(precedente: RigaProcedura | null, provenienzaPrec
     if (prendi) {
       copia(nuova, riga, g);
       // dentro il gruppo, un campo vuoto della versione nuova non toglie quello di prima (sede: solo se è la stessa sede)
-      if (g.nome === "luogo") completaSede(riga, precedente, cur ? indicaLaSede(cur.f) : true);
+      // la sede di prima vale come «stesso tipo» se indica la sede o se è della STESSA fonte (rilievo 2 di B2, 24/11: una versione PVL più
+      // recente senza comune non toglie il comune della versione PVL precedente con la stessa provincia e regione)
+      if (g.nome === "luogo") completaSede(riga, precedente, cur ? cur.f === versione.fonte || indicaLaSede(cur.f) : true);
       else if (g.nome === "ente") completaColonne(riga, precedente, g);
       presi.push(g.nome);
       if (vuoto(nuovo)) delete prov[g.nome];

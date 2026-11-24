@@ -159,6 +159,22 @@ async function principale() {
     uguale("sola PVL, versione più recente con un altro luogo completo: lo sostituisce (come prima)", sedeDi(c.riga), ["Firenze", "FI", "toscana", ["toscana"]]);
     const d = unisciVersione(a.riga, a.provenienza, pvl({ comune: "Firenze", provincia: null, regione: null, regioni: [] }), vPvl2, ISO);
     uguale("sola PVL, versione più recente con un altro comune senza provincia: nessuna provincia di un altro comune", sedeDi(d.riga), ["Firenze", null, null, ["lazio"]]);
+    // rilievo 2 di B2 (24/11): versione più recente della STESSA fonte senza comune (luogo_istat mancante), stessa provincia e regione → il
+    // comune resta; con un'altra provincia invece no (mai il comune di un luogo con la provincia di un altro)
+    const v1 = unisciVersione(null, null, pvl({ comune: "Baveno", provincia: "VB", regione: "piemonte", regioni: ["piemonte"] }), vPvl, ISO);
+    const v2 = unisciVersione(v1.riga, v1.provenienza, pvl({ comune: null, provincia: "VB", regione: "piemonte", regioni: ["piemonte"] }), vPvl2, ISO);
+    uguale("sola PVL, versione più recente senza comune, stessa provincia: il comune resta (Baveno VB)", sedeDi(v2.riga), ["Baveno", "VB", "piemonte", ["piemonte"]]);
+    const v3 = unisciVersione(v1.riga, v1.provenienza, pvl({ comune: null, provincia: "TO", regione: "piemonte", regioni: ["piemonte"] }), vPvl2, ISO);
+    uguale("sola PVL, versione più recente senza comune e con un'altra provincia: nessun comune di un'altra provincia", sedeDi(v3.riga), [null, "TO", "piemonte", ["piemonte"]]);
+    const vS: VersioneFonte = { ...vSintel, id: "900002", giorno: "2026-11-22" };
+    const s1 = unisciVersione(null, null, sintel({ comune: "Cassano Magnago", provincia: null, regione: "lombardia", regioni: ["lombardia"] }), vSintel, ISO);
+    const s2 = unisciVersione(s1.riga, s1.provenienza, sintel({ comune: null, provincia: null, regione: "lombardia", regioni: ["lombardia"] }), vS, ISO);
+    uguale("sola Sintel, versione più recente senza comune: il comune resta", sedeDi(s2.riga), ["Cassano Magnago", null, "lombardia", ["lombardia"]]);
+    const sc = (s: Sede) => conSede({ ...BASE, chiave: "sardegnacat:700001" }, s, { cf: "00000000003", nome: "Comune sintetico" });
+    const vC: VersioneFonte = { fonte: "sardegnacat", id: "700001", giorno: "2026-11-18", istante: "2026-11-18T09:00:00.000Z", ted: null };
+    const c1 = unisciVersione(null, null, sc({ comune: "Selargius", provincia: "CA", regione: "sardegna", regioni: ["sardegna"] }), vC, ISO);
+    const c2 = unisciVersione(c1.riga, c1.provenienza, sc({ comune: null, provincia: null, regione: "sardegna", regioni: ["sardegna"] }), { ...vC, istante: "2026-11-21T09:00:00.000Z", giorno: "2026-11-21" }, ISO);
+    uguale("sola SardegnaCAT, versione più recente senza comune: comune e provincia restano", sedeDi(c2.riga), ["Selargius", "CA", "sardegna", ["sardegna"]]);
     const t = unisciVersione(null, null, ted({ comune: "Torino", provincia: "TO", regione: "piemonte", regioni: ["piemonte"] }), vTed, ISO);
     const t2 = unisciVersione(t.riga, t.provenienza, { ...ted({ comune: null, provincia: null, regione: null, regioni: [] }, { cf: null, nome: null }), valore_stimato: null, codice_nuts: null, ultima_versione_id: vTed2.id }, vTed2, ISO);
     uguale("sola TED, versione più recente senza città, ente e NUTS: nulla si svuota", [...sedeDi(t2.riga), t2.riga.sa_codice_fiscale, t2.riga.sa_denominazione, t2.riga.codice_nuts === t.riga.codice_nuts], ["Torino", "TO", "piemonte", ["piemonte"], "00000000001", "Ente sintetico - Ufficio acquisti", true]);
