@@ -13,6 +13,8 @@ import path from "path";
 import { databaseInMemoria, type RigaMem } from "./lib/db-in-memoria";
 import { leggiProceduraSintel, type BandoSintel } from "../src/lib/radar/fonti/sintel-calcoli";
 import { leggiElementoAflink, type BandoAflink } from "../src/lib/radar/fonti/aflink-calcoli";
+import { CRON_PROPOSTI, ROTTE_CRON } from "../src/lib/radar/programmazione-calcoli";
+import { FONTI_ESECUZIONI } from "../src/lib/radar/esecuzioni-calcoli";
 import { applicaPaginaBandiRegionali } from "../src/lib/radar/importa-regionali-pagina";
 import { bandoDaAflink, bandoDaSintel, statisticheRegionaliVuote, type BandoRegionale, type StatisticheRegionali } from "../src/lib/radar/importa-regionali-calcoli";
 import { collegaDoppioniPerAvvisoTed, collegaGare, confermaProposta, leggiProposteAperte, rifiutaProposta, scollegaGara } from "../src/lib/radar/collegamenti";
@@ -587,8 +589,16 @@ async function principale() {
       const t = leggi(`src/lib/radar/${f}`);
       atteso(`B3. ${f}: il permesso dell'ambiente viene prima di ogni accesso al database`, t.indexOf("const permesso = scrittureRadarConsentite(") > 0 && t.indexOf("const permesso = scrittureRadarConsentite(") < t.indexOf("admin.from("));
     }
-    const vercel = JSON.parse(leggi("vercel.json")) as { crons?: { path: string }[] };
-    uguale("B3. vercel.json programma solo il cron di TED tra quelli del radar (PVL e regionali no)", (vercel.crons ?? []).map((c) => c.path).filter((p) => p.startsWith("/api/cron/radar")), ["/api/cron/radar-ted"]);
+    // rilascio (documento 51 §5): i cron del radar sono ESATTAMENTE i quattro di ROTTE_CRON, uno ciascuno, con la riga di CRON_PROPOSTI
+    const vercel = JSON.parse(leggi("vercel.json")) as { crons?: { path: string; schedule: string }[] };
+    uguale(
+      "B3. vercel.json: i cron del radar sono esattamente i quattro di ROTTE_CRON, uno per rotta, con la riga di CRON_PROPOSTI",
+      (vercel.crons ?? [])
+        .filter((c) => c.path.startsWith("/api/cron/radar"))
+        .map((c) => `${c.path} ${c.schedule}`)
+        .sort(),
+      FONTI_ESECUZIONI.map((f) => `${ROTTE_CRON[f]} ${CRON_PROPOSTI[f].join("|")}`).sort(),
+    );
   }
   uguale("tipo di opportunità di TED e PVL", ["cn-standard", "pin-cfc-standard", "qu-sy", "P2_16", "can-standard"].map((t) => opportunitaDaTipoAvviso(t)?.tipo ?? null), ["bando", "bando", "sistema_qualificazione", "bando", null]);
 
@@ -604,8 +614,9 @@ async function principale() {
   atteso("un solo sistema di unione: nessuna fusione che cancella o sposta righe", !/\.delete\(|delete from/i.test(codice));
   atteso("le fonti regionali scrivono con il motore di unione (unisciVersione, unisciLotti, collegaGare)", /unisciVersione/.test(codice) && /unisciLotti/.test(codice) && /collegaGare/.test(codice));
   atteso("il giro rispetta il blocco e il semaforo (occupata, nessuna scrittura)", /blocco_fino_a\.is\.null,blocco_fino_a\.lt\./.test(leggi("src/lib/radar/importa-regionali.ts")) && /"occupata"/.test(leggi("src/lib/radar/importa-regionali.ts")));
+  // rilascio (documento 51 §5): la rotta vecchia radar-regionali e ogni percorso «fonti» non entrano mai in vercel.json
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
-  atteso("nessun cron nuovo in vercel.json", !vercel.crons.some((c) => /regional|sintel|sardegna|fonti/.test(c.path)));
+  atteso("vercel.json: nessun cron della rotta vecchia (regional) né «fonti»", !vercel.crons.some((c) => /regional|fonti/.test(c.path)));
   const rotta = leggi("src/app/api/cron/radar-regionali/route.ts");
   atteso("cron delle fonti regionali: segreto e interruttore RADAR_REGIONALI_CRON=attivo", /cronAutorizzato\(request\.headers\.get\("authorization"\), process\.env\.CRON_SECRET\)/.test(rotta) && /RADAR_REGIONALI_CRON !== "attivo"/.test(rotta));
   const script = leggi("scripts/radar-importa-regionale.ts");

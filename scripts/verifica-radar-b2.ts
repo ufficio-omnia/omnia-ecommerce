@@ -21,6 +21,7 @@ import {
   type RigaSintel,
 } from "../src/lib/radar/fonti/sintel-calcoli";
 import { LettoreSintel } from "../src/lib/radar/fonti/sintel";
+import { ROTTE_CRON } from "../src/lib/radar/programmazione-calcoli";
 import {
   ISTANZE_AFLINK,
   decodificaEntita,
@@ -408,13 +409,19 @@ async function principale() {
   atteso("Sintel: si leggono solo i due indirizzi del dataset", lettureSintel.length === 3 && lettureSintel.every((x) => /^sessione\.leggi\((URL_METADATI_SINTEL|`\$\{URL_DATI_SINTEL\}\?)/.test(x)));
   atteso("citazione delle fonti presente", /ATTRIBUZIONE_SINTEL = "Regione Lombardia – Open Data Lombardia \(Sintel\), licenza CC0 1\.0"/.test(leggi("src/lib/radar/fonti/sintel-calcoli.ts")) && /attribuzione: "Regione Autonoma della Sardegna – SardegnaCAT/.test(leggi("src/lib/radar/fonti/aflink-calcoli.ts")));
   uguale("limiti fuori intervallo tornano ai predefiniti", limitiValidi({ pausaMs: 10, tentativi: 9, timeoutMs: 20_000 }, LIMITI_PROVA, { pausaMs: { min: 1_000, max: 60_000 }, timeoutMs: { min: 5_000, max: 120_000 }, tentativi: { min: 1, max: 3 }, richiesteMassime: { min: 1, max: 20 } }), { ...LIMITI_PROVA, timeoutMs: 20_000 });
+  // rilascio (documento 51 §5): i soli percorsi del radar ammessi sono i quattro di ROTTE_CRON; mai aflink, radar-fonti, radar-regionali
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
-  atteso("nessun cron nuovo in vercel.json", !vercel.crons.some((c) => /sintel|sardegna|aflink|radar-fonti/.test(c.path)));
+  const rotteRadar: string[] = Object.values(ROTTE_CRON);
+  atteso(
+    "vercel.json: i soli cron del radar sono i quattro di ROTTE_CRON; nessun aflink, radar-fonti, radar-regionali",
+    vercel.crons.filter((c) => c.path.startsWith("/api/cron/radar")).every((c) => rotteRadar.includes(c.path)) && !vercel.crons.some((c) => /aflink|radar-fonti|radar-regionali/.test(c.path)),
+  );
   // B2-0 non porta migrazioni: dopo la 0117 (della PVL, approvata il 17/11) possono esserci solo la 0120 di B2a e la 0121 di B2 (PROGETTO
   // mai applicato, decisione dell'utente del 17/11; i suoi controlli sono in verifica-radar-0121.ts)
   // fase B4 (19/11): nel ramo B2 ci sono anche le BOZZE 0122–0125 del 26B; Z5 (21/11): più la 0128 (registro dei giri); 49A (23/11, PVL):
-  // più la 0133 (stato «da_verificare» delle classificazioni), esattamente queste
-  atteso("nessuna migrazione di B2-0 (oltre la 0117 solo la 0120 di B2a, il progetto 0121, le B4 0122–0125, la 0128 e la 0133)", fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01(1[89]|[2-9]\d)_/.test(f)).every((f) => /^0120_|^0121_radar_classificazioni\.sql$|^0122_radar_profili_per_te\.sql$|^0123_radar_aggiornamenti_evidenza\.sql$|^0124_radar_avvisi_preferenze\.sql$|^0125_radar_avvisi_eventi_coda\.sql$|^0128_radar_esecuzioni\.sql$|^0133_radar_classificazioni_da_verificare\.sql$/.test(f)));
+  // più la 0133 (stato «da_verificare» delle classificazioni), esattamente queste. Rilascio (piano 55, F3 passo 9): con master entrano anche
+  // le due migrazioni del sito già eseguite in produzione, 0130 (copertina in vendita) e 0131 (gare omaggio), ammesse per nome
+  atteso("nessuna migrazione di B2-0 (oltre la 0117 solo la 0120 di B2a, il progetto 0121, le B4 0122–0125, la 0128 e la 0133; più le 0130 e 0131 del sito)", fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01(1[89]|[2-9]\d)_/.test(f)).every((f) => /^0120_|^0121_radar_classificazioni\.sql$|^0122_radar_profili_per_te\.sql$|^0123_radar_aggiornamenti_evidenza\.sql$|^0124_radar_avvisi_preferenze\.sql$|^0125_radar_avvisi_eventi_coda\.sql$|^0128_radar_esecuzioni\.sql$|^0133_radar_classificazioni_da_verificare\.sql$|^0130_copertina_vendita_pacchetti\.sql$|^0131_omnia_ai_gare_omaggio\.sql$/.test(f)));
 
   console.log(fallimenti.length === 0 ? "\nVerifica B2-0 (Sintel e SardegnaCAT): tutto a posto." : `\nVerifica B2-0: ${fallimenti.length} controlli falliti:\n - ${fallimenti.join("\n - ")}`);
   process.exit(fallimenti.length === 0 ? 0 : 1);

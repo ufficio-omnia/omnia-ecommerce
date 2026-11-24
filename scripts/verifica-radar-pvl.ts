@@ -509,8 +509,12 @@ async function principale() {
   atteso("script della prima importazione: rifiuta tutto ciò che non è lo staging", /PRODUZIONE|PROGETTO_PRODUZIONE/.test(script) && /RADAR_STAGING_REF/.test(script));
 
   // ───── 12. giri programmati configurati ma NON attivi; nessun polling; nessuna AI ─────
-  const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
-  atteso("nessun cron PVL in vercel.json (serve l'autorizzazione operativa)", !vercel.crons.some((c) => /pvl/.test(c.path)));
+  // rilascio (documento 51 §5): la riga PVL di vercel.json è quella proposta (CRON_PVL_PROPOSTO), una sola, sulla rotta radar-pvl
+  const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string; schedule: string }[] };
+  atteso(
+    "vercel.json: una sola riga PVL, /api/cron/radar-pvl con «5 6,7,11,12,16,17 * * *» (= CRON_PVL_PROPOSTO)",
+    JSON.stringify(vercel.crons.filter((c) => /pvl/.test(c.path))) === JSON.stringify([{ path: "/api/cron/radar-pvl", schedule: CRON_PVL_PROPOSTO }]) && CRON_PVL_PROPOSTO === "5 6,7,11,12,16,17 * * *",
+  );
   const rotta = leggi("src/app/api/cron/radar-pvl/route.ts");
   // dal K1 (48C §3.1) l'interruttore RADAR_PVL_CRON e l'ora di Roma sono nella porta comune delle rotte cron (giro-programmato.ts)
   const porta = leggi("src/lib/radar/giro-programmato.ts") + leggi("src/lib/radar/programmazione-calcoli.ts");

@@ -139,8 +139,12 @@ async function provaRotte(): Promise<void> {
     controlla(`rotta ${ROTTE_CRON[f]}: interruttore acceso, adesso → «${atteso}»`, accesa.motivo === atteso, accesa);
   }
   controlla("la vecchia rotta radar-regionali resta com'era (RADAR_REGIONALI_CRON), finché il coordinamento non cambia vercel.json", /process\.env\.RADAR_REGIONALI_CRON !== "attivo"/.test(leggi("src/app/api/cron/radar-regionali/route.ts")));
-  const vercel = JSON.parse(leggi("vercel.json")) as { crons?: { path: string }[] };
-  controlla("vercel.json NON cambia con K1 (sintel e sardegnacat assenti: la proposta è nel documento 51)", !(vercel.crons ?? []).some((c) => /sintel|sardegna/.test(c.path)));
+  // rilascio (documento 51 §5): ogni rotta di ROTTE_CRON ha in vercel.json la sua riga di CRON_PROPOSTI, una sola
+  const vercel = JSON.parse(leggi("vercel.json")) as { crons?: { path: string; schedule: string }[] };
+  controlla(
+    "vercel.json: ogni rotta di ROTTE_CRON ha la sua riga di CRON_PROPOSTI, una sola",
+    FONTI_ESECUZIONI.every((f) => JSON.stringify((vercel.crons ?? []).filter((c) => c.path === ROTTE_CRON[f]).map((c) => c.schedule)) === JSON.stringify([...CRON_PROPOSTI[f]])),
+  );
 }
 
 // ═════ doppio richiamo (guardia 7) ═════
