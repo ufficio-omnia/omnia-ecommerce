@@ -338,7 +338,11 @@ const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
     [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: " attivo" }, false, "spento"],
     [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "attivo" }, true, ""],
     [{ NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "preview" }, false, "anteprima"],
-    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "production" }, false, "ambiente_non_autorizzato"],
+    // pacchetto P (piano 55 §2): in produzione SOLO sul deploy di produzione con la variabile esatta; mai da locale né da un'anteprima
+    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "production" }, true, ""],
+    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" }, false, "spento"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "preview" }, false, "anteprima"],
+    [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo", VERCEL_ENV: "development" }, false, "ambiente_non_autorizzato"],
     [{ NEXT_PUBLIC_SUPABASE_URL: PROD_URL, RADAR_NOTIFICHE_EMAIL: "attivo" }, false, "ambiente_non_autorizzato"],
     [{ NEXT_PUBLIC_SUPABASE_URL: "https://altro.supabase.co", RADAR_NOTIFICHE_EMAIL: "attivo" }, false, "ambiente_non_autorizzato"],
     [{ RADAR_NOTIFICHE_EMAIL: "attivo" }, false, "ambiente_non_autorizzato"],
@@ -414,7 +418,10 @@ async function provaRavvicinata(): Promise<void> {
   const acceso = { NEXT_PUBLIC_SUPABASE_URL: STAGING_URL, RADAR_NOTIFICHE_EMAIL: "attivo" };
   controlla("ravvicinata: interruttore spento → «spento», nessun accesso", JSON.stringify(await dopoIngressoInLista(gara, { env: {} })) === JSON.stringify({ esito: "spento" }));
   controlla("ravvicinata: anteprima → «spento»", (await dopoIngressoInLista(gara, { env: { ...acceso, VERCEL_ENV: "preview" } })).esito === "spento");
-  controlla("ravvicinata: produzione → «spento»", (await dopoIngressoInLista(gara, { env: { ...acceso, NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" } })).esito === "spento");
+  // pacchetto P: in produzione la ravvicinata vale solo sul deploy di produzione con l'interruttore (provato su statoInvioEmail); senza la
+  // variabile o da un computer locale resta spenta, senza nessun accesso
+  controlla("ravvicinata: produzione senza la variabile → «spento»", (await dopoIngressoInLista(gara, { env: { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" } })).esito === "spento");
+  controlla("ravvicinata: produzione da un computer locale → «spento»", (await dopoIngressoInLista(gara, { env: { ...acceso, NEXT_PUBLIC_SUPABASE_URL: PROD_URL } })).esito === "spento");
   for (const [nome, g] of [
     ["procedura e aggiunta insieme", { ...gara, aggiuntaId: G }],
     ["né procedura né aggiunta", { ...gara, proceduraId: null }],
