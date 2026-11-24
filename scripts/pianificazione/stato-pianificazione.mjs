@@ -62,7 +62,8 @@ const SQL = `select json_build_object(
 ) as esito`;
 
 async function principale() {
-  const GUARDIA = "file:///C:/Users/Dell/AppData/Local/Temp/claude/abcfdf0028fd8393/e334def8-d832-4558-942a-9241c500a45d/scratchpad/staging/guardia-staging.mjs";
+  // guardia: copia durevole del coordinamento (24/11, documento 54, D3); la CLI supabase resta nella cartella temporanea (solo lettura)
+  const GUARDIA = "file:///C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/autorizzazioni/guardia-staging.mjs";
   const CLI = "C:/Users/Dell/AppData/Local/Temp/claude/abcfdf0028fd8393/e334def8-d832-4558-942a-9241c500a45d/scratchpad/staging/node_modules/supabase/dist/supabase.js";
   const AUTORIZZAZIONI = "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/autorizzazioni";
   const CARTELLA_LOG = "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/pianificazione/log";

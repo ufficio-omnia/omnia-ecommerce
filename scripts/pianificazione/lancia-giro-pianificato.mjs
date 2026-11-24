@@ -14,7 +14,8 @@ import { spawnSync } from "node:child_process";
 import { COMANDI_PIANIFICATI, FONTI_PIANIFICATE, SCRIPT_DELLA_FONTE, SESSIONE_PIANIFICAZIONE, ambienteDelGiro, controlliCartella, eCartellaPianificazione, esitoDaUscita, rigaLog, scegliAutorizzazione } from "./pianificazione-calcoli.mjs";
 
 const AUTORIZZAZIONI = "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/autorizzazioni";
-const GUARDIA = "file:///C:/Users/Dell/AppData/Local/Temp/claude/abcfdf0028fd8393/e334def8-d832-4558-942a-9241c500a45d/scratchpad/staging/guardia-staging.mjs";
+// guardia dello staging: copia durevole del coordinamento (24/11, documento 54, D3), identica all'originale (sha256 331eca7747ec77c2…)
+const GUARDIA = "file:///C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/autorizzazioni/guardia-staging.mjs";
 const CARTELLA_LOG = "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/TENDER_INTELLIGENCE_FASE0/pianificazione/log";
 
 const fonte = process.argv[2];
