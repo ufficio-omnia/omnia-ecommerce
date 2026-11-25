@@ -197,6 +197,12 @@ class QueryProva implements PromiseLike<Esito> {
     this.filtri.push((r) => r[c] != null && confronta(r[c], v) <= 0);
     return this;
   }
+  // LIKE di PostgREST: «%» (o «*») qualunque sequenza, «_» un carattere qualunque
+  like(c: string, modello: string) {
+    const re = new RegExp(`^${[...modello].map((ch) => (ch === "%" || ch === "*" ? ".*" : ch === "_" ? "." : ch.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))).join("")}$`, "s");
+    this.filtri.push((r) => r[c] != null && re.test(String(r[c])));
+    return this;
+  }
   or(espressione: string) {
     const parti = dividi(espressione).map(termineOr);
     this.filtri.push((r) => parti.some((p) => p(r)));
@@ -2370,6 +2376,279 @@ async function principale(): Promise<void> {
     JSON.stringify(esitiGuardie) === JSON.stringify(guardieAttese),
     esitiGuardie,
   );
+
+  // ═════ MC. MODULO CHIUSO IN PRODUZIONE (documento 57 §1). Deploy di produzione con TUTTE le variabili del radar accese (anche l'apertura
+  // di sviluppo, che lì non deve valere), radar_attivo spento e nessun cliente abilitato: l'area clienti resta quella di oggi (menu senza
+  // «Opportunità», Ufficio Gare come oggi, nessuna lettura delle tabelle del radar). Layout, menu e porta delle pagine sono i moduli VERI,
+  // caricati a parte; i soli sostituti sono sessione, stato d'accesso, pilot, documenti legali e catalogo. Ambiente SOLO in memoria. ═════
+  const AMBIENTE_PRODUZIONE_TUTTO_ACCESO: Record<string, string> = {
+    NEXT_PUBLIC_SUPABASE_URL: URL_PRODUZIONE_P,
+    VERCEL: "1",
+    VERCEL_ENV: "production",
+    RADAR_PER_TE: "attivo",
+    RADAR_UFFICIO_GARE: "attivo",
+    RADAR_NOTIFICHE_PREFERENZE: "attivo",
+    RADAR_CLASSIFICAZIONI: "attive",
+    RADAR_REGISTRO_EVIDENZA: "attivo",
+    RADAR_NOTIFICHE_EMAIL: "attivo",
+    RADAR_TED_CRON: "attivo",
+    RADAR_PVL_CRON: "attivo",
+    RADAR_SINTEL_CRON: "attivo",
+    RADAR_SARDEGNACAT_CRON: "attivo",
+    OMNIA_AI_RADAR_APERTO: "1",
+  };
+  const conAmbienteMC = async <T,>(env: Record<string, string | undefined>, f: () => Promise<T>): Promise<T> => {
+    const chiavi = Object.keys(AMBIENTE_PRODUZIONE_TUTTO_ACCESO);
+    const prima = Object.fromEntries(chiavi.map((k) => [k, process.env[k]]));
+    for (const k of chiavi) {
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+    }
+    try {
+      return await f();
+    } finally {
+      for (const k of chiavi) {
+        if (prima[k] === undefined) delete process.env[k];
+        else process.env[k] = prima[k];
+      }
+    }
+  };
+  const TITOLARE_MC = id(9200);
+  const UFFICIO_MC = id(9201);
+  const AZIENDA_MC = { user_id: TITOLARE_MC, ragione_sociale: "[SINTETICO] Impresa di prova", partita_iva: "00000000000", indirizzo: "Via di prova 1", codice_sdi: "0000000", pec: null };
+  const mondoMC = (o: { radarAttivo?: string | null; clienteAttivo?: boolean } = {}) => ({
+    admin: new DbProva({
+      console_impostazioni: o.radarAttivo === null ? [] : [{ chiave: "radar_attivo", valore: o.radarAttivo ?? "0" }],
+      omnia_ai_radar_impostazioni: o.clienteAttivo === undefined ? [] : [{ user_id: TITOLARE_MC, attivo: o.clienteAttivo, limiti: null }],
+      companies: [AZIENDA_MC],
+      radar_procedure: [],
+      radar_fonti_stato: [],
+      radar_esecuzioni: [],
+    }),
+    sessione: new DbProva({ companies: [AZIENDA_MC] }),
+  });
+  const TABELLE_RADAR = /^(radar_|omnia_ai_radar_)/;
+  const letture = (db: DbProva) => db.richieste.map((r) => r.tabella);
+  const radarLetto = (m: { admin: DbProva; sessione: DbProva }) => [...letture(m.admin), ...letture(m.sessione)].filter((t) => TABELLE_RADAR.test(t));
+  // un modulo VERO caricato a parte, con alcuni moduli sostituiti e altri ricaricati veri; la cache dei moduli torna com'era
+  const caricaVero = (bersaglio: string, sostituti: Record<string, Record<string, unknown>>, ricaricati: string[] = []): Record<string, unknown> => {
+    const tutti = [bersaglio, ...ricaricati, ...Object.keys(sostituti)].map((p) => richiedi.resolve(p));
+    const salvati = new Map(tutti.map((p) => [p, richiedi.cache[p]]));
+    try {
+      for (const p of [bersaglio, ...ricaricati]) delete richiedi.cache[richiedi.resolve(p)];
+      for (const [p, e] of Object.entries(sostituti)) sostituisci(richiedi.resolve(p), e);
+      return richiedi(richiedi.resolve(bersaglio)) as Record<string, unknown>;
+    } finally {
+      for (const [p, m] of salvati) {
+        if (m) richiedi.cache[p] = m;
+        else delete richiedi.cache[p];
+      }
+    }
+  };
+  let sessioneMC: unknown = null;
+  const SOSTITUTI_ACCOUNT = {
+    [src("lib/omnia-ai-access.ts")]: { getOmniaAiAccessState: async () => ({ stato: "attivo" }) },
+    [src("lib/omnia-ai-pilot.ts")]: { leggiPilotAcquistato: async () => null, leggiOffertaPilotAperta: async () => null },
+    [src("lib/omnia-ai-legal.ts")]: { getCurrentOmniaAiLegalDocuments: async () => null },
+    [src("lib/omnia-ai-catalogo.ts")]: { getCatalogoPiani: async () => ({}) },
+    [src("lib/omnia-ai-ufficio-gare-quota.ts")]: { avvisaTitolareDopoLaRisposta: () => undefined },
+    [src("lib/piano-lavoro-offerta.ts")]: { surplusSeInVendita: async () => null },
+    [src("app/actions/auth.ts")]: { signOut: async () => undefined },
+  };
+  const visibilitaVera = caricaVero(src("lib/radar/visibilita.ts"), {}) as { radarNelMenu?: (id: string) => Promise<boolean> };
+  const layoutVero = (() => {
+    try {
+      return caricaVero(
+        src("app/site-omnia-ai/dashboard/omnia-ai/layout.tsx"),
+        { ...SOSTITUTI_ACCOUNT, [src("lib/omnia-ai-account-guardie.ts")]: { leggiSessioneAccountPerPagina: async () => sessioneMC } },
+        [src("lib/radar/visibilita.ts"), src("lib/radar/area-cliente.ts"), src("lib/radar/impostazioni.ts")],
+      ) as { default?: (p: { children: unknown }) => unknown };
+    } catch (e) {
+      return { errore: e instanceof Error ? e.message : String(e) } as { default?: undefined; errore: string };
+    }
+  })();
+  const calcoli = richiedi(src("lib/omnia-ai-account-calcoli.ts")) as { VOCI_MENU_UFFICIO_GARE: { href: string; etichetta: string }[] };
+  // disegna il layout: i componenti asincroni del server (LayoutInterno, VistaUfficioGare) si chiamano a mano; il risultato è il DashboardShell
+  const menuDelLayout = async (ruolo: "titolare" | "ufficio_gare" | "interno") => {
+    sessioneMC =
+      ruolo === "titolare"
+        ? { user: { id: TITOLARE_MC, email: "titolare@prova.test" }, contesto: { userId: TITOLARE_MC, accountId: TITOLARE_MC, ruolo: "titolare", sospeso: false } }
+        : ruolo === "interno"
+          ? { user: { id: id(9202), email: "interno@prova.test" }, contesto: { userId: id(9202), accountId: id(9202), ruolo: "titolare", sospeso: false } }
+          : { user: { id: UFFICIO_MC, email: "ufficio@prova.test" }, contesto: { userId: UFFICIO_MC, accountId: TITOLARE_MC, ruolo: "ufficio_gare", sospeso: false } };
+    if (!layoutVero.default) return { errore: "layout non caricato" };
+    let nodo: unknown = layoutVero.default({ children: "[contenuto]" });
+    for (let giro = 0; giro < 4; giro++) {
+      const el = elementi(nodo).find((e) => typeof e.type === "function" && ["LayoutInterno", "VistaUfficioGare"].includes((e.type as { name: string }).name));
+      if (!el) break;
+      nodo = await (el.type as (p: unknown) => Promise<unknown>)(el.props);
+    }
+    const shell = elementi(nodo).find((e) => typeof e.type === "function" && (e.type as { name: string }).name === "DashboardShell");
+    return shell ? { voci: shell.props.voci as { href: string; etichetta: string }[] | undefined } : { errore: "DashboardShell non trovato" };
+  };
+  const conOpportunita = (voci: { href: string; etichetta: string }[] | undefined) => (voci ?? []).some((v) => /opportunit/i.test(v.etichetta) || v.href.includes("/opportunita"));
+
+  // MC1. il menu: radarNelMenu vero
+  const esitoMenu = async (o: Parameters<typeof mondoMC>[0], guasto = false) => {
+    mondo = mondoMC(o);
+    if (guasto) mondo.admin.guasti.add("console_impostazioni");
+    const v = visibilitaVera.radarNelMenu ? await conAmbienteMC(AMBIENTE_PRODUZIONE_TUTTO_ACCESO, () => visibilitaVera.radarNelMenu!(TITOLARE_MC)) : null;
+    return { v, letture: letture(mondo.admin) };
+  };
+  const mSpento = await esitoMenu({ radarAttivo: "0" });
+  const mSpentoClienteAbilitato = await esitoMenu({ radarAttivo: "0", clienteAttivo: true });
+  const mSenzaRiga = await esitoMenu({ radarAttivo: null });
+  const mGuasto = await esitoMenu({ radarAttivo: "1", clienteAttivo: true }, true);
+  const mAccesoNonAbilitato = await esitoMenu({ radarAttivo: "1" });
+  const mAccesoAbilitato = await esitoMenu({ radarAttivo: "1", clienteAttivo: true });
+  const soloInterruttore = (x: { letture: string[] }) => x.letture.length <= 1 && x.letture.every((t) => t === "console_impostazioni");
+  controlla(
+    "MC1. menu (radarNelMenu vero, deploy di produzione con tutte le variabili del radar e l'apertura di sviluppo): con radar_attivo spento, senza la riga o con la lettura guasta niente «Opportunità» e al più UNA lettura (console_impostazioni), mai la tabella dei clienti; acceso ma cliente non abilitato niente; acceso e abilitato sì",
+    mSpento.v === false && soloInterruttore(mSpento) &&
+      mSpentoClienteAbilitato.v === false && soloInterruttore(mSpentoClienteAbilitato) &&
+      mSenzaRiga.v === false && soloInterruttore(mSenzaRiga) &&
+      mGuasto.v === false && soloInterruttore(mGuasto) &&
+      mAccesoNonAbilitato.v === false &&
+      mAccesoAbilitato.v === true,
+    { mSpento, mSpentoClienteAbilitato, mSenzaRiga, mGuasto, mAccesoNonAbilitato: mAccesoNonAbilitato.v, mAccesoAbilitato: mAccesoAbilitato.v },
+  );
+
+  // MC2–MC3. il layout VERO dell'area clienti: titolare e Ufficio Gare, con radar_attivo spento e nessun cliente abilitato
+  const layoutCon = async (ruolo: "titolare" | "ufficio_gare", env: Record<string, string | undefined>) => {
+    mondo = mondoMC({ radarAttivo: "0" });
+    try {
+      const r = await conAmbienteMC(env, () => menuDelLayout(ruolo));
+      return { ...r, radar: radarLetto(mondo), interruttore: letture(mondo.admin).filter((t) => t === "console_impostazioni").length };
+    } catch (e) {
+      return { errore: e instanceof Error ? e.message.slice(0, 120) : String(e), radar: radarLetto(mondo), interruttore: -1 };
+    }
+  };
+  const tTutto = await layoutCon("titolare", AMBIENTE_PRODUZIONE_TUTTO_ACCESO);
+  const uTutto = await layoutCon("ufficio_gare", AMBIENTE_PRODUZIONE_TUTTO_ACCESO);
+  const uSenzaGrado2 = await layoutCon("ufficio_gare", { ...AMBIENTE_PRODUZIONE_TUTTO_ACCESO, RADAR_UFFICIO_GARE: undefined });
+  controlla(
+    "MC2. layout vero, TITOLARE, modulo chiuso in produzione: il menu è quello di sempre (nessuna voce passata al DashboardShell, come prima del radar), nessuna lettura delle tabelle del radar, al più una lettura dell'interruttore",
+    !("errore" in tTutto && tTutto.errore) && "voci" in tTutto && tTutto.voci === undefined && tTutto.radar.length === 0 && tTutto.interruttore <= 1,
+    tTutto,
+  );
+  controlla(
+    "MC3. layout vero, UFFICIO GARE, modulo chiuso in produzione: il menu è VOCI_MENU_UFFICIO_GARE di oggi, senza «Opportunità», anche con RADAR_UFFICIO_GARE acceso; nessuna lettura delle tabelle del radar; senza il grado 2 nemmeno la lettura dell'interruttore",
+    "voci" in uTutto && JSON.stringify(uTutto.voci) === JSON.stringify(calcoli.VOCI_MENU_UFFICIO_GARE) && !conOpportunita(uTutto.voci) && uTutto.radar.length === 0 && uTutto.interruttore <= 1 &&
+      "voci" in uSenzaGrado2 && JSON.stringify(uSenzaGrado2.voci) === JSON.stringify(calcoli.VOCI_MENU_UFFICIO_GARE) && uSenzaGrado2.radar.length === 0 && uSenzaGrado2.interruttore === 0,
+    { uTutto, uSenzaGrado2 },
+  );
+
+  // MC4. le pagine di Opportunità aperte a mano da un cliente non abilitato: la porta vera (dirittoRadarOppure404, leggiContestoRadar) dà 404
+  const areaVera = (() => {
+    try {
+      return caricaVero(src("lib/radar/area-cliente.ts"), { [src("lib/omnia-ai-access.ts")]: SOSTITUTI_ACCOUNT[src("lib/omnia-ai-access.ts")] }, [src("lib/radar/impostazioni.ts")]) as {
+        dirittoRadarOppure404?: (id: string) => Promise<unknown>;
+      };
+    } catch {
+      return {} as { dirittoRadarOppure404?: undefined };
+    }
+  })();
+  const porta = async (o: Parameters<typeof mondoMC>[0]) => {
+    mondo = mondoMC(o);
+    try {
+      if (!areaVera.dirittoRadarOppure404) return "assente";
+      await conAmbienteMC(AMBIENTE_PRODUZIONE_TUTTO_ACCESO, () => areaVera.dirittoRadarOppure404!(TITOLARE_MC));
+      return "aperta";
+    } catch (e) {
+      return String((e as { digest?: unknown }).digest ?? "").startsWith("NEXT_HTTP_ERROR_FALLBACK;404") ? "404" : `errore: ${e instanceof Error ? e.message.slice(0, 60) : String(e)}`;
+    }
+  };
+  const pSpento = await porta({ radarAttivo: "0" });
+  const pSpentoAbilitato = await porta({ radarAttivo: "0", clienteAttivo: true });
+  const pAccesoNonAbilitato = await porta({ radarAttivo: "1" });
+  const pAccesoAbilitato = await porta({ radarAttivo: "1", clienteAttivo: true });
+  controlla(
+    "MC4. pagine di Opportunità aperte a mano (porta vera, in produzione con tutte le variabili e l'apertura di sviluppo): 404 a modulo spento, anche per un cliente con la riga «attivo», e 404 a modulo acceso per un cliente non abilitato; aperta solo a modulo acceso e cliente abilitato",
+    pSpento === "404" && pSpentoAbilitato === "404" && pAccesoNonAbilitato === "404" && pAccesoAbilitato === "aperta",
+    { pSpento, pSpentoAbilitato, pAccesoNonAbilitato, pAccesoAbilitato },
+  );
+
+  // ═════ MC5–MC6. F7 con la decisione D-D dell'utente («Prima solo account interni»): interruttore generale ACCESO e una sola impresa interna
+  // abilitata. Tutti gli altri clienti (titolare e Ufficio Gare) restano identici a oggi; la console abilita un'impresa alla volta. ═════
+  const INTERNO_MC = id(9202);
+  const mondoF7 = () => ({
+    admin: new DbProva({
+      console_impostazioni: [{ chiave: "radar_attivo", valore: "1" }],
+      omnia_ai_radar_impostazioni: [{ user_id: INTERNO_MC, attivo: true, limiti: null }],
+      companies: [AZIENDA_MC],
+      radar_procedure: [],
+      radar_fonti_stato: [],
+      radar_esecuzioni: [],
+    }),
+    sessione: new DbProva({ companies: [AZIENDA_MC] }),
+  });
+  const layoutF7 = async (ruolo: "titolare" | "ufficio_gare" | "interno") => {
+    mondo = mondoF7();
+    try {
+      const r = await conAmbienteMC(AMBIENTE_PRODUZIONE_TUTTO_ACCESO, () => menuDelLayout(ruolo));
+      const tabelle = [...letture(mondo.admin), ...letture(mondo.sessione)];
+      return { ...r, altreTabelleRadar: tabelle.filter((t) => TABELLE_RADAR.test(t) && t !== "omnia_ai_radar_impostazioni"), rigaCliente: tabelle.filter((t) => t === "omnia_ai_radar_impostazioni").length };
+    } catch (e) {
+      return { errore: e instanceof Error ? e.message.slice(0, 120) : String(e), altreTabelleRadar: [] as string[], rigaCliente: -1 };
+    }
+  };
+  // la sessione del layout per titolare e Ufficio Gare è quella dell'impresa TITOLARE_MC (non abilitata)
+  const f7Titolare = await layoutF7("titolare");
+  const f7Ufficio = await layoutF7("ufficio_gare");
+  const f7Interno = await layoutF7("interno");
+  controlla(
+    "MC5. F7 solo account interni (D-D): interruttore generale acceso e una sola impresa interna abilitata; per il cliente non abilitato menu identico a oggi (titolare: nessuna voce; Ufficio Gare: VOCI_MENU_UFFICIO_GARE), nessuna lettura di tabelle del radar oltre alla propria riga di abilitazione (in cache in produzione); l'impresa interna vede «Opportunità»",
+    "voci" in f7Titolare && f7Titolare.voci === undefined && f7Titolare.altreTabelleRadar.length === 0 && f7Titolare.rigaCliente <= 1 &&
+      "voci" in f7Ufficio && JSON.stringify(f7Ufficio.voci) === JSON.stringify(calcoli.VOCI_MENU_UFFICIO_GARE) && f7Ufficio.altreTabelleRadar.length === 0 && f7Ufficio.rigaCliente <= 1 &&
+      "voci" in f7Interno && conOpportunita(f7Interno.voci),
+    { f7Titolare, f7Ufficio, f7Interno },
+  );
+
+  // MC6. l'azione VERA della console «Imprese abilitate»: abilita UNA impresa (titolare cliente) alla volta, rifiuta l'Ufficio Gare e chi non è
+  // cliente, scrive il registro e svuota subito la cache del menu delle imprese
+  const imposta = azioniTi.impostaImpresaRadar as ((s: unknown, fd: FormData) => Promise<{ errore?: string; ok?: boolean; avviso?: string }>) | undefined;
+  const CLIENTE_VERO = id(9203);
+  const UFFICIO_VERO = id(9204);
+  const ADMIN_SITO = id(9205);
+  const mondoConsoleF7 = () => ({
+    admin: new DbProva({
+      users: [
+        { id: INTERNO_MC, email: "interno@prova.test", role: "cliente" },
+        { id: CLIENTE_VERO, email: "cliente@prova.test", role: "cliente" },
+        { id: UFFICIO_VERO, email: "ufficio@prova.test", role: "cliente" },
+        { id: ADMIN_SITO, email: "admin@prova.test", role: "admin" },
+      ],
+      omnia_ai_membri: [{ membro_id: UFFICIO_VERO, titolare_id: CLIENTE_VERO, attivo: true }],
+      omnia_ai_radar_impostazioni: [],
+      radar_console_registro: [],
+    }),
+    sessione: new DbProva({}),
+  });
+  const abilita = async (email: string, azione = "abilita") => {
+    const fd = new FormData();
+    fd.append("email", email);
+    fd.append("azione", azione);
+    const tagPrima = tagSvuotati.length;
+    const esito = imposta ? await imposta({}, fd) : { errore: "azione assente" };
+    return { esito, tag: tagSvuotati.slice(tagPrima) };
+  };
+  mondo = mondoConsoleF7();
+  const aInterno = await abilita("interno@prova.test");
+  const righeDopoInterno = mondo.admin.tabelle.omnia_ai_radar_impostazioni.map((r) => [r.user_id, r.attivo]);
+  const registroInterno = mondo.admin.tabelle.radar_console_registro.filter((r) => r.oggetto === "cliente:attivo").map((r) => [r.cliente_id, r.valore_nuovo]);
+  const aUfficio = await abilita("ufficio@prova.test");
+  const aAdmin = await abilita("admin@prova.test");
+  const righeDopoRifiuti = mondo.admin.tabelle.omnia_ai_radar_impostazioni.map((r) => [r.user_id, r.attivo]);
+  const aChiudi = await abilita("interno@prova.test", "disabilita");
+  const righeDopoChiusura = mondo.admin.tabelle.omnia_ai_radar_impostazioni.map((r) => [r.user_id, r.attivo]);
+  controlla(
+    "MC6. console «Imprese abilitate» (azione vera): abilita solo l'impresa indicata (una riga, nel registro, cache del menu delle imprese svuotata subito); rifiuta l'Ufficio Gare (va abilitato il titolare) e chi non è cliente senza scrivere; disabilitare richiude",
+    aInterno.esito.ok === true && JSON.stringify(righeDopoInterno) === JSON.stringify([[INTERNO_MC, true]]) && JSON.stringify(registroInterno) === JSON.stringify([[INTERNO_MC, "true"]]) && aInterno.tag.includes("radar-clienti") &&
+      /Ufficio Gare/.test(aUfficio.esito.errore ?? "") && /solo per i clienti/.test(aAdmin.esito.errore ?? "") && JSON.stringify(righeDopoRifiuti) === JSON.stringify([[INTERNO_MC, true]]) &&
+      aChiudi.esito.ok === true && JSON.stringify(righeDopoChiusura) === JSON.stringify([[INTERNO_MC, false]]) && aChiudi.tag.includes("radar-clienti"),
+    { aInterno, righeDopoInterno, registroInterno, aUfficio: aUfficio.esito, aAdmin: aAdmin.esito, righeDopoRifiuti, aChiudi: aChiudi.esito, righeDopoChiusura },
+  );
+  void CLIENTE_VERO;
 
   controlla("MN18. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }

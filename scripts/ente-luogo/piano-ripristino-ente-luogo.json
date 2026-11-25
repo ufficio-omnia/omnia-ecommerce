@@ -1,0 +1,1407 @@
+{
+ "documento": "Ripristino ente/luogo dopo il giro di prova PVL del 24/11/2026 (AUT-20261124-04, USO-3a3518880a5a): parte A (gare del giro) e parte B (gare senza regioni unite alla PVL prima del 17/11, solo luogo_regioni, calcolate al lancio)",
+ "generato_da": "motore corretto (unisciVersione) su riga di prima + riga PVL del giro",
+ "fotografia_prima": {
+  "il": "2026-11-24T14:31:40.725Z",
+  "sha256": "be6d70600d0e8157b0247ed6bc7a18b5cd9027c43dea3d3dc7d5b4a8be01ad41",
+  "file": "coordinamento pvl-54/prima.json"
+ },
+ "fotografia_dopo": {
+  "il": "2026-11-24T14:34:37.516Z",
+  "sha256": "f2a3bc1b7dbd63dc6832e000146cc2750d73e4723d399b4bc6aba733440f98d4",
+  "file": "coordinamento pvl-54/dopo-completa.json"
+ },
+ "conteggi": {
+  "gare": 33,
+  "parte_a": 26,
+  "con_valori": 11,
+  "solo_provenienza": 15,
+  "parte_b": 7
+ },
+ "gare": [
+  {
+   "id": "04abbcd8-8f39-48c4-9b76-6413f98869ca",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Valbrona",
+    "sa_provincia": null,
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Valbrona",
+    "sa_provincia": "CO",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.357Z",
+     "id": "6c12ad57-debc-4d1a-bd85-975b87bdd6c1",
+     "ted": null
+    }
+   },
+   "atteso": {
+    "sa_comune": "Valbrona",
+    "sa_provincia": "CO",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "sintel",
+     "g": "2026-11-23",
+     "t": null,
+     "id": "226649959@2026-11-23",
+     "ted": null
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "6c12ad57-debc-4d1a-bd85-975b87bdd6c1",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.357Z",
+     "ted": null
+    }
+   }
+  },
+  {
+   "id": "39d1677f-afa0-4184-a386-14ae8258d000",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Milano",
+    "sa_provincia": null,
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Milano",
+    "sa_provincia": "MI",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.058Z",
+     "id": "71b0278a-9e9a-4153-8c61-43b02bd25b94",
+     "ted": "799566-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Milano",
+    "sa_provincia": "MI",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "799566-2026",
+     "ted": "799566-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "71b0278a-9e9a-4153-8c61-43b02bd25b94",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.058Z",
+     "ted": "799566-2026"
+    }
+   }
+  },
+  {
+   "id": "3d89ae42-db77-4e35-92ea-091e8d16b5fa",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Milano",
+    "sa_provincia": "MI",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Milano",
+    "sa_provincia": "MI",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.070Z",
+     "id": "0a494700-0039-4a3a-95b4-09108f0a42d7",
+     "ted": "805697-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Milano",
+    "sa_provincia": "MI",
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-19",
+     "t": null,
+     "id": "805697-2026",
+     "ted": "805697-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "0a494700-0039-4a3a-95b4-09108f0a42d7",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.070Z",
+     "ted": "805697-2026"
+    }
+   }
+  },
+  {
+   "id": "4d2fe157-943f-4eca-9cf7-454c65f54b0d",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "San Raffaele Cimena",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "San Raffaele Cimena",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.844Z",
+     "id": "dd190a61-38b0-4a53-bcdb-f6d14c5d2ee6",
+     "ted": "802266-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "San Raffaele Cimena",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-18",
+     "t": null,
+     "id": "802266-2026",
+     "ted": "802266-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "dd190a61-38b0-4a53-bcdb-f6d14c5d2ee6",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.844Z",
+     "ted": "802266-2026"
+    }
+   }
+  },
+  {
+   "id": "56a35499-2b2b-494b-8df0-02a9962a4e76",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Cassano Magnago",
+    "sa_provincia": null,
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Taino",
+    "sa_provincia": null,
+    "sa_regione": null,
+    "luogo_regioni": [],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.463Z",
+     "id": "2c9ea586-5e9a-432a-9420-6291adac0e1f",
+     "ted": null
+    }
+   },
+   "atteso": {
+    "sa_comune": "Cassano Magnago",
+    "sa_provincia": null,
+    "sa_regione": "lombardia",
+    "luogo_regioni": [
+     "lombardia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "sintel",
+     "g": "2026-11-23",
+     "t": null,
+     "id": "225696739@2026-11-23",
+     "ted": null
+    },
+    "luogo_regioni": {
+     "f": "sintel",
+     "g": "2026-11-23",
+     "t": null,
+     "id": "225696739@2026-11-23",
+     "ted": null
+    }
+   }
+  },
+  {
+   "id": "58c0bc67-4c22-49b9-815d-f4c235a11316",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Bellizzi",
+    "sa_provincia": "SA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Sant'Egidio del Monte Albino",
+    "sa_provincia": "SA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.335Z",
+     "id": "9093fd7a-bbef-4a73-9579-06f7a3065b37",
+     "ted": "797295-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Bellizzi",
+    "sa_provincia": "SA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "797295-2026",
+     "ted": "797295-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "9093fd7a-bbef-4a73-9579-06f7a3065b37",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.335Z",
+     "ted": "797295-2026"
+    }
+   }
+  },
+  {
+   "id": "5edcf4f8-9258-4e69-a76d-d680d13230e9",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Livorno",
+    "sa_provincia": null,
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Livorno",
+    "sa_provincia": "LI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.043Z",
+     "id": "8ab029f2-ceed-4ed8-ba24-8a34b267be0e",
+     "ted": "806955-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Livorno",
+    "sa_provincia": "LI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-19",
+     "t": null,
+     "id": "806955-2026",
+     "ted": "806955-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "8ab029f2-ceed-4ed8-ba24-8a34b267be0e",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.043Z",
+     "ted": "806955-2026"
+    }
+   }
+  },
+  {
+   "id": "63e0b112-1046-4163-8b08-8d6c8c99bc55",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Torino",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "veneto"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Padova",
+    "sa_provincia": "PD",
+    "sa_regione": "veneto",
+    "luogo_regioni": [
+     "veneto"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.720Z",
+     "id": "f56a1874-a9eb-4c1b-a429-1f7fa2c13f78",
+     "ted": "798474-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Torino",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "veneto"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "798474-2026",
+     "ted": "798474-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "f56a1874-a9eb-4c1b-a429-1f7fa2c13f78",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.720Z",
+     "ted": "798474-2026"
+    }
+   }
+  },
+  {
+   "id": "8d6fb659-311a-4a33-8fd5-1a0df30f9b84",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Villanova Monferrato",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Villanova Monferrato",
+    "sa_provincia": "AL",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-17",
+     "t": "2026-11-17T07:00:00.143Z",
+     "id": "404e4826-cd8e-400b-be0f-bb449a4e737e",
+     "ted": "794254-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Villanova Monferrato",
+    "sa_provincia": "AL",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "id": "794254-2026",
+     "g": "2026-11-16",
+     "t": null,
+     "ted": "794254-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "404e4826-cd8e-400b-be0f-bb449a4e737e",
+     "g": "2026-11-17",
+     "t": "2026-11-17T07:00:00.143Z",
+     "ted": "794254-2026"
+    }
+   }
+  },
+  {
+   "id": "a092afc1-7ca6-4da1-b55f-a4d60490c77f",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Roma",
+    "sa_provincia": "RM",
+    "sa_regione": "lazio",
+    "luogo_regioni": [
+     "friuli_venezia_giulia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Trieste",
+    "sa_provincia": "TS",
+    "sa_regione": "friuli_venezia_giulia",
+    "luogo_regioni": [
+     "friuli_venezia_giulia"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.273Z",
+     "id": "440ac0e1-5a5c-47f6-918b-2c559a7fcc03",
+     "ted": "797286-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Roma",
+    "sa_provincia": "RM",
+    "sa_regione": "lazio",
+    "luogo_regioni": [
+     "friuli_venezia_giulia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "797286-2026",
+     "ted": "797286-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "440ac0e1-5a5c-47f6-918b-2c559a7fcc03",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.273Z",
+     "ted": "797286-2026"
+    }
+   }
+  },
+  {
+   "id": "a0c6c4b0-2f2c-481d-944f-bb61b5b2489a",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Roma",
+    "sa_provincia": "RM",
+    "sa_regione": "lazio",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Firenze",
+    "sa_provincia": "FI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.477Z",
+     "id": "883e9590-4037-4b8a-8e9d-26ef43a1c422",
+     "ted": "797427-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Roma",
+    "sa_provincia": "RM",
+    "sa_regione": "lazio",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "797427-2026",
+     "ted": "797427-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "883e9590-4037-4b8a-8e9d-26ef43a1c422",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.477Z",
+     "ted": "797427-2026"
+    }
+   }
+  },
+  {
+   "id": "a55384fb-2f42-4ccc-b2fa-680959846782",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Napoli",
+    "sa_provincia": null,
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Napoli",
+    "sa_provincia": "NA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-17",
+     "t": "2026-11-17T07:00:00.988Z",
+     "id": "bd8379d4-9312-4be7-b5f2-7f5755665ee2",
+     "ted": "794086-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Napoli",
+    "sa_provincia": "NA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "id": "794086-2026",
+     "g": "2026-11-16",
+     "t": null,
+     "ted": "794086-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "bd8379d4-9312-4be7-b5f2-7f5755665ee2",
+     "g": "2026-11-17",
+     "t": "2026-11-17T07:00:00.988Z",
+     "ted": "794086-2026"
+    }
+   }
+  },
+  {
+   "id": "a61e80f8-c6b2-46c1-a4e3-e6065f65140e",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Tolmezzo",
+    "sa_provincia": null,
+    "sa_regione": "friuli_venezia_giulia",
+    "luogo_regioni": [
+     "friuli_venezia_giulia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Tolmezzo",
+    "sa_provincia": "UD",
+    "sa_regione": "friuli_venezia_giulia",
+    "luogo_regioni": [
+     "friuli_venezia_giulia"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.765Z",
+     "id": "433a156b-ec52-49ac-a116-9cd23c25c5af",
+     "ted": "804438-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Tolmezzo",
+    "sa_provincia": "UD",
+    "sa_regione": "friuli_venezia_giulia",
+    "luogo_regioni": [
+     "friuli_venezia_giulia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-19",
+     "t": null,
+     "id": "804438-2026",
+     "ted": "804438-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "433a156b-ec52-49ac-a116-9cd23c25c5af",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.765Z",
+     "ted": "804438-2026"
+    }
+   }
+  },
+  {
+   "id": "a722c0d0-602b-4b81-87d2-6f15552ef546",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Pisa",
+    "sa_provincia": null,
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Pisa",
+    "sa_provincia": "PI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-17",
+     "t": "2026-11-17T07:00:00.898Z",
+     "id": "df46c907-ff90-4d5c-a0c7-f8ea8bb4ae53",
+     "ted": "795789-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Pisa",
+    "sa_provincia": "PI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "id": "795789-2026",
+     "g": "2026-11-16",
+     "t": null,
+     "ted": "795789-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "df46c907-ff90-4d5c-a0c7-f8ea8bb4ae53",
+     "g": "2026-11-17",
+     "t": "2026-11-17T07:00:00.898Z",
+     "ted": "795789-2026"
+    }
+   }
+  },
+  {
+   "id": "a8f5c7db-d1b0-4197-bc68-fea705145690",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Bologna",
+    "sa_provincia": null,
+    "sa_regione": "emilia_romagna",
+    "luogo_regioni": [
+     "emilia_romagna",
+     "veneto"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Ravenna",
+    "sa_provincia": "RA",
+    "sa_regione": "emilia_romagna",
+    "luogo_regioni": [
+     "emilia_romagna",
+     "veneto"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.625Z",
+     "id": "3bce2b7d-ee71-4f79-bbd9-38fea070729d",
+     "ted": "809806-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Bologna",
+    "sa_provincia": null,
+    "sa_regione": "emilia_romagna",
+    "luogo_regioni": [
+     "emilia_romagna",
+     "veneto"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-20",
+     "t": null,
+     "id": "809806-2026",
+     "ted": "809806-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "3bce2b7d-ee71-4f79-bbd9-38fea070729d",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.625Z",
+     "ted": "809806-2026"
+    }
+   }
+  },
+  {
+   "id": "aa7b73ba-0d8d-4a69-8a94-f03e89c059eb",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Verbania",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Baveno",
+    "sa_provincia": null,
+    "sa_regione": null,
+    "luogo_regioni": [],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.665Z",
+     "id": "1219c6e8-d7f4-4720-9e29-83bbb49445de",
+     "ted": "809118-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Verbania",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-20",
+     "t": null,
+     "id": "809118-2026",
+     "ted": "809118-2026"
+    },
+    "luogo_regioni": {
+     "f": "ted",
+     "g": "2026-11-20",
+     "t": null,
+     "id": "809118-2026",
+     "ted": "809118-2026"
+    }
+   }
+  },
+  {
+   "id": "b471bf61-08ce-4411-923f-15b0ef26f2dc",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Torino",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Torino",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.525Z",
+     "id": "4116bf26-5275-45e1-a242-1b6152ae5379",
+     "ted": "810380-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Torino",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-20",
+     "t": null,
+     "id": "810380-2026",
+     "ted": "810380-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "4116bf26-5275-45e1-a242-1b6152ae5379",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.525Z",
+     "ted": "810380-2026"
+    }
+   }
+  },
+  {
+   "id": "b67246d0-7356-41c8-ac25-12778ad4c939",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Napoli",
+    "sa_provincia": null,
+    "sa_regione": null,
+    "luogo_regioni": [
+     "campania"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Napoli",
+    "sa_provincia": "NA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.779Z",
+     "id": "5aaa2eaa-040e-476a-9eda-23bddd9cc0ae",
+     "ted": "801905-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Napoli",
+    "sa_provincia": "NA",
+    "sa_regione": "campania",
+    "luogo_regioni": [
+     "campania"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-18",
+     "t": null,
+     "id": "801905-2026",
+     "ted": "801905-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "5aaa2eaa-040e-476a-9eda-23bddd9cc0ae",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.779Z",
+     "ted": "801905-2026"
+    }
+   }
+  },
+  {
+   "id": "bf5a0164-1504-4477-bc38-9b04b9941b24",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Pisa",
+    "sa_provincia": null,
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Pisa",
+    "sa_provincia": "PI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.425Z",
+     "id": "c711a48c-0eef-49e3-8eaf-e0bba0a3dba5",
+     "ted": "807040-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Pisa",
+    "sa_provincia": "PI",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-19",
+     "t": null,
+     "id": "807040-2026",
+     "ted": "807040-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "c711a48c-0eef-49e3-8eaf-e0bba0a3dba5",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.425Z",
+     "ted": "807040-2026"
+    }
+   }
+  },
+  {
+   "id": "d1e67ebf-a185-4b4d-a093-cad037a8fbbb",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Roma",
+    "sa_provincia": null,
+    "sa_regione": "lazio",
+    "luogo_regioni": [
+     "lazio"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Roma",
+    "sa_provincia": null,
+    "sa_regione": null,
+    "luogo_regioni": [],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-18",
+     "t": "2026-11-18T07:00:00.176Z",
+     "id": "e219374d-fd0c-4853-9ee8-9f2cda9224d7",
+     "ted": "798353-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Roma",
+    "sa_provincia": null,
+    "sa_regione": "lazio",
+    "luogo_regioni": [
+     "lazio"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "798353-2026",
+     "ted": "798353-2026"
+    },
+    "luogo_regioni": {
+     "f": "ted",
+     "g": "2026-11-17",
+     "t": null,
+     "id": "798353-2026",
+     "ted": "798353-2026"
+    }
+   }
+  },
+  {
+   "id": "dc2b688a-41fa-4d63-a332-bdec870d010f",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Casarano",
+    "sa_provincia": null,
+    "sa_regione": "puglia",
+    "luogo_regioni": [
+     "puglia"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Taviano",
+    "sa_provincia": "LE",
+    "sa_regione": "puglia",
+    "luogo_regioni": [
+     "puglia"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.856Z",
+     "id": "945f1eda-1753-4103-972f-afc60fa1e52e",
+     "ted": "805984-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Casarano",
+    "sa_provincia": null,
+    "sa_regione": "puglia",
+    "luogo_regioni": [
+     "puglia"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-19",
+     "t": null,
+     "id": "805984-2026",
+     "ted": "805984-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "945f1eda-1753-4103-972f-afc60fa1e52e",
+     "g": "2026-11-20",
+     "t": "2026-11-20T07:00:00.856Z",
+     "ted": "805984-2026"
+    }
+   }
+  },
+  {
+   "id": "e5425e6a-d1ad-4fa6-b6fa-0f30b4c59487",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Bibbiena",
+    "sa_provincia": null,
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Subbiano",
+    "sa_provincia": "AR",
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.024Z",
+     "id": "f0a8ba36-067a-4d92-96b0-7bd49844b7c7",
+     "ted": "809093-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Bibbiena",
+    "sa_provincia": null,
+    "sa_regione": "toscana",
+    "luogo_regioni": [
+     "toscana"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-20",
+     "t": null,
+     "id": "809093-2026",
+     "ted": "809093-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "f0a8ba36-067a-4d92-96b0-7bd49844b7c7",
+     "g": "2026-11-23",
+     "t": "2026-11-23T07:00:00.024Z",
+     "ted": "809093-2026"
+    }
+   }
+  },
+  {
+   "id": "eece0a2e-270a-4897-b509-e7a0370131ef",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Asti",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Asti",
+    "sa_provincia": "AT",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-24",
+     "t": "2026-11-24T07:00:00.271Z",
+     "id": "584556fd-5c87-4226-b7e8-7410b4770486",
+     "ted": "811028-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Asti",
+    "sa_provincia": "AT",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-23",
+     "t": null,
+     "id": "811028-2026",
+     "ted": "811028-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "584556fd-5c87-4226-b7e8-7410b4770486",
+     "g": "2026-11-24",
+     "t": "2026-11-24T07:00:00.271Z",
+     "ted": "811028-2026"
+    }
+   }
+  },
+  {
+   "id": "f04a4a6b-77c7-4738-92d4-7d418b83d5b8",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Settimo Torinese",
+    "sa_provincia": null,
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Settimo Torinese",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.318Z",
+     "id": "c8d93caa-6f76-468e-970b-3e87c3d9bc54",
+     "ted": "802986-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Settimo Torinese",
+    "sa_provincia": "TO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-18",
+     "t": null,
+     "id": "802986-2026",
+     "ted": "802986-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "c8d93caa-6f76-468e-970b-3e87c3d9bc54",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.318Z",
+     "ted": "802986-2026"
+    }
+   }
+  },
+  {
+   "id": "f1dfce83-d7e0-47a7-98cb-1e4ab38f94e0",
+   "parte": "A",
+   "valori": false,
+   "prima": {
+    "sa_comune": "Modena",
+    "sa_provincia": null,
+    "sa_regione": "emilia_romagna",
+    "luogo_regioni": [
+     "emilia_romagna"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Modena",
+    "sa_provincia": "MO",
+    "sa_regione": "emilia_romagna",
+    "luogo_regioni": [
+     "emilia_romagna"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-24",
+     "t": "2026-11-24T07:00:00.739Z",
+     "id": "96bce17f-1a0c-42b9-aa18-1a5493b01fe0",
+     "ted": "813622-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Modena",
+    "sa_provincia": "MO",
+    "sa_regione": "emilia_romagna",
+    "luogo_regioni": [
+     "emilia_romagna"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-23",
+     "t": null,
+     "id": "813622-2026",
+     "ted": "813622-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "96bce17f-1a0c-42b9-aa18-1a5493b01fe0",
+     "g": "2026-11-24",
+     "t": "2026-11-24T07:00:00.739Z",
+     "ted": "813622-2026"
+    }
+   }
+  },
+  {
+   "id": "f66becb6-ffbf-42b4-a271-e46e2c8dbf40",
+   "parte": "A",
+   "valori": true,
+   "prima": {
+    "sa_comune": "Verbania",
+    "sa_provincia": "VB",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "giro": {
+    "sa_comune": "Romentino",
+    "sa_provincia": "NO",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ],
+    "luogo": {
+     "f": "pvl",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.430Z",
+     "id": "0a2375c1-4350-4606-bb4f-c489edea85f0",
+     "ted": "803244-2026"
+    }
+   },
+   "atteso": {
+    "sa_comune": "Verbania",
+    "sa_provincia": "VB",
+    "sa_regione": "piemonte",
+    "luogo_regioni": [
+     "piemonte"
+    ]
+   },
+   "provenienza": {
+    "luogo": {
+     "f": "ted",
+     "g": "2026-11-18",
+     "t": null,
+     "id": "803244-2026",
+     "ted": "803244-2026"
+    },
+    "luogo_regioni": {
+     "f": "pvl",
+     "id": "0a2375c1-4350-4606-bb4f-c489edea85f0",
+     "g": "2026-11-19",
+     "t": "2026-11-19T07:00:00.430Z",
+     "ted": "803244-2026"
+    }
+   }
+  },
+  {
+   "id": "2d30227b-b3bd-4c09-bc87-c01c3ec97984",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "43efcd03-11a6-496c-b724-d95abb165b68",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "86f0633c-2576-4771-ba39-e5e6a169fce3",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "dcacc017-9a16-4062-8427-93e0ee206a52",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "fb3cfbf0-02f3-4515-9c79-6981d5d441ff",
+   "parte": "B",
+   "fonte": "ted"
+  },
+  {
+   "id": "5f6adcdd-79f8-4385-8269-62dd56918cfc",
+   "parte": "B",
+   "fonte": "sintel"
+  },
+  {
+   "id": "865c1977-0207-4459-b26d-019844b5041a",
+   "parte": "B",
+   "fonte": "sintel"
+  }
+ ]
+}
