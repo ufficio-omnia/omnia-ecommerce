@@ -9,6 +9,7 @@ import { dirittoRadarOppure404, RADICE_OPPORTUNITA } from "@/lib/radar/area-clie
 import { distanzaScadenza, euro, scadenzaLeggibile, giorniAllaScadenza } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
+import { TESTO_PULSANTI_SALVA } from "@/lib/opportunita-testi-calcoli";
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
 
 // Scheda di una gara aggiunta a mano: i dati scritti dall'impresa, il CIG e il collegamento (che OMNIA non apre mai). Quando il CIG compare in
@@ -84,6 +85,7 @@ export default async function GaraAggiuntaPage({ params, searchParams }: { param
             </a>
           )}
           <AzioniSalvataggio aggiuntaId={a.id} salvata={!!salvata} monitorata={!!salvata?.monitorata} operativo={diritto.operativo} />
+          <p className="omnia-opp-spiega">{TESTO_PULSANTI_SALVA}</p>
           <p className="omnia-opp-nota">
             <Link href={`${RADICE_OPPORTUNITA}/monitorate`}>Torna alle gare che segui</Link>
           </p>

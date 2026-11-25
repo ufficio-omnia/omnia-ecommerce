@@ -243,6 +243,24 @@ async function principale(): Promise<void> {
     "A2.2 la spiegazione è visibile nella lista (subito dopo l'avviso) e accanto ai pulsanti «Salva» e «Monitora» della scheda",
     monitorate[iAvviso + 1]?.trim() === '<p className="omnia-opp-spiega">{TESTO_LISTA_SALVATE}</p>' && gara[iAzioni + 1]?.trim() === '<p className="omnia-opp-spiega">{TESTO_PULSANTI_SALVA}</p>',
   );
+  const aggiunta = leggi(`${PAG}/aggiunta/[id]/page.tsx`).split("\n");
+  const iAzioniAggiunta = aggiunta.findIndex((r) => r.trimStart().startsWith("<AzioniSalvataggio "));
+  controlla(
+    "A2.3 la stessa spiegazione accanto ai pulsanti nella scheda di una gara aggiunta a mano",
+    iAzioniAggiunta >= 0 && aggiunta[iAzioniAggiunta + 1]?.trim() === '<p className="omnia-opp-spiega">{TESTO_PULSANTI_SALVA}</p>',
+  );
+  // pagina «Notifiche»: la categoria «Rettifiche e modifiche» dice ciò che il motore manda (mai «documenti»); il testo è solo della pagina
+  const motoreUsaTesti = fs
+    .readdirSync(src("lib/radar/notifiche"))
+    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => /TESTI_CATEGORIA|notifiche-preferenze-calcoli/.test(leggi(`src/lib/radar/notifiche/${f}`)));
+  controlla(
+    "A1.11 «Notifiche», categoria «Rettifiche e modifiche»: «Rettifiche, proroghe, cambi di scadenza e annullamenti delle gare salvate o monitorate.», nessun «documenti»; il motore non usa questi testi",
+    prefCalc.TESTI_CATEGORIA.rettifiche.descrizione === "Rettifiche, proroghe, cambi di scadenza e annullamenti delle gare salvate o monitorate." &&
+      !Object.values(prefCalc.TESTI_CATEGORIA).some((t) => /document/i.test(t.descrizione)) &&
+      motoreUsaTesti.length === 0,
+    { descrizione: prefCalc.TESTI_CATEGORIA.rettifiche.descrizione, motoreUsaTesti },
+  );
   controlla("A3. nessuna richiesta di rete in tutta la prova", chiamateRete === 0, chiamateRete);
 }
 

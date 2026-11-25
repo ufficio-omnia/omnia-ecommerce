@@ -18,7 +18,7 @@ export const TUTTO_SPENTO: CategoriePreferenze = { nuove_opportunita: false, sca
 export const TESTI_CATEGORIA: Readonly<Record<CategoriaNotifica, { titolo: string; descrizione: string }>> = {
   nuove_opportunita: { titolo: "Nuove opportunità", descrizione: "Un riepilogo delle nuove gare in linea con il profilo dell'impresa (al massimo 20 per invio)." },
   scadenze: { titolo: "Scadenze", descrizione: "Promemoria a 10, 5 e 1 giorno dalla scadenza delle gare salvate o monitorate." },
-  rettifiche: { titolo: "Rettifiche e modifiche", descrizione: "Rettifiche, proroghe o modifiche della scadenza e documenti nuovi delle gare salvate o monitorate." },
+  rettifiche: { titolo: "Rettifiche e modifiche", descrizione: "Rettifiche, proroghe, cambi di scadenza e annullamenti delle gare salvate o monitorate." },
 };
 
 export const TESTO_STATO_INDIRIZZO: Readonly<Record<StatoIndirizzo, string>> = {
