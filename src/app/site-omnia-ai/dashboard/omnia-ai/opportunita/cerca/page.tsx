@@ -25,6 +25,7 @@ import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { SETTORI_RADAR, nomeSettore } from "@/lib/radar/settori";
 import { REGIONI, nomeRegione } from "@/lib/radar/territorio";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
+import AvvisoNotifiche from "@/components/omnia-ai/opportunita/avviso-notifiche";
 import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import PannelloFiltri from "@/components/omnia-ai/opportunita/pannello-filtri";
 import FontiRicerca, { type StatoFontePubblica } from "@/components/omnia-ai/opportunita/fonti-ricerca";
@@ -105,6 +106,7 @@ export default async function CercaOpportunitaPage({ searchParams }: { searchPar
   return (
     <div className="omnia-app-shell largo">
       <TestataOpportunita attiva="cerca" sottotitolo="Cerca tra le gare pubbliche dei tuoi settori. Ogni risultato dice perché compare, da quale fonte viene e quando è stato verificato." />
+      <AvvisoNotifiche contesto={contesto} operativo={diritto.operativo} />
 
       {!diritto.operativo && <p className="omnia-messaggio-stato avviso">{diritto.messaggioSolaLettura}</p>}
       {limitata && <p className="omnia-messaggio-stato avviso">Hai fatto molte ricerche nell&apos;ultimo minuto: riprova tra qualche secondo.</p>}

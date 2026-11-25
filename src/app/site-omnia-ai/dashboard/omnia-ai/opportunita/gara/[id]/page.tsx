@@ -14,6 +14,7 @@ import { descriviCorrezioneSettori, nomeSettore, voceCpv, type SettoreRadar } fr
 import { ATTRIBUZIONE_FONTE, NOME_FONTE, descriviAvvisoLetto, etichettaFonti, fontiDellaGara, fonteDelDato, riepilogoFonti } from "@/lib/radar/fonti-gara-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
 import AzioniSalvataggio from "@/components/omnia-ai/opportunita/azioni-salvataggio";
+import { TESTO_PULSANTI_SALVA } from "@/lib/opportunita-testi-calcoli";
 import ClassificazioneGara from "@/components/omnia-ai/opportunita/classificazione-gara";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
@@ -246,6 +247,7 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           )}
           {g.piattaforma_host && <p className="omnia-opp-nota">Piattaforma: {g.piattaforma_host}. Non apriamo e non scarichiamo nulla in automatico.</p>}
           <AzioniSalvataggio proceduraId={g.id} salvata={!!salvataggio} monitorata={!!salvataggio?.monitorata} operativo={diritto.operativo} />
+          <p className="omnia-opp-spiega">{TESTO_PULSANTI_SALVA}</p>
           <p className="omnia-opp-nota">«Analizza requisiti» e «Crea offerta tecnica» arriveranno nelle prossime fasi.</p>
         </aside>
       </div>

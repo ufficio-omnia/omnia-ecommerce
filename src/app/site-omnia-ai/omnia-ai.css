@@ -5874,3 +5874,50 @@ html.omnia-scorrimento-bloccato body {
   gap: 2px;
   overflow-wrap: anywhere;
 }
+
+/* Opportunità: invito ad attivare gli avvisi email e spiegazioni di «Salva» e «Monitora» (25/11/2026). Colori dal tema, chiaro e scuro. */
+.omnia-opp-invito {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  border: 1px solid rgba(var(--viola-rgb), 0.45);
+  background: rgba(var(--viola-rgb), 0.1);
+}
+.omnia-opp-invito > div {
+  flex: 1 1 320px;
+}
+.omnia-opp-invito h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--testo);
+}
+.omnia-opp-invito p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--testo-2);
+}
+.omnia-opp-avviso-nota {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fioco);
+}
+.omnia-opp-avviso-nota a,
+.omnia-opp-spiega a {
+  color: inherit;
+  text-decoration: underline;
+}
+.omnia-opp-spiega {
+  margin-top: 12px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(var(--viola-rgb), 0.45);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--testo-2);
+}

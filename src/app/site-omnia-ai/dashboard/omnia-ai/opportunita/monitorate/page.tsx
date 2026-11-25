@@ -13,6 +13,8 @@ import { tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 import { statoMostrato, type StatoProcedura } from "@/lib/radar/importa-calcoli";
 import { giorniAllaScadenza, leggibileDaValore } from "@/lib/radar/sintesi-calcoli";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
+import AvvisoNotifiche from "@/components/omnia-ai/opportunita/avviso-notifiche";
+import { TESTO_LISTA_SALVATE } from "@/lib/opportunita-testi-calcoli";
 import RigaGara, { hrefGara, type DatiRigaGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import { giorno } from "@/components/omnia-ai/opportunita/formato";
 import { unoPerGaraMostrata } from "@/lib/radar/collegamenti-calcoli";
@@ -190,6 +192,8 @@ export default async function MonitoratePage() {
   return (
     <div className="omnia-app-shell largo">
       <TestataOpportunita attiva="monitorate" sottotitolo="Le gare che segui. Le novità rilevate nelle fonti compaiono qui finché non apri la scheda." />
+      <AvvisoNotifiche contesto={contesto} operativo={diritto.operativo} />
+      <p className="omnia-opp-spiega">{TESTO_LISTA_SALVATE}</p>
       {!diritto.operativo && <p className="omnia-messaggio-stato avviso">{diritto.messaggioSolaLettura}</p>}
       {righe.length === 0 ? (
         <div className="omnia-riquadro">

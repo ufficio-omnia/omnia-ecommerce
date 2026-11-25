@@ -20,6 +20,7 @@ import { tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 import { nomeSettore } from "@/lib/radar/settori";
 import { nomeRegione } from "@/lib/radar/territorio";
 import TestataOpportunita from "@/components/omnia-ai/opportunita/testata-opportunita";
+import AvvisoNotifiche from "@/components/omnia-ai/opportunita/avviso-notifiche";
 import RigaGara, { hrefGara } from "@/components/omnia-ai/opportunita/riga-gara";
 import { importoBreve } from "@/components/omnia-ai/opportunita/formato";
 
@@ -75,6 +76,7 @@ export default async function PerTePage({ searchParams }: { searchParams: Promis
   return (
     <div className="omnia-app-shell largo">
       <TestataOpportunita attiva="per-te" sottotitolo="Le gare aperte in linea con il profilo dell'impresa. Ogni gara dice perché compare, da quale fonte viene e quando è stata aggiornata." />
+      <AvvisoNotifiche contesto={contesto} operativo={diritto.operativo} />
 
       {!diritto.operativo && <p className="omnia-messaggio-stato avviso">{diritto.messaggioSolaLettura}</p>}
       {limitata && <p className="omnia-messaggio-stato avviso">Troppe aperture nell&apos;ultimo minuto: riprova tra qualche secondo.</p>}
