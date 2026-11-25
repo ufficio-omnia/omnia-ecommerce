@@ -4,6 +4,7 @@ import { richiediAdminPagina } from "@/lib/console/accesso";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { contaConsegnePerStato, leggiProblemiEmail, leggiUltimiGiri, type StatoConsegna } from "@/lib/radar/notifiche/console-lettura";
 import { Badge, Pannello, Tessera, type Tono } from "../../../_componenti/elementi";
+import { SchedeTenderIntelligence } from "../../../_componenti/tender-intelligence-vista";
 
 export const metadata: Metadata = { title: "Email non consegnate" };
 
@@ -69,13 +70,11 @@ export default async function PaginaEmailNonConsegnate({ searchParams }: { searc
           <h1>Email non consegnate</h1>
           <p>
             Tender Intelligence: gli avvisi email ai clienti che non sono arrivati (falliti, esito incerto, rimbalzati, reclami). Sola lettura: nessun
-            indirizzo email e nessun testo delle email.{" "}
-            <Link href="/tender-intelligence" prefetch={false}>
-              Torna a Tender Intelligence
-            </Link>
+            indirizzo email e nessun testo delle email.
           </p>
         </div>
       </div>
+      <SchedeTenderIntelligence attiva="email" />
 
       {!problemi.disponibile && problemi.motivo === "tabelle_assenti" ? (
         <p className="cn-esito avviso" role="alert">

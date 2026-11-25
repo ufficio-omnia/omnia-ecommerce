@@ -231,6 +231,55 @@ a.cn-nav-voce:hover {
   font-size: 12.5px;
 }
 
+/* Barra di schede comune alle pagine di Tender Intelligence (riordino del 25/11) */
+.cn-schede {
+  margin: -6px 0 18px;
+  border-bottom: 1px solid var(--cn-bordo);
+  overflow-x: auto;
+}
+
+.cn-schede ul {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cn-scheda a,
+.cn-scheda span {
+  display: block;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--cn-secondario);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+
+.cn-scheda a:hover {
+  color: var(--cn-testo);
+}
+
+.cn-scheda span[aria-current="page"] {
+  color: var(--cn-testo);
+  font-weight: 600;
+  border-bottom-color: var(--cn-accento);
+}
+
+/* Dettagli di una fonte nella pagina «Fonti»: azioni e parti richiudibili sotto lo stato */
+.cn-dettagli-fonte {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cn-dettagli-fonte .cn-dettagli > :not(summary),
+.cn-avanzate > :not(summary) {
+  padding: 12px 14px;
+}
+
 .cn-sezione {
   margin-top: 18px;
 }

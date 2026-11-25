@@ -7,9 +7,6 @@ import {
   eseguiGiroPvl,
   eseguiGiroRegionale,
   eseguiGiroTed,
-  impostaFontePvl,
-  impostaFonteRegionale,
-  impostaFonteTed,
   impostaImpresaRadar,
   impostaVisibilitaFonte,
   salvaParametriRadar,
@@ -17,14 +14,26 @@ import {
 } from "../azioni/tender-intelligence";
 import { CHIAVI_LIMITI_PVL, LIMITI_PVL_INTERVALLI } from "@/lib/radar/fonti/pvl-calcoli";
 import { ETICHETTE_LIMITI_PVL, erroreAncoraAttuale } from "@/lib/console/tender-intelligence-calcoli";
-import { testoGiriProgrammati, type GiriProgrammatiConsole } from "@/lib/console/fonti-calcoli";
+import {
+  FRASE_ACCENSIONE_NON_CONSENTITA,
+  FRASE_COSTI,
+  FRASE_ESEGUI_GIRO,
+  FRASE_IMPRESE,
+  FRASE_INTERRUTTORE_GENERALE,
+  FRASE_LIMITE,
+  FRASE_LIMITE_PVL,
+  FRASE_VISIBILITA,
+  LIMITI_IN_USO,
+  LIMITI_NON_IN_USO,
+} from "@/lib/console/tender-intelligence-testi";
 import { Badge, Pannello, Tessera, type Tono } from "./elementi";
 import ModuloAzione from "./modulo-azione";
 import GareInVerifica from "./gare-in-verifica";
 
-// Vista della pagina «Tender Intelligence». Fase B1: interruttore generale, costi e limiti modificabili (solo amministratori, validati nel
-// server, ogni modifica nel registro con autore, data, valore precedente e nuovo), fonte TED accendibile con giro manuale e misure dell'ultimo
-// giro, imprese abilitate una per una. Il modulo resta spento per i clienti finché l'interruttore generale e quello dell'impresa sono spenti.
+// Console «Tender Intelligence», riordinata il 25/11/2026 (proposta B1 43, via dell'utente: pagine separate con una barra di schede comune).
+// Panoramica, Fonti (pagina /tender-intelligence/fonti, fonti-vista.tsx, che usa i dettagli esportati qui), Modulo e clienti, Gare da
+// controllare, Registro, Email non consegnate. Solo impaginazione e testi: le azioni del server (guardie degli amministratori, conferma nel
+// server per accendere, registro 0112, regole dell'ambiente) sono quelle di prima, in azioni/tender-intelligence.ts.
 
 const ETICHETTA_AZIONE: Record<AzioneRadar, string> = {
   ricerca: "Ricerca",
@@ -53,13 +62,16 @@ const STATO_FONTE: Record<StatoFonte, { testo: string; tono: Tono }> = {
 const ETICHETTA_OGGETTO: Record<string, string> = {
   "parametro:radar_attivo": "Interruttore generale del modulo",
   "fonte:ted:attiva": "Fonte TED",
-  "fonte:pvl:attiva": "Fonte PVL (staging)",
+  "fonte:pvl:attiva": "Fonte PVL",
+  "fonte:pvl:ripresa_recupero": "Ripresa del recupero PVL",
   "gara:collegamento": "Collegamento di una gara doppia",
   "gara:suggerimento": "Suggerimento di unione",
-  "fonte:sintel:attiva": "Fonte Sintel (staging)",
-  "fonte:sardegnacat:attiva": "Fonte SardegnaCAT (staging)",
+  "fonte:sintel:attiva": "Fonte Sintel",
+  "fonte:sardegnacat:attiva": "Fonte SardegnaCAT",
   "fonte:sintel:nascosta_ai_clienti": "Sintel nascosta ai clienti",
   "fonte:sardegnacat:nascosta_ai_clienti": "SardegnaCAT nascosta ai clienti",
+  "fonte:sintel:giro": "Giro di Sintel dalla console",
+  "fonte:sardegnacat:giro": "Giro di SardegnaCAT dalla console",
   "cliente:attivo": "Modulo per l'impresa",
   "gara:decisione_classificazione": "Decisione su una gara da verificare",
 };
@@ -120,256 +132,600 @@ function elenco(m: Record<string, number>, etichette: Record<string, string>): s
   return voci.length ? voci.map(([k, v]) => `${numero(v)} ${etichette[k] ?? k.replaceAll("_", " ")}`).join(", ") : "nessuno";
 }
 
-// Connettore PVL di ANAC (fase B1-bis, SOLO STAGING): stato e sospensione, giri programmati (configurati, non attivi), ultimo giro con
-// richieste, gare importate, doppioni TED/PVL evitati, rettifiche, errori e tempi; limiti di cortesia modificabili entro intervalli fissi.
-// Accendere una fonte avvia acquisizioni vere: casella di conferma obbligatoria, controllata anche nel server (accensioneConfermata nelle tre
-// azioni). Spegnere non la chiede.
-function confermaAccensione(nome: string) {
+// ───── barra di schede comune a tutte le pagine di Tender Intelligence ─────
+// Collegamenti scritti per esteso (le prove li cercano nel sorgente); quello della pagina aperta è un testo con aria-current, non un link.
+export type SchedaTenderIntelligence = "panoramica" | "fonti" | "modulo" | "gare" | "registro" | "email";
+
+export function SchedeTenderIntelligence({ attiva }: { attiva: SchedaTenderIntelligence }) {
   return (
-    <label className="cn-nota">
-      <input type="checkbox" name="conferma" value="si" required /> Confermo: accendo {nome}
-    </label>
+    <nav className="cn-schede" aria-label="Sezioni di Tender Intelligence">
+      <ul>
+        <li className="cn-scheda">
+          {attiva === "panoramica" ? (
+            <span aria-current="page">Panoramica</span>
+          ) : (
+            <Link href="/tender-intelligence" prefetch={false}>
+              Panoramica
+            </Link>
+          )}
+        </li>
+        <li className="cn-scheda">
+          {attiva === "fonti" ? (
+            <span aria-current="page">Fonti</span>
+          ) : (
+            <Link href="/tender-intelligence/fonti" prefetch={false}>
+              Fonti
+            </Link>
+          )}
+        </li>
+        <li className="cn-scheda">
+          {attiva === "modulo" ? (
+            <span aria-current="page">Modulo e clienti</span>
+          ) : (
+            <Link href="/tender-intelligence/modulo" prefetch={false}>
+              Modulo e clienti
+            </Link>
+          )}
+        </li>
+        <li className="cn-scheda">
+          {attiva === "gare" ? (
+            <span aria-current="page">Gare da controllare</span>
+          ) : (
+            <Link href="/tender-intelligence/gare" prefetch={false}>
+              Gare da controllare
+            </Link>
+          )}
+        </li>
+        <li className="cn-scheda">
+          {attiva === "registro" ? (
+            <span aria-current="page">Registro</span>
+          ) : (
+            <Link href="/tender-intelligence/registro" prefetch={false}>
+              Registro
+            </Link>
+          )}
+        </li>
+        <li className="cn-scheda">
+          {/* fase B4: pagina in sola lettura degli avvisi email non consegnati */}
+          {attiva === "email" ? (
+            <span aria-current="page">Email non consegnate</span>
+          ) : (
+            <Link href="/tender-intelligence/email" prefetch={false}>
+              Email non consegnate
+            </Link>
+          )}
+        </li>
+      </ul>
+    </nav>
   );
 }
 
-// Giri programmati di una fonte (K1): orari, interruttori e righe cron SOLO da programmazione-calcoli.ts (testoGiriProgrammati); il prossimo
-// orario come «prossimo giro» se fonte e giri sono accesi, altrimenti come «sarebbe»
-function testoGiri(giri: GiriProgrammatiConsole, fonteAccesa: boolean) {
+function Testata({ titolo, testo, attiva }: { titolo: string; testo: string; attiva: SchedaTenderIntelligence }) {
   return (
-    <p className="cn-nota">
-      {testoGiriProgrammati(giri)}
-      {giri.prossimoOrario ? ` ${giri.attivi && fonteAccesa ? "Prossimo giro" : "Con fonte e giri accesi, il prossimo giro sarebbe"} il ${data(giri.prossimoOrario)}.` : ""}
+    <>
+      <div className="cn-testata">
+        <div>
+          <h1>{titolo}</h1>
+          <p>{testo}</p>
+        </div>
+      </div>
+      <SchedeTenderIntelligence attiva={attiva} />
+    </>
+  );
+}
+
+function AvvisoSchema({ dati }: { dati: DatiTenderIntelligenceConsole }) {
+  if (dati.schemaPresente) return null;
+  return (
+    <p className="cn-esito avviso" role="alert" style={{ marginBottom: 14 }}>
+      Le migrazioni di Tender Intelligence (0109–0113) non sono eseguite in questo database: fonti, archivio e coda non esistono ancora. Il resto della console funziona come prima.
     </p>
   );
 }
 
-function SezionePvl({ pvl, attiva, giri }: { pvl: NonNullable<DatiTenderIntelligenceConsole["pvl"]>; attiva: boolean; giri: GiriProgrammatiConsole }) {
+// ───── dettagli delle fonti, per la pagina «Fonti» (fonti-vista.tsx li chiama direttamente: il contenuto resta nell'albero della vista) ─────
+
+function dettagliTed(ti: DatiTenderIntelligenceConsole, attiva: boolean) {
+  const giro = ti.ted?.ultimoGiro ?? null;
+  return (
+    <div className="cn-dettagli-fonte">
+      {(ti.ted?.fase || ti.ted?.recuperoCompletatoIl || ti.ted?.ultimoGiorno) && (
+        <p className="cn-nota">
+          {ti.ted?.fase ? `Fase: ${ti.ted.fase}` : ""}
+          {ti.ted?.recuperoCompletatoIl ? ` · storico recuperato il ${data(ti.ted.recuperoCompletatoIl)}` : ""}
+          {ti.ted?.ultimoGiorno ? ` · avvisi letti fino al ${data(ti.ted.ultimoGiorno)}` : ""}
+        </p>
+      )}
+      {attiva && (
+        <ModuloAzione azione={eseguiGiroTed} etichetta="Esegui un giro adesso" etichettaInCorso="Importo… (fino a 50 s)">
+          <span className="cn-nota">{FRASE_ESEGUI_GIRO} Al massimo 10 pagine; il resto riprende al giro successivo dal punto salvato.</span>
+        </ModuloAzione>
+      )}
+      {giro && (
+        <details className="cn-dettagli">
+          <summary>Dettagli dell&apos;ultimo giro</summary>
+          <div className="cn-scorri">
+            <table className="cn-tab">
+              <tbody>
+                <tr>
+                  <th>Iniziato</th>
+                  <td>
+                    {data(giro.iniziato_il)} · {giro.fase === "recupero" ? "recupero dello storico" : "sincronizzazione"} · durata {secondi(giro.durata_ms)} · {giro.giro_finito ? "finito" : "da continuare"}
+                    {giro.errore ? ` · interrotto: ${giro.errore}` : ""}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Avvisi di gara</th>
+                  <td>
+                    {numero(giro.bandi.letti)} letti: {numero(giro.bandi.nuove)} gare nuove, {numero(giro.bandi.aggiornate)} aggiornate, {numero(giro.bandi.rettifiche)} con rettifiche o proroghe, {numero(giro.bandi.annullate)} annullate, {numero(giro.bandi.invariati)} già note;{" "}
+                    {Object.entries(giro.bandi.esclusi)
+                      .map(([k, v]) => `${numero(v)} ${k === "fuori_settore" ? "fuori dai sei settori" : k.replaceAll("_", " ")}`)
+                      .join(", ") || "nessuno escluso"}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Esiti</th>
+                  <td>
+                    {numero(giro.esiti.letti)} letti, {numero(giro.esiti.applicati)} applicati, {numero(giro.esiti.senzaBando)} senza il bando in archivio
+                  </td>
+                </tr>
+                <tr>
+                  <th>Risorse</th>
+                  <td>
+                    TED: {numero(giro.ted.richieste)} richieste, {(giro.ted.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {secondi(giro.ted.ms)} · Database: {numero(giro.db.richiesteDb)} richieste, {secondi(giro.db.msDb)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function dettagliPvl(pvl: NonNullable<DatiTenderIntelligenceConsole["pvl"]>, attiva: boolean) {
   const g = pvl.ultimoGiro;
   return (
-    <>
-      <div className="cn-colonne cn-colonne-pari">
-        <Pannello titolo="Fonte PVL di ANAC (solo staging)">
+    <div className="cn-dettagli-fonte">
+      <p className="cn-nota">
+        {pvl.inCorso ? "Giro da continuare · " : ""}
+        {pvl.ultimoGiorno ? `Avvisi letti fino al ${data(pvl.ultimoGiorno)} · ` : ""}
+        Archivio: {numero(pvl.archivio.avvisi)} avvisi letti dalla PVL, {numero(pvl.archivio.gareNateDallaPvl)} gare arrivate prima (o solo) dalla PVL, {numero(pvl.archivio.avvisiCheCitanoTed)} avvisi che citano un avviso TED (stessa gara, nessun doppione), {numero(pvl.archivio.cambiamentiPvl)} rettifiche, proroghe, annullamenti ed esiti registrati dalla PVL.
+      </p>
+      {!pvl.accensioneConsentita && !attiva && <p className="cn-nota">{FRASE_ACCENSIONE_NON_CONSENTITA}</p>}
+      {attiva && (
+        <ModuloAzione azione={eseguiGiroPvl} etichetta="Esegui un giro adesso" etichettaInCorso="Leggo… (fino a 50 s)">
+          <span className="cn-nota">{FRASE_ESEGUI_GIRO} Dall&apos;ultimo giorno letto meno uno a oggi, entro il tetto di richieste dei limiti qui sotto.</span>
+        </ModuloAzione>
+      )}
+      <details className="cn-dettagli">
+        <summary>Limiti verso la PVL</summary>
+        <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i limiti PVL" etichettaInCorso="Salvo…" classe="cn-modulo">
+          {(Object.keys(CHIAVI_LIMITI_PVL) as (keyof typeof CHIAVI_LIMITI_PVL)[]).map((k) => (
+            <div key={k} className="cn-campo">
+              <label className="cn-etichetta" htmlFor={`pvl-${k}`}>
+                {ETICHETTE_LIMITI_PVL[k]}{" "}
+                <span className="cn-nota">
+                  (da {numero(LIMITI_PVL_INTERVALLI[k].min)} a {numero(LIMITI_PVL_INTERVALLI[k].max)})
+                </span>
+              </label>
+              <input id={`pvl-${k}`} name={CHIAVI_LIMITI_PVL[k]} inputMode="numeric" className="cn-input" defaultValue={String(pvl.limiti[k])} />
+              <p className="cn-nota">{FRASE_LIMITE_PVL[k]}</p>
+            </div>
+          ))}
+        </ModuloAzione>
+        <p className="cn-nota">Su 401, 403 o 429, o su una risposta che non sono i dati attesi, il connettore si sospende da solo e non ripete la richiesta.</p>
+      </details>
+      {pvl.collegamenti && (
+        <details className="cn-dettagli">
+          <summary>{`Gare doppie collegate (${numero(pvl.collegamenti.totale)})`}</summary>
           <p className="cn-nota">
-            Stato: <strong>{attiva ? "accesa" : pvl.sospensione ? "sospesa" : "spenta"}</strong>
-            {pvl.inCorso ? " · giro da continuare" : ""}
-            {pvl.ultimoGiorno ? ` · avvisi letti fino al ${data(pvl.ultimoGiorno)}` : ""} · database: {pvl.ambiente}
+            Stessa gara pubblicata due volte (per esempio una rettifica della PVL letta prima del bando TED): la scheda doppia resta intera nel database, sparisce da elenchi e ricerca e porta a quella che resta. Annullare il collegamento la rende di nuovo visibile; da quel momento non si ricollega più da sola.
           </p>
-          {pvl.sospensione && !attiva && (
-            <p className="cn-esito avviso" role="alert">
-              Sospesa dal connettore il {data(pvl.sospensione.il)}: {pvl.sospensione.motivo ?? "motivo non registrato"}. Si riaccende solo da qui, dopo averne verificato la causa.
-            </p>
-          )}
-          {pvl.accensioneConsentita || attiva ? (
-            <ModuloAzione azione={impostaFontePvl} etichetta={attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ azione: attiva ? "spegni" : "accendi" }}>
-              <span className="cn-nota">Uso sperimentale autorizzato solo sullo staging; non è un&apos;autorizzazione di ANAC né del riuso commerciale.</span>
-              {attiva ? null : confermaAccensione("PVL ANAC")}
-            </ModuloAzione>
+          {pvl.collegamenti.elenco.length === 0 ? (
+            <p className="cn-nota">Nessuna gara collegata.</p>
           ) : (
-            <p className="cn-nota">Accensione non consentita in questo database: la PVL è autorizzata solo sullo staging.</p>
+            <div className="cn-scorri">
+              <table className="cn-tab">
+                <thead>
+                  <tr>
+                    <th>Gara collegata</th>
+                    <th>Quando e perché</th>
+                    <th>Azione</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pvl.collegamenti.elenco.map((c) => (
+                    <tr key={c.id}>
+                      <td>
+                        {c.titolo}
+                        <div className="cn-nota">
+                          {c.id} → resta {c.resta}
+                        </div>
+                      </td>
+                      <td>
+                        {data(c.il)}
+                        {c.motivo ? ` · ${c.motivo}` : ""}
+                      </td>
+                      <td>
+                        <ModuloAzione azione={scollegaGaraDoppia} etichetta="Annulla il collegamento" etichettaInCorso="Annullo…" campi={{ id: c.id }} variante="neutro">
+                          <span className="cn-nota">Torna visibile, nulla si cancella.</span>
+                        </ModuloAzione>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-          {attiva && (
-            <ModuloAzione azione={eseguiGiroPvl} etichetta="Esegui un giro adesso" etichettaInCorso="Leggo… (fino a 50 s)">
-              <span className="cn-nota">Dall&apos;ultimo giorno letto meno uno a oggi, entro il tetto di richieste qui sotto.</span>
-            </ModuloAzione>
-          )}
-          {testoGiri(giri, attiva)}
+        </details>
+      )}
+      {g && (
+        <details className="cn-dettagli">
+          <summary>Dettagli dell&apos;ultimo giro</summary>
+          <div className="cn-scorri">
+            <table className="cn-tab">
+              <tbody>
+                <tr>
+                  <th>Iniziato</th>
+                  <td>
+                    {data(g.iniziato_il)} · {g.modo === "finestra" ? "finestra controllata" : "giro incrementale"} dal {data(g.finestra.da)} al {data(g.finestra.a)} · durata {secondi(g.durata_ms)} · {g.giro_finito ? "finito" : "da continuare"}
+                    {g.errore ? ` · interrotto: ${g.errore}` : ""}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Richieste alla PVL</th>
+                  <td>
+                    {numero(g.pvl.richieste)} (
+                    {Object.entries(g.pvl.risposte)
+                      .map(([stato, n]) => (stato === "rete" ? `${numero(n)} senza risposta` : `${numero(n)} con esito ${stato}`))
+                      .join(", ") || "nessuna"}
+                    ), {(g.pvl.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {secondi(g.pvl.ms)} · avvisi dichiarati dalla fonte: {numero(g.pvl.conteggioDichiarato)} · limiti: pausa {secondi(g.limiti.pausaMs)}, tetto {numero(g.limiti.richiesteMassime)} richieste
+                  </td>
+                </tr>
+                <tr>
+                  <th>Avvisi</th>
+                  <td>
+                    {numero(g.avvisi.letti)} letti: {numero(g.avvisi.bandi)} bandi, {numero(g.avvisi.esiti)} esiti; esclusi: {elenco(g.avvisi.esclusi, MOTIVI_ESCLUSIONE_PVL)}
+                    {g.avvisi.sostituiti && Object.keys(g.avvisi.sostituiti).length > 0 ? ` · sostituiti da un avviso nuovo: ${elenco(g.avvisi.sostituiti, {})}` : ""}
+                    {g.avvisi.nonAttivi ? ` · non attivi: ${numero(g.avvisi.nonAttivi)}` : ""}
+                  </td>
+                </tr>
+                <tr>
+                  <th>Gare</th>
+                  <td>
+                    {numero(g.bandi.nuoveNazionali)} nuove nazionali, {numero(g.bandi.nuoveSopraSogliaSenzaTed)} sopra soglia non ancora su TED, <strong>{numero(g.bandi.giaPresentiTed)} già presenti da TED</strong> (unite, nessun doppione), {numero(g.bandi.nuoveVersioni)} nuove versioni di gare PVL, {numero(g.bandi.rettifiche)} con rettifiche o proroghe, {numero(g.bandi.annullate)} annullate, {numero(g.bandi.invariati)} già note; {numero(g.bandi.scaduteAllImportazione)} già scadute all&apos;importazione (mai mostrate aperte)
+                  </td>
+                </tr>
+                <tr>
+                  <th>Lotti e CIG</th>
+                  <td>
+                    {numero(g.bandi.lotti)} lotti, {numero(g.bandi.cigAssegnati)} CIG nuovi, {numero(g.bandi.cigScartati)} CIG scartati, {numero(g.bandi.lottiNonAllineati)} gare con lotti non allineati, {numero(g.bandi.conflitti)} conflitti tra riferimenti, {numero(g.bandi.aggiunteCollegate)} gare aggiunte a mano collegate
+                  </td>
+                </tr>
+                <tr>
+                  <th>Dati mancanti</th>
+                  <td>{elenco(g.bandi.mancanti, CAMPI_MANCANTI_PVL)}</td>
+                </tr>
+                <tr>
+                  <th>Esiti</th>
+                  <td>
+                    {numero(g.esiti.letti)} letti, {numero(g.esiti.applicati)} applicati, {numero(g.esiti.senzaGara)} senza la gara in archivio, {numero(g.esiti.invariati)} già noti
+                  </td>
+                </tr>
+                <tr>
+                  <th>Database</th>
+                  <td>
+                    {numero(g.db.richiesteDb)} richieste, {secondi(g.db.msDb)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function dettagliRegionale(f: NonNullable<DatiTenderIntelligenceConsole["regionali"]>["fonti"][number], attiva: boolean) {
+  const g = f.ultimoGiro;
+  return (
+    <div className="cn-dettagli-fonte">
+      <p className="cn-nota">
+        Ai clienti: <strong>{f.nascosta ? "nascosta" : "visibile"}</strong>
+        {f.datiAl ? ` · dati della fonte al ${data(f.datiAl)}` : ""} · procedure lette in archivio: {numero(f.procedure)}
+      </p>
+      {/* decisione 48E dell'utente: SardegnaCAT visibile ai clienti come le altre fonti; nascondere una fonte resta possibile da qui */}
+      {f.nascosta && <p className="cn-nota">Nascosta ai clienti: le gare che hanno solo questa fonte non compaiono e i suoi dati non entrano nelle gare già visibili.</p>}
+      {!f.accensioneConsentita && !attiva && <p className="cn-nota">{FRASE_ACCENSIONE_NON_CONSENTITA}</p>}
+      {attiva && (
+        <ModuloAzione azione={eseguiGiroRegionale} etichetta="Esegui un giro adesso" etichettaInCorso="Leggo… (fino a 50 s)" campi={{ fonte: f.fonte }}>
+          <span className="cn-nota">{FRASE_ESEGUI_GIRO}</span>
+        </ModuloAzione>
+      )}
+      {f.nascosta ? (
+        <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">
+          <span className="cn-nota">{FRASE_VISIBILITA}</span>
+        </ModuloAzione>
+      ) : (
+        <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Nascondi ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "nascondi" }} variante="neutro">
+          <span className="cn-nota">{FRASE_VISIBILITA}</span>
+        </ModuloAzione>
+      )}
+      {g && (
+        <details className="cn-dettagli">
+          <summary>Dettagli dell&apos;ultimo giro</summary>
           <p className="cn-nota">
-            Archivio: {numero(pvl.archivio.avvisi)} avvisi letti dalla PVL, {numero(pvl.archivio.gareNateDallaPvl)} gare arrivate prima (o solo) dalla PVL, {numero(pvl.archivio.avvisiCheCitanoTed)} avvisi che citano un avviso TED (stessa gara, nessun doppione), {numero(pvl.archivio.cambiamentiPvl)} rettifiche, proroghe, annullamenti ed esiti registrati dalla PVL.
+            Ultimo giro del {data(g.iniziato_il)}, {secondi(g.durata_ms)}: {g.invariata_alla_fonte ? "dati invariati alla fonte" : `${numero(g.fonte.richieste)} richieste (${(g.fonte.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB); ${numero(g.letti)} procedure lette, ${numero(g.nuove)} gare nuove, ${numero(g.aggiornate)} aggiornate, ${numero(g.invariati)} invariate, ${numero(g.rettifiche)} con rettifiche o proroghe, ${numero(g.collegateDoppie)} gare doppie unite, ${numero(g.proposte)} suggerimenti, ${numero(g.nonApplicateNascosta)} versioni non applicate perché la fonte è nascosta; esclusioni: ${Object.entries(g.esclusi).map(([k, n]) => `${k} ${n}`).join(", ") || "nessuna"}`}
+            {g.errore ? ` · errore: ${g.errore}` : ""}
           </p>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** I dettagli della scheda di una fonte nella pagina «Fonti»: esecuzione manuale, visibilità, limiti PVL, gare doppie, ultimo giro. */
+export function dettagliFonteTi(fonte: string, attiva: boolean, ti: DatiTenderIntelligenceConsole) {
+  if (fonte === "ted") return dettagliTed(ti, attiva);
+  if (fonte === "pvl") return ti.pvl ? dettagliPvl(ti.pvl, attiva) : null;
+  const r = ti.regionali?.fonti.find((x) => x.fonte === fonte);
+  return r ? dettagliRegionale(r, attiva) : null;
+}
+
+/** Catalogo delle fonti (copertura, aggiornamento, licenza), richiudibile in fondo alla pagina «Fonti». */
+export function catalogoFonti(dati: DatiTenderIntelligenceConsole) {
+  const conErrori = dati.fonti.some((f) => f.db?.ultimo_errore);
+  return (
+    <details className="cn-dettagli cn-sezione">
+      <summary>Catalogo delle fonti</summary>
+      <div className="cn-scorri">
+        <table className="cn-tab">
+          <thead>
+            <tr>
+              <th>Fonte</th>
+              <th>Stato</th>
+              <th>Copertura</th>
+              <th>Aggiornamento</th>
+              <th>Ultima lettura</th>
+              <th>Dati al</th>
+              {conErrori && <th>Ultimo errore</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {dati.fonti.flatMap((f) => [
+              <tr key={f.id}>
+                <td>
+                  <strong>{f.nome}</strong>
+                </td>
+                <td>
+                  {f.db?.attiva ? <Badge tono="ok">accesa</Badge> : <Badge tono={STATO_FONTE[f.stato].tono}>{STATO_FONTE[f.stato].testo}</Badge>}
+                </td>
+                <td>{f.copertura}</td>
+                <td>{f.aggiornamento}</td>
+                <td>{data(f.db?.ultimo_successo_il ?? null)}</td>
+                <td>{data(f.db?.dati_aggiornati_al ? new Date(f.db.dati_aggiornati_al).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }) : null)}</td>
+                {conErrori && <td>{f.db?.ultimo_errore ? (erroreAncoraAttuale(f.db.ultimo_errore_il, f.db.ultimo_successo_il) ? `${data(f.db.ultimo_errore_il)}: ${f.db.ultimo_errore}` : `risolto: ultimo giro riuscito il ${data(f.db.ultimo_successo_il)}`) : "—"}</td>}
+              </tr>,
+              <tr key={`${f.id}-limiti`}>
+                <td colSpan={conErrori ? 7 : 6} className="cn-nota-inline">
+                  Limiti: {f.limiti.join(" · ")}. Licenza: {f.licenza}.
+                </td>
+              </tr>,
+            ])}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+// ───── Panoramica (/tender-intelligence): solo lettura, come va e che cosa c'è da fare ─────
+
+const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat"];
+
+export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
+  const { parametri } = dati;
+  const inCoda = dati.coda ? dati.coda.in_coda + dati.coda.in_corso : null;
+  const fonti = FONTI_DEL_RADAR.map((id) => dati.fonti.find((f) => f.id === id)).filter((f): f is DatiTenderIntelligenceConsole["fonti"][number] => !!f);
+  const daVerificare = dati.gareInVerifica?.length ?? null;
+  const suggerimenti = dati.regionali?.proposte?.length ?? null;
+  const conflitti = dati.regionali?.classificazioni?.length ?? null;
+
+  return (
+    <>
+      <Testata titolo="Tender Intelligence" testo="Scouting delle gare per le imprese abilitate. Il modulo si vede solo con l'interruttore generale acceso e l'impresa abilitata." attiva="panoramica" />
+      <AvvisoSchema dati={dati} />
+
+      <div className="cn-tessere">
+        <Tessera etichetta="Modulo per i clienti" valore={parametri.attivo ? "Acceso" : "Spento"} tono={parametri.attivo ? "avviso" : "neutro"} dettaglio="Interruttore generale (radar_attivo)" />
+        <Tessera etichetta="Imprese abilitate" valore={numero(dati.clientiAbilitati)} dettaglio="Interruttore per impresa acceso" />
+        <Tessera etichetta="Gare in archivio" valore={numero(dati.procedure)} dettaglio={[dati.procedureAperte === null ? null : `${numero(dati.procedureAperte)} aperte adesso`, dati.gareCollegate ? `più ${numero(dati.gareCollegate)} copie collegate a un'altra gara (non contate)` : null].filter(Boolean).join(" · ") || undefined} />
+        <Tessera etichetta="Elaborazioni da fare" valore={numero(inCoda)} dettaglio={dati.coda ? `${numero(dati.coda.fallito)} fallite` : undefined} tono={dati.coda && dati.coda.fallito > 0 ? "avviso" : "neutro"} />
+      </div>
+
+      <div className="cn-colonne cn-colonne-pari">
+        <Pannello
+          titolo="Fonti"
+          azioni={
+            <Link href="/tender-intelligence/fonti" prefetch={false}>
+              Vai alle fonti →
+            </Link>
+          }
+        >
+          {fonti.length === 0 ? (
+            <p className="cn-nota">Nessuna fonte nel database.</p>
+          ) : (
+            <ul className="cn-elenco">
+              {fonti.map((f) => (
+                <li key={f.id}>
+                  <strong>{f.nome}</strong> {f.db?.attiva ? <Badge tono="ok">accesa</Badge> : <Badge tono="neutro">spenta</Badge>}
+                  <span className="cn-nota">
+                    {` · ultimo giro riuscito: ${data(f.db?.ultimo_successo_il ?? null)}`}
+                    {f.db?.ultimo_errore && erroreAncoraAttuale(f.db.ultimo_errore_il, f.db.ultimo_successo_il) ? ` · ultimo errore il ${data(f.db.ultimo_errore_il)}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="cn-nota">Stato calcolato, allarmi, accensione e giri sono nella scheda «Fonti».</p>
         </Pannello>
 
-        <Pannello titolo="Limiti verso la PVL">
-          <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i limiti PVL" etichettaInCorso="Salvo…" classe="cn-modulo">
-            {(Object.keys(CHIAVI_LIMITI_PVL) as (keyof typeof CHIAVI_LIMITI_PVL)[]).map((k) => (
-              <div key={k} className="cn-campo">
-                <label className="cn-etichetta" htmlFor={`pvl-${k}`}>
-                  {ETICHETTE_LIMITI_PVL[k]}{" "}
-                  <span className="cn-nota">
-                    (da {numero(LIMITI_PVL_INTERVALLI[k].min)} a {numero(LIMITI_PVL_INTERVALLI[k].max)})
-                  </span>
-                </label>
-                <input id={`pvl-${k}`} name={CHIAVI_LIMITI_PVL[k]} inputMode="numeric" className="cn-input" defaultValue={String(pvl.limiti[k])} />
-              </div>
-            ))}
+        <Pannello
+          titolo="Da fare"
+          azioni={
+            <Link href="/tender-intelligence/gare" prefetch={false}>
+              Vai alle gare →
+            </Link>
+          }
+        >
+          <ul className="cn-elenco">
+            <li>{`Gare da verificare: ${numero(daVerificare)}`}</li>
+            <li>{`Suggerimenti di unione: ${numero(suggerimenti)}`}</li>
+            <li>{`Conflitti tra fonti nella classificazione: ${numero(conflitti)}`}</li>
+          </ul>
+        </Pannello>
+      </div>
+    </>
+  );
+}
+
+// ───── Modulo e clienti (/tender-intelligence/modulo) ─────
+
+export function VistaModulo({ dati }: { dati: DatiTenderIntelligenceConsole }) {
+  const { parametri } = dati;
+  return (
+    <>
+      <Testata titolo="Modulo e clienti" testo="Chi vede «Opportunità» e con quali limiti. Ogni modifica va nel registro." attiva="modulo" />
+      <AvvisoSchema dati={dati} />
+
+      <div className="cn-sezione">
+        <Pannello titolo="1. Interruttore generale">
+          <ModuloAzione azione={salvaParametriRadar} etichetta={parametri.attivo ? "Spegni il modulo" : "Accendi il modulo"} etichettaInCorso="Salvo…" campi={{ radar_attivo: parametri.attivo ? "0" : "1" }} variante={parametri.attivo ? "neutro" : "primario"}>
+            <p className="cn-nota">
+              Oggi è <strong>{parametri.attivo ? "acceso" : "spento"}</strong>.
+            </p>
           </ModuloAzione>
-          <p className="cn-nota">Su 401, 403 o 429, o su una risposta che non sono i dati attesi, il connettore si sospende da solo e non ripete la richiesta.</p>
+          <p className="cn-nota">{FRASE_INTERRUTTORE_GENERALE}</p>
         </Pannello>
       </div>
 
-      {pvl.collegamenti && (
+      {dati.schemaPresente && (
         <div className="cn-sezione">
-          <Pannello titolo={`Gare doppie collegate (${numero(pvl.collegamenti.totale)})`}>
-            <p className="cn-nota">
-              Stessa gara pubblicata due volte (per esempio una rettifica della PVL letta prima del bando TED): la scheda doppia resta intera nel database, sparisce da elenchi e ricerca e porta a quella che resta. Annullare il collegamento la rende di nuovo visibile; da quel momento non si ricollega più da sola.
-            </p>
-            {pvl.collegamenti.elenco.length === 0 ? (
-              <p className="cn-nota">Nessuna gara collegata.</p>
-            ) : (
+          <Pannello titolo="2. Imprese abilitate">
+            <p className="cn-nota">{FRASE_IMPRESE}</p>
+            <ModuloAzione azione={impostaImpresaRadar} etichetta="Salva" etichettaInCorso="Salvo…" svuota>
+              <label className="cn-etichetta" htmlFor="ti-email">
+                Email del titolare dell&apos;impresa
+              </label>
+              <input id="ti-email" name="email" type="email" required className="cn-input" placeholder="titolare@impresa.it" />
+              <select name="azione" className="cn-input" defaultValue="abilita" aria-label="Abilita o disabilita">
+                <option value="abilita">Abilita il modulo</option>
+                <option value="disabilita">Disabilita il modulo</option>
+              </select>
+            </ModuloAzione>
+            {dati.imprese && dati.imprese.length > 0 ? (
               <div className="cn-scorri">
                 <table className="cn-tab">
                   <thead>
                     <tr>
-                      <th>Gara collegata</th>
-                      <th>Quando e perché</th>
-                      <th>Azione</th>
+                      <th>Impresa (titolare)</th>
+                      <th>Modulo</th>
+                      <th>Ultima modifica</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pvl.collegamenti.elenco.map((c) => (
-                      <tr key={c.id}>
+                    {dati.imprese.map((i) => (
+                      <tr key={i.email}>
+                        <td>{i.email}</td>
+                        <td>{i.attivo ? <Badge tono="ok">abilitato</Badge> : <Badge tono="neutro">disabilitato</Badge>}</td>
                         <td>
-                          {c.titolo}
-                          <div className="cn-nota">
-                            {c.id} → resta {c.resta}
-                          </div>
-                        </td>
-                        <td>
-                          {data(c.il)}
-                          {c.motivo ? ` · ${c.motivo}` : ""}
-                        </td>
-                        <td>
-                          <ModuloAzione azione={scollegaGaraDoppia} etichetta="Annulla il collegamento" etichettaInCorso="Annullo…" campi={{ id: c.id }} variante="neutro">
-                            <span className="cn-nota">Torna visibile, nulla si cancella.</span>
-                          </ModuloAzione>
+                          {data(i.aggiornataIl)} · {i.aggiornataDa}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            ) : (
+              <p className="cn-nota">Nessuna impresa abilitata.</p>
             )}
           </Pannello>
         </div>
       )}
 
-      {g && (
-        <div className="cn-sezione">
-          <Pannello titolo="Ultimo giro PVL">
-            <div className="cn-scorri">
-              <table className="cn-tab">
-                <tbody>
-                  <tr>
-                    <th>Iniziato</th>
-                    <td>
-                      {data(g.iniziato_il)} · {g.modo === "finestra" ? "finestra controllata" : "giro incrementale"} dal {data(g.finestra.da)} al {data(g.finestra.a)} · durata {secondi(g.durata_ms)} · {g.giro_finito ? "finito" : "da continuare"}
-                      {g.errore ? ` · interrotto: ${g.errore}` : ""}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Richieste alla PVL</th>
-                    <td>
-                      {numero(g.pvl.richieste)} (
-                      {Object.entries(g.pvl.risposte)
-                        .map(([stato, n]) => (stato === "rete" ? `${numero(n)} senza risposta` : `${numero(n)} con esito ${stato}`))
-                        .join(", ") || "nessuna"}
-                      ), {(g.pvl.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {secondi(g.pvl.ms)} · avvisi dichiarati dalla fonte: {numero(g.pvl.conteggioDichiarato)} · limiti: pausa {secondi(g.limiti.pausaMs)}, tetto {numero(g.limiti.richiesteMassime)} richieste
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Avvisi</th>
-                    <td>
-                      {numero(g.avvisi.letti)} letti: {numero(g.avvisi.bandi)} bandi, {numero(g.avvisi.esiti)} esiti; esclusi: {elenco(g.avvisi.esclusi, MOTIVI_ESCLUSIONE_PVL)}
-                      {g.avvisi.sostituiti && Object.keys(g.avvisi.sostituiti).length > 0 ? ` · sostituiti da un avviso nuovo: ${elenco(g.avvisi.sostituiti, {})}` : ""}
-                      {g.avvisi.nonAttivi ? ` · non attivi: ${numero(g.avvisi.nonAttivi)}` : ""}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Gare</th>
-                    <td>
-                      {numero(g.bandi.nuoveNazionali)} nuove nazionali, {numero(g.bandi.nuoveSopraSogliaSenzaTed)} sopra soglia non ancora su TED, <strong>{numero(g.bandi.giaPresentiTed)} già presenti da TED</strong> (unite, nessun doppione), {numero(g.bandi.nuoveVersioni)} nuove versioni di gare PVL, {numero(g.bandi.rettifiche)} con rettifiche o proroghe, {numero(g.bandi.annullate)} annullate, {numero(g.bandi.invariati)} già note; {numero(g.bandi.scaduteAllImportazione)} già scadute all&apos;importazione (mai mostrate aperte)
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Lotti e CIG</th>
-                    <td>
-                      {numero(g.bandi.lotti)} lotti, {numero(g.bandi.cigAssegnati)} CIG nuovi, {numero(g.bandi.cigScartati)} CIG scartati, {numero(g.bandi.lottiNonAllineati)} gare con lotti non allineati, {numero(g.bandi.conflitti)} conflitti tra riferimenti, {numero(g.bandi.aggiunteCollegate)} gare aggiunte a mano collegate
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Dati mancanti</th>
-                    <td>{elenco(g.bandi.mancanti, CAMPI_MANCANTI_PVL)}</td>
-                  </tr>
-                  <tr>
-                    <th>Esiti</th>
-                    <td>
-                      {numero(g.esiti.letti)} letti, {numero(g.esiti.applicati)} applicati, {numero(g.esiti.senzaGara)} senza la gara in archivio, {numero(g.esiti.invariati)} già noti
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Database</th>
-                    <td>
-                      {numero(g.db.richiesteDb)} richieste, {secondi(g.db.msDb)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+      <div className="cn-sezione">
+        <Pannello titolo="3. Limiti tecnici per impresa">
+          <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i limiti" etichettaInCorso="Salvo…" classe="cn-modulo">
+            {LIMITI_IN_USO.map((n) => (
+              <div key={n} className="cn-campo">
+                <label className="cn-etichetta" htmlFor={`limite-${n}`}>
+                  {ETICHETTA_LIMITE[n]} <span className="cn-nota">(predefinito {LIMITI_PREDEFINITI[n]})</span>
+                </label>
+                <input id={`limite-${n}`} name={`${PREFISSO_LIMITE}${n}`} inputMode="numeric" className="cn-input" defaultValue={String(parametri.limiti[n])} />
+                <p className="cn-nota">{FRASE_LIMITE[n]}</p>
+              </div>
+            ))}
+          </ModuloAzione>
+          <p className="cn-nota">Interi da 0 a 100.000. Un singolo cliente può avere valori dedicati (omnia_ai_radar_impostazioni).</p>
+        </Pannello>
+      </div>
+
+      <details className="cn-dettagli cn-sezione cn-avanzate">
+        <summary>Avanzate</summary>
+        <div className="cn-colonne cn-colonne-pari">
+          <Pannello titolo="Costo in crediti per azione">
+            <p className="cn-nota">{FRASE_COSTI}</p>
+            <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i costi" etichettaInCorso="Salvo…" classe="cn-modulo">
+              {AZIONI_RADAR.map((a) => (
+                <div key={a} className="cn-campo">
+                  <label className="cn-etichetta" htmlFor={`costo-${a}`}>
+                    {ETICHETTA_AZIONE[a]}
+                  </label>
+                  <input id={`costo-${a}`} name={`${PREFISSO_COSTO}${a}`} inputMode="numeric" className="cn-input" defaultValue={String(parametri.costi[a])} />
+                </div>
+              ))}
+            </ModuloAzione>
+            <p className="cn-nota">Interi da 0 a 1.000. Zero = nessun addebito.</p>
+          </Pannello>
+
+          <Pannello titolo="Limiti delle funzioni non ancora attive">
+            <ModuloAzione azione={salvaParametriRadar} etichetta="Salva questi limiti" etichettaInCorso="Salvo…" classe="cn-modulo">
+              {LIMITI_NON_IN_USO.map((n) => (
+                <div key={n} className="cn-campo">
+                  <label className="cn-etichetta" htmlFor={`limite-${n}`}>
+                    {ETICHETTA_LIMITE[n]} <span className="cn-nota">(predefinito {LIMITI_PREDEFINITI[n]})</span>
+                  </label>
+                  <input id={`limite-${n}`} name={`${PREFISSO_LIMITE}${n}`} inputMode="numeric" className="cn-input" defaultValue={String(parametri.limiti[n])} />
+                  <p className="cn-nota">{FRASE_LIMITE[n]}</p>
+                </div>
+              ))}
+            </ModuloAzione>
           </Pannello>
         </div>
-      )}
+      </details>
     </>
   );
 }
 
-// ───── fase B2a: fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione da verificare ─────
+// ───── Gare da controllare (/tender-intelligence/gare): il lavoro dell'amministratore sulle gare ─────
 
-const NOME_REGIONALE: Record<string, string> = { sintel: "Sintel (dati aperti della Regione Lombardia)", sardegnacat: "SardegnaCAT (feed pubblico dei bandi)" };
-
-function SezioneRegionali({ regionali, giri }: { regionali: NonNullable<DatiTenderIntelligenceConsole["regionali"]>; giri: DatiTenderIntelligenceConsole["giriProgrammati"] }) {
+export function VistaGare({ dati }: { dati: DatiTenderIntelligenceConsole }) {
+  const regionali = dati.regionali;
   return (
     <>
-      {regionali.fonti.map((f) => {
-        const g = f.ultimoGiro;
-        return (
-          <div className="cn-sezione" key={f.fonte}>
-            <Pannello titolo={`Fonte ${NOME_REGIONALE[f.fonte] ?? f.fonte} (fase B2a, solo staging)`}>
-              <p className="cn-nota">
-                Stato: <strong>{f.attiva ? "accesa" : f.sospensione ? "sospesa" : "spenta"}</strong> · ai clienti: <strong>{f.nascosta ? "nascosta" : "visibile"}</strong>
-                {f.datiAl ? ` · dati della fonte al ${data(f.datiAl)}` : ""}
-                {f.ultimoSuccesso ? ` · ultimo giro riuscito il ${data(f.ultimoSuccesso)}` : ""} · procedure lette in archivio: {numero(f.procedure)}
-              </p>
-              {f.sospensione && !f.attiva && <p className="cn-nota">Sospesa dal connettore il {data(f.sospensione.il)}: {f.sospensione.motivo ?? "motivo non registrato"}. Si riaccende solo da qui, dopo averne verificato la causa.</p>}
-              {/* decisione 48E dell'utente: SardegnaCAT visibile ai clienti come le altre fonti; nascondere una fonte resta possibile da qui */}
-              {f.nascosta && <p className="cn-nota">Nascosta ai clienti: le gare che hanno solo questa fonte non compaiono e i suoi dati non entrano nelle gare già visibili.</p>}
-              <>
-                {f.accensioneConsentita || f.attiva ? (
-                  <ModuloAzione azione={impostaFonteRegionale} etichetta={f.attiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: f.attiva ? "spegni" : "accendi" }}>
-                    {f.attiva ? null : confermaAccensione(NOME_REGIONALE[f.fonte] ?? f.fonte)}
-                  </ModuloAzione>
-                ) : (
-                  <p className="cn-nota">Accensione possibile solo sullo staging.</p>
-                )}
-                {f.attiva && (
-                  <ModuloAzione azione={eseguiGiroRegionale} etichetta="Esegui un giro adesso" etichettaInCorso="Leggo… (fino a 50 s)" campi={{ fonte: f.fonte }}>
-                    {null}
-                  </ModuloAzione>
-                )}
-                {f.nascosta ? (
-                  <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">
-                    {null}
-                  </ModuloAzione>
-                ) : (
-                  <ModuloAzione azione={impostaVisibilitaFonte} etichetta="Nascondi ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "nascondi" }} variante="neutro">
-                    {null}
-                  </ModuloAzione>
-                )}
-              </>
-              {testoGiri(giri[f.fonte], f.attiva)}
-              {g && (
-                <p className="cn-nota">
-                  Ultimo giro del {data(g.iniziato_il)}, {secondi(g.durata_ms)}: {g.invariata_alla_fonte ? "dati invariati alla fonte" : `${numero(g.fonte.richieste)} richieste (${(g.fonte.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB); ${numero(g.letti)} procedure lette, ${numero(g.nuove)} gare nuove, ${numero(g.aggiornate)} aggiornate, ${numero(g.invariati)} invariate, ${numero(g.rettifiche)} con rettifiche o proroghe, ${numero(g.collegateDoppie)} gare doppie unite, ${numero(g.proposte)} suggerimenti, ${numero(g.nonApplicateNascosta)} versioni non applicate perché la fonte è nascosta; esclusioni: ${Object.entries(g.esclusi).map(([k, n]) => `${k} ${n}`).join(", ") || "nessuna"}`}
-                  {g.errore ? ` · errore: ${g.errore}` : ""}
-                </p>
-              )}
-            </Pannello>
-          </div>
-        );
-      })}
-      {regionali.proposte && (
+      <Testata titolo="Gare da controllare" testo="Gare da verificare, suggerimenti di unione e conflitti tra fonti: niente si decide da solo." attiva="gare" />
+      <AvvisoSchema dati={dati} />
+
+      {dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}
+
+      {regionali?.proposte && (
         <div className="cn-sezione">
           <Pannello titolo={`Suggerimenti di unione da verificare (${numero(regionali.proposte.length)})`}>
             <p className="cn-nota">
-              Corrispondenze PROBABILI (stesso ente e stesso giorno di scadenza, un solo candidato per parte): non sono mai unite in automatico. «Unisci» esegue l&apos;unione reversibile (annullabile dall&apos;elenco delle gare collegate); «Non sono la stessa gara» le esclude per sempre l&apos;una dall&apos;altra.
+              Corrispondenze PROBABILI (stesso ente e stesso giorno di scadenza, un solo candidato per parte): non sono mai unite in automatico. «Unisci» esegue l&apos;unione reversibile (annullabile dall&apos;elenco delle gare collegate nella scheda PVL); «Non sono la stessa gara» le esclude per sempre l&apos;una dall&apos;altra.
             </p>
             {regionali.proposte.length === 0 ? (
               <p className="cn-nota">Nessun suggerimento in attesa.</p>
@@ -422,11 +778,11 @@ function SezioneRegionali({ regionali, giri }: { regionali: NonNullable<DatiTend
           </Pannello>
         </div>
       )}
-      {regionali.classificazioni && (
+      {regionali?.classificazioni && (
         <div className="cn-sezione">
           <Pannello titolo={`Conflitti tra fonti nella classificazione (${numero(regionali.classificazioni.length)})`}>
             <p className="cn-nota">
-              Gare pubblicate da più fonti che, classificate con le stesse regole, danno settori o livelli diversi (A pertinente, B correlata, C non pertinente). Nessuna scelta automatica: la gara resta nei settori riconosciuti da tutte le fonti insieme, e i clienti non vedono queste righe. Il modo di registrare la decisione arriva con la proposta 0121, da approvare.
+              Gare pubblicate da più fonti che, classificate con le stesse regole, danno settori o livelli diversi (A pertinente, B correlata, C non pertinente). Nessuna scelta automatica: la gara resta nei settori riconosciuti da tutte le fonti insieme, e i clienti non vedono queste righe.
             </p>
             {regionali.classificazioni.length === 0 ? (
               <p className="cn-nota">Nessun conflitto tra fonti.</p>
@@ -470,240 +826,18 @@ function SezioneRegionali({ regionali, giri }: { regionali: NonNullable<DatiTend
           </Pannello>
         </div>
       )}
+      {!dati.gareInVerifica && !regionali?.proposte && !regionali?.classificazioni && <p className="cn-nota">Nessun elenco disponibile in questo database.</p>}
     </>
   );
 }
 
-export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
-  const { parametri } = dati;
-  const inCoda = dati.coda ? dati.coda.in_coda + dati.coda.in_corso : null;
-  const conErrori = dati.fonti.some((f) => f.db?.ultimo_errore);
-  const tedAttiva = dati.fonti.find((f) => f.id === "ted")?.db?.attiva === true;
-  const giro = dati.ted?.ultimoGiro ?? null;
+// ───── Registro (/tender-intelligence/registro) ─────
 
+export function VistaRegistro({ dati }: { dati: DatiTenderIntelligenceConsole }) {
   return (
     <>
-      <div className="cn-testata">
-        <div>
-          <h1>Tender Intelligence</h1>
-          <p>
-            Scouting delle gare: fonti, archivio, imprese abilitate, costi e limiti. Il modulo si vede solo con l&apos;interruttore generale acceso e l&apos;impresa abilitata.{" "}
-            {/* fase B4: pagina in sola lettura degli avvisi email non consegnati */}
-            <Link href="/tender-intelligence/email" prefetch={false}>
-              Email non consegnate
-            </Link>
-            {" · "}
-            {/* 48C §3.5–3.6: stato calcolato, ultimi giri e allarmi delle fonti */}
-            <Link href="/tender-intelligence/fonti" prefetch={false}>
-              Fonti: stato, giri e allarmi
-            </Link>
-          </p>
-        </div>
-      </div>
-
-      {!dati.schemaPresente && (
-        <p className="cn-esito avviso" role="alert" style={{ marginBottom: 14 }}>
-          Le migrazioni di Tender Intelligence (0109–0113) non sono eseguite in questo database: fonti, archivio e coda non esistono ancora. Il resto della console funziona come prima.
-        </p>
-      )}
-
-      <div className="cn-tessere">
-        <Tessera etichetta="Modulo per i clienti" valore={parametri.attivo ? "Acceso" : "Spento"} tono={parametri.attivo ? "avviso" : "neutro"} dettaglio="Interruttore generale (radar_attivo)" />
-        <Tessera etichetta="Imprese abilitate" valore={numero(dati.clientiAbilitati)} dettaglio="Interruttore per impresa acceso" />
-        <Tessera etichetta="Gare in archivio" valore={numero(dati.procedure)} dettaglio={[dati.procedureAperte === null ? null : `${numero(dati.procedureAperte)} aperte adesso`, dati.gareCollegate ? `più ${numero(dati.gareCollegate)} copie collegate a un'altra gara (non contate)` : null].filter(Boolean).join(" · ") || undefined} />
-        <Tessera etichetta="Elaborazioni da fare" valore={numero(inCoda)} dettaglio={dati.coda ? `${numero(dati.coda.fallito)} fallite` : undefined} tono={dati.coda && dati.coda.fallito > 0 ? "avviso" : "neutro"} />
-      </div>
-
-      {dati.schemaPresente && (
-        <div className="cn-colonne cn-colonne-pari">
-          <Pannello titolo="Interruttore generale">
-            <ModuloAzione azione={salvaParametriRadar} etichetta={parametri.attivo ? "Spegni il modulo" : "Accendi il modulo"} etichettaInCorso="Salvo…" campi={{ radar_attivo: parametri.attivo ? "0" : "1" }} variante={parametri.attivo ? "neutro" : "primario"}>
-              <p className="cn-nota">
-                Oggi è <strong>{parametri.attivo ? "acceso" : "spento"}</strong>. Acceso non basta: ogni impresa va abilitata qui sotto. Spento, la voce «Opportunità» sparisce per tutti entro pochi secondi.
-              </p>
-            </ModuloAzione>
-          </Pannello>
-
-          <Pannello titolo="Fonte TED">
-            <p className="cn-nota">
-              Stato: <strong>{tedAttiva ? "accesa" : "spenta"}</strong>
-              {dati.ted?.fase ? ` · ${dati.ted.fase}` : ""}
-              {dati.ted?.recuperoCompletatoIl ? ` · storico di 12 mesi recuperato il ${data(dati.ted.recuperoCompletatoIl)}` : ""}
-              {dati.ted?.ultimoGiorno ? ` · avvisi letti fino al ${data(dati.ted.ultimoGiorno)}` : ""}
-            </p>
-            <ModuloAzione azione={impostaFonteTed} etichetta={tedAttiva ? "Spegni la fonte" : "Accendi la fonte"} etichettaInCorso="Salvo…" campi={{ azione: tedAttiva ? "spegni" : "accendi" }}>
-              <span className="cn-nota">{testoGiriProgrammati(dati.giriProgrammati.ted)} I giri partono solo con la fonte accesa.</span>
-              {tedAttiva ? null : confermaAccensione("TED")}
-            </ModuloAzione>
-            {tedAttiva && (
-              <ModuloAzione azione={eseguiGiroTed} etichetta="Esegui un giro adesso" etichettaInCorso="Importo… (fino a 50 s)">
-                <span className="cn-nota">Al massimo 10 pagine e 50 secondi; il resto riprende al giro successivo dal punto salvato.</span>
-              </ModuloAzione>
-            )}
-          </Pannello>
-        </div>
-      )}
-
-      {giro && (
-        <div className="cn-sezione">
-          <Pannello titolo="Ultimo giro di importazione TED">
-            <div className="cn-scorri">
-              <table className="cn-tab">
-                <tbody>
-                  <tr>
-                    <th>Iniziato</th>
-                    <td>
-                      {data(giro.iniziato_il)} · {giro.fase === "recupero" ? "recupero dello storico" : "sincronizzazione"} · durata {(giro.durata_ms / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} s · {giro.giro_finito ? "finito" : "da continuare"}
-                      {giro.errore ? ` · interrotto: ${giro.errore}` : ""}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Avvisi di gara</th>
-                    <td>
-                      {numero(giro.bandi.letti)} letti: {numero(giro.bandi.nuove)} gare nuove, {numero(giro.bandi.aggiornate)} aggiornate, {numero(giro.bandi.rettifiche)} con rettifiche o proroghe, {numero(giro.bandi.annullate)} annullate, {numero(giro.bandi.invariati)} già note;{" "}
-                      {Object.entries(giro.bandi.esclusi)
-                        .map(([k, v]) => `${numero(v)} ${k === "fuori_settore" ? "fuori dai sei settori" : k.replaceAll("_", " ")}`)
-                        .join(", ") || "nessuno escluso"}
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Esiti</th>
-                    <td>
-                      {numero(giro.esiti.letti)} letti, {numero(giro.esiti.applicati)} applicati, {numero(giro.esiti.senzaBando)} senza il bando in archivio
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Risorse</th>
-                    <td>
-                      TED: {numero(giro.ted.richieste)} richieste, {(giro.ted.byte / 1_048_576).toLocaleString("it-IT", { maximumFractionDigits: 1 })} MB, {(giro.ted.ms / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} s · Database: {numero(giro.db.richiesteDb)} richieste, {(giro.db.msDb / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 })} s
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </Pannello>
-        </div>
-      )}
-
-      {dati.pvl && <SezionePvl pvl={dati.pvl} attiva={dati.fonti.find((f) => f.id === "pvl")?.db?.attiva === true} giri={dati.giriProgrammati.pvl} />}
-
-      {dati.regionali && <SezioneRegionali regionali={dati.regionali} giri={dati.giriProgrammati} />}
-      {dati.gareInVerifica && <GareInVerifica gare={dati.gareInVerifica} />}
-
-      <div className="cn-sezione">
-        <Pannello titolo="Fonti">
-          <div className="cn-scorri">
-            <table className="cn-tab">
-              <thead>
-                <tr>
-                  <th>Fonte</th>
-                  <th>Stato</th>
-                  <th>Copertura</th>
-                  <th>Aggiornamento</th>
-                  <th>Ultima lettura</th>
-                  <th>Dati al</th>
-                  {conErrori && <th>Ultimo errore</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {dati.fonti.flatMap((f) => [
-                  <tr key={f.id}>
-                    <td>
-                      <strong>{f.nome}</strong>
-                    </td>
-                    <td>
-                      {f.db?.attiva ? <Badge tono="ok">accesa</Badge> : <Badge tono={STATO_FONTE[f.stato].tono}>{STATO_FONTE[f.stato].testo}</Badge>}
-                    </td>
-                    <td>{f.copertura}</td>
-                    <td>{f.aggiornamento}</td>
-                    <td>{data(f.db?.ultimo_successo_il ?? null)}</td>
-                    <td>{data(f.db?.dati_aggiornati_al ? new Date(f.db.dati_aggiornati_al).toLocaleDateString("en-CA", { timeZone: "Europe/Rome" }) : null)}</td>
-                    {conErrori && <td>{f.db?.ultimo_errore ? (erroreAncoraAttuale(f.db.ultimo_errore_il, f.db.ultimo_successo_il) ? `${data(f.db.ultimo_errore_il)}: ${f.db.ultimo_errore}` : `risolto: ultimo giro riuscito il ${data(f.db.ultimo_successo_il)}`) : "—"}</td>}
-                  </tr>,
-                  <tr key={`${f.id}-limiti`}>
-                    <td colSpan={conErrori ? 7 : 6} className="cn-nota-inline">
-                      Limiti: {f.limiti.join(" · ")}. Licenza: {f.licenza}.
-                    </td>
-                  </tr>,
-                ])}
-              </tbody>
-            </table>
-          </div>
-        </Pannello>
-      </div>
-
-      {dati.schemaPresente && (
-        <div className="cn-sezione">
-          <Pannello titolo="Imprese abilitate">
-            <ModuloAzione azione={impostaImpresaRadar} etichetta="Salva" etichettaInCorso="Salvo…" svuota>
-              <label className="cn-etichetta" htmlFor="ti-email">
-                Email del titolare dell&apos;impresa
-              </label>
-              <input id="ti-email" name="email" type="email" required className="cn-input" placeholder="titolare@impresa.it" />
-              <select name="azione" className="cn-input" defaultValue="abilita" aria-label="Abilita o disabilita">
-                <option value="abilita">Abilita il modulo</option>
-                <option value="disabilita">Disabilita il modulo</option>
-              </select>
-            </ModuloAzione>
-            {dati.imprese && dati.imprese.length > 0 ? (
-              <div className="cn-scorri">
-                <table className="cn-tab">
-                  <thead>
-                    <tr>
-                      <th>Impresa (titolare)</th>
-                      <th>Modulo</th>
-                      <th>Ultima modifica</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dati.imprese.map((i) => (
-                      <tr key={i.email}>
-                        <td>{i.email}</td>
-                        <td>{i.attivo ? <Badge tono="ok">abilitato</Badge> : <Badge tono="neutro">disabilitato</Badge>}</td>
-                        <td>
-                          {data(i.aggiornataIl)} · {i.aggiornataDa}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="cn-nota">Nessuna impresa abilitata.</p>
-            )}
-          </Pannello>
-        </div>
-      )}
-
-      <div className="cn-colonne cn-colonne-pari">
-        <Pannello titolo="Costo in crediti per azione">
-          <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i costi" etichettaInCorso="Salvo…" classe="cn-modulo">
-            {AZIONI_RADAR.map((a) => (
-              <div key={a} className="cn-campo">
-                <label className="cn-etichetta" htmlFor={`costo-${a}`}>
-                  {ETICHETTA_AZIONE[a]}
-                </label>
-                <input id={`costo-${a}`} name={`${PREFISSO_COSTO}${a}`} inputMode="numeric" className="cn-input" defaultValue={String(parametri.costi[a])} />
-              </div>
-            ))}
-          </ModuloAzione>
-          <p className="cn-nota">Interi da 0 a 1.000. Zero = nessun addebito. Il contatore delle gare del piano è separato e non cambia.</p>
-        </Pannello>
-
-        <Pannello titolo="Limiti tecnici per impresa">
-          <ModuloAzione azione={salvaParametriRadar} etichetta="Salva i limiti" etichettaInCorso="Salvo…" classe="cn-modulo">
-            {(Object.keys(LIMITI_PREDEFINITI) as NomeLimite[]).map((n) => (
-              <div key={n} className="cn-campo">
-                <label className="cn-etichetta" htmlFor={`limite-${n}`}>
-                  {ETICHETTA_LIMITE[n]} <span className="cn-nota">(predefinito {LIMITI_PREDEFINITI[n]})</span>
-                </label>
-                <input id={`limite-${n}`} name={`${PREFISSO_LIMITE}${n}`} inputMode="numeric" className="cn-input" defaultValue={String(parametri.limiti[n])} />
-              </div>
-            ))}
-          </ModuloAzione>
-          <p className="cn-nota">Interi da 0 a 100.000. Un singolo cliente può avere valori dedicati (omnia_ai_radar_impostazioni).</p>
-        </Pannello>
-      </div>
+      <Testata titolo="Registro" testo="Chi ha cambiato che cosa, quando, con il valore di prima e quello nuovo; e quanto è stato usato il modulo." attiva="registro" />
+      <AvvisoSchema dati={dati} />
 
       {dati.registro && (
         <div className="cn-sezione">

@@ -1,13 +1,16 @@
-import Link from "next/link";
 import type { DatiFontiConsole, FonteConsole } from "@/lib/console/fonti";
+import type { DatiTenderIntelligenceConsole } from "@/lib/console/tender-intelligence";
 import { GRAVITA_CONSOLE, STATO_FONTE_CONSOLE, esitoLeggibile, giornoLeggibile, modoLeggibile, testoGiriProgrammati } from "@/lib/console/fonti-calcoli";
+import { FRASE_ACCENDI, FRASE_SPEGNI_A_META } from "@/lib/console/tender-intelligence-testi";
 import { impostaFontePvl, impostaFonteRegionale, impostaFonteTed, riprendiRecuperoPvlConsole } from "../azioni/tender-intelligence";
 import { Badge, Pannello } from "./elementi";
 import ModuloAzione from "./modulo-azione";
+import { SchedeTenderIntelligence, catalogoFonti, dettagliFonteTi } from "./tender-intelligence-vista";
 
-// Pagina «Fonti» della console (48C §3.5–3.6): per ogni fonte lo stato calcolato, accesa o spenta, ultimo giro e ultimo successo, prossimo
-// giro previsto, allarmi (già ordinati per gravità da B2) e gli ultimi giri del registro. Accendere e spegnere usano le azioni ESISTENTI
-// (solo amministratori, registro 0112 obbligatorio), con una casella di conferma; nessuna riaccensione automatica. Nessun dato di gare.
+// Pagina «Fonti» della console (48C §3.5–3.6; riordino del 25/11, proposta B1 43): le quattro fonti TUTTE QUI, con la stessa scheda nello
+// stesso ordine (TED, PVL ANAC, Sintel, SardegnaCAT): stato calcolato, accesa o spenta, giri programmati, ultimo giro e ultimo successo,
+// prossimo giro, allarmi (ordinati per gravità da B2), azioni e dettagli richiudibili. Accendere e spegnere usano le azioni ESISTENTI (solo
+// amministratori, conferma controllata nel server per accendere, registro 0112 obbligatorio); nessuna riaccensione automatica.
 
 function data(valore: string | null): string {
   if (!valore) return "—";
@@ -27,22 +30,27 @@ function accendiSpegni(f: FonteConsole) {
       <input type="checkbox" name="conferma" value="si" required /> Confermo: {f.attiva ? "spengo" : "accendo"} {f.nome}
     </label>
   );
+  // che cosa fa il pulsante (proposta 43 §3.5): accendere avvia i giri; spegnere ferma TED e PVL alla pagina dopo (K7)
+  const frase = f.attiva ? null : <p className="cn-nota">{FRASE_ACCENDI}</p>;
   if (f.fonte === "ted")
     return (
       <ModuloAzione azione={impostaFonteTed} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ azione }}>
         {conferma}
+        {frase ?? <p className="cn-nota">{FRASE_SPEGNI_A_META}</p>}
       </ModuloAzione>
     );
   if (f.fonte === "pvl")
     return (
       <ModuloAzione azione={impostaFontePvl} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ azione }}>
         {conferma}
+        {frase ?? <p className="cn-nota">{FRASE_SPEGNI_A_META}</p>}
       </ModuloAzione>
     );
   // Sintel e SardegnaCAT non controllano la fonte durante il giro (TED e PVL sì, dal K7 di B2): lo spegnimento vale dal giro successivo
   return (
     <ModuloAzione azione={impostaFonteRegionale} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione }}>
       {conferma}
+      {frase}
       {f.attiva ? <p className="cn-nota">{`${f.nome} si ferma dal giro successivo: un giro già in corso arriva alla fine.`}</p> : null}
     </ModuloAzione>
   );
@@ -72,7 +80,7 @@ function ripresaRecupero(f: FonteConsole) {
 }
 
 // funzioni chiamate direttamente (non componenti): il contenuto resta nell'albero della vista, come lo legge la prova
-function sezioneFonte(f: FonteConsole) {
+function sezioneFonte(f: FonteConsole, ti: DatiTenderIntelligenceConsole | null) {
   const stato = STATO_FONTE_CONSOLE[f.stato];
   const g = f.ultimoGiro;
   return (
@@ -104,9 +112,13 @@ function sezioneFonte(f: FonteConsole) {
         ) : (
           <p className="cn-nota">Nessun allarme.</p>
         )}
+        {accendiSpegni(f)}
         {ripresaRecupero(f)}
+        {ti ? dettagliFonteTi(f.fonte, f.attiva, ti) : null}
         {f.giri.length > 0 && (
-          <div className="cn-scorri">
+          <details className="cn-dettagli">
+            <summary>{`Ultimi ${f.giri.length} giri`}</summary>
+            <div className="cn-scorri">
             <table className="cn-tab">
               <thead>
                 <tr>
@@ -136,28 +148,26 @@ function sezioneFonte(f: FonteConsole) {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </details>
         )}
-        {accendiSpegni(f)}
       </Pannello>
     </div>
   );
 }
 
-export default function FontiVista({ dati }: { dati: DatiFontiConsole }) {
+// `ti` (dati della console Tender Intelligence): esecuzione manuale, visibilità, limiti PVL, gare doppie, dettagli dell'ultimo giro e
+// catalogo. Senza (prove, letture fallite) la pagina mostra lo stesso le quattro schede con stato, allarmi e accensione.
+export default function FontiVista({ dati, ti = null }: { dati: DatiFontiConsole; ti?: DatiTenderIntelligenceConsole | null }) {
   return (
     <>
       <div className="cn-testata">
         <div>
           <h1>Fonti</h1>
-          <p>
-            Stato calcolato, ultimi giri del registro e allarmi delle quattro fonti di Tender Intelligence.{" "}
-            <Link href="/tender-intelligence" prefetch={false}>
-              Torna a Tender Intelligence
-            </Link>
-          </p>
+          <p>Le quattro fonti di Tender Intelligence, con la stessa scheda: stato calcolato, giri, allarmi e azioni.</p>
         </div>
       </div>
+      <SchedeTenderIntelligence attiva="fonti" />
       {dati.errore && (
         <p className="cn-nota" role="alert">
           {`Lettura non riuscita: ${dati.errore}`}
@@ -175,8 +185,9 @@ export default function FontiVista({ dati }: { dati: DatiFontiConsole }) {
         </p>
       )}
       {dati.fonti.map((f) => (
-        <div key={f.fonte}>{sezioneFonte(f)}</div>
+        <div key={f.fonte}>{sezioneFonte(f, ti)}</div>
       ))}
+      {ti ? catalogoFonti(ti) : null}
     </>
   );
 }
