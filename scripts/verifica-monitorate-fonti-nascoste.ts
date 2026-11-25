@@ -556,7 +556,11 @@ sostituisci(src("lib/radar/area-cliente.ts"), {
   // limiti al minuto alti: la prova non deve mai fermarsi sul limite tecnico delle ricerche
   dirittoRadarOppure404: async () => ({ diritto: { operativo: true, messaggioSolaLettura: "" }, parametri: { limiti: { ricerche_minuto: 1000 }, costi: {} }, cliente: null }),
 });
-sostituisci(src("lib/radar/impostazioni.ts"), { leggiDirittoRadar: async () => ({ visibile: true, operativo: true, messaggioSolaLettura: "" }) });
+sostituisci(src("lib/radar/impostazioni.ts"), {
+  leggiDirittoRadar: async () => ({ visibile: true, operativo: true, messaggioSolaLettura: "" }),
+  // console (riordino del 25/11): la pagina «Fonti» legge anche i dati della console; parametri predefiniti (modulo spento, costi 0)
+  leggiParametriRadar: async () => (richiedi(src("lib/radar/diritto-calcoli.ts")) as { parametriDaRighe: (r: unknown) => unknown }).parametriDaRighe([]),
+});
 // la cache dei dati di Next non esiste fuori da Next: la lettura delle fonti nascoste si esegue ogni volta (nessun ricordo tra gli scenari);
 // lo svuotamento delle pagine delle azioni non fa nulla
 // lo svuotamento delle cache per etichetta si registra (la console delle fonti deve svuotare subito quella delle fonti visibili)
@@ -1837,14 +1841,14 @@ async function principale(): Promise<void> {
     },
   );
 
-  // la pagina Tender Intelligence: i moduli «Accendi la fonte» di TED, PVL e regionali hanno la casella di conferma obbligatoria (altrimenti
-  // il server li rifiuterebbe sempre); «Spegni la fonte» no. Vista vera con dati minimi sintetici, sezioni PVL e regionali disegnate
-  const VistaTi = (richiedi(src("app/site-console/_componenti/tender-intelligence-vista.tsx")) as { default: (p: unknown) => unknown }).default;
+  // console riordinata (25/11, proposta B1 43): le viste VERE delle pagine di Tender Intelligence, con dati minimi sintetici
+  const moduloVistaTi = richiedi(src("app/site-console/_componenti/tender-intelligence-vista.tsx")) as Record<string, (p: unknown) => unknown>;
+  const VistaTi = moduloVistaTi.default;
   const { giriProgrammatiTutti } = richiedi(src("lib/console/fonti-calcoli.ts")) as { giriProgrammatiTutti?: (env: Record<string, string>, adesso: Date) => unknown };
   const datiTi = (accese: boolean, env: Record<string, string> = {}) => ({
     schemaPresente: true,
     parametri: { attivo: false, costi: {}, limiti: {} },
-    fonti: ["ted", "pvl"].map((id) => ({ id, nome: id.toUpperCase(), stato: "attiva", limiti: [], licenza: "[prova]", copertura: "[prova]", aggiornamento: "[prova]", db: { attiva: accese } })),
+    fonti: ["ted", "pvl", "sintel", "sardegnacat"].map((id) => ({ id, nome: `[prova] ${id}`, stato: "attiva", limiti: [], licenza: "[prova]", copertura: "[prova]", aggiornamento: "[prova]", db: { attiva: accese } })),
     procedure: null,
     procedureAperte: null,
     gareCollegate: null,
@@ -1876,62 +1880,66 @@ async function principale(): Promise<void> {
     // i giri programmati come li calcola la console (fonti-calcoli.ts, dalla sola programmazione-calcoli.ts)
     giriProgrammati: giriProgrammatiTutti ? giriProgrammatiTutti(env, ADESSO_F) : undefined,
   });
-  // la vista della console con le sezioni PVL e regionali disegnate (sono componenti: qui si chiamano a mano)
-  const alberoTi = (accese: boolean, env: Record<string, string> = {}) => {
-    const alb = VistaTi({ dati: datiTi(accese, env) });
-    const sezioni = elementi(alb)
-      .filter((e) => typeof e.type === "function" && ["SezionePvl", "SezioneRegionali"].includes((e.type as { name: string }).name))
-      .map((e) => (e.type as (p: unknown) => unknown)(e.props));
-    return [alb, ...sezioni];
+  // i componenti del server che la vista usa (Testata, barra di schede, avviso…) si disegnano a mano; i moduli del browser (ModuloAzione) no
+  const COMPONENTI_DA_DISEGNARE = ["Testata", "SchedeTenderIntelligence", "AvvisoSchema"];
+  const disegnaServer = (radice: unknown): unknown[] => {
+    const alberi: unknown[] = [radice];
+    for (let i = 0; i < alberi.length && i < 60; i++)
+      for (const e of elementi(alberi[i])) if (typeof e.type === "function" && COMPONENTI_DA_DISEGNARE.includes((e.type as { name: string }).name)) alberi.push((e.type as (p: unknown) => unknown)(e.props));
+    return alberi;
   };
-  const moduliAccensioneTi = (accese: boolean) => {
-    try {
-      const azioni = [azioniTi.impostaFonteTed, azioniTi.impostaFontePvl, azioniTi.impostaFonteRegionale];
-      return elementi(alberoTi(accese))
-        .filter((e) => e.type === ModuloAzioneConsole && azioni.includes(e.props.azione))
-        .map((m) => {
-          const c = elementi(m.props.children).find((e) => e.type === "input" && e.props.name === "conferma");
-          return { azione: (m.props.campi as Record<string, string>).azione, conferma: !!c && c.props.type === "checkbox" && c.props.required === true && c.props.value === "si", casella: !!c };
-        });
-    } catch (e) {
-      return [{ azione: `eccezione: ${e instanceof Error ? e.message : String(e)}`, conferma: false, casella: false }];
-    }
+  const VISTE_TI: [string, string][] = [
+    ["panoramica", "default"],
+    ["modulo", "VistaModulo"],
+    ["gare", "VistaGare"],
+    ["registro", "VistaRegistro"],
+  ];
+  const vistaTi = (nome: string, accese: boolean, env: Record<string, string> = {}) => {
+    const v = moduloVistaTi[VISTE_TI.find((x) => x[0] === nome)?.[1] ?? "default"];
+    return v ? disegnaServer(v({ dati: datiTi(accese, env) })) : [];
   };
-  const tiSpente = moduliAccensioneTi(false);
-  const tiAccese = moduliAccensioneTi(true);
+  // la pagina «Fonti» con i dati della console: le stesse quattro fonti di FS1, tutte spente o tutte accese
+  const datiFStato = (accese: boolean) => (datiF ? { ...datiF, fonti: datiF.fonti.map((f) => ({ ...f, attiva: accese })) } : null);
+  const paginaFontiTi = (accese: boolean, env: Record<string, string> = {}) => (vistaFonti && datiF ? disegnaServer(vistaFonti({ dati: datiFStato(accese), ti: datiTi(accese, env) })) : []);
+  const AZIONI_ACCENSIONE = [azioniTi.impostaFonteTed, azioniTi.impostaFontePvl, azioniTi.impostaFonteRegionale];
+  const moduliAccensione = (alberi: unknown[]) =>
+    elementi(alberi)
+      .filter((e) => e.type === ModuloAzioneConsole && AZIONI_ACCENSIONE.includes(e.props.azione))
+      .map((m) => {
+        const c = elementi(m.props.children).find((e) => e.type === "input" && e.props.name === "conferma");
+        return { azione: (m.props.campi as Record<string, string>).azione, conferma: !!c && c.props.type === "checkbox" && c.props.required === true && c.props.value === "si" };
+      });
+  const fuoriDaFonti = VISTE_TI.flatMap(([nome]) => [false, true].map((acc) => moduliAccensione(vistaTi(nome, acc)).length));
+  const fontiSpente = moduliAccensione(paginaFontiTi(false));
+  const fontiAccese = moduliAccensione(paginaFontiTi(true));
   controlla(
-    "FS10. pagina Tender Intelligence: «Accendi la fonte» di TED, PVL, Sintel e SardegnaCAT con la casella di conferma obbligatoria («si»); «Spegni la fonte» senza",
-    tiSpente.length === 4 && tiSpente.every((m) => m.azione === "accendi" && m.conferma) && tiAccese.length === 4 && tiAccese.every((m) => m.azione === "spegni" && !m.casella),
-    { tiSpente, tiAccese },
+    "FS10. accensione delle fonti SOLO nella pagina «Fonti» (riordino del 25/11): nessun modulo di accensione nelle altre pagine di Tender Intelligence; nella pagina «Fonti» con i dati della console una sola «Accendi la fonte» per fonte, ciascuna con la casella di conferma obbligatoria («si»), e una sola «Spegni la fonte» per fonte accesa",
+    fuoriDaFonti.every((n) => n === 0) && fontiSpente.length === 4 && fontiSpente.every((m) => m.azione === "accendi" && m.conferma) && fontiAccese.length === 4 && fontiAccese.every((m) => m.azione === "spegni"),
+    { fuoriDaFonti, fontiSpente, fontiAccese },
   );
 
-  // orari dei giri nella console: SOLO da programmazione-calcoli.ts. (1) schede TED, PVL, Sintel e SardegnaCAT della pagina Tender
-  // Intelligence; (2) messaggi delle azioni dopo l'accensione (FS9); (3) guardia sui sorgenti: nessun orario, riga cron o interruttore
-  // scritto a mano, nessun resto dei vecchi orari della PVL (ORE_GIRI_PVL, CRON_PVL_PROPOSTO, prossimoGiroPvl)
-  const frasiGiriTi = (accese: boolean, env: Record<string, string>) => {
+  // orari dei giri nella console: SOLO da programmazione-calcoli.ts. (1) le frasi dei giri delle quattro schede stanno nella pagina «Fonti»
+  // (FS11); qui: in nessuna pagina di Tender Intelligence un orario vecchio scritto a mano; (2) messaggi delle azioni dopo l'accensione (FS9);
+  // (3) guardia sui sorgenti: nessun orario, riga cron o interruttore scritto a mano, nessun resto dei vecchi orari della PVL
+  const testiTi = (() => {
     try {
-      return testi(alberoTi(accese, env)).filter((t) => t.startsWith("Giri programmati alle "));
+      return [...VISTE_TI.flatMap(([nome]) => testi(vistaTi(nome, false))), ...testi(paginaFontiTi(false)), ...testi(paginaFontiTi(true, ENV_F))];
     } catch (e) {
       return [`eccezione: ${e instanceof Error ? e.message : String(e)}`];
     }
-  };
-  const tiGiriSpenti = frasiGiriTi(false, {});
-  const tiGiriAccesi = frasiGiriTi(true, ENV_F);
-  const testiTi = (() => {
-    try {
-      return testi(alberoTi(false, {}));
-    } catch {
-      return [] as string[];
-    }
   })();
-  const fraseDi = (frasi: string[], f: string, stato: "accesi" | "spenti") => frasi.filter((t) => t.startsWith(`Giri programmati alle ${orariAttesi(f)} (ora di Roma): ${stato}`) && t.includes(`${INTERRUTTORI_CRON[f]}=attivo`));
+  const frasiGiriFonti = testi(paginaFontiTi(false)).filter((t) => t.startsWith("Giri programmati alle "));
   const avvisiAccensione = conConferma.map((x) => x.esito.avviso ?? "");
   const SORGENTI_CONSOLE = [
     "app/site-console/_componenti/tender-intelligence-vista.tsx",
     "app/site-console/_componenti/fonti-vista.tsx",
     "app/site-console/azioni/tender-intelligence.ts",
     "app/site-console/(app)/tender-intelligence/fonti/page.tsx",
+    "app/site-console/(app)/tender-intelligence/modulo/page.tsx",
+    "app/site-console/(app)/tender-intelligence/gare/page.tsx",
+    "app/site-console/(app)/tender-intelligence/registro/page.tsx",
     "lib/console/tender-intelligence.ts",
+    "lib/console/tender-intelligence-testi.ts",
     "lib/console/fonti.ts",
     "lib/console/fonti-calcoli.ts",
   ];
@@ -1958,21 +1966,207 @@ async function principale(): Promise<void> {
     return trovati;
   });
   controlla(
-    "FS12. orari dei giri SOLO da programmazione-calcoli.ts: schede TED, PVL, Sintel e SardegnaCAT della pagina Tender Intelligence (orari, interruttore per fonte, RADAR_REGIONALI_CRON per compatibilità, righe cron coi giri spenti); messaggi dopo l'accensione; nei sorgenti della console nessun orario, riga cron o interruttore scritto a mano",
-    tiGiriSpenti.length === 4 &&
-      tiGiriAccesi.length === 4 &&
-      FONTI_ORDINE.every(
-        (f) =>
-          fraseDi(tiGiriSpenti, f, "spenti").length === 1 &&
-          fraseDi(tiGiriSpenti, f, "spenti")[0].includes(INTERRUTTORE_REGIONALI_VECCHIO) === regionale(f) &&
-          (CRON_PROPOSTI[f] ?? []).every((riga) => fraseDi(tiGiriSpenti, f, "spenti")[0].includes(`«${riga}»`)) &&
-          fraseDi(tiGiriAccesi, f, "accesi").length === 1,
-      ) &&
-      !testiTi.some((t) => /\b(8:00|9:15|13:00|18:00)\b|ora italiana/.test(t)) &&
+    "FS12. orari dei giri SOLO da programmazione-calcoli.ts: nelle pagine di Tender Intelligence (Panoramica, Modulo e clienti, Gare, Registro, Fonti) nessun orario vecchio scritto a mano e una sola frase dei giri per fonte, nella pagina «Fonti»; messaggi dopo l'accensione; nei sorgenti della console nessun orario, riga cron o interruttore scritto a mano",
+    testiTi.length > 0 &&
+      !testiTi.some((t) => /^eccezione/.test(t) || /\b(8:00|9:15|13:00|18:00)\b|ora italiana/.test(t)) &&
+      frasiGiriFonti.length === 4 &&
+      VISTE_TI.every(([nome]) => !testi(vistaTi(nome, false)).some((t) => t.startsWith("Giri programmati alle "))) &&
       avvisiAccensione.length === 4 &&
       FONTI_ORDINE.every((f, i) => avvisiAccensione[i].includes(`Giri programmati alle ${orariAttesi(f)} (ora di Roma)`) && avvisiAccensione[i].includes(`${INTERRUTTORI_CRON[f]}=attivo`)) &&
       scrittoAMano.length === 0,
-    { tiGiriSpenti, tiGiriAccesi, avvisiAccensione: avvisiAccensione.map((a) => a.slice(0, 120)), scrittoAMano },
+    { frasiGiriFonti: frasiGiriFonti.length, eccezioni: testiTi.filter((t) => /^eccezione/.test(t)), avvisiAccensione: avvisiAccensione.map((a) => a.slice(0, 120)), scrittoAMano },
+  );
+
+  // ═════ CR. Riordino della console (25/11/2026, proposta B1 43, via dell'utente: pagine separate, limiti non usati in «Avanzate»). Solo
+  // impaginazione e testi: le prove delle azioni (FS6, FS9, FS10, MC6…) restano quelle di prima ═════
+  const testiTiMod = richiedi(src("lib/console/tender-intelligence-testi.ts")) as Record<string, unknown>;
+  const T = {
+    generale: testiTiMod.FRASE_INTERRUTTORE_GENERALE as string,
+    imprese: testiTiMod.FRASE_IMPRESE as string,
+    limite: (testiTiMod.FRASE_LIMITE ?? {}) as Record<string, string>,
+    nonInUso: testiTiMod.FRASE_NON_IN_USO as string,
+    costi: testiTiMod.FRASE_COSTI as string,
+    limitePvl: (testiTiMod.FRASE_LIMITE_PVL ?? {}) as Record<string, string>,
+    accendi: testiTiMod.FRASE_ACCENDI as string,
+    spegniAMeta: testiTiMod.FRASE_SPEGNI_A_META as string,
+    eseguiGiro: testiTiMod.FRASE_ESEGUI_GIRO as string,
+    visibilita: testiTiMod.FRASE_VISIBILITA as string,
+    limitiInUso: (testiTiMod.LIMITI_IN_USO ?? []) as string[],
+    limitiNonInUso: (testiTiMod.LIMITI_NON_IN_USO ?? []) as string[],
+  };
+  const SCHEDE_ATTESE: [string, string, string][] = [
+    ["panoramica", "Panoramica", "/tender-intelligence"],
+    ["fonti", "Fonti", "/tender-intelligence/fonti"],
+    ["modulo", "Modulo e clienti", "/tender-intelligence/modulo"],
+    ["gare", "Gare da controllare", "/tender-intelligence/gare"],
+    ["registro", "Registro", "/tender-intelligence/registro"],
+    ["email", "Email non consegnate", "/tender-intelligence/email"],
+  ];
+  // la barra di schede di un albero: le voci in ordine (testo, href o «attiva»)
+  const barraDi = (alberi: unknown[]) => {
+    const navi = elementi(alberi).filter((e) => e.type === "nav" && e.props.className === "cn-schede");
+    return navi.map((n) =>
+      elementi(n.props.children)
+        .filter((e) => e.type === "li")
+        .map((li) => {
+          const a = elementi(li.props.children).find((e) => e.type === "span" || typeof e.props.href === "string");
+          return a ? { testo: testi(a.props.children).join(""), href: (a.props.href as string | undefined) ?? null, attiva: a.props["aria-current"] === "page", prefetch: a.props.prefetch } : null;
+        }),
+    );
+  };
+  const barraAttesa = (attiva: string) => SCHEDE_ATTESE.map(([id, testo, href]) => (id === attiva ? { testo, href: null, attiva: true, prefetch: undefined } : { testo, href, attiva: false, prefetch: false }));
+  const barre: Record<string, unknown> = {
+    ...Object.fromEntries(VISTE_TI.map(([nome]) => [nome, barraDi(vistaTi(nome, false))])),
+    fonti: barraDi(paginaFontiTi(false)),
+  };
+  const barreAttese: Record<string, unknown> = Object.fromEntries([...VISTE_TI.map(([n]) => n), "fonti"].map((n) => [n, [barraAttesa(n)]]));
+  const paginaEmail = fs.readFileSync(src("app/site-console/(app)/tender-intelligence/email/page.tsx"), "utf8");
+  controlla(
+    "CR1. barra di schede comune: in ogni pagina di Tender Intelligence UNA barra con Panoramica, Fonti, Modulo e clienti, Gare da controllare, Registro, Email non consegnate, in quest'ordine; la pagina aperta è segnata (aria-current) e non è un collegamento; gli altri sono collegamenti senza precaricamento",
+    JSON.stringify(barre) === JSON.stringify(barreAttese) && paginaEmail.includes('<SchedeTenderIntelligence attiva="email" />'),
+    { barre: JSON.stringify(barre).slice(0, 400) },
+  );
+
+  // CR2. pagina «Fonti» con i dati della console: le quattro fonti con la stessa scheda, nell'ordine; dettagli richiudibili e chiusi
+  const fontiAccese2 = paginaFontiTi(true, ENV_F);
+  const pannelliFonti = elementi(fontiAccese2).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT"].some((n) => String(e.props.titolo).startsWith(n)));
+  const moduliDi = (p: Elemento | undefined, azione: unknown) => elementi(p?.props.children).filter((e) => e.type === ModuloAzioneConsole && e.props.azione === azione);
+  const sommari = (alberi: unknown) => elementi(alberi).filter((e) => e.type === "summary").map((e) => testi(e.props.children).join(""));
+  const dettagliAperti = elementi(fontiAccese2).filter((e) => e.type === "details" && e.props.open);
+  const schedaUguale = pannelliFonti.map((p) => {
+    const t = testi(p.props.children);
+    return t.some((x) => x === "Accesa" || x === "Spenta") && t.some((x) => x.startsWith("Giri programmati alle ")) && t.some((x) => x === "Ultimo giro: ") && moduliDi(p, null).length === 0 && AZIONI_ACCENSIONE.filter((a) => moduliDi(p, a).length === 1).length === 1;
+  });
+  const pvlPannello = pannelliFonti[1];
+  const limitiPvl = elementi(pvlPannello?.props.children).filter((e) => e.type === "details").find((d) => sommari(d.props.children).includes("Limiti verso la PVL"));
+  const ingressiLimitiPvl = elementi(limitiPvl?.props.children).filter((e) => e.type === "input").map((e) => e.props.name);
+  const ultimoFonti = elementi(fontiAccese2).filter((e) => e.type === "details" && sommari(e.props.children).includes("Catalogo delle fonti"));
+  const visibilitaRegionali = [pannelliFonti[2], pannelliFonti[3]].map((p) => moduliDi(p, azioniTi.impostaVisibilitaFonte).map((m) => (m.props.campi as Record<string, string>).azione));
+  controlla(
+    "CR2. pagina «Fonti» (riordino): TED, PVL ANAC, Sintel, SardegnaCAT nell'ordine, ognuna con la stessa scheda (accesa o spenta, giri programmati, ultimo giro, un solo modulo per accendere o spegnere); «Esegui un giro adesso» nelle fonti accese; nella scheda PVL i «Limiti verso la PVL» (5 valori); nelle regionali «Nascondi ai clienti»; in fondo il catalogo delle fonti; tutte le parti richiudibili chiuse di base",
+    pannelliFonti.length === 4 &&
+      pannelliFonti.map((p) => String(p.props.titolo)).join("|") === "TED|PVL ANAC|Sintel|SardegnaCAT" &&
+      schedaUguale.every(Boolean) &&
+      moduliDi(pannelliFonti[0], azioniTi.eseguiGiroTed).length === 1 &&
+      moduliDi(pannelliFonti[1], azioniTi.eseguiGiroPvl).length === 1 &&
+      [2, 3].every((i) => moduliDi(pannelliFonti[i], azioniTi.eseguiGiroRegionale).length === 1) &&
+      JSON.stringify(ingressiLimitiPvl) === JSON.stringify(["radar_pvl_avvisi_per_pagina", "radar_pvl_pausa_ms", "radar_pvl_timeout_ms", "radar_pvl_tentativi", "radar_pvl_richieste_massime"]) &&
+      JSON.stringify(visibilitaRegionali) === JSON.stringify([["nascondi"], ["nascondi"]]) &&
+      ultimoFonti.length === 1 &&
+      dettagliAperti.length === 0,
+    { titoli: pannelliFonti.map((p) => p.props.titolo), schedaUguale, ingressiLimitiPvl, visibilitaRegionali, catalogo: ultimoFonti.length, aperti: dettagliAperti.length },
+  );
+
+  // CR3. «Modulo e clienti»: interruttore, imprese, limiti in uso; «Avanzate» chiusa con costi e limiti non usati
+  const vistaModulo = vistaTi("modulo", false);
+  const titoliModulo = elementi(vistaModulo)
+    .filter((e) => typeof e.props.titolo === "string")
+    .map((e) => String(e.props.titolo));
+  const avanzate = elementi(vistaModulo).find((e) => e.type === "details" && String(e.props.className ?? "").includes("cn-avanzate"));
+  const nomiFuoriAvanzate = elementi(vistaModulo)
+    .filter((e) => e.type === "input" && typeof e.props.name === "string" && /^radar_(limite|costo)_/.test(String(e.props.name)))
+    .map((e) => String(e.props.name))
+    .filter((n) => !elementi(avanzate?.props.children).some((x) => x.type === "input" && x.props.name === n));
+  const nomiAvanzate = elementi(avanzate?.props.children)
+    .filter((e) => e.type === "input")
+    .map((e) => String(e.props.name));
+  const testiAvanzate = testi(avanzate?.props.children);
+  controlla(
+    "CR3. «Modulo e clienti»: 1. interruttore generale, 2. imprese abilitate, 3. limiti tecnici col SOLO limite in uso (ricerche al minuto); «Avanzate» chiusa di base con i 7 costi in crediti e i 3 limiti non usati, ciascuno con la scritta che oggi non ha effetto",
+    titoliModulo.filter((t) => /^\d\. /.test(t)).join("|") === "1. Interruttore generale|2. Imprese abilitate|3. Limiti tecnici per impresa" &&
+      JSON.stringify(nomiFuoriAvanzate) === JSON.stringify(["radar_limite_ricerche_minuto"]) &&
+      !!avanzate && !avanzate.props.open &&
+      sommari(avanzate.props.children).includes("Avanzate") &&
+      JSON.stringify(nomiAvanzate.filter((n) => n.startsWith("radar_costo_")).length) === "7" &&
+      JSON.stringify(nomiAvanzate.filter((n) => n.startsWith("radar_limite_"))) === JSON.stringify(["radar_limite_progetti_senza_analisi", "radar_limite_sintesi_giorno", "radar_limite_analisi_requisiti_giorno"]) &&
+      testiAvanzate.filter((t) => t === T.nonInUso).length === 3 &&
+      testiAvanzate.includes(T.costi),
+    {
+      titoliModulo,
+      nomiFuoriAvanzate,
+      nomiAvanzate,
+      aperta: avanzate?.props.open ?? null,
+      frasiNonInUso: testiAvanzate.filter((t) => t === T.nonInUso).length,
+      costi: testiAvanzate.includes(T.costi),
+    },
+  );
+
+  // CR4. una frase per ogni parametro e per ogni azione sulle fonti
+  const tModulo = testi(vistaModulo);
+  const tFontiSpente = testi(paginaFontiTi(false));
+  const tFontiAccese = testi(fontiAccese2);
+  const frasiMancanti = [
+    ...[T.generale, T.imprese, T.limite.ricerche_minuto].filter((f) => !f || !tModulo.includes(f)).map((f) => `modulo: ${String(f).slice(0, 30)}`),
+    ...Object.values(T.limitePvl).filter((f) => !testi(limitiPvl?.props.children).includes(f)).map((f) => `PVL: ${f.slice(0, 30)}`),
+    ...(tFontiSpente.filter((t) => t === T.accendi).length === 4 ? [] : ["accendi"]),
+    ...(tFontiAccese.filter((t) => t === T.spegniAMeta).length === 2 ? [] : ["spegni TED e PVL"]),
+    ...(tFontiAccese.filter((t) => t.startsWith(T.eseguiGiro ?? "§")).length === 4 ? [] : ["esegui un giro"]),
+    ...(tFontiAccese.filter((t) => t === T.visibilita).length === 2 ? [] : ["visibilità"]),
+  ];
+  controlla(
+    "CR4. una frase per ogni parametro (interruttore, imprese, ricerche al minuto, 5 limiti PVL) e per ogni azione sulle fonti (accendi, spegni TED e PVL a metà giro, esegui un giro, visibilità)",
+    Object.keys(T.limitePvl).length === 5 && frasiMancanti.length === 0,
+    frasiMancanti,
+  );
+
+  // CR5. le frasi «oggi non ha effetto» restano vere: i limiti non usati non sono letti dal codice, i costi non sono scalati da nessuna azione
+  const sorgentiApp: string[] = [];
+  const raccogli = (dir: string) => {
+    for (const v of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, v.name);
+      if (v.isDirectory()) raccogli(p);
+      else if (/\.(ts|tsx)$/.test(v.name)) sorgentiApp.push(p);
+    }
+  };
+  raccogli(path.join(RADICE, "src"));
+  const usiLimite = (n: string) => sorgentiApp.filter((f) => new RegExp(`(limiteEffettivo|inizioFinestra)\\([^)]*"${n}"`).test(fs.readFileSync(f, "utf8"))).length;
+  const chiamateCrediti = sorgentiApp.filter((f) => !f.endsWith(path.join("radar", "diritto-calcoli.ts")) && /creditiPerAzione\(/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(RADICE, f));
+  controlla(
+    "CR5. le frasi «oggi non ha effetto» sono vere: nessun limite non usato è letto dal codice (limiteEffettivo/inizioFinestra), ogni limite «in uso» sì; creditiPerAzione non è chiamata da nessuna parte",
+    T.limitiNonInUso.length === 3 && T.limitiNonInUso.every((n) => usiLimite(n) === 0) && T.limitiInUso.length === 1 && T.limitiInUso.every((n) => usiLimite(n) > 0) && chiamateCrediti.length === 0,
+    { nonInUso: T.limitiNonInUso.map((n) => [n, usiLimite(n)]), inUso: T.limitiInUso.map((n) => [n, usiLimite(n)]), chiamateCrediti },
+  );
+
+  // CR6. testi superati tolti: «(solo staging)», «fase B2a», «Uso sperimentale autorizzato solo sullo staging»
+  const SUPERATI = /solo staging|solo sullo staging|fase B2a|Uso sperimentale autorizzato/i;
+  const testiTutte = [...testiTi, ...testi(paginaFontiTi(true, ENV_F))];
+  const sorgentiConsoleTi = ["app/site-console/_componenti/tender-intelligence-vista.tsx", "app/site-console/_componenti/fonti-vista.tsx", "lib/console/tender-intelligence-testi.ts"];
+  const superatiNeiSorgenti = sorgentiConsoleTi.filter((r) => SUPERATI.test(senzaCommenti(fs.readFileSync(src(r), "utf8"))));
+  controlla(
+    "CR6. testi superati tolti dalle pagine di Tender Intelligence e dai loro sorgenti («solo staging», «fase B2a», «Uso sperimentale…»)",
+    !testiTutte.some((t) => SUPERATI.test(t)) && superatiNeiSorgenti.length === 0,
+    { nelleViste: testiTutte.filter((t) => SUPERATI.test(t)).slice(0, 3), superatiNeiSorgenti },
+  );
+
+  // CR7. le pagine nuove (Modulo e clienti, Gare da controllare, Registro): solo amministratori, poi la lettura della console, poi la vista
+  const PAGINE_NUOVE: [string, string][] = [
+    ["modulo", "VistaModulo"],
+    ["gare", "VistaGare"],
+    ["registro", "VistaRegistro"],
+  ];
+  const esitiPagineNuove: Record<string, unknown> = {};
+  for (const [cartella, vista] of PAGINE_NUOVE) {
+    const percorso = `app/site-console/(app)/tender-intelligence/${cartella}/page.tsx`;
+    const testo = fs.readFileSync(src(percorso), "utf8");
+    const pagina = (richiedi(src(percorso)) as { default: () => Promise<unknown> }).default;
+    mondo = mondoFonti();
+    const disegnata = elementi(await pagina()).some((e) => e.type === moduloVistaTi[vista]);
+    adminAutenticato = false;
+    mondo = mondoFonti();
+    let respinta = false;
+    try {
+      await pagina();
+    } catch {
+      respinta = true;
+    }
+    const lettureRespinta = mondo.admin.richieste.length;
+    adminAutenticato = true;
+    esitiPagineNuove[cartella] = { disegnata, respinta, lettureRespinta, ordine: testo.indexOf("await richiediAdminPagina()") >= 0 && testo.indexOf("await richiediAdminPagina()") < testo.indexOf("await leggiDatiTenderIntelligence()") };
+  }
+  controlla(
+    "CR7. pagine nuove «Modulo e clienti», «Gare da controllare», «Registro»: guardia degli amministratori come prima cosa (respinta senza nessuna lettura), poi la lettura della console e la vista giusta",
+    PAGINE_NUOVE.every(([c]) => JSON.stringify(esitiPagineNuove[c]) === JSON.stringify({ disegnata: true, respinta: true, lettureRespinta: 0, ordine: true })),
+    esitiPagineNuove,
   );
 
   // ═════ «Riprendi il recupero» della PVL (K4 di B2, riprendiRecuperoPvl): pulsante solo con l'allarme «blocco_incompleto», conferma nel
