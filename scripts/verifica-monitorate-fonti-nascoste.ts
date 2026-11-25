@@ -2189,6 +2189,131 @@ async function principale(): Promise<void> {
     esitiPagineNuove,
   );
 
+  // CR8. lo stato di produzione dopo l'accensione del 25/11 (coordinamento: fonti accese dalle 17:26–17:40Z), ricostruito con dati SINTETICI:
+  // quattro fonti accese, suggerimenti di unione aperti (3 Sintel, 2 SardegnaCAT), radar_attivo acceso con UNA impresa abilitata. Ogni pagina
+  // di Tender Intelligence si disegna senza eccezioni, con la barra di schede, e mostra le azioni giuste per questo stato (spegnere con la
+  // conferma, un giro adesso, «Nascondi ai clienti», «Unisci» e «Non sono la stessa gara» per ognuno dei 5 suggerimenti, «Spegni il modulo»)
+  const garaSintetica = (n: number, fonte: string) => ({
+    id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    titolo: `[SINTETICO] Servizio di prova ${n}`,
+    ente: "[SINTETICO] Comune di Prova",
+    codiceFiscale: null,
+    scadenzaGiorno: "2026-12-15",
+    scadenzaIstante: null,
+    importo: 100000 + n,
+    tipoImporto: "valore stimato",
+    collegamento: `https://esempio.invalid/gara/${n}`,
+    fonti: [fonte],
+  });
+  const PROPOSTE_ADESSO = [
+    ...[1, 2, 3].map((i) => ({ a: garaSintetica(10 + i, "pvl"), b: garaSintetica(20 + i, "sintel"), motivo: "[SINTETICO] stesso ente e stesso giorno di scadenza", il: "2026-11-25T17:40:00Z" })),
+    ...[1, 2].map((i) => ({ a: garaSintetica(30 + i, "ted"), b: garaSintetica(40 + i, "sardegnacat"), motivo: "[SINTETICO] stesso ente e stesso giorno di scadenza", il: "2026-11-25T17:41:00Z" })),
+  ];
+  const IMPRESA_INTERNA = "interno@esempio.invalid";
+  const datiAdesso = () => {
+    const base = datiTi(true, ENV_F) as Record<string, unknown>;
+    const regionaliBase = base.regionali as { fonti: Record<string, unknown>[] };
+    return {
+      ...base,
+      parametri: { ...(base.parametri as Record<string, unknown>), attivo: true },
+      clientiAbilitati: 1,
+      imprese: [{ email: IMPRESA_INTERNA, attivo: true, aggiornataIl: "2026-11-25T17:45:00Z", aggiornataDa: "console:admin@esempio.invalid" }],
+      regionali: { ...regionaliBase, fonti: regionaliBase.fonti.map((f) => ({ ...f, attiva: true, nascosta: false })), proposte: PROPOSTE_ADESSO, classificazioni: [] },
+      gareInVerifica: [],
+    };
+  };
+  const eccezioniAdesso: string[] = [];
+  const disegnaAdesso = (nome: string, f: () => unknown): unknown[] => {
+    try {
+      return disegnaServer(f());
+    } catch (e) {
+      eccezioniAdesso.push(`${nome}: ${e instanceof Error ? e.message : String(e)}`);
+      return [];
+    }
+  };
+  const adesso8 = {
+    panoramica: disegnaAdesso("panoramica", () => moduloVistaTi.default({ dati: datiAdesso() })),
+    fonti: disegnaAdesso("fonti", () => (vistaFonti ? vistaFonti({ dati: datiFStato(true), ti: datiAdesso() }) : null)),
+    modulo: disegnaAdesso("modulo", () => moduloVistaTi.VistaModulo({ dati: datiAdesso() })),
+    gare: disegnaAdesso("gare", () => moduloVistaTi.VistaGare({ dati: datiAdesso() })),
+    registro: disegnaAdesso("registro", () => moduloVistaTi.VistaRegistro({ dati: datiAdesso() })),
+  };
+  const barreAdesso = Object.entries(adesso8).filter(([nome, alberi]) => JSON.stringify(barraDi(alberi)) !== JSON.stringify([barraAttesa(nome)])).map(([nome]) => nome);
+  // Panoramica
+  const tessereAdesso = Object.fromEntries(
+    elementi(adesso8.panoramica)
+      .filter((e) => typeof e.props.etichetta === "string" && "valore" in e.props)
+      .map((e) => [String(e.props.etichetta), String(e.props.valore)]),
+  );
+  const tPanoramica = testi(adesso8.panoramica);
+  // Fonti
+  const AZIONI_GIRO = [azioniTi.eseguiGiroTed, azioniTi.eseguiGiroPvl, azioniTi.eseguiGiroRegionale];
+  const accensioneAdesso = moduliAccensione(adesso8.fonti);
+  const giriAdesso = elementi(adesso8.fonti).filter((e) => e.type === ModuloAzioneConsole && AZIONI_GIRO.includes(e.props.azione)).length;
+  const visibilitaAdesso = elementi(adesso8.fonti)
+    .filter((e) => e.type === ModuloAzioneConsole && e.props.azione === azioniTi.impostaVisibilitaFonte)
+    .map((m) => (m.props.campi as Record<string, string>).azione);
+  // Modulo e clienti
+  const interruttoreAdesso = elementi(adesso8.modulo)
+    .filter((e) => e.type === ModuloAzioneConsole && e.props.azione === azioniTi.salvaParametriRadar && (e.props.campi as Record<string, string> | undefined)?.radar_attivo !== undefined)
+    .map((m) => [String(m.props.etichetta), (m.props.campi as Record<string, string>).radar_attivo]);
+  const righeImprese = elementi(adesso8.modulo).filter((e) => e.type === "tr" && testi(e.props.children).includes(IMPRESA_INTERNA)).length;
+  // Gare da controllare
+  const decisioniAdesso = elementi(adesso8.gare)
+    .filter((e) => e.type === ModuloAzioneConsole && e.props.azione === azioniTi.decidiPropostaCollegamento)
+    .map((m) => m.props.campi as Record<string, string>);
+  const coppieAttese = PROPOSTE_ADESSO.flatMap((p) => ["conferma", "rifiuta"].map((d) => `${p.a.id}|${p.b.id}|${d}`)).sort();
+  const coppieViste = decisioniAdesso.map((c) => `${c.a}|${c.b}|${c.decisione}`).sort();
+  const titoliGare = elementi(adesso8.gare)
+    .filter((e) => typeof e.props.titolo === "string")
+    .map((e) => String(e.props.titolo));
+  // le celle «Fonti: …» delle due gare di ogni suggerimento (i testi in blocco conterebbero anche i dati passati come proprietà)
+  const celleFonti = (fonte: string) => elementi(adesso8.gare).filter((e) => e.type === "div" && JSON.stringify(e.props.children) === JSON.stringify(["Fonti: ", fonte])).length;
+  const pagineUfficiali = elementi(adesso8.gare).filter((e) => e.type === "a" && String(e.props.href ?? "").startsWith("https://esempio.invalid/gara/")).length;
+  controlla(
+    "CR8. stato di adesso (sintetico): 4 fonti accese, 5 suggerimenti di unione aperti (3 Sintel, 2 SardegnaCAT), radar_attivo acceso con 1 impresa abilitata → ogni pagina si disegna con la sua barra; Panoramica «Acceso», 1 impresa, 5 suggerimenti; Fonti: 4 «Spegni» con conferma, 4 «Esegui un giro adesso», 2 «Nascondi ai clienti»; Modulo: «Spegni il modulo» (radar_attivo 0) e l'impresa abilitata; Gare: «Unisci» e «Non sono la stessa gara» per ognuno dei 5",
+    eccezioniAdesso.length === 0 &&
+      barreAdesso.length === 0 &&
+      tessereAdesso["Modulo per i clienti"] === "Acceso" &&
+      tessereAdesso["Imprese abilitate"] === "1" &&
+      tPanoramica.includes("Suggerimenti di unione: 5") &&
+      tPanoramica.filter((t) => t === "accesa").length === 4 &&
+      accensioneAdesso.length === 4 &&
+      accensioneAdesso.every((m) => m.azione === "spegni" && m.conferma) &&
+      giriAdesso === 4 &&
+      JSON.stringify(visibilitaAdesso) === JSON.stringify(["nascondi", "nascondi"]) &&
+      testi(adesso8.fonti).filter((t) => t === T.spegniAMeta).length === 2 &&
+      JSON.stringify(interruttoreAdesso) === JSON.stringify([["Spegni il modulo", "0"]]) &&
+      elementi(adesso8.modulo).some((e) => e.type === "strong" && e.props.children === "acceso") &&
+      righeImprese === 1 &&
+      titoliGare.includes("Suggerimenti di unione da verificare (5)") &&
+      JSON.stringify(coppieViste) === JSON.stringify(coppieAttese) &&
+      pagineUfficiali === 10 &&
+      celleFonti("sintel") === 3 &&
+      celleFonti("sardegnacat") === 2 &&
+      celleFonti("pvl") === 3 &&
+      celleFonti("ted") === 2,
+    {
+      pagineUfficiali,
+      fontiGare: ["sintel", "sardegnacat", "pvl", "ted"].map(celleFonti),
+      accese: tPanoramica.filter((t) => t === "accesa").length,
+      spegniAMeta: testi(adesso8.fonti).filter((t) => t === T.spegniAMeta).length,
+      acceso: elementi(adesso8.modulo).some((e) => e.type === "strong" && e.props.children === "acceso"),
+      titoloGare: titoliGare.filter((x) => x.startsWith("Suggerimenti")),
+      coppie: JSON.stringify(coppieViste) === JSON.stringify(coppieAttese),
+      eccezioniAdesso,
+      barreAdesso,
+      tessere: [tessereAdesso["Modulo per i clienti"], tessereAdesso["Imprese abilitate"]],
+      suggerimenti: tPanoramica.filter((t) => t.startsWith("Suggerimenti di unione")),
+      accensioneAdesso,
+      giriAdesso,
+      visibilitaAdesso,
+      interruttoreAdesso,
+      righeImprese,
+      decisioni: coppieViste.length,
+    },
+  );
+
   // ═════ «Riprendi il recupero» della PVL (K4 di B2, riprendiRecuperoPvl): pulsante solo con l'allarme «blocco_incompleto», conferma nel
   // server, registro 0112, ogni motivo di rifiuto detto in chiaro. Cursore v2 sintetico fermo sul blocco 01/10–07/10 ═════
   const { cursorePvlNuovo } = richiedi(src("lib/radar/importa-pvl-cursore.ts")) as { cursorePvlNuovo: (oggi: string) => { recupero: Record<string, unknown> } };

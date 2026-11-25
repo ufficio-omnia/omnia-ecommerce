@@ -332,6 +332,15 @@ const MUTAZIONI = [
   { nome: "MX25 «Spegni» TED senza la frase del giro a metà", file: FV, cerca: '<ModuloAzione azione={impostaFonteTed} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ azione }}>\n        {conferma}\n        {frase ?? <p className="cn-nota">{FRASE_SPEGNI_A_META}</p>}', con: '<ModuloAzione azione={impostaFonteTed} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ azione }}>\n        {conferma}\n        {frase}', richiede: "CR4." },
   { nome: "MX26 un limite della PVL senza la frase", file: CV, cerca: '              <p className="cn-nota">{FRASE_LIMITE_PVL[k]}</p>\n', con: "", richiede: "CR4." },
   { nome: "MX27 «Esegui un giro» regionale senza la frase", file: CV, cerca: '<span className="cn-nota">{FRASE_ESEGUI_GIRO}</span>', con: '<span className="cn-nota">Un giro subito.</span>', richiede: "CR4." },
+  // stato di adesso (CR8, richiesta del coordinamento dopo l'accensione del 25/11): fonti accese, 5 suggerimenti aperti, modulo acceso con 1 impresa
+  { nome: "MX28 «Non sono la stessa gara» mandato come «Unisci»", file: CV, cerca: 'campi={{ a: p.a.id, b: p.b.id, decisione: "rifiuta" }}', con: 'campi={{ a: p.a.id, b: p.b.id, decisione: "conferma" }}', richiede: "CR8." },
+  { nome: "MX29 modulo acceso con il pulsante «Accendi»", file: CV, cerca: 'etichetta={parametri.attivo ? "Spegni il modulo" : "Accendi il modulo"}', con: 'etichetta={"Accendi il modulo"}', richiede: "CR8." },
+  { nome: "MX30 modulo acceso: il pulsante lo riaccende invece di spegnerlo", file: CV, cerca: 'campi={{ radar_attivo: parametri.attivo ? "0" : "1" }}', con: 'campi={{ radar_attivo: "1" }}', richiede: "CR8." },
+  { nome: "MX31 solo i primi 3 suggerimenti di unione", file: CV, cerca: "{regionali.proposte.map((p) => (", con: "{regionali.proposte.slice(0, 3).map((p) => (", richiede: "CR8." },
+  { nome: "MX32 Panoramica senza il numero delle imprese abilitate", file: CV, cerca: "valore={numero(dati.clientiAbilitati)}", con: "valore={numero(null)}", richiede: "CR8." },
+  { nome: "MX33 Panoramica senza i suggerimenti aperti", file: CV, cerca: "const suggerimenti = dati.regionali?.proposte?.length ?? null;", con: "const suggerimenti = null;", richiede: "CR8." },
+  { nome: "MX34 regionale accesa senza «Esegui un giro adesso»", file: CV, cerca: "      {attiva && (\n        <ModuloAzione azione={eseguiGiroRegionale}", con: "      {false && (\n        <ModuloAzione azione={eseguiGiroRegionale}", richiede: "CR8." },
+  { nome: "MX35 elenco delle imprese abilitate non mostrato", file: CV, cerca: "{dati.imprese && dati.imprese.length > 0 ? (", con: "{false ? (", richiede: "CR8." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
