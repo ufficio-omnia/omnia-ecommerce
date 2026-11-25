@@ -2,6 +2,7 @@ import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { PIANI_ORDINE, formatEuro, formatEuroCifra, type PianoSlug } from "@/lib/omnia-ai-plans";
 import { testoOfferta, type Catalogo as CatalogoTipo } from "@/lib/omnia-ai-catalogo-calcoli";
+import { PERCORSO_RICERCA_GARE, RIGA_PIANI_RICERCA_GARE } from "@/lib/ricerca-gare-testi";
 import RevisioneBanda from "./revisione-banda";
 import ServiziPerCategoria from "./servizi-per-categoria";
 
@@ -25,11 +26,13 @@ const DIFFERENZE: Record<PianoSlug, string[]> = {
 };
 
 // La tabella delle caratteristiche: riassume le voci del catalogo e l'art. 5 delle Condizioni. La riga del piano di lavoro dice nello stesso
-// punto quando è compreso e quanto costa quando non lo è.
+// punto quando è compreso e quanto costa quando non lo è. «Ricerca gare» (decisione dell'utente del 25/11/2026: compresa in tutti e tre i
+// piani) NON è ancora nel catalogo né nelle Condizioni: la frase per l'avvocato è nel rapporto del 25/11 (allegati B1, 46).
 function righeConfronto(prezzoPianoLavoro: string): { voce: string; valori: Record<PianoSlug, string> }[] {
   return [
     { voce: "Relazione tecnica in Word", valori: { starter: "Sì", professional: "Sì", enterprise: "Sì" } },
     { voce: "Estrazione automatica dei criteri", valori: { starter: "Sì", professional: "Sì", enterprise: "Sì" } },
+    { voce: RIGA_PIANI_RICERCA_GARE.voce, valori: { ...RIGA_PIANI_RICERCA_GARE.valori } },
     { voce: "Rielaborazioni sulla stessa gara", valori: { starter: "Comprese", professional: "Comprese", enterprise: "Comprese" } },
     { voce: "Copertina della relazione tecnica", valori: { starter: "Acquistabile", professional: "Compresa", enterprise: "Compresa" } },
     {
@@ -175,6 +178,10 @@ export default function PianiVista({
             * Nelle gare del piano. Per le gare acquistate con i crediti il piano di lavoro si compra a parte, a{" "}
             {prezzoPianoLavoro} IVA inclusa per gara. Una generazione per gara; una seconda solo se i documenti indicano
             una proroga dei termini.
+          </p>
+          <p className="omnia-confronto-nota">
+            Ricerca gare: bandi e avvisi da TED, ANAC, Sintel e SardegnaCAT, con i filtri, le gare in linea con il profilo e gli avvisi email.{" "}
+            <Link href={PERCORSO_RICERCA_GARE}>Come funziona</Link>.
           </p>
           <p className="omnia-confronto-nota">
             <b>In programma, non ancora disponibile:</b> accesso API per il piano Enterprise.

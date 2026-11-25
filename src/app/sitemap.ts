@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 const OMNIA_AI_ROUTES: { path: string; lastModified: string }[] = [
   { path: "/", lastModified: "2026-11-16" },
   { path: "/come-funziona", lastModified: "2026-11-16" },
+  { path: "/ricerca-gare", lastModified: "2026-11-25" },
   { path: "/piani", lastModified: "2026-11-16" },
   { path: "/demo", lastModified: "2026-11-16" },
   { path: "/contatti", lastModified: "2026-11-16" },

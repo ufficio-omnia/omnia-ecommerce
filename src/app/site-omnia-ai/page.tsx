@@ -10,6 +10,7 @@ import SiteFooter from "@/components/omnia-ai/site-footer";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { PIANI, PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import { SITO_FAQ_PIANO_LAVORO, SITO_HOME_PIANO_LAVORO } from "@/lib/piano-lavoro-testi";
+import { PERCORSO_RICERCA_GARE, SITO_HOME_RICERCA_GARE } from "@/lib/ricerca-gare-testi";
 import {
   OMNIA_AI_LOGO_URL,
   OMNIA_AI_NOME,
@@ -266,6 +267,28 @@ export default function OmniaAiHomePage() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="omnia-section" id="ricerca-gare" aria-labelledby="omnia-ricerca-gare-titolo">
+          <div className="omnia-duo">
+            <div>
+              <p className="omnia-occhiello">{SITO_HOME_RICERCA_GARE.occhiello}</p>
+              <h2 id="omnia-ricerca-gare-titolo">{SITO_HOME_RICERCA_GARE.titolo}</h2>
+              <p className="omnia-guida">{SITO_HOME_RICERCA_GARE.guida}</p>
+              <div className="omnia-azioni omnia-azioni-sinistra">
+                <Link className="omnia-btn omnia-btn-s" href={PERCORSO_RICERCA_GARE}>
+                  {SITO_HOME_RICERCA_GARE.collegamento}
+                </Link>
+              </div>
+            </div>
+            <div>
+              <ul className="omnia-elenco" style={{ marginTop: 0 }}>
+                {SITO_HOME_RICERCA_GARE.punti.map((punto) => (
+                  <li key={punto}>{punto}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </section>
 
         <section className="omnia-section" id="piano-di-lavoro">
