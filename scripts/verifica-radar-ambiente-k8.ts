@@ -70,7 +70,9 @@ function provaMatrice(): void {
       }
     }
   }
-  controlla(`matrice completa (7 fonti × ${AMBIENTI.length} ambienti × ${VARIABILI.length} combinazioni di variabili × 2 usi = ${celle} celle): ogni cella come la regola del 48C §3.7`, sbagliate.length === 0 && celle === 7 * AMBIENTI.length * VARIABILI.length * 2, sbagliate.slice(0, 4));
+  // Fase 2: le fonti del Radar più le 3 sconosciute («manuale», «ted2», vuota); con SATER sono 8 (SATER senza variabile: solo staging)
+  const nFonti = FONTI_RADAR.length + 3;
+  controlla(`matrice completa (${nFonti} fonti × ${AMBIENTI.length} ambienti × ${VARIABILI.length} combinazioni di variabili × 2 usi = ${celle} celle): ogni cella come la regola del 48C §3.7`, sbagliate.length === 0 && celle === nFonti * AMBIENTI.length * VARIABILI.length * 2, sbagliate.slice(0, 4));
   const senza = fonteAutorizzata("pvl", "importazione", { NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "production" });
   controlla("deploy di produzione senza la variabile: il motivo dice ESATTAMENTE quale variabile manca", !senza.ok && senza.motivo.includes("RADAR_PVL_PRODUZIONE=autorizzata") && senza.motivo.includes("nessuna scrittura"), senza);
   const notifiche = fonteAutorizzata("sintel", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "production" });

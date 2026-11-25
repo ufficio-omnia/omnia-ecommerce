@@ -8,7 +8,7 @@
 //
 // Si riconoscono SOLO le piattaforme elencate qui: un identificativo non si presume mai per somiglianza dell'indirizzo.
 
-export type PiattaformaNota = "sardegnacat" | "sintel";
+export type PiattaformaNota = "sardegnacat" | "sintel" | "sater";
 
 type Regola = { piattaforma: PiattaformaNota; host: RegExp; id: RegExp };
 
@@ -21,8 +21,16 @@ const REGOLE: readonly Regola[] = [
   { piattaforma: "sintel", host: /^(www\.)?sintel\.regione\.lombardia\.it$/i, id: /auctionDetail\.xhtml\?(?:[^#]*&)?id=(\d{1,12})(?:&|$)/ },
 ];
 
-// «https://sardegnacat.regione.sardegna.it/Application/CustomDoc/DettaglioProcedura.asp?ID=1031830» → «sardegnacat:1031830».
-export function idPiattaformaDaUrl(url: string | null | undefined): string | null {
+// Fase 2 (connettore SATER): forme riconosciute SOLO dai connettori delle piattaforme, NON dagli importatori di TED e PVL (rigaDaBando usa
+// idPiattaformaDaUrl). Aggiungerle là cambierebbe ciò che scrivono oggi le fonti online (piattaforma_id delle gare emiliane e proposte di
+// collegamento in console): è una decisione a parte.
+const REGOLE_CONNETTORI: readonly Regola[] = [
+  // Intercent-ER / SATER: collegamento permanente «trovabando» alla procedura (BT-15 degli avvisi PVL e TED; sullo staging il 26/11 sempre
+  // nella forma «/trovabando/BANDO_GARA_PORTALE@<numero>»). È anche il collegamento che l'API del portale dà per ogni bando.
+  { piattaforma: "sater", host: /^intercenter\.regione\.emilia-romagna\.it$/i, id: /^\/trovabando\/BANDO_GARA_PORTALE@(\d{1,12})\/?(?:\?|$)/ },
+];
+
+function idDaRegole(url: string | null | undefined, regole: readonly Regola[]): string | null {
   const s = (url ?? "").trim();
   if (!s) return null;
   let u: URL;
@@ -33,12 +41,23 @@ export function idPiattaformaDaUrl(url: string | null | undefined): string | nul
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") return null;
   const resto = `${u.pathname}${u.search}`;
-  for (const r of REGOLE) {
+  for (const r of regole) {
     if (!r.host.test(u.hostname)) continue;
     const m = resto.match(r.id);
     if (m) return `${r.piattaforma}:${m[1]}`;
   }
   return null;
+}
+
+// «https://sardegnacat.regione.sardegna.it/Application/CustomDoc/DettaglioProcedura.asp?ID=1031830» → «sardegnacat:1031830».
+export function idPiattaformaDaUrl(url: string | null | undefined): string | null {
+  return idDaRegole(url, REGOLE);
+}
+
+// Come idPiattaformaDaUrl, più le forme dei soli connettori (REGOLE_CONNETTORI):
+// «https://intercenter.regione.emilia-romagna.it/trovabando/BANDO_GARA_PORTALE@17652665» → «sater:17652665».
+export function idPiattaformaDaUrlConnettore(url: string | null | undefined): string | null {
+  return idDaRegole(url, REGOLE) ?? idDaRegole(url, REGOLE_CONNETTORI);
 }
 
 export function idPiattaforma(piattaforma: PiattaformaNota, id: string): string | null {

@@ -402,7 +402,8 @@ async function principale() {
   atteso("nessuna ora presunta: niente fine giornata scritta nei connettori", Object.values(codice).every((t) => !/23:59/.test(t)));
   atteso("nessun modello AI nei connettori", Object.values(codice).every((t) => !/anthropic|openai|@ai-sdk|claude-/i.test(t)));
   atteso("stesso nome generico del programma di TED e PVL", USER_AGENT_FONTI === USER_AGENT_PVL);
-  uguale("solo le istanze approvate: SardegnaCAT (GIADA e AURA aspettano la decisione S10)", Object.keys(ISTANZE_AFLINK), ["sardegnacat"]);
+  // Fase 2: SATER è la prima integrazione approvata dall'utente (priorità del 26/11); il suo feed resta senza indirizzo (non confermato)
+  uguale("solo le istanze approvate: SardegnaCAT e SATER (GIADA e AURA aspettano la decisione S10)", Object.keys(ISTANZE_AFLINK), ["sardegnacat", "sater"]);
   atteso("SardegnaCAT: si legge solo l'indirizzo del feed (mai allegati o pagine di accesso)", !/loginportale|scarica|allegat/i.test(codice["src/lib/radar/fonti/aflink.ts"]) && /ISTANZE_AFLINK\[this\.istanza\]\.urlFeed/.test(codice["src/lib/radar/fonti/aflink.ts"]));
   // dal K6 le letture sono tre (metadati, righe, conteggio delle righe), sempre e solo sui due indirizzi del dataset
   const lettureSintel = codice["src/lib/radar/fonti/sintel.ts"].match(/sessione\.leggi\([^,]+/g) ?? [];

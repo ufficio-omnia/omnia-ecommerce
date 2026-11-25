@@ -11,7 +11,7 @@
 // gli orari dei giri vengono da ORARI_GIRI (programmazione-calcoli.ts): frase neutra («giri previsti»), vera anche finché i giri sono spenti
 import { testoOrari } from "../programmazione-calcoli";
 
-export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
+export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
 
 export type StatoFonte = "attiva" | "in_costruzione" | "transitoria" | "prevista";
 
@@ -93,6 +93,22 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     // decisione dell'utente del 23/11 (48E, D4-bis): visibile ai clienti senza aspettare il parere; restano solo dati di fatto con il
     // collegamento alla pagina ufficiale e la citazione della fonte, e i limiti verso il feed
     licenza: "Regione Autonoma della Sardegna – SardegnaCAT: licenza del feed non dichiarata; solo dati di fatto, con il collegamento alla pagina ufficiale e la citazione della fonte",
+    porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
+  },
+  // Fase 2 (documento 60, connettore SATER): in costruzione, spenta, nascosta ai clienti, senza giri programmati. I testi diventano pubblici
+  // solo quando la fonte si accende con l'autorizzazione dell'utente (fonti-ricerca.tsx mostra SOLO le fonti attive e visibili).
+  {
+    id: "sater",
+    nome: "SATER, piattaforma di e-procurement della Regione Emilia-Romagna (Intercent-ER)",
+    stato: "in_costruzione",
+    copertura: "Gare degli enti emiliano-romagnoli pubblicate su SATER, anche sotto la soglia europea (bandi, avvisi e indagini di mercato)",
+    aggiornamento: "Giri non ancora previsti (connettore in costruzione)",
+    limiti: [
+      "Comprende solo le gare pubblicate su SATER",
+      "Il CIG manca in circa un terzo degli avvisi (soprattutto indagini di mercato e manifestazioni di interesse)",
+      "Non comprende procedure su invito né affidamenti diretti",
+    ],
+    licenza: "Agenzia regionale Intercent-ER: dati del portale in licenza CC BY 4.0 (da confermare per i dati serviti dall'API), con il collegamento alla pagina ufficiale e la citazione della fonte",
     porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
   {

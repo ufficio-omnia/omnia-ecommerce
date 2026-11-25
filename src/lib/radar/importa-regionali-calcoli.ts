@@ -18,9 +18,12 @@ import type { SettoreRadar } from "./settori";
 import type { IdRegione } from "./territorio";
 import type { VersioneFonte } from "./unione-calcoli";
 
-export type FonteRegionale = "sintel" | "sardegnacat";
+export type FonteRegionale = "sintel" | "sardegnacat" | "sater";
 
-export const FONTI_REGIONALI: readonly FonteRegionale[] = ["sintel", "sardegnacat"];
+// Le fonti regionali GESTITE da console e giri programmati. SATER (Fase 2, in costruzione) non c'è: la console non la mostra, non la accende
+// e non la lancia, e non ha una rotta cron. Entra qui solo con l'accensione autorizzata dall'utente.
+export const FONTI_REGIONALI = ["sintel", "sardegnacat"] as const satisfies readonly FonteRegionale[];
+export type FonteRegionaleGestita = (typeof FONTI_REGIONALI)[number];
 
 export type BandoRegionale = {
   fonte: FonteRegionale;
@@ -75,13 +78,16 @@ export function bandoDaAflink(b: BandoAflink, oggi: string): BandoRegionale | nu
   const opp = perArchivio(b.opportunita);
   if (!opp) return null;
   const id = b.meta.idMsg;
-  const giornoModifica = b.meta.ultimaModifica.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? oggi;
+  // senza «dataUltimaModifica» (istanze dove è facoltativa) la versione è il giorno in cui OMNIA vede il contenuto, come per Sintel: un
+  // contenuto invariato (stessa impronta) non scrive nulla
+  const versione = b.meta.ultimaModifica ?? oggi;
+  const giornoModifica = versione.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? oggi;
   return {
     fonte: b.fonte,
     idProcedura: id,
     piattaformaId: b.meta.idPiattaforma,
-    versione: { fonte: b.fonte, id: `${id}@${b.meta.ultimaModifica}`, giorno: giornoModifica, istante: b.meta.istanteModifica, ted: null },
-    idCambiamento: `${id}@${b.meta.ultimaModifica}`.slice(0, 200),
+    versione: { fonte: b.fonte, id: `${id}@${versione}`, giorno: giornoModifica, istante: b.meta.istanteModifica, ted: null },
+    idCambiamento: `${id}@${versione}`.slice(0, 200),
     record: b.record,
     opportunita: opp,
     settori: b.settori,

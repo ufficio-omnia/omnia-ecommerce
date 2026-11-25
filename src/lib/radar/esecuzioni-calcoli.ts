@@ -7,6 +7,11 @@ import { testoContattoMancante } from "./fonti/user-agent";
 
 export const FONTI_ESECUZIONI = ["ted", "pvl", "sintel", "sardegnacat"] as const;
 export type FonteEsecuzione = (typeof FONTI_ESECUZIONI)[number];
+
+/** Le fonti che il registro dei giri ammette (vincolo della 0128). Le fonti nuove (Fase 2: SATER) entrano con la loro migrazione. */
+export function eFonteEsecuzione(x: string): x is FonteEsecuzione {
+  return (FONTI_ESECUZIONI as readonly string[]).includes(x);
+}
 export type ModoEsecuzione = "incrementale" | "recupero" | "finestra" | "manuale";
 export type EsitoEsecuzione = "ok" | "errore" | "sospesa" | "occupata" | "inerte" | "gia_eseguito";
 /** Chi ha lanciato il giro: il cron, il pulsante della console («Esegui un giro adesso»), uno script dello staging. */

@@ -18,7 +18,7 @@ import { istanteScadenza } from "../../omnia-ai-revisione-calcoli";
 import { classificaGara, normalizzaCpv, type SettoreRadar } from "../settori";
 import { maiuscoleIniziali, type IdRegione } from "../territorio";
 import { entraInOpportunita, opportunitaAflink, type Opportunita } from "../opportunita-calcoli";
-import { idPiattaforma, type PiattaformaNota } from "./piattaforme-calcoli";
+import { idPiattaforma, idPiattaformaDaUrlConnettore, type PiattaformaNota } from "./piattaforme-calcoli";
 import { cigSintel } from "./sintel-calcoli";
 import { giornoDiRoma, impronta, type ScadenzaTed } from "./ted-calcoli";
 import type { LimitiFonte } from "./sessione-fonte";
@@ -27,19 +27,77 @@ import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const NAMESPACE_AFLINK = "http://www.aflink.it/XMLBANDI";
 
-export type IstanzaAflink = "sardegnacat";
+// Fase 2 (documento 60, connettore SATER): il lettore vale per PIÙ istanze dello stesso software. Ogni istanza dichiara qui come è fatto il
+// suo feed; SardegnaCAT resta esattamente com'era (stessi campi obbligatori, solo collegamenti https, IdMsg = identificativo della procedura).
+export type IstanzaAflink = "sardegnacat" | "sater";
 
-export type DescrizioneIstanzaAflink = { nome: string; piattaforma: PiattaformaNota; urlFeed: string; paginaFeed: string; regione: IdRegione; attribuzione: string };
+export type DescrizioneIstanzaAflink = {
+  nome: string;
+  piattaforma: PiattaformaNota;
+  // host della piattaforma: un collegamento http (collegamentiHttp) è ammesso solo verso questo host
+  host: string;
+  // indirizzo PUBBLICATO del feed, mai modificato (contiene un filtro). null = indirizzo NON confermato su una pagina ufficiale
+  // dell'istanza: l'istanza non si legge (LettoreAflink si ferma prima di qualunque richiesta)
+  urlFeed: string | null;
+  // la pagina ufficiale che pubblica l'indirizzo del feed (null finché non si conosce)
+  paginaFeed: string | null;
+  regione: IdRegione;
+  attribuzione: string;
+  licenza: string;
+  // campi senza i quali un elemento non si legge (se mancano in TUTTI gli elementi il formato è cambiato e la fonte si sospende)
+  campiObbligatori: readonly string[];
+  // TipoProcedura facoltativo: se manca, la procedura si ricava dall'oggetto e la gara entra comunque (mancante «tipo_procedura»)
+  proceduraFacoltativa: boolean;
+  // collegamenti http ammessi, solo verso l'host dell'istanza (SardegnaCAT: solo https, verso qualunque host, come prima)
+  collegamentiHttp: boolean;
+  // l'IdMsg del feed È l'identificativo della procedura nei collegamenti ufficiali (verificato per SardegnaCAT il 16/11). Se no, il
+  // piattaforma_id si prende SOLO dal collegamento dell'elemento riconosciuto, e la chiave della gara ha un prefisso a sé («<istanza>:feed-»)
+  idMsgEIdPiattaforma: boolean;
+  // collegamento alla pagina ufficiale ricostruito dall'IdMsg quando il feed non ne dà uno valido; null = mai ricostruito (nessun indirizzo
+  // si ricava per analogia)
+  collegamentoDaIdMsg: ((idMsg: string) => string) | null;
+};
 
-// L'indirizzo è quello pubblicato nella pagina «Feed RSS» (link relativo «/portalegare/../portale/rss_bandi.asp?…», risolto).
+// Campi obbligatori di SardegnaCAT (fase B2-0): invariati.
+export const CAMPI_AFLINK_OBBLIGATORI = ["IdMsg", "Oggetto", "DenominazioneEnte", "DtScadenzaBandoTecnical", "Tipo", "TipoProcedura", "statoFunzionale", "dataUltimaModifica"] as const;
+// Campi indispensabili per le istanze nuove: TipoProcedura, CIG, statoFunzionale e dataUltimaModifica sono facoltativi (ricognizione R2:
+// non tutte le istanze li danno).
+export const CAMPI_AFLINK_ESSENZIALI = ["IdMsg", "Oggetto", "DenominazioneEnte", "DtScadenzaBandoTecnical", "Tipo"] as const;
+
+// L'indirizzo di SardegnaCAT è quello pubblicato nella pagina «Feed RSS» (link relativo «/portalegare/../portale/rss_bandi.asp?…», risolto).
 export const ISTANZE_AFLINK: Record<IstanzaAflink, DescrizioneIstanzaAflink> = {
   sardegnacat: {
     nome: "SardegnaCAT",
     piattaforma: "sardegnacat",
+    host: "sardegnacat.regione.sardegna.it",
     urlFeed: "https://sardegnacat.regione.sardegna.it/portale/rss_bandi.asp?FilterHide=bScaduto%3D0+and+tipo%3C%3E%27Esito%27+&sort=DtScadenzaBandoTecnical&sortorder=asc",
     paginaFeed: "https://sardegnacat.regione.sardegna.it/portalegare/index.php/feed-rss",
     regione: "sardegna",
     attribuzione: "Regione Autonoma della Sardegna – SardegnaCAT (feed RSS pubblico dei bandi)",
+    licenza: "licenza del feed non dichiarata (decisione 48E, D4-bis: solo dati di fatto, con il collegamento e la citazione della fonte)",
+    campiObbligatori: CAMPI_AFLINK_OBBLIGATORI,
+    proceduraFacoltativa: false,
+    collegamentiHttp: false,
+    idMsgEIdPiattaforma: true,
+    collegamentoDaIdMsg: null,
+  },
+  // SATER (Intercent-ER, Emilia-Romagna): stesso software. L'indirizzo del feed NON è stato visto pubblicato su una pagina ufficiale di SATER
+  // (ricognizione R2: ricavato per analogia): resta null e il feed non si legge. Il canale di SATER è l'API del portale Intercent-ER
+  // (intercenter-calcoli.ts); questo resta predisposto, SPENTO, finché l'indirizzo non è confermato da una pagina ufficiale.
+  sater: {
+    nome: "SATER",
+    piattaforma: "sater",
+    host: "sater.regione.emilia-romagna.it",
+    urlFeed: null,
+    paginaFeed: null,
+    regione: "emilia_romagna",
+    attribuzione: "Agenzia regionale Intercent-ER – SATER, piattaforma di e-procurement della Regione Emilia-Romagna",
+    licenza: "licenza specifica del feed SATER non verificata",
+    campiObbligatori: CAMPI_AFLINK_ESSENZIALI,
+    proceduraFacoltativa: true,
+    collegamentiHttp: true,
+    idMsgEIdPiattaforma: false,
+    collegamentoDaIdMsg: null,
   },
 };
 
@@ -51,9 +109,6 @@ export const LIMITI_AFLINK_INTERVALLI: Record<keyof LimitiFonte, { min: number; 
   tentativi: { min: 1, max: 3 },
   richiesteMassime: { min: 1, max: 4 },
 };
-
-// Campi senza i quali un elemento non si legge: se mancano in TUTTI gli elementi il formato è cambiato e la fonte si sospende.
-export const CAMPI_AFLINK_OBBLIGATORI = ["IdMsg", "Oggetto", "DenominazioneEnte", "DtScadenzaBandoTecnical", "Tipo", "TipoProcedura", "statoFunzionale", "dataUltimaModifica"] as const;
 
 // ───── lettura dell'XML (minima, senza dipendenze: il formato è noto e controllato) ─────
 
@@ -99,8 +154,9 @@ export function bucoPossibileFeed(piuVecchia: string | null, giornoUltimoSuccess
   return !!piuVecchia && !!giornoUltimoSuccesso && piuVecchia > giornoUltimoSuccesso;
 }
 
-// L'XML del feed → elementi con i campi «afs:*» (senza prefisso) più «link». Formato inatteso → errore (la fonte si sospende).
-export function leggiFeedAflink(xml: string): FeedAflink | { errore: string } {
+// L'XML del feed → elementi con i campi «afs:*» (senza prefisso) più «link». Formato inatteso → errore (la fonte si sospende). I campi
+// obbligatori sono quelli dell'istanza (di base quelli di SardegnaCAT, come prima).
+export function leggiFeedAflink(xml: string, campiObbligatori: readonly string[] = CAMPI_AFLINK_OBBLIGATORI): FeedAflink | { errore: string } {
   if (!/^\s*(<\?xml[^>]*>\s*)?<rss\b/i.test(xml)) return { errore: "la risposta non è un feed RSS" };
   if (!xml.includes(NAMESPACE_AFLINK)) return { errore: "il feed non usa più i campi del fornitore attesi" };
   const totale = Number(xml.match(/<afs:totRecord>\s*(\d+)\s*<\/afs:totRecord>/)?.[1] ?? NaN);
@@ -113,7 +169,7 @@ export function leggiFeedAflink(xml: string): FeedAflink | { errore: string } {
     if (link !== undefined) e.link = valoreXml(link).trim();
     elementi.push(e);
   }
-  if (elementi.length > 0 && elementi.every((e) => CAMPI_AFLINK_OBBLIGATORI.some((k) => !e[k]))) return { errore: "agli elementi mancano i campi attesi" };
+  if (elementi.length > 0 && elementi.every((e) => campiObbligatori.some((k) => !e[k]))) return { errore: "agli elementi mancano i campi attesi" };
   if (elementi.length === 0 && Number.isFinite(totale) && totale > 0) return { errore: "il feed dichiara elementi ma non ne contiene" };
   return { elementi, totaleDichiarato: Number.isFinite(totale) ? totale : null };
 }
@@ -196,18 +252,59 @@ export function tipoProceduraAflink(x: string | null | undefined): string | null
   return t ? (PROCEDURE_AFLINK.find(([r]) => r.test(t))?.[1] ?? null) : null;
 }
 
-function urlSicuro(x: string | null | undefined): string | null {
+// Istanze con TipoProcedura facoltativo: la procedura DICHIARATA nell'oggetto («procedura aperta per…»), nella forma del campo del feed.
+// Nessuna indicazione → null (mai una procedura presunta).
+const PROCEDURE_NELL_OGGETTO: [RegExp, string][] = [
+  [/\baffidamento\s+diretto\b/i, "Affidamento diretto"],
+  [/\bprocedura\s+negoziata\b|\bnegoziata\s+senza\b/i, "Negoziata"],
+  [/\bcompetitiva\s+con\s+negoziazione\b/i, "Competitiva con negoziazione"],
+  [/\bdialogo\s+competitivo\b/i, "Dialogo competitivo"],
+  [/\bprocedura\s+ristretta\b/i, "Ristretta"],
+  [/\bprocedura\s+aperta\b/i, "Aperta"],
+];
+
+export function proceduraDallOggettoAflink(testo: string | null | undefined): string | null {
+  const t = (testo ?? "").trim();
+  return t ? (PROCEDURE_NELL_OGGETTO.find(([r]) => r.test(t))?.[1] ?? null) : null;
+}
+
+// Collegamento alla pagina ufficiale: https verso qualunque host (come prima); http SOLO se l'istanza lo ammette e SOLO verso il suo host.
+function urlSicuro(x: string | null | undefined, httpVersoHost: string | null = null): string | null {
   const s = (x ?? "").trim();
-  if (!/^https:\/\//i.test(s) || s.length > 2000) return null;
+  if (s.length > 2000) return null;
+  const https = /^https:\/\//i.test(s);
+  const http = !https && httpVersoHost !== null && /^http:\/\//i.test(s);
+  if (!https && !http) return null;
   try {
-    return new URL(s).toString();
+    const u = new URL(s);
+    if (http && u.hostname.toLowerCase() !== httpVersoHost.toLowerCase()) return null;
+    return u.toString();
   } catch {
     return null;
   }
 }
 
+export function collegamentoAflink(istanza: IstanzaAflink, link: string | null | undefined, idMsg: string): string | null {
+  const desc = ISTANZE_AFLINK[istanza];
+  const httpVersoHost = desc.collegamentiHttp ? desc.host : null;
+  const dalFeed = urlSicuro(link, httpVersoHost);
+  if (dalFeed) return dalFeed;
+  return desc.collegamentoDaIdMsg && /^\d{1,12}$/.test(idMsg) ? urlSicuro(desc.collegamentoDaIdMsg(idMsg), httpVersoHost) : null;
+}
+
+// Chiave della gara nata dal feed: «<istanza>:<IdMsg>» dove l'IdMsg è l'identificativo della procedura (SardegnaCAT); altrove
+// «<istanza>:feed-<IdMsg>», che non si confonde mai con un identificativo di piattaforma («sater:<numero>»).
 export function chiaveProceduraAflink(istanza: IstanzaAflink, idMsg: string): string {
-  return `${istanza}:${idMsg}`;
+  return ISTANZE_AFLINK[istanza].idMsgEIdPiattaforma ? `${istanza}:${idMsg}` : `${istanza}:feed-${idMsg}`;
+}
+
+// Identificativo della procedura sulla piattaforma: dall'IdMsg dove coincide (SardegnaCAT); altrove SOLO dal collegamento dell'elemento,
+// se è una forma riconosciuta della STESSA piattaforma (piattaforme-calcoli.ts).
+export function idPiattaformaAflink(istanza: IstanzaAflink, idMsg: string, url: string | null): string | null {
+  const desc = ISTANZE_AFLINK[istanza];
+  if (desc.idMsgEIdPiattaforma) return idPiattaforma(desc.piattaforma, idMsg);
+  const id = idPiattaformaDaUrlConnettore(url);
+  return id && id.startsWith(`${desc.piattaforma}:`) ? id : null;
 }
 
 // ───── un elemento del feed → bando o esclusione ─────
@@ -219,8 +316,9 @@ export type MetaAflink = {
   istanza: IstanzaAflink;
   idMsg: string;
   idPiattaforma: string | null;
-  // versione dell'elemento: data dell'ultima modifica (ora italiana) e il suo istante
-  ultimaModifica: string;
+  // versione dell'elemento: data dell'ultima modifica (ora italiana) e il suo istante. null solo nelle istanze dove il campo è facoltativo:
+  // la versione è allora il giorno in cui OMNIA vede il contenuto cambiato (come Sintel, importa-regionali-calcoli.ts)
+  ultimaModifica: string | null;
   istanteModifica: string | null;
   stato: string;
 };
@@ -251,22 +349,36 @@ export type ElementoAflinkLetto = BandoAflink | EsclusioneAflink;
 export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, adesso: Date): ElementoAflinkLetto {
   const desc = ISTANZE_AFLINK[istanza];
   const idMsg = (e.IdMsg ?? "").trim();
-  const ultimaModifica = (e.dataUltimaModifica ?? "").trim();
-  if (!/^\d{1,12}$/.test(idMsg) || !ultimaModifica) return { tipo: "esclusione", fonte: istanza, meta: null, motivo: "elemento_malformato" };
-  const meta: MetaAflink = { istanza, idMsg, idPiattaforma: idPiattaforma(desc.piattaforma, idMsg), ultimaModifica, istanteModifica: istanteAflink(ultimaModifica), stato: (e.statoFunzionale ?? "").trim().slice(0, 40) };
+  const ultimaModifica = (e.dataUltimaModifica ?? "").trim() || null;
+  if (!/^\d{1,12}$/.test(idMsg) || (!ultimaModifica && desc.campiObbligatori.includes("dataUltimaModifica"))) return { tipo: "esclusione", fonte: istanza, meta: null, motivo: "elemento_malformato" };
+  const url = collegamentoAflink(istanza, e.link, idMsg);
+  const meta: MetaAflink = {
+    istanza,
+    idMsg,
+    idPiattaforma: idPiattaformaAflink(istanza, idMsg, url),
+    ultimaModifica,
+    istanteModifica: ultimaModifica ? istanteAflink(ultimaModifica) : null,
+    stato: (e.statoFunzionale ?? "").trim().slice(0, 40),
+  };
   const esclusione = (motivo: MotivoEsclusioneAflink): EsclusioneAflink => ({ tipo: "esclusione", fonte: istanza, meta, motivo });
 
   const ogg = oggettoAflink(e.Oggetto);
   const titoloBreve = oggettoAflink(e.TitoloDocumento).testo;
   if (!ogg.testo && !titoloBreve) return esclusione("senza_oggetto");
 
-  const opp = opportunitaAflink(e.Tipo, e.TipoProcedura, ogg.testo);
+  // TipoProcedura: quello del feed; dove è facoltativo e manca, quello dichiarato nell'oggetto; se l'oggetto non lo dice, un «Bando» del feed
+  // pubblico entra comunque (procedura non indicata: mancante «tipo_procedura», mai una procedura scritta nella gara)
+  const proceduraFeed = (e.TipoProcedura ?? "").trim();
+  const proceduraOggetto = !proceduraFeed && desc.proceduraFacoltativa ? proceduraDallOggettoAflink([ogg.testo, titoloBreve].filter(Boolean).join(" ")) : null;
+  const proceduraIgnota = !proceduraFeed && !proceduraOggetto && desc.proceduraFacoltativa;
+  const opp = opportunitaAflink(e.Tipo, proceduraFeed || proceduraOggetto || (proceduraIgnota ? "Aperta" : e.TipoProcedura), ogg.testo);
   if (!opp) return esclusione("tipo_sconosciuto");
   if (opp.tipo === "affidamento_diretto") return esclusione("affidamento");
   if (!entraInOpportunita(opp)) return esclusione("riservata");
 
   const scadenza = scadenzaAflink(e.DtScadenzaBandoTecnical);
   const mancanti: string[] = ["luogo_esecuzione", "codice_fiscale_ente"];
+  if (proceduraIgnota && opp.tipo === "bando") mancanti.push("tipo_procedura");
   if (!scadenza) mancanti.push("scadenza");
   else if (scadenza.iso ? scadenza.iso < adesso.toISOString() : scadenza.giorno < giornoDiRoma(adesso)) return esclusione("scaduta");
 
@@ -285,7 +397,6 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
   // un CIG = un lotto noto; senza CIG («CIG VARI» o vuoto) i lotti stanno negli allegati e non si conoscono
   const lotti: RecordLotto[] = cig ? [{ cig, numero: "LOT-0001", oggetto: null, cpvPrincipale: cpv, cpvTutti: cpv ? [cpv] : [], valoreStimato: null, valoreBase, oneriSicurezza: null, durataMesi: null, opzioniRinnovi: null }] : [];
   if (!cig) mancanti.push("cig");
-  const url = urlSicuro(e.link);
   if (!url) mancanti.push("collegamento");
 
   const denominazione = oggettoAflink(e.DenominazioneEnte).testo.slice(0, 500) || null;
@@ -301,7 +412,7 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
     descrizione: null,
     ente: { codiceFiscale: null, denominazione, comune: comune ? maiuscoleIniziali(comune) : null, provincia: null, regione: desc.regione, luogoIstat: null, nuts: null },
     tipoAvviso: (e.Tipo ?? "").trim().slice(0, 60) || null,
-    tipoProcedura: tipoProceduraAflink(e.TipoProcedura),
+    tipoProcedura: tipoProceduraAflink(proceduraFeed || proceduraOggetto),
     criterioAggiudicazione: null,
     natura,
     settoriSpeciali: null,

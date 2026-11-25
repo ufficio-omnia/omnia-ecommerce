@@ -29,9 +29,9 @@ import { cambiamentiTraVersioni, cambioDiScadenza, scadenzaDaValore, type Cambia
 import { nomeDiConfronto } from "./province";
 
 // Fase B2a: anche Sintel e SardegnaCAT (e le fonti future) passano da QUESTO motore, nessun altro.
-export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat";
+export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater";
 
-export const FONTI_UNITE: readonly FonteUnita[] = ["ted", "pvl", "sintel", "sardegnacat"];
+export const FONTI_UNITE: readonly FonteUnita[] = ["ted", "pvl", "sintel", "sardegnacat", "sater"];
 
 export function eFonteUnita(x: unknown): x is FonteUnita {
   return typeof x === "string" && (FONTI_UNITE as readonly string[]).includes(x);
@@ -39,12 +39,13 @@ export function eFonteUnita(x: unknown): x is FonteUnita {
 
 // Precedenza per i dati descrittivi e, a pari versione, per quelli sostanziali. Tra TED e PVL resta quella della B1-bis (PVL prima di TED).
 // Le piattaforme stanno tra le due: ordine PROVVISORIO, finché l'utente non decide la S8 (documento 10, §8).
-export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 4, sardegnacat: 3, sintel: 2, ted: 1 };
+// SATER (Fase 2) come SardegnaCAT, l'altra piattaforma con la scadenza all'ora: le due non si incontrano sulla stessa gara (regioni diverse).
+export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 4, sardegnacat: 3, sater: 3, sintel: 2, ted: 1 };
 
 // Quali fonti indicano la SEDE dell'ente (comune, provincia e regione dell'amministrazione): TED (buyer-city, buyer-country-sub), Sintel e
 // SardegnaCAT («Comune di …» e la regione della piattaforma). La PVL no: il suo comune e la sua provincia sono quelli del luogo di esecuzione
 // del primo lotto, e valgono come sede solo finché nessun'altra fonte la indica. Una fonte sconosciuta vale come sede (regole di sempre).
-export const SEDE_DELL_ENTE: Record<FonteUnita, boolean> = { ted: true, sintel: true, sardegnacat: true, pvl: false };
+export const SEDE_DELL_ENTE: Record<FonteUnita, boolean> = { ted: true, sintel: true, sardegnacat: true, sater: true, pvl: false };
 
 export function indicaLaSede(fonte: string): boolean {
   return SEDE_DELL_ENTE[fonte as FonteUnita] !== false;

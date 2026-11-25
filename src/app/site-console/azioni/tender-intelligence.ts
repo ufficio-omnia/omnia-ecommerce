@@ -11,7 +11,7 @@ import { eseguiImportazionePvl } from "@/lib/radar/importa-pvl";
 import { scrittureRadarConsentite } from "@/lib/radar/ambiente";
 import { confermaProposta, rifiutaProposta, scollegaGara } from "@/lib/radar/collegamenti";
 import { eseguiImportazioneRegionale } from "@/lib/radar/importa-regionali";
-import { FONTI_REGIONALI, type FonteRegionale } from "@/lib/radar/importa-regionali-calcoli";
+import { FONTI_REGIONALI, type FonteRegionaleGestita } from "@/lib/radar/importa-regionali-calcoli";
 import { TAG_FONTI_RADAR } from "@/lib/radar/fonti-nascoste";
 import { decisioneAmministratore, erroriRiga, type RigaClassificazione } from "@/lib/radar/classificazioni-calcoli";
 import { VERSIONE_REGOLE_SETTORI, nomeSettore } from "@/lib/radar/settori";
@@ -230,11 +230,12 @@ export async function impostaImpresaRadar(_stato: StatoAzioneTi, formData: FormD
 // ───── fase B2a: fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione ─────
 
 const UUID_GARA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NOME_REGIONALE: Record<FonteRegionale, string> = { sintel: "Sintel", sardegnacat: "SardegnaCAT" };
+// Solo le fonti regionali GESTITE (Sintel, SardegnaCAT): SATER, in costruzione, non si accende, non si mostra e non si lancia da qui.
+const NOME_REGIONALE: Record<FonteRegionaleGestita, string> = { sintel: "Sintel", sardegnacat: "SardegnaCAT" };
 
-function fonteRegionale(v: FormDataEntryValue | null): FonteRegionale | null {
+function fonteRegionale(v: FormDataEntryValue | null): FonteRegionaleGestita | null {
   const s = String(v ?? "");
-  return (FONTI_REGIONALI as readonly string[]).includes(s) ? (s as FonteRegionale) : null;
+  return (FONTI_REGIONALI as readonly string[]).includes(s) ? (s as FonteRegionaleGestita) : null;
 }
 
 // Accende o spegne una fonte regionale: accendere SOLO sullo staging (ambiente.ts); spegnere sempre. Una fonte sospesa dal connettore si

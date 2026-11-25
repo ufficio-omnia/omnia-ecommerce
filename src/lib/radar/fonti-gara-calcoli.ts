@@ -5,20 +5,22 @@ import { FONTI_UNITE, eFonteUnita, type FonteUnita, type ProvenienzaCampi } from
 // Fase B2a: le fonti di una gara sono quelle del motore di unione (TED, PVL, Sintel, SardegnaCAT).
 export type FonteGara = FonteUnita;
 
-export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT" };
+export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER" };
 export const NOME_FONTE_ESTESO: Record<FonteGara, string> = {
   ted: "TED, Gazzetta ufficiale dell'Unione europea",
   pvl: "ANAC, Piattaforma di pubblicità a valore legale",
   sintel: "Sintel, piattaforma di e-procurement della Regione Lombardia (dati aperti)",
   sardegnacat: "SardegnaCAT, piattaforma di e-procurement della Regione Sardegna (feed pubblico dei bandi)",
+  sater: "SATER, piattaforma di e-procurement della Regione Emilia-Romagna (portale Intercent-ER)",
 };
 export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
   ted: "TED, Ufficio delle pubblicazioni dell'Unione europea (riuso libero citando la fonte)",
   pvl: "ANAC, Piattaforma di pubblicità a valore legale (lettura sperimentale)",
-  // uguali a quelle dei connettori (sintel-calcoli.ts, aflink-calcoli.ts): lo controlla verifica-radar-b2a; qui scritte per intero per non
-  // portare i connettori nelle pagine del cliente
+  // uguali a quelle dei connettori (sintel-calcoli.ts, aflink-calcoli.ts, intercenter-calcoli.ts): lo controllano verifica-radar-b2a e
+  // verifica-radar-sater; qui scritte per intero per non portare i connettori nelle pagine del cliente
   sintel: "Regione Lombardia – Open Data Lombardia (Sintel), licenza CC0 1.0",
   sardegnacat: "Regione Autonoma della Sardegna – SardegnaCAT (feed RSS pubblico dei bandi)",
+  sater: "Agenzia regionale Intercent-ER – SATER, Regione Emilia-Romagna (dati del portale, licenza CC BY 4.0)",
 };
 
 const eFonte = eFonteUnita;
@@ -28,6 +30,8 @@ const eFonte = eFonteUnita;
  * NESSUNA. Decisioni dell'utente del 23/11: la PVL è visibile (direttiva 48A, revoca della 7.14) e SardegnaCAT è visibile senza aspettare
  * il parere legale (48E, D4-bis, revoca della regola della 0120). Il meccanismo resta: una riga del database con nascosta_ai_clienti = true
  * (dalla console) nasconde la fonte, e la riga esplicita vale sempre di più.
+ * Fase 2 (SATER, in costruzione): nessuna eccezione qui. Senza la sua riga in radar_fonti_stato SATER non scrive nessuna gara (il giro
+ * risponde «fonte_spenta»); la riga nascerà con la migrazione dell'accensione, con nascosta_ai_clienti = true (come SardegnaCAT nella 0120).
  */
 export const FONTI_NASCOSTE_PREDEFINITE: readonly FonteGara[] = [];
 
@@ -101,7 +105,7 @@ export function descriviAvvisoLetto(a: Pick<AvvisoLetto, "fonte" | "id_fonte" | 
     return `${NOME_FONTE.pvl}, ${tipo}${t ? ` (scheda ${t})` : ""}`;
   }
   // piattaforme: «Sintel, procedura 226427680»
-  if (a.fonte === "sintel" || a.fonte === "sardegnacat") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
+  if (a.fonte === "sintel" || a.fonte === "sardegnacat" || a.fonte === "sater") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
   return `${NOME_FONTE.ted} ${a.id_fonte}`;
 }
 
