@@ -9,6 +9,7 @@
 // avvisi non trovati per chiave); i lotti di quelle gare si uniscono senza cancellare CIG e documenti portati dalla PVL.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { eEsclusione, impronta, type BandoTed, type EsclusioneTed, type EsitoTed, chiaveProceduraTed } from "./fonti/ted-calcoli";
+import { chiaveSeparata, fotoIdentita, garaCompatibile, identitaDaRiga, identitaValida, procedureIdDaChiave, type CandidataTed, type IdentitaTed } from "./fonti/ted-stessa-procedura";
 import { notificabile, piuRecente, rigaDaBando, statoDopoEsito, aperta, type Cambiamento, type ModoImportazione, type RigaProcedura, type StatoProcedura } from "./importa-calcoli";
 import { cambiamentiDeiLotti, unisciLotti, unisciVersione, type LottoUnito, type ProvenienzaCampi, type VersioneFonte } from "./unione-calcoli";
 import { collegaDoppioniPerAvvisoTed } from "./collegamenti";
@@ -137,6 +138,73 @@ function haAltreFonti(r: RigaArchivio | null): boolean {
   return Object.values(r.provenienza_campi ?? {}).some((p) => p && p.f !== "ted");
 }
 
+// ───── gare candidate per BT-04 (difetto della deduplicazione del 25/11/2026, ted-stessa-procedura.ts) ─────
+
+type PerIdentita = { id: string; chiave: string; sa_codice_fiscale: string | null; sa_denominazione: string | null; cpv_principale: string | null; oggetto: string; ultima_versione_il: string | null };
+type VersioneTedLetta = { procedura_id: string; id_procedura_fonte: string | null; pubblicato_il: string | null; foto: unknown };
+type Candidata<T> = CandidataTed<T> & { identita: IdentitaTed[]; recente: string };
+
+/**
+ * Le gare candidate di ogni BT-04: quella con la chiave «ted:<BT-04>» e quelle che hanno già avvisi TED dello stesso BT-04 (gare separate
+ * «ted:<BT-04>~<numero>» e gare nate dalla PVL), con le identità salvate delle loro versioni TED più l'identità della gara com'è ora (per
+ * le gare scritte prima di questa regola, senza identità salvate). Tre letture a blocchi: gare per chiave, versioni TED per BT-04, gare
+ * delle versioni non ancora lette.
+ */
+async function candidateTed<T extends PerIdentita>(
+  admin: SupabaseClient,
+  procedureIds: readonly string[],
+  colonne: string,
+  normalizza: (r: Record<string, unknown>) => T,
+  misure: Misure,
+  passo: string,
+): Promise<{ famiglie: Map<string, Candidata<T>[]>; perId: Map<string, T> }> {
+  const perId = new Map<string, T>();
+  for (const b of blocchi(procedureIds.map(chiaveProceduraTed), 80)) {
+    const { data } = await misura(misure, passo, () => admin.from("radar_procedure").select(colonne).in("chiave", b).returns<Record<string, unknown>[]>());
+    for (const r of data ?? []) {
+      const x = normalizza(r);
+      perId.set(x.id, x);
+    }
+  }
+  const versioni: VersioneTedLetta[] = [];
+  for (const b of blocchi([...procedureIds], 100)) {
+    const { data } = await misura(misure, `${passo}: versioni TED dello stesso BT-04`, () =>
+      admin.from("radar_procedure_fonti").select("procedura_id, id_procedura_fonte, pubblicato_il, foto").eq("fonte", "ted").in("id_procedura_fonte", b).returns<VersioneTedLetta[]>(),
+    );
+    versioni.push(...(data ?? []));
+  }
+  const daLeggere = [...new Set(versioni.map((v) => v.procedura_id))].filter((id) => !perId.has(id));
+  for (const b of blocchi(daLeggere, 80)) {
+    const { data } = await misura(misure, `${passo}: gare con avvisi TED dello stesso BT-04`, () => admin.from("radar_procedure").select(colonne).in("id", b).returns<Record<string, unknown>[]>());
+    for (const r of data ?? []) {
+      const x = normalizza(r);
+      perId.set(x.id, x);
+    }
+  }
+  const identita = new Map<string, IdentitaTed[]>();
+  const recente = new Map<string, string>();
+  const bt04 = new Map<string, Set<string>>();
+  for (const v of versioni) {
+    if (!perId.has(v.procedura_id)) continue;
+    const i = identitaValida(v.foto);
+    if (i) identita.set(v.procedura_id, [...(identita.get(v.procedura_id) ?? []), i]);
+    if (v.id_procedura_fonte) bt04.set(v.procedura_id, new Set([...(bt04.get(v.procedura_id) ?? []), v.id_procedura_fonte]));
+    if (v.pubblicato_il && v.pubblicato_il > (recente.get(v.procedura_id) ?? "")) recente.set(v.procedura_id, v.pubblicato_il);
+  }
+  const richiesti = new Set(procedureIds);
+  const famiglie = new Map<string, Candidata<T>[]>();
+  for (const g of perId.values()) {
+    const ids = new Set(bt04.get(g.id) ?? []);
+    const daChiave = procedureIdDaChiave(g.chiave);
+    if (daChiave) ids.add(daChiave);
+    const r = [recente.get(g.id) ?? "", g.ultima_versione_il ?? ""].sort().pop() ?? "";
+    // le identità si condividono tra le famiglie (un avviso assegnato in questa pagina si aggiunge a tutte); «propria» vale per famiglia
+    const tutte = [...(identita.get(g.id) ?? []), identitaDaRiga(g)];
+    for (const p of ids) if (richiesti.has(p)) famiglie.set(p, [...(famiglie.get(p) ?? []), { gara: g, identita: tutte, recente: r, propria: daChiave === p }]);
+  }
+  return { famiglie, perId };
+}
+
 // I lotti di un avviso TED nella forma dell'archivio (solo i lotti con il numero).
 function lottiDaBandoTed(b: BandoTed): LottoUnito[] {
   return b.record.lotti
@@ -178,51 +246,61 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
   esito.invariati = validi.length - daApplicare.length;
   if (daApplicare.length === 0) return esito;
 
-  // 2) procedure già in archivio: per chiave TED; per gli avvisi non trovati, una gara arrivata prima dalla PVL che cita lo stesso avviso TED
-  const chiavi = [...new Set(daApplicare.map((v) => v.record.chiaveProcedura))];
-  const esistenti = new Map<string, RigaArchivio>();
-  for (const b of blocchi(chiavi, 80)) {
-    const { data } = await misura(misure, "lettura delle procedure", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi, unita_a`).in("chiave", b).returns<RigaDb[]>());
-    for (const r of data ?? []) esistenti.set(r.chiave, normalizzaRiga(r));
+  // 2) A QUALE GARA va ogni avviso (25/11/2026, regola approvata dal coordinamento, ted-stessa-procedura.ts). Lo stesso BT-04 può essere
+  //    stato riusato per gare DIVERSE, anche di enti diversi: l'avviso va alla gara COMPATIBILE più recente tra quelle dello stesso BT-04
+  //    (chiave «ted:<BT-04>», gare separate «ted:<BT-04>~<numero>», gare nate dalla PVL con avvisi TED di quel BT-04); se nessuna è
+  //    compatibile apre una gara nuova. Per un BT-04 senza gare: la gara arrivata prima dalla PVL che cita proprio questo avviso TED.
+  const colonneGara = `${COLONNE_RIGA}, provenienza_campi, unita_a`;
+  const { famiglie, perId } = await candidateTed(admin, [...new Set(daApplicare.map((v) => v.meta.procedureId))], colonneGara, (r) => normalizzaRiga(r as RigaDb), misure, "lettura delle procedure");
+  // l'avviso TED citato da un avviso PVL già letto (solo per i BT-04 che non hanno ancora gare)
+  const perTed = new Map<string, string>();
+  const daCercare = [...new Set(daApplicare.filter((v) => !famiglie.has(v.meta.procedureId)).map((v) => v.meta.numero))];
+  for (const b of blocchi(daCercare, 100)) {
+    const { data } = await misura(misure, "lettura delle gare già arrivate dalla PVL", () => admin.from("radar_procedure_fonti").select("rif_ted, procedura_id").eq("fonte", "pvl").in("rif_ted", b).returns<{ rif_ted: string; procedura_id: string }[]>());
+    for (const r of data ?? []) perTed.set(r.rif_ted, r.procedura_id);
   }
-  const senzaGara = daApplicare.filter((v) => !esistenti.has(v.record.chiaveProcedura));
-  if (senzaGara.length > 0) {
-    // a) la stessa procedura TED già unita a una gara con un'altra chiave (gara nata dalla PVL): una rettifica TED con un numero nuovo
-    const perProcedura = new Map<string, string>();
-    for (const b of blocchi([...new Set(senzaGara.map((v) => v.meta.procedureId))], 100)) {
-      const { data } = await misura(misure, "lettura delle procedure TED già unite", () => admin.from("radar_procedure_fonti").select("id_procedura_fonte, procedura_id").eq("fonte", "ted").in("id_procedura_fonte", b).returns<{ id_procedura_fonte: string; procedura_id: string }[]>());
-      for (const r of data ?? []) perProcedura.set(r.id_procedura_fonte, r.procedura_id);
-    }
-    // b) l'avviso TED citato da un avviso PVL già letto
-    const perTed = new Map<string, string>();
-    const daCercare = [...new Set(senzaGara.filter((v) => !perProcedura.has(v.meta.procedureId)).map((v) => v.meta.numero))];
-    for (const b of blocchi(daCercare, 100)) {
-      const { data } = await misura(misure, "lettura delle gare già arrivate dalla PVL", () => admin.from("radar_procedure_fonti").select("rif_ted, procedura_id").eq("fonte", "pvl").in("rif_ted", b).returns<{ rif_ted: string; procedura_id: string }[]>());
-      for (const r of data ?? []) perTed.set(r.rif_ted, r.procedura_id);
-    }
-    const garaDi = (v: BandoTed) => perProcedura.get(v.meta.procedureId) ?? perTed.get(v.meta.numero);
-    const ids = [...new Set(senzaGara.map(garaDi).filter((x): x is string => !!x))];
-    const perId = new Map<string, RigaArchivio>();
-    for (const b of blocchi(ids, 80)) {
-      const { data } = await misura(misure, "lettura delle gare PVL da unire", () => admin.from("radar_procedure").select(`${COLONNE_RIGA}, provenienza_campi, unita_a`).in("id", b).returns<RigaDb[]>());
-      for (const r of data ?? []) perId.set(r.id, normalizzaRiga(r));
-    }
-    for (const v of senzaGara) {
-      const id = garaDi(v);
-      const r = id ? perId.get(id) : undefined;
-      // la chiave TED della procedura punta alla gara già esistente (che conserva la sua chiave)
-      if (r) esistenti.set(v.record.chiaveProcedura, r);
-    }
+  const gareDaPvl = [...new Set(perTed.values())].filter((id) => !perId.has(id));
+  for (const b of blocchi(gareDaPvl, 80)) {
+    const { data } = await misura(misure, "lettura delle gare PVL da unire", () => admin.from("radar_procedure").select(colonneGara).in("id", b).returns<RigaDb[]>());
+    for (const r of data ?? []) perId.set(r.id, normalizzaRiga(r));
   }
   // 2bis) gare collegate a un'altra (0117): la versione va alla gara che resta (che conserva la sua chiave)
-  const restaDi = await gareCheRestano(admin, [...esistenti.values()], `${COLONNE_RIGA}, provenienza_campi, unita_a`, (r) => normalizzaRiga(r as RigaDb), misure);
-  const risolte = new Set<string>();
-  for (const [k, r] of esistenti) {
+  const restaDi = await gareCheRestano(admin, [...perId.values()], colonneGara, (r) => normalizzaRiga(r as RigaDb), misure);
+  type Destinazione = { chiave: string; iniziale: RigaArchivio | null; risolta: boolean };
+  const destinazioneDi = new Map<string, Destinazione>();
+  const comeDestinazione = (r: RigaArchivio): Destinazione => {
+    const d = destinazioneDi.get(r.id);
+    if (d) return d;
     const resta = restaDi.get(r.id);
-    if (resta) {
-      esistenti.set(k, resta);
-      risolte.add(k);
+    const nuova: Destinazione = { chiave: (resta ?? r).chiave, iniziale: resta ?? r, risolta: !!resta };
+    destinazioneDi.set(r.id, nuova);
+    return nuova;
+  };
+  const candidate = new Map<string, Candidata<Destinazione>[]>(
+    [...famiglie].map(([p, cs]) => [p, cs.map((c) => ({ gara: comeDestinazione(c.gara), identita: c.identita, recente: c.recente, propria: c.propria }))]),
+  );
+  const chiaviNuove = new Set<string>();
+  const destinazioni = new Map<string, Destinazione>();
+  const ordinati = [...daApplicare].sort((a, b) => confronta(a.meta, b.meta));
+  for (const v of ordinati) {
+    const famiglia = candidate.get(v.meta.procedureId) ?? [];
+    const opzioniUnione = { modificaDichiarata: !!v.meta.motivoModifica };
+    let d = garaCompatibile(v.identita, famiglia, opzioniUnione);
+    if (d) {
+      for (const c of famiglia) if (c.gara === d) c.identita.push(v.identita);
+    } else {
+      const pvl = famiglia.length === 0 ? perTed.get(v.meta.numero) : undefined;
+      const rPvl = pvl ? perId.get(pvl) : undefined;
+      if (rPvl) d = comeDestinazione(rPvl);
+      else {
+        const base = chiaveProceduraTed(v.meta.procedureId);
+        const chiave = famiglia.length === 0 && !chiaviNuove.has(base) ? base : chiaveSeparata(v.meta.procedureId, v.meta.numero);
+        chiaviNuove.add(chiave);
+        d = { chiave, iniziale: null, risolta: false };
+      }
+      candidate.set(v.meta.procedureId, [...famiglia, { gara: d, identita: [v.identita], recente: v.meta.data, propria: procedureIdDaChiave(d.chiave) === v.meta.procedureId }]);
     }
+    destinazioni.set(v.meta.numero, d);
   }
 
   type Stato = {
@@ -240,15 +318,17 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     piuRecente: boolean;
   };
   const stati = new Map<string, Stato>();
-  for (const v of [...daApplicare].sort((a, b) => confronta(a.meta, b.meta))) {
-    const iniziale = esistenti.get(v.record.chiaveProcedura) ?? null;
+  for (const v of ordinati) {
+    const dest = destinazioni.get(v.meta.numero) as Destinazione;
+    const iniziale = dest.iniziale;
     // una sola unione per gara: due procedure TED che arrivano alla stessa gara (per esempio la gara che resta) si uniscono in sequenza
-    const chiave = iniziale?.chiave ?? v.record.chiaveProcedura;
+    const chiave = dest.chiave;
     const s = stati.get(chiave) ?? { iniziale, riga: iniziale, provenienza: iniziale?.provenienza_campi ?? null, cambiata: false, bando: null, ultimaApplicata: false, cambiamenti: [], avvisi: [], risolta: false, piuRecente: false };
-    if (risolte.has(v.record.chiaveProcedura)) s.risolta = true;
+    if (dest.risolta) s.risolta = true;
     s.avvisi.push(v);
-    // stesse regole di prima per le gare di sola fonte TED (unisciVersione le rispetta); regole di unione se c'è anche la PVL
-    const u = unisciVersione(s.riga, s.provenienza, rigaDaBando(v, null, adesso), versioneTed(v), iso);
+    // stesse regole di prima per le gare di sola fonte TED (unisciVersione le rispetta); regole di unione se c'è anche la PVL. Una gara
+    // NUOVA prende la chiave scelta sopra (anche «ted:<BT-04>~<numero>»); una gara esistente conserva la sua
+    const u = unisciVersione(s.riga, s.provenienza, { ...rigaDaBando(v, null, adesso), chiave }, versioneTed(v), iso);
     const toccata = !s.riga || u.ultima || u.campiPresi.length > 0;
     if (toccata) {
       s.riga = u.riga;
@@ -295,7 +375,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
 
   // 3) procedure nuove o cambiate
   const daScrivere = [...stati.values()].filter((s) => s.cambiata && s.riga);
-  const ids = new Map<string, string>([...esistenti.values()].map((r) => [r.chiave, r.id]));
+  const ids = new Map<string, string>([...perId.values(), ...restaDi.values()].map((r) => [r.chiave, r.id]));
   for (const b of blocchi(daScrivere, 100)) {
     const { data } = await misura(misure, "scrittura delle procedure", () =>
       admin
@@ -412,6 +492,8 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
           tipo_avviso: v.meta.tipo || null,
           motivo_modifica: v.meta.motivoModifica,
           id_procedura_fonte: v.meta.procedureId,
+          // l'identità dell'avviso (ente, CPV, titoli, riferimento interno): riconosce le versioni della STESSA gara nei giri dopo
+          foto: fotoIdentita(v.identita),
           aggiornato_il: iso,
         }))
       : [];
@@ -549,46 +631,37 @@ export async function applicaPaginaEsiti(admin: SupabaseClient, esiti: EsitoTed[
   esito.invariati = conStato.length - nuovi.length;
   if (nuovi.length === 0) return esito;
 
-  const procedure = new Map<string, { id: string; stato: StatoProcedura; unita_a?: string | null }>();
-  for (const b of blocchi([...new Set(nuovi.map((e) => chiaveProceduraTed(e.meta.procedureId)))], 80)) {
-    const { data } = await misura(misure, "lettura delle procedure per gli esiti", () => admin.from("radar_procedure").select("id, chiave, stato, unita_a").in("chiave", b).returns<{ id: string; chiave: string; stato: StatoProcedura; unita_a: string | null }[]>());
-    for (const r of data ?? []) procedure.set(r.chiave, { id: r.id, stato: r.stato, unita_a: r.unita_a });
-  }
-  // gare arrivate prima dalla PVL e poi unite a TED: si trovano con l'identificativo della procedura TED salvato nella provenienza
-  const mancanti = [...new Set(nuovi.map((e) => e.meta.procedureId).filter((p) => !procedure.has(chiaveProceduraTed(p))))];
-  if (mancanti.length > 0) {
-    const perProc = new Map<string, string>();
-    for (const b of blocchi(mancanti, 100)) {
-      const { data } = await misura(misure, "lettura delle gare unite per gli esiti", () => admin.from("radar_procedure_fonti").select("id_procedura_fonte, procedura_id").eq("fonte", "ted").in("id_procedura_fonte", b).returns<{ id_procedura_fonte: string; procedura_id: string }[]>());
-      for (const r of data ?? []) perProc.set(r.id_procedura_fonte, r.procedura_id);
-    }
-    const ids = [...new Set(perProc.values())];
-    for (const b of blocchi(ids, 100)) {
-      const { data } = await misura(misure, "lettura dello stato delle gare unite", () => admin.from("radar_procedure").select("id, stato, unita_a").in("id", b).returns<{ id: string; stato: StatoProcedura; unita_a: string | null }[]>());
-      const stati = new Map((data ?? []).map((r) => [r.id, r]));
-      for (const [proc, id] of perProc) {
-        const r = stati.get(id);
-        if (r) procedure.set(chiaveProceduraTed(proc), { id, stato: r.stato, unita_a: r.unita_a });
-      }
-    }
-  }
+  // la gara dell'esito (25/11/2026, ted-stessa-procedura.ts): tra le gare dello stesso BT-04 (chiave, gare separate, gare nate dalla PVL)
+  // quella COMPATIBILE più recente; un esito che non trova la SUA gara non chiude nulla (caso Atripalda/Zumpano: un BT-04 riusato)
+  type GaraEsito = PerIdentita & { stato: StatoProcedura; unita_a: string | null };
+  const colonneEsito = "id, chiave, stato, unita_a, sa_codice_fiscale, sa_denominazione, cpv_principale, oggetto, ultima_versione_il";
+  const comeGaraEsito = (r: Record<string, unknown>): GaraEsito => ({
+    id: String(r.id),
+    chiave: String(r.chiave),
+    stato: r.stato as StatoProcedura,
+    unita_a: (r.unita_a as string | null) ?? null,
+    sa_codice_fiscale: (r.sa_codice_fiscale as string | null) ?? null,
+    sa_denominazione: (r.sa_denominazione as string | null) ?? null,
+    cpv_principale: (r.cpv_principale as string | null) ?? null,
+    oggetto: String(r.oggetto ?? ""),
+    ultima_versione_il: (r.ultima_versione_il as string | null) ?? null,
+  });
+  const { famiglie, perId } = await candidateTed(admin, [...new Set(nuovi.map((e) => e.meta.procedureId))], colonneEsito, comeGaraEsito, misure, "lettura delle procedure per gli esiti");
   // gare collegate a un'altra (0117): l'esito va alla gara che resta (come la versione nuova del bando)
-  const restaEsiti = await gareCheRestano(admin, [...procedure.values()], "id, stato, unita_a", (r) => ({ id: String(r.id), stato: r.stato as StatoProcedura, unita_a: (r.unita_a as string | null) ?? null }), misure);
-  for (const [k, p] of procedure) {
-    const resta = restaEsiti.get(p.id);
-    if (resta) procedure.set(k, resta);
-  }
+  const restaEsiti = await gareCheRestano(admin, [...perId.values()], colonneEsito, comeGaraEsito, misure);
+  const procedure = new Map<string, GaraEsito>([...perId.values()].map((g) => [g.id, restaEsiti.get(g.id) ?? g]));
   const ancoraCollegate = new Set([...procedure.values()].filter((p) => !!p.unita_a).map((p) => p.id));
 
   const cambi = new Map<string, { id: string; prima: StatoProcedura; dopo: StatoProcedura; idFonte: string }>();
   const provenienza: Record<string, unknown>[] = [];
   for (const e of [...nuovi].sort((a, b) => confronta(a.meta, b.meta))) {
-    const p = procedure.get(chiaveProceduraTed(e.meta.procedureId));
+    const g = garaCompatibile(e.identita, famiglie.get(e.meta.procedureId) ?? [], { modificaDichiarata: !!e.meta.motivoModifica });
+    const p = g ? procedure.get(g.id) : undefined;
     if (!p) {
       esito.senzaBando++;
       continue;
     }
-    provenienza.push({ procedura_id: p.id, fonte: "ted", id_fonte: e.meta.numero, url: `https://ted.europa.eu/it/notice/-/detail/${e.meta.numero}`, impronta: improntaEsito(e), pubblicato_il: e.meta.data, versione: e.meta.versione, tipo_avviso: e.meta.tipo || null, motivo_modifica: e.meta.motivoModifica, id_procedura_fonte: e.meta.procedureId, aggiornato_il: adesso.toISOString() });
+    provenienza.push({ procedura_id: p.id, fonte: "ted", id_fonte: e.meta.numero, url: `https://ted.europa.eu/it/notice/-/detail/${e.meta.numero}`, impronta: improntaEsito(e), pubblicato_il: e.meta.data, versione: e.meta.versione, tipo_avviso: e.meta.tipo || null, motivo_modifica: e.meta.motivoModifica, id_procedura_fonte: e.meta.procedureId, foto: fotoIdentita(e.identita), aggiornato_il: adesso.toISOString() });
     const attuale = cambi.get(p.id)?.dopo ?? p.stato;
     const dopo = statoDopoEsito(attuale, e.stato);
     if (dopo) cambi.set(p.id, { id: p.id, prima: cambi.get(p.id)?.prima ?? p.stato, dopo, idFonte: e.meta.numero });
