@@ -12,6 +12,7 @@
 import { classificaGara, normalizzaCpv, REGOLE_PAROLE, testoPerConfronto, type SettoreRadar } from "../settori";
 import { comuneEProvincia, regioneDaNuts, type IdRegione } from "../territorio";
 import { settoriDopoNatura } from "./natura-contratto";
+import { identitaDaAvviso, type IdentitaTed } from "./ted-stessa-procedura";
 import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const URL_RICERCA_TED = "https://api.ted.europa.eu/v3/notices/search";
@@ -63,7 +64,23 @@ export const CAMPI_BANDO = [
   "internal-identifier-proc",
 ] as const;
 
-export const CAMPI_ESITO = ["publication-number", "notice-version", "notice-type", "publication-date", "procedure-identifier", "winner-selection-status", "result-lot-identifier", "change-reason-code"] as const;
+// Gli ultimi 6 (25/11/2026): ente, titoli, CPV e riferimento interno, per applicare l'esito solo alla SUA gara (ted-stessa-procedura.ts)
+export const CAMPI_ESITO = [
+  "publication-number",
+  "notice-version",
+  "notice-type",
+  "publication-date",
+  "procedure-identifier",
+  "winner-selection-status",
+  "result-lot-identifier",
+  "change-reason-code",
+  "buyer-name",
+  "organisation-identifier-buyer",
+  "title-proc",
+  "title-lot",
+  "main-classification-proc",
+  "internal-identifier-proc",
+] as const;
 
 // Parole cercate in TED oltre ai CPV (ricerca a testo pieno dell'API). Sono un sovrainsieme largo: la decisione vera la prende
 // classificaGara sull'OGGETTO, con le esclusioni approvate. Ogni parola deve far scattare una regola di settori.ts (lo prova il test).
@@ -350,6 +367,8 @@ export type BandoTed = {
   scadenzaFonte: string | null;
   lottiScadenze: (ScadenzaTed | null)[];
   lottiDocumenti: (string | null)[];
+  // ente, CPV, titoli e riferimento interno: per riconoscere la STESSA procedura tra avvisi con lo stesso BT-04 (ted-stessa-procedura.ts)
+  identita: IdentitaTed;
 };
 
 export type EsclusioneTed = { meta: MetaAvviso | null; motivo: "avviso_malformato" | "fuori_settore" | "senza_oggetto" };
@@ -499,6 +518,7 @@ export function leggiBandoTed(n: Avviso): BandoTed | EsclusioneTed {
     scadenzaFonte: scadenzaProc?.fonte ?? null,
     lottiScadenze,
     lottiDocumenti: documentiLotti,
+    identita: identitaDaAvviso(n),
   };
 }
 
@@ -506,7 +526,8 @@ export function eEsclusione(x: BandoTed | EsclusioneTed): x is EsclusioneTed {
   return "motivo" in x;
 }
 
-export type EsitoTed = { meta: MetaAvviso; stato: "aggiudicata" | "chiusa_senza_aggiudicazione" | null; lotti: number };
+// identita: per applicare l'esito SOLO alla sua gara (un BT-04 riusato non deve chiudere un'altra gara: caso Atripalda/Zumpano, 25/11)
+export type EsitoTed = { meta: MetaAvviso; stato: "aggiudicata" | "chiusa_senza_aggiudicazione" | null; lotti: number; identita: IdentitaTed };
 
 // Avviso di esito: «selec-w» su almeno un lotto = aggiudicata; tutti i lotti «clos» = chiusa senza aggiudicazione; altrimenti (per esempio
 // «open-nw», ancora aperta) lo stato non cambia.
@@ -517,5 +538,5 @@ export function leggiEsitoTed(n: Avviso): EsitoTed | null {
   let stato: EsitoTed["stato"] = null;
   if (stati.includes("selec-w")) stato = "aggiudicata";
   else if (stati.length > 0 && stati.every((s) => s === "clos")) stato = "chiusa_senza_aggiudicazione";
-  return { meta, stato, lotti: stati.length };
+  return { meta, stato, lotti: stati.length, identita: identitaDaAvviso(n) };
 }
