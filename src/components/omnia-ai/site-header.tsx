@@ -11,6 +11,7 @@ import { useMarchioStato } from "./marchio-stato-context";
 // ha una veste diversa in entrambe.
 const VOCI = [
   { href: "/come-funziona", label: "Come funziona" },
+  { href: "/ricerca-gare", label: "Ricerca gare" },
   { href: "/piani", label: "Piani" },
   { href: "/demo", label: "Demo" },
   { href: "/contatti", label: "Contatti" },

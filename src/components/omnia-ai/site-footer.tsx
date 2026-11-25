@@ -33,6 +33,7 @@ export default async function SiteFooter() {
       <div className="omnia-footer-alto">
         <nav>
           <Link href="/come-funziona">Come funziona</Link>
+          <Link href="/ricerca-gare">Ricerca gare</Link>
           <Link href="/piani">Piani</Link>
           <Link href="/demo">Demo</Link>
           <Link href="/login">Accedi</Link>

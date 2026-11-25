@@ -2,14 +2,17 @@
 // i piani (Starter, Professional, Enterprise); pagina dedicata, rimando dalla home e riga nella tabella dei piani. L'apertura ai clienti la fa
 // l'utente dalla console, abbonato per abbonato: questi sono solo testi.
 // Ogni frase descrive una funzione che c'è nell'area riservata (Opportunità) e la prova scripts/verifica-testi-ricerca-gare.ts la confronta
-// con il codice: filtri di «Cerca», «Per te», salvate e monitorate, avvisi email, gara aggiunta con il CIG, Ufficio Gare, fonti, settori.
+// con il codice: filtri di «Cerca», «Per te», salvate e monitorate, avvisi email, gara aggiunta con il CIG, Ufficio Gare, settori.
+// FONTI: mai nominate e mai contate nelle parti pubbliche (decisione dell'utente del 25/11: le fonti crescono e cambiano). Solo la frase
+// generica qui sotto; la prova fallisce se una pagina pubblica nomina una fonte o un numero di fonti. Nell'area riservata la fonte di ogni
+// gara resta indicata.
 import { SETTORI_RADAR } from "@/lib/radar/settori";
 
 export const PERCORSO_RICERCA_GARE = "/ricerca-gare";
 
 export const SITO_RICERCA_GARE = {
   occhiello: "Ricerca gare",
-  titolo: "Le gare dei tuoi servizi, da quattro fonti ufficiali, in un unico posto",
+  titolo: "Le gare dei tuoi servizi, da molte fonti ufficiali, in un unico posto",
   sotto:
     "Bandi, manifestazioni di interesse e avvisi per i servizi di facility management, aggiornati più volte al giorno e da cercare con i filtri che usi davvero. Compresa in tutti i piani.",
   funzioniTitolo: "Cosa puoi fare",
@@ -51,13 +54,7 @@ export const SITO_RICERCA_GARE = {
     },
   ],
   fontiTitolo: "Le fonti",
-  fonti: [
-    "TED, Gazzetta ufficiale dell'Unione europea",
-    "ANAC, Piattaforma di pubblicità a valore legale",
-    "Sintel, piattaforma di e-procurement della Regione Lombardia",
-    "SardegnaCAT, piattaforma di e-procurement della Regione Sardegna",
-  ],
-  aggiornamento: "Le leggiamo più volte al giorno; TED nei giorni feriali.",
+  fontiTesto: "Raccogliamo bandi e avvisi da fonti ufficiali nazionali, europee e regionali, aggiornate più volte al giorno; le fonti crescono nel tempo.",
   settoriTitolo: "I settori",
   settori: SETTORI_RADAR.map((s) => s.nome),
   limitiTitolo: "Cosa è e cosa non è",
@@ -72,7 +69,7 @@ export const SITO_RICERCA_GARE = {
     },
     {
       titolo: "Copertura dichiarata",
-      testo: "Fonti e settori sono quelli elencati qui: una gara pubblicata solo altrove, o di un altro settore, può non comparire.",
+      testo: "Una gara pubblicata solo su fonti che non consultiamo, o di un altro settore, può non comparire.",
     },
   ],
   chiusuraTitolo: "Compresa in tutti i piani",
@@ -83,7 +80,7 @@ export const SITO_RICERCA_GARE = {
 export const SITO_HOME_RICERCA_GARE = {
   occhiello: "Ricerca gare",
   titolo: "Le gare dei tuoi servizi, in un unico posto",
-  guida: "Bandi e avvisi da TED, ANAC, Sintel e SardegnaCAT per i servizi di facility management: li cerchi, li salvi e ricevi gli avvisi email sulle scadenze. Compresa in tutti i piani.",
+  guida: "Bandi e avvisi da molte fonti ufficiali per i servizi di facility management: li cerchi, li salvi e ricevi gli avvisi email sulle scadenze. Compresa in tutti i piani.",
   collegamento: "Scopri la ricerca gare",
   punti: [
     "Ricerca per oggetto, ente, codice fiscale o CIG, con filtri per settore, regione e importo",
@@ -94,4 +91,14 @@ export const SITO_HOME_RICERCA_GARE = {
 } as const;
 
 /** La riga della tabella dei piani. */
+/** I metadati della pagina (description per i motori di ricerca e le anteprime). */
+export const DESCRIZIONE_RICERCA_GARE =
+  "Ricerca gare d'appalto per i servizi di facility management: bandi e avvisi da molte fonti ufficiali, filtri per settore, regione e importo, gare in linea con il profilo e avvisi email. Compresa in tutti i piani.";
+
+/** La nota sotto la tabella dei piani, prima del collegamento «Come funziona». */
+export const NOTA_PIANI_RICERCA_GARE = "Ricerca gare: bandi e avvisi da molte fonti ufficiali, con i filtri, le gare in linea con il profilo e gli avvisi email.";
+
+/** La voce del menu in alto e del piè di pagina, subito dopo «Come funziona». */
+export const VOCE_MENU_RICERCA_GARE = { href: PERCORSO_RICERCA_GARE, label: "Ricerca gare" } as const;
+
 export const RIGA_PIANI_RICERCA_GARE = { voce: "Ricerca gare", valori: { starter: "Compresa", professional: "Compresa", enterprise: "Compresa" } } as const;

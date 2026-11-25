@@ -29,7 +29,7 @@ const { chiHaSalvato } = richiedi(src("lib/radar/salvate-calcoli.ts")) as { chiH
 const { modoModifica } = richiedi(src("lib/radar/notifiche-preferenze-calcoli.ts")) as { modoModifica: (a: unknown, b: unknown, c: boolean) => string };
 const { ZONE_PREFIX, ZONE_REWRITE_EXEMPT_PATHS } = richiedi(src("lib/zone.ts")) as { ZONE_PREFIX: Record<string, string>; ZONE_REWRITE_EXEMPT_PATHS: string[] };
 
-const tuttoIlTesto = [P.titolo, P.sotto, ...P.funzioni.flatMap((f) => [f.titolo, f.testo]), ...P.fonti, P.aggiornamento, ...P.settori, ...P.limiti.flatMap((l) => [l.titolo, l.testo]), P.chiusuraTitolo, P.chiusuraTesto].join("\n");
+const tuttoIlTesto = [P.titolo, P.sotto, ...P.funzioni.flatMap((f) => [f.titolo, f.testo]), P.fontiTesto, ...P.settori, ...P.limiti.flatMap((l) => [l.titolo, l.testo]), P.chiusuraTitolo, P.chiusuraTesto].join("\n");
 const funzione = (inizio: string) => P.funzioni.find((f) => f.titolo.startsWith(inizio))?.testo ?? "";
 const OPP = "src/app/site-omnia-ai/dashboard/omnia-ai/opportunita";
 
@@ -38,7 +38,7 @@ const pagina = leggi("src/app/site-omnia-ai/ricerca-gare/page.tsx");
 controlla(
   "B1.1 pagina /ricerca-gare: paginaMetadata con il suo percorso, un solo H1 senza «OMNIA AI», stile di «Come funziona» (PageShell, hero e corpo della pagina)",
   PERCORSO_RICERCA_GARE === "/ricerca-gare" &&
-    /export const metadata: Metadata = paginaMetadata\(\{[\s\S]*path: PERCORSO_RICERCA_GARE,/.test(pagina) &&
+    /export const metadata: Metadata = paginaMetadata\(\{[\s\S]*description: DESCRIZIONE_RICERCA_GARE,[\s\S]*path: PERCORSO_RICERCA_GARE,/.test(pagina) &&
     (pagina.match(/<h1>/g) ?? []).length === 1 &&
     /<h1>\{T\.titolo\}<\/h1>/.test(pagina) &&
     !/OMNIA AI/i.test(P.titolo) &&
@@ -68,13 +68,11 @@ const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string; sche
 const giro = (f: string) => vercel.crons.find((c) => c.path === `/api/cron/radar-${f}`)?.schedule.split(" ") ?? [];
 const fontiNomi = ["ted", "pvl", "sintel", "sardegnacat"];
 controlla(
-  "B1.6 fonti: le quattro del radar, con i nomi della scheda della gara; «più volte al giorno» = ogni giro ha più orari; «TED nei giorni feriali» = TED solo dal lunedì al venerdì",
-  P.fonti.length === 4 &&
-    P.fonti.every((f, i) => NOME_FONTE_ESTESO[fontiNomi[i]]?.startsWith(f)) &&
-    fontiNomi.every((f) => (giro(f)[1] ?? "").split(",").length > 1) &&
-    giro("ted")[4] === "1-5" &&
-    fontiNomi.slice(1).every((f) => giro(f)[4] === "*") &&
-    P.aggiornamento === "Le leggiamo più volte al giorno; TED nei giorni feriali.",
+  "B1.6 fonti senza nomi né numero (decisione dell'utente del 25/11), con una frase generica VERA: fonti europee (TED), nazionali (ANAC) e regionali (Sintel, SardegnaCAT), ognuna letta più volte al giorno",
+  P.fontiTesto === "Raccogliamo bandi e avvisi da fonti ufficiali nazionali, europee e regionali, aggiornate più volte al giorno; le fonti crescono nel tempo." &&
+    !("fonti" in P) &&
+    fontiNomi.every((f) => !!NOME_FONTE_ESTESO[f]) &&
+    fontiNomi.every((f) => (giro(f)[1] ?? "").split(",").length > 1),
   fontiNomi.map((f) => giro(f).join(" ")),
 );
 const cerca = leggi(`${OPP}/cerca/page.tsx`);
@@ -145,7 +143,7 @@ controlla(
     H.punti.length === 4 &&
     H.punti[0].startsWith("Ricerca per oggetto, ente, codice fiscale o CIG") &&
     H.punti[2] === "Promemoria email a 10, 5 e 1 giorno dalla scadenza" &&
-    /TED, ANAC, Sintel e SardegnaCAT/.test(H.guida),
+    /^Bandi e avvisi da molte fonti ufficiali per i servizi di facility management/.test(H.guida),
 );
 const piani = leggi("src/app/site-omnia-ai/piani/piani-vista.tsx");
 controlla(
@@ -153,7 +151,57 @@ controlla(
   R.voce === "Ricerca gare" &&
     JSON.stringify(R.valori) === JSON.stringify({ starter: "Compresa", professional: "Compresa", enterprise: "Compresa" }) &&
     /\{ voce: RIGA_PIANI_RICERCA_GARE\.voce, valori: \{ \.\.\.RIGA_PIANI_RICERCA_GARE\.valori \} \},/.test(piani) &&
-    /<Link href=\{PERCORSO_RICERCA_GARE\}>Come funziona<\/Link>/.test(piani),
+    /\{NOTA_PIANI_RICERCA_GARE\}\{" "\}\s*<Link href=\{PERCORSO_RICERCA_GARE\}>Come funziona<\/Link>/.test(piani),
+);
+
+// ═════ fonti MAI nominate né contate nelle parti pubbliche (decisione dell'utente del 25/11: le fonti crescono e cambiano) ═════
+// tutte le pagine pubbliche di omnia-ai.it (fuori dall'area riservata), i componenti pubblici e i moduli di testi che usano; senza commenti
+const senzaCommenti = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'])\/\/[^\n]*/g, "$1");
+const pubblici: string[] = [];
+const raccogli = (dir: string) => {
+  for (const v of fs.readdirSync(path.join(RADICE, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${v.name}`;
+    if (v.isDirectory()) {
+      if (v.name !== "dashboard") raccogli(rel);
+    } else if (/\.(ts|tsx)$/.test(v.name)) pubblici.push(rel);
+  }
+};
+raccogli("src/app/site-omnia-ai");
+for (const v of fs.readdirSync(src("components/omnia-ai"), { withFileTypes: true })) if (v.isFile() && /\.(ts|tsx)$/.test(v.name)) pubblici.push(`src/components/omnia-ai/${v.name}`);
+pubblici.push("src/lib/ricerca-gare-testi.ts", "src/lib/piano-lavoro-testi.ts", "src/lib/omnia-ai-plans.ts", "src/lib/omnia-ai-seo.ts", "src/app/sitemap.ts");
+const NOMI_FONTI = [/\b(TED|ANAC|PVL)\b/, /sintel|sardegna\s*cat|gazzetta ufficiale|pubblicità a valore legale|e-procurement/i];
+const NUMERO_FONTI = /\b(una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|\d+)\s+fonti\b/i;
+const trovate = pubblici.flatMap((rel) => {
+  const codice = senzaCommenti(leggi(rel));
+  return [...NOMI_FONTI, NUMERO_FONTI].map((re) => codice.match(re)).filter((m): m is RegExpMatchArray => !!m).map((m) => `${rel}: «${m[0]}»`);
+});
+const testiPubblici = [tuttoIlTesto, P.sotto, H.titolo, H.guida, ...H.punti, T.DESCRIZIONE_RICERCA_GARE, T.NOTA_PIANI_RICERCA_GARE].join("\n");
+controlla(
+  "B4. nessuna pagina pubblica (ricerca-gare, home, piani, metadati, menu, piè di pagina, testi) nomina una fonte (TED, ANAC, PVL, Sintel, SardegnaCAT…) o un numero di fonti",
+  pubblici.length > 20 &&
+    pubblici.includes("src/app/site-omnia-ai/ricerca-gare/page.tsx") &&
+    pubblici.includes("src/app/site-omnia-ai/page.tsx") &&
+    pubblici.includes("src/app/site-omnia-ai/piani/piani-vista.tsx") &&
+    trovate.length === 0 &&
+    ![...NOMI_FONTI, NUMERO_FONTI].some((re) => re.test(testiPubblici)) &&
+    /molte fonti ufficiali/.test(P.titolo) &&
+    /molte fonti ufficiali/.test(T.DESCRIZIONE_RICERCA_GARE) &&
+    /molte fonti ufficiali/.test(T.NOTA_PIANI_RICERCA_GARE),
+  trovate.slice(0, 5),
+);
+
+// ═════ menu in alto e piè di pagina ═════
+const testata = leggi("src/components/omnia-ai/site-header.tsx");
+const piede = leggi("src/components/omnia-ai/site-footer.tsx");
+const css = leggi("src/app/site-omnia-ai/omnia-ai.css");
+controlla(
+  "B5. «Ricerca gare» nel menu in alto (computer e menu mobile leggono le stesse VOCI) e nel piè di pagina, subito dopo «Come funziona»; le voci del menu non vanno a capo e tra 901 e 1100 px il menu si stringe",
+  /\{ href: "\/come-funziona", label: "Come funziona" \},\n\s*\{ href: "\/ricerca-gare", label: "Ricerca gare" \},\n\s*\{ href: "\/piani", label: "Piani" \},/.test(testata) &&
+    T.VOCE_MENU_RICERCA_GARE.href === PERCORSO_RICERCA_GARE &&
+    T.VOCE_MENU_RICERCA_GARE.label === "Ricerca gare" &&
+    /<Link href="\/come-funziona">Come funziona<\/Link>\n\s*<Link href="\/ricerca-gare">Ricerca gare<\/Link>\n\s*<Link href="\/piani">Piani<\/Link>/.test(piede) &&
+    /\.omnia-nav\.omnia-principale a \{\s*white-space: nowrap;\s*\}/.test(css) &&
+    /@media \(min-width: 901px\) and \(max-width: 1100px\) \{[\s\S]*?\.omnia-nav\.omnia-principale \{\s*gap: 16px;/.test(css),
 );
 
 console.log(`Verifica della pagina «Ricerca gare», della home e dei piani (testi confrontati con il codice): ${ok} ok, ${falliti.length} falliti`);

@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PageShell from "@/components/omnia-ai/page-shell";
 import { paginaMetadata } from "@/lib/omnia-ai-seo";
-import { PERCORSO_RICERCA_GARE, SITO_RICERCA_GARE as T } from "@/lib/ricerca-gare-testi";
+import { DESCRIZIONE_RICERCA_GARE, PERCORSO_RICERCA_GARE, SITO_RICERCA_GARE as T } from "@/lib/ricerca-gare-testi";
 
 export const metadata: Metadata = paginaMetadata({
   title: "Ricerca gare — OMNIA AI",
-  description:
-    "Ricerca gare d'appalto per i servizi di facility management: bandi da TED, ANAC, Sintel e SardegnaCAT, filtri per settore, regione e importo, gare in linea con il profilo e avvisi email. Compresa in tutti i piani.",
+  description: DESCRIZIONE_RICERCA_GARE,
   path: PERCORSO_RICERCA_GARE,
 });
 
@@ -38,12 +37,7 @@ export default function RicercaGarePage() {
         </ol>
 
         <h2>{T.fontiTitolo}</h2>
-        <ul className="omnia-elenco">
-          {T.fonti.map((f) => (
-            <li key={f}>{f}</li>
-          ))}
-        </ul>
-        <p className="omnia-guida">{T.aggiornamento}</p>
+        <p className="omnia-guida">{T.fontiTesto}</p>
 
         <h2>{T.settoriTitolo}</h2>
         <ul className="omnia-elenco">

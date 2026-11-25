@@ -5921,3 +5921,25 @@ html.omnia-scorrimento-bloccato body {
   line-height: 1.55;
   color: var(--testo-2);
 }
+
+/* Menu in alto a cinque voci («Ricerca gare» dopo «Come funziona», 25/11/2026): le voci non vanno mai a capo e, tra l'hamburger (900 px)
+   e i 1100 px, spaziatura e corpo un po' più stretti, così logo, voci, «Accedi» e scelta del tema stanno su una riga senza sovrapporsi. */
+.omnia-nav.omnia-principale a {
+  white-space: nowrap;
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+  .omnia-bar {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  .omnia-nav.omnia-principale {
+    gap: 16px;
+    font-size: 13.5px;
+  }
+  .omnia-nav.omnia-principale .omnia-accedi {
+    padding: 8px 14px;
+  }
+  .omnia-nav.omnia-principale .omnia-tema {
+    margin-left: 0;
+  }
+}
