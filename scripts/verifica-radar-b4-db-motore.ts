@@ -413,6 +413,13 @@ async function provaFontiNascosteAggiunte(): Promise<void> {
 async function provaRotta(): Promise<void> {
   const { GET } = await import("../src/app/api/cron/radar-promemoria/route");
   const salvato = { segreto: process.env.CRON_SECRET, email: process.env.RADAR_NOTIFICHE_EMAIL };
+  // ogni richiesta di rete (il database passa da fetch) contata: con l'interruttore spento la rotta non ne deve fare nessuna
+  const fetchBloccata = globalThis.fetch;
+  let richiesteRete = 0;
+  globalThis.fetch = ((...a: Parameters<typeof fetch>) => {
+    richiesteRete++;
+    return fetchBloccata(...a);
+  }) as typeof fetch;
   try {
     delete process.env.RADAR_NOTIFICHE_EMAIL;
     process.env.CRON_SECRET = "segreto-di-prova-sintetico";
@@ -424,10 +431,24 @@ async function provaRotta(): Promise<void> {
     const giusto = await GET(richiesta({ authorization: "Bearer segreto-di-prova-sintetico" }));
     const corpo = (await giusto.json()) as { eseguito?: boolean; motivo?: string };
     controlla("rotta: segreto giusto e interruttore spento → nessun passaggio («spento»)", giusto.status === 200 && corpo.eseguito === false && corpo.motivo === "spento", corpo);
+    // valori non esatti: restano «spento» (solo «attivo» accende)
+    const nonEsatti: unknown[] = [];
+    for (const v of ["ATTIVO", "1", "true", " attivo"]) {
+      process.env.RADAR_NOTIFICHE_EMAIL = v;
+      const r = await GET(richiesta({ authorization: "Bearer segreto-di-prova-sintetico" }));
+      nonEsatti.push([v, r.status, ((await r.json()) as { motivo?: string }).motivo]);
+    }
+    delete process.env.RADAR_NOTIFICHE_EMAIL;
+    controlla(
+      "rotta: senza RADAR_NOTIFICHE_EMAIL=attivo (assente o con un valore non esatto) risponde «spento» SENZA nessuna richiesta di rete né al database (51 §10)",
+      richiesteRete === 0 && nonEsatti.every((x) => JSON.stringify((x as unknown[]).slice(1)) === JSON.stringify([200, "spento"])),
+      { richiesteRete, nonEsatti },
+    );
     delete process.env.CRON_SECRET;
     const vuoto = await GET(richiesta({ authorization: "Bearer undefined" }));
     controlla("rotta: senza CRON_SECRET impostato nessuna chiamata passa", vuoto.status === 401);
   } finally {
+    globalThis.fetch = fetchBloccata;
     if (salvato.segreto === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = salvato.segreto;
     if (salvato.email === undefined) delete process.env.RADAR_NOTIFICHE_EMAIL;
@@ -1366,7 +1387,14 @@ function provaTesto(): void {
   const r = senzaCommenti(rotta);
   controlla("rotta: CRON_SECRET controllato prima dell'interruttore e prima di caricare il motore", r.indexOf("cronAutorizzato(") > 0 && r.indexOf("cronAutorizzato(") < r.indexOf("statoInvioEmail(") && r.indexOf("statoInvioEmail(") < r.indexOf('import("@/lib/radar/notifiche/motore")'));
   controlla("rotta: nessun import statico del database né del motore", !/^import .*(supabase\/admin|notifiche\/motore)/m.test(rotta));
-  controlla("rotta: NON in vercel.json", !fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8").includes("radar-promemoria"));
+  // F8 (decisione dell'utente del 25/11): in vercel.json ESATTAMENTE la riga del documento 51 §10, una sola volta; radar-regionali mai
+  const cronVercel = (JSON.parse(fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] }).crons ?? [];
+  const cronPromemoria = cronVercel.filter((c) => c.path.includes("promemoria"));
+  controlla(
+    "rotta: in vercel.json una sola volta, con «*/30 5-19 * * *» (51 §10); nessun radar-regionali",
+    cronPromemoria.length === 1 && cronPromemoria[0].path === "/api/cron/radar-promemoria" && cronPromemoria[0].schedule === "*/30 5-19 * * *" && !cronVercel.some((c) => c.path.includes("radar-regionali")),
+    cronPromemoria,
+  );
   const resend = senzaCommenti(leggi("provider-resend.ts"));
   controlla("provider-resend: nessuna chiamata di rete diretta (solo la funzione iniettata)", !/\bfetch\s*\(/.test(resend) && /richiedi\(r\.url/.test(resend));
   controlla("provider-resend: si costruisce solo con resendConsentito(env)", /if \(!resendConsentito\(env\)\) throw/.test(resend));

@@ -452,8 +452,15 @@ async function provaRavvicinata(): Promise<void> {
   }
   const console_ = fs.readFileSync(path.join(cartella, "console-lettura.ts"), "utf8");
   controlla("console-lettura: nessuna scrittura", !/\.(insert|update|upsert|delete)\s*\(/.test(console_));
-  const vercel = fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8");
-  controlla("nessun cron dei promemoria in vercel.json", !vercel.includes("radar-promemoria"));
+  // F8 (decisione dell'utente del 25/11): il cron dei promemoria entra in vercel.json con ESATTAMENTE la riga del documento 51 §10, una sola
+  // volta; la rotta vecchia radar-regionali resta fuori
+  const cronVercel = (JSON.parse(fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8")) as { crons?: { path: string; schedule: string }[] }).crons ?? [];
+  const cronPromemoria = cronVercel.filter((c) => c.path.includes("promemoria"));
+  controlla(
+    "cron dei promemoria in vercel.json: uno solo, /api/cron/radar-promemoria con «*/30 5-19 * * *» (51 §10); nessun radar-regionali",
+    cronPromemoria.length === 1 && cronPromemoria[0].path === "/api/cron/radar-promemoria" && cronPromemoria[0].schedule === "*/30 5-19 * * *" && !cronVercel.some((c) => c.path.includes("radar-regionali")),
+    cronPromemoria,
+  );
 }
 
 Promise.all([provaConsole(), provaRavvicinata()])

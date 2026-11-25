@@ -413,8 +413,8 @@ async function principale() {
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] };
   const rotteRadar: string[] = Object.values(ROTTE_CRON);
   atteso(
-    "vercel.json: i soli cron del radar sono i quattro di ROTTE_CRON; nessun aflink, radar-fonti, radar-regionali",
-    vercel.crons.filter((c) => c.path.startsWith("/api/cron/radar")).every((c) => rotteRadar.includes(c.path)) && !vercel.crons.some((c) => /aflink|radar-fonti|radar-regionali/.test(c.path)),
+    "vercel.json: i soli cron del radar sono i quattro di ROTTE_CRON e quello dei promemoria (F8, 51 §10); nessun aflink, radar-fonti, radar-regionali",
+    vercel.crons.filter((c) => c.path.startsWith("/api/cron/radar")).every((c) => rotteRadar.includes(c.path) || c.path === "/api/cron/radar-promemoria") && !vercel.crons.some((c) => /aflink|radar-fonti|radar-regionali/.test(c.path)),
   );
   // B2-0 non porta migrazioni: dopo la 0117 (della PVL, approvata il 17/11) possono esserci solo la 0120 di B2a e la 0121 di B2 (PROGETTO
   // mai applicato, decisione dell'utente del 17/11; i suoi controlli sono in verifica-radar-0121.ts)

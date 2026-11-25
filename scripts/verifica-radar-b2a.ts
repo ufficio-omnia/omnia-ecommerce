@@ -592,9 +592,9 @@ async function principale() {
     // rilascio (documento 51 §5): i cron del radar sono ESATTAMENTE i quattro di ROTTE_CRON, uno ciascuno, con la riga di CRON_PROPOSTI
     const vercel = JSON.parse(leggi("vercel.json")) as { crons?: { path: string; schedule: string }[] };
     uguale(
-      "B3. vercel.json: i cron del radar sono esattamente i quattro di ROTTE_CRON, uno per rotta, con la riga di CRON_PROPOSTI",
+      "B3. vercel.json: i cron dei giri del radar sono esattamente i quattro di ROTTE_CRON, uno per rotta, con la riga di CRON_PROPOSTI (il cron dei promemoria, F8, è controllato in verifica-radar-b4-db*.ts)",
       (vercel.crons ?? [])
-        .filter((c) => c.path.startsWith("/api/cron/radar"))
+        .filter((c) => c.path.startsWith("/api/cron/radar") && c.path !== "/api/cron/radar-promemoria")
         .map((c) => `${c.path} ${c.schedule}`)
         .sort(),
       FONTI_ESECUZIONI.map((f) => `${ROTTE_CRON[f]} ${CRON_PROPOSTI[f].join("|")}`).sort(),

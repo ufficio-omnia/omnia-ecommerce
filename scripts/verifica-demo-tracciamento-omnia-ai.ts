@@ -1115,12 +1115,12 @@ async function main() {
   // Tender Intelligence (rilascio, documento 51 §5): oltre ai quattro di prima, solo i quattro cron del radar (TED, PVL, Sintel, SardegnaCAT),
   // verificati da scripts/verifica-radar-b2a.ts (righe di CRON_PROPOSTI)
   atteso(
-    "vercel.json: oltre ai quattro di prima, solo i quattro cron del radar di Tender Intelligence",
+    "vercel.json: oltre ai quattro di prima, solo i quattro cron del radar di Tender Intelligence e quello dei promemoria (F8, 51 §10)",
     vercel.crons
       .filter((c) => c.path.startsWith("/api/cron/radar-"))
       .map((c) => c.path)
       .sort()
-      .join(",") === ["/api/cron/radar-pvl", "/api/cron/radar-sardegnacat", "/api/cron/radar-sintel", "/api/cron/radar-ted"].join(","),
+      .join(",") === ["/api/cron/radar-promemoria", "/api/cron/radar-pvl", "/api/cron/radar-sardegnacat", "/api/cron/radar-sintel", "/api/cron/radar-ted"].join(","),
   );
 
   const sorgentiIntegrazioni = ["src/lib/demo-calendario-sync.ts", "src/lib/demo-ga4.ts", "src/lib/demo-ads-data-manager.ts", "src/lib/google-oauth.ts", "src/lib/demo-leads.ts", "src/lib/demo-consensi.ts", "src/lib/demo-blocco.ts", "src/lib/demo-ciclo.ts"].map((f) => [f, leggi(f)] as const);
