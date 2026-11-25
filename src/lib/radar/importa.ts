@@ -198,8 +198,9 @@ async function candidateTed<T extends PerIdentita>(
     const daChiave = procedureIdDaChiave(g.chiave);
     if (daChiave) ids.add(daChiave);
     const r = [recente.get(g.id) ?? "", g.ultima_versione_il ?? ""].sort().pop() ?? "";
-    const c: Candidata<T> = { gara: g, identita: [...(identita.get(g.id) ?? []), identitaDaRiga(g)], recente: r };
-    for (const p of ids) if (richiesti.has(p)) famiglie.set(p, [...(famiglie.get(p) ?? []), c]);
+    // le identità si condividono tra le famiglie (un avviso assegnato in questa pagina si aggiunge a tutte); «propria» vale per famiglia
+    const tutte = [...(identita.get(g.id) ?? []), identitaDaRiga(g)];
+    for (const p of ids) if (richiesti.has(p)) famiglie.set(p, [...(famiglie.get(p) ?? []), { gara: g, identita: tutte, recente: r, propria: daChiave === p }]);
   }
   return { famiglie, perId };
 }
@@ -276,7 +277,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
     return nuova;
   };
   const candidate = new Map<string, Candidata<Destinazione>[]>(
-    [...famiglie].map(([p, cs]) => [p, cs.map((c) => ({ gara: comeDestinazione(c.gara), identita: c.identita, recente: c.recente }))]),
+    [...famiglie].map(([p, cs]) => [p, cs.map((c) => ({ gara: comeDestinazione(c.gara), identita: c.identita, recente: c.recente, propria: c.propria }))]),
   );
   const chiaviNuove = new Set<string>();
   const destinazioni = new Map<string, Destinazione>();
@@ -297,7 +298,7 @@ export async function applicaPaginaBandi(admin: SupabaseClient, avvisi: (BandoTe
         chiaviNuove.add(chiave);
         d = { chiave, iniziale: null, risolta: false };
       }
-      candidate.set(v.meta.procedureId, [...famiglia, { gara: d, identita: [v.identita], recente: v.meta.data }]);
+      candidate.set(v.meta.procedureId, [...famiglia, { gara: d, identita: [v.identita], recente: v.meta.data, propria: procedureIdDaChiave(d.chiave) === v.meta.procedureId }]);
     }
     destinazioni.set(v.meta.numero, d);
   }

@@ -8,9 +8,10 @@
 //   - avviso di modifica DICHIARATO (change-reason-code): stessa gara se è lo stesso ente oppure il titolo è compatibile;
 //   - ogni altro avviso, compresi gli esiti: stessa gara se il titolo è compatibile E (stesso ente OPPURE stesso CPV principale). L'ente può
 //     cambiare tra bando ed esito quando una centrale di committenza pubblica per conto di un comune (Assisi/Bastia Umbra, Brescia/Nembro);
-//   - titolo compatibile: le parole significative del titolo più corto stanno TUTTE nel più lungo (titolo della procedura o di un lotto, in
-//     qualunque combinazione), con almeno 3 parole significative; le proroghe e le rettifiche ripubblicate come avvisi nuovi aggiungono parole
-//     («AVVISO DI PROROGA DEL TERMINE…» + il titolo di prima) ma non ne tolgono;
+//   - titolo compatibile: due titoli identici, oppure le parole significative del titolo più corto stanno TUTTE nel più lungo (titolo della
+//     procedura o di un lotto, in qualunque combinazione), con almeno 3 parole significative; le proroghe e le rettifiche ripubblicate come
+//     avvisi nuovi aggiungono parole («AVVISO DI PROROGA DEL TERMINE…» + il titolo di prima) ma non ne tolgono;
+//   - titoli che non si possono confrontare (brevi o generici, come «Procedura aperta»): stessa gara solo con stesso ente E stesso CPV;
 //   - nessuna gara compatibile: gara NUOVA con chiave «ted:<BT-04>~<numero del primo avviso>» (deterministica, nessuna migrazione).
 import type { RigaProcedura } from "../importa-calcoli";
 
@@ -138,40 +139,60 @@ export function stessoEnte(a: IdentitaTed, b: IdentitaTed): boolean | null {
   return na === nb;
 }
 
-/** Il titolo più corto (almeno 3 parole significative) sta tutto nel più lungo, per almeno una coppia di titoli. */
-export function titoliCompatibili(a: readonly string[], b: readonly string[]): boolean {
+/**
+ * Confronto dei titoli (della procedura e dei lotti, in qualunque combinazione):
+ *   - «compatibili»: due titoli IDENTICI (normalizzati), oppure il più corto, con almeno 3 parole significative, sta tutto nel più lungo;
+ *   - «incompatibili»: almeno una coppia confrontabile (il più corto con 3 parole significative) e nessuna compatibile;
+ *   - «non_confrontabili»: nessuna coppia confrontabile (titoli brevi o generici come «Procedura aperta», «SERVIZIO DI LOGISTICA»).
+ */
+export function confrontoTitoli(a: readonly string[], b: readonly string[]): "compatibili" | "incompatibili" | "non_confrontabili" {
+  let confrontabili = false;
   for (const x of a) {
+    const nx = nomeNormalizzato(x);
     const px = paroleSignificative(x);
     for (const y of b) {
+      if (nx && nx === nomeNormalizzato(y)) return "compatibili";
       const py = paroleSignificative(y);
       const [corto, lungo] = px.size <= py.size ? [px, py] : [py, px];
       if (corto.size < 3) continue;
-      if ([...corto].every((w) => lungo.has(w))) return true;
+      confrontabili = true;
+      if ([...corto].every((w) => lungo.has(w))) return "compatibili";
     }
   }
-  return false;
+  return confrontabili ? "incompatibili" : "non_confrontabili";
+}
+
+export function titoliCompatibili(a: readonly string[], b: readonly string[]): boolean {
+  return confrontoTitoli(a, b) === "compatibili";
 }
 
 export function stessaProcedura(nuovo: IdentitaTed, esistente: IdentitaTed, opzioni: { modificaDichiarata: boolean }): boolean {
   const ra = riferimentoSignificativo(nuovo.rif);
   const rb = riferimentoSignificativo(esistente.rif);
   if (ra && rb && ra !== rb) return false;
-  const titolo = titoliCompatibili(nuovo.titoli, esistente.titoli);
+  const titoli = confrontoTitoli(nuovo.titoli, esistente.titoli);
   const ente = stessoEnte(nuovo, esistente);
-  if (opzioni.modificaDichiarata) return ente === true || titolo;
-  return titolo && (ente === true || (!!nuovo.cpv && nuovo.cpv === esistente.cpv));
+  const stessoCpv = !!nuovo.cpv && nuovo.cpv === esistente.cpv;
+  if (opzioni.modificaDichiarata) return ente === true || titoli === "compatibili";
+  if (titoli === "compatibili") return ente === true || stessoCpv;
+  // titoli che non dicono nulla: decidono INSIEME l'ente e il CPV (14 esiti legittimi dello staging, 25/11)
+  if (titoli === "non_confrontabili") return ente === true && stessoCpv;
+  return false;
 }
 
-export type CandidataTed<T> = { gara: T; identita: readonly IdentitaTed[]; recente: string };
+// propria: la gara PORTA la chiave di questo BT-04 («ted:<BT-04>» o «ted:<BT-04>~<numero>»); le altre ci arrivano solo dalla provenienza
+// (gare nate dalla PVL, o gare a cui una versione era andata mentre erano collegate: 0117)
+export type CandidataTed<T> = { gara: T; identita: readonly IdentitaTed[]; recente: string; propria: boolean };
 
 /**
- * La gara a cui appartiene l'avviso, tra quelle con lo stesso BT-04: quella compatibile più recente (una qualunque delle sue identità basta).
- * null = nessuna: l'avviso apre una gara nuova.
+ * La gara a cui appartiene l'avviso, tra quelle con lo stesso BT-04: tra le compatibili (basta una delle loro identità), prima quelle che
+ * portano la chiave del BT-04 (come prima di questa regola: dopo l'annullamento di un collegamento la versione torna alla gara della sua
+ * chiave), poi la più recente. null = nessuna: l'avviso apre una gara nuova.
  */
 export function garaCompatibile<T>(nuovo: IdentitaTed, candidate: readonly CandidataTed<T>[], opzioni: { modificaDichiarata: boolean }): T | null {
   const buone = candidate.filter((c) => c.identita.some((i) => stessaProcedura(nuovo, i, opzioni)));
   if (buone.length === 0) return null;
-  return [...buone].sort((a, b) => b.recente.localeCompare(a.recente))[0].gara;
+  return [...buone].sort((a, b) => Number(b.propria) - Number(a.propria) || b.recente.localeCompare(a.recente))[0].gara;
 }
 
 /** La chiave di una gara NUOVA con un BT-04 già usato da un'altra gara: «ted:<BT-04>~<numero del primo avviso>». */
