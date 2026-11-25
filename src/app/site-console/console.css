@@ -1753,3 +1753,15 @@ a.cn-nav-voce:hover {
   font-weight: 600;
   color: var(--cn-secondario);
 }
+
+/* Moduli dentro i pannelli delle pagine di Tender Intelligence (riordino del 25/11): lo stesso margine interno delle note del pannello,
+   invece di etichette e campi attaccati al bordo. Solo le pagine con la barra di schede. */
+.cn-principale:has(.cn-schede) .cn-pannello > form.cn-modulo,
+.cn-principale:has(.cn-schede) .cn-pannello > form:has(> .cn-etichetta) {
+  padding: 12px 14px;
+}
+
+.cn-principale:has(.cn-schede) .cn-pannello > form.cn-modulo .cn-nota {
+  padding-left: 0;
+  padding-right: 0;
+}
