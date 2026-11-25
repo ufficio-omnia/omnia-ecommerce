@@ -2042,6 +2042,10 @@ async function principale(): Promise<void> {
   const ingressiLimitiPvl = elementi(limitiPvl?.props.children).filter((e) => e.type === "input").map((e) => e.props.name);
   const ultimoFonti = elementi(fontiAccese2).filter((e) => e.type === "details" && sommari(e.props.children).includes("Catalogo delle fonti"));
   const visibilitaRegionali = [pannelliFonti[2], pannelliFonti[3]].map((p) => moduliDi(p, azioniTi.impostaVisibilitaFonte).map((m) => (m.props.campi as Record<string, string>).azione));
+  // con le fonti spente nessun «Esegui un giro adesso»
+  const giriAFontiSpente = elementi(paginaFontiTi(false)).filter(
+    (e) => e.type === ModuloAzioneConsole && [azioniTi.eseguiGiroTed, azioniTi.eseguiGiroPvl, azioniTi.eseguiGiroRegionale].includes(e.props.azione),
+  ).length;
   controlla(
     "CR2. pagina «Fonti» (riordino): TED, PVL ANAC, Sintel, SardegnaCAT nell'ordine, ognuna con la stessa scheda (accesa o spenta, giri programmati, ultimo giro, un solo modulo per accendere o spegnere); «Esegui un giro adesso» nelle fonti accese; nella scheda PVL i «Limiti verso la PVL» (5 valori); nelle regionali «Nascondi ai clienti»; in fondo il catalogo delle fonti; tutte le parti richiudibili chiuse di base",
     pannelliFonti.length === 4 &&
@@ -2053,8 +2057,10 @@ async function principale(): Promise<void> {
       JSON.stringify(ingressiLimitiPvl) === JSON.stringify(["radar_pvl_avvisi_per_pagina", "radar_pvl_pausa_ms", "radar_pvl_timeout_ms", "radar_pvl_tentativi", "radar_pvl_richieste_massime"]) &&
       JSON.stringify(visibilitaRegionali) === JSON.stringify([["nascondi"], ["nascondi"]]) &&
       ultimoFonti.length === 1 &&
-      dettagliAperti.length === 0,
-    { titoli: pannelliFonti.map((p) => p.props.titolo), schedaUguale, ingressiLimitiPvl, visibilitaRegionali, catalogo: ultimoFonti.length, aperti: dettagliAperti.length },
+      elementi(fontiAccese2).filter((e) => e.type === "details").at(-1) === ultimoFonti[0] &&
+      dettagliAperti.length === 0 &&
+      giriAFontiSpente === 0,
+    { titoli: pannelliFonti.map((p) => p.props.titolo), schedaUguale, ingressiLimitiPvl, visibilitaRegionali, catalogo: ultimoFonti.length, aperti: dettagliAperti.length, giriAFontiSpente },
   );
 
   // CR3. «Modulo e clienti»: interruttore, imprese, limiti in uso; «Avanzate» chiusa con costi e limiti non usati
@@ -2071,9 +2077,15 @@ async function principale(): Promise<void> {
     .filter((e) => e.type === "input")
     .map((e) => String(e.props.name));
   const testiAvanzate = testi(avanzate?.props.children);
+  // ogni parametro una volta sola in tutta la pagina (1 limite in uso + 7 costi + 3 limiti non usati)
+  const tuttiNomiModulo = elementi(vistaModulo)
+    .filter((e) => e.type === "input" && /^radar_(limite|costo)_/.test(String(e.props.name ?? "")))
+    .map((e) => String(e.props.name));
   controlla(
     "CR3. «Modulo e clienti»: 1. interruttore generale, 2. imprese abilitate, 3. limiti tecnici col SOLO limite in uso (ricerche al minuto); «Avanzate» chiusa di base con i 7 costi in crediti e i 3 limiti non usati, ciascuno con la scritta che oggi non ha effetto",
     titoliModulo.filter((t) => /^\d\. /.test(t)).join("|") === "1. Interruttore generale|2. Imprese abilitate|3. Limiti tecnici per impresa" &&
+      tuttiNomiModulo.length === 11 &&
+      new Set(tuttiNomiModulo).size === 11 &&
       JSON.stringify(nomiFuoriAvanzate) === JSON.stringify(["radar_limite_ricerche_minuto"]) &&
       !!avanzate && !avanzate.props.open &&
       sommari(avanzate.props.children).includes("Avanzate") &&
@@ -2086,6 +2098,7 @@ async function principale(): Promise<void> {
       nomiFuoriAvanzate,
       nomiAvanzate,
       aperta: avanzate?.props.open ?? null,
+      parametri: tuttiNomiModulo.length,
       frasiNonInUso: testiAvanzate.filter((t) => t === T.nonInUso).length,
       costi: testiAvanzate.includes(T.costi),
     },
@@ -2123,8 +2136,15 @@ async function principale(): Promise<void> {
   const chiamateCrediti = sorgentiApp.filter((f) => !f.endsWith(path.join("radar", "diritto-calcoli.ts")) && /creditiPerAzione\(/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(RADICE, f));
   controlla(
     "CR5. le frasi «oggi non ha effetto» sono vere: nessun limite non usato è letto dal codice (limiteEffettivo/inizioFinestra), ogni limite «in uso» sì; creditiPerAzione non è chiamata da nessuna parte",
-    T.limitiNonInUso.length === 3 && T.limitiNonInUso.every((n) => usiLimite(n) === 0) && T.limitiInUso.length === 1 && T.limitiInUso.every((n) => usiLimite(n) > 0) && chiamateCrediti.length === 0,
-    { nonInUso: T.limitiNonInUso.map((n) => [n, usiLimite(n)]), inUso: T.limitiInUso.map((n) => [n, usiLimite(n)]), chiamateCrediti },
+    T.limitiNonInUso.length === 3 &&
+      T.limitiNonInUso.every((n) => usiLimite(n) === 0 && T.limite[n] === T.nonInUso) &&
+      T.limitiInUso.length === 1 &&
+      T.limitiInUso.every((n) => usiLimite(n) > 0 && T.limite[n] !== T.nonInUso) &&
+      chiamateCrediti.length === 0 &&
+      /^Oggi non ha effetto/.test(T.nonInUso ?? "") &&
+      /Oggi il codice non li scala per nessuna azione/.test(T.costi ?? "") &&
+      /cambiarli non ha effetto/.test(T.costi ?? ""),
+    { nonInUso: T.limitiNonInUso.map((n) => [n, usiLimite(n)]), inUso: T.limitiInUso.map((n) => [n, usiLimite(n)]), chiamateCrediti, frasi: [T.nonInUso?.slice(0, 30), T.costi?.slice(0, 60)] },
   );
 
   // CR6. testi superati tolti: «(solo staging)», «fase B2a», «Uso sperimentale autorizzato solo sullo staging»

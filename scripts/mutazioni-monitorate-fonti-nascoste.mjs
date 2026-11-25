@@ -28,6 +28,10 @@ const ST = "src/lib/radar/settori.ts";
 const FC = "src/lib/console/fonti-calcoli.ts";
 const FV = "src/app/site-console/_componenti/fonti-vista.tsx";
 const FP = "src/app/site-console/(app)/tender-intelligence/fonti/page.tsx";
+// riordino della console (25/11)
+const TT = "src/lib/console/tender-intelligence-testi.ts";
+const PTI = "src/app/site-console/(app)/tender-intelligence";
+const CERCA = `${OPP}/cerca/page.tsx`;
 
 const MUTAZIONI = [
   // 1. Monitorate: filtro delle fonti nelle due letture
@@ -162,8 +166,8 @@ const MUTAZIONI = [
   {
     nome: "MM65 vista: torna la casella del parere",
     file: CV,
-    cerca: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n                    {null}',
-    con: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n                    <input type="checkbox" name="parere" value="si" />',
+    cerca: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n          <span className="cn-nota">{FRASE_VISIBILITA}</span>',
+    con: 'etichetta="Mostra ai clienti" etichettaInCorso="Salvo…" campi={{ fonte: f.fonte, azione: "mostra" }} variante="neutro">\n          <input type="checkbox" name="parere" value="si" />\n          <span className="cn-nota">{FRASE_VISIBILITA}</span>',
     richiede: "MV5.",
   },
   // S4 (49C §4.2): quarto stato per i clienti, elenco e «Decidi» in console
@@ -249,7 +253,8 @@ const MUTAZIONI = [
   { nome: "MF13 accendi e spegni invertiti", file: FV, cerca: 'const azione = f.attiva ? "spegni" : "accendi";', con: 'const azione = f.attiva ? "accendi" : "spegni";', richiede: "FS6." },
   { nome: "MF14 una fonte sospesa senza «Riaccendi»", file: FV, cerca: 'f.stato === "sospesa" ? "Riaccendi la fonte" : "Accendi la fonte"', con: '"Accendi la fonte"', richiede: "FS6." },
   { nome: "MF15 pagina senza la guardia degli amministratori", file: FP, cerca: "  await richiediAdminPagina();\n", con: "", richiede: "FS7." },
-  { nome: "MF16 pagina non collegata da Tender Intelligence", file: CV, cerca: '<Link href="/tender-intelligence/fonti" prefetch={false}>', con: '<Link href="/tender-intelligence" prefetch={false}>', richiede: "FS7." },
+  // riordino (25/11): la pagina è collegata dalla barra di schede comune, controllata da CR1
+  { nome: "MF16 scheda «Fonti» della barra non collegata alla pagina", file: CV, cerca: '<Link href="/tender-intelligence/fonti" prefetch={false}>\n              Fonti\n', con: '<Link href="/tender-intelligence" prefetch={false}>\n              Fonti\n', richiede: "CR1." },
   { nome: "MF17 regionali: nota «dal giro successivo» tolta", file: FV, cerca: '      {f.attiva ? <p className="cn-nota">{`${f.nome} si ferma dal giro successivo: un giro già in corso arriva alla fine.`}</p> : null}\n', con: "", richiede: "FS8." },
   { nome: "MF18 regionali: nota anche per una fonte spenta", file: FV, cerca: '{f.attiva ? <p className="cn-nota">', con: '{true ? <p className="cn-nota">', richiede: "FS8." },
   // conferma dell'accensione controllata nel server (decisione del coordinamento, 23/11)
@@ -259,12 +264,10 @@ const MUTAZIONI = [
   { nome: "MC4 TED: conferma chiesta anche per spegnere", file: CA, cerca: '  if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };\n  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted"', con: '  if (!accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };\n  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted"', richiede: "FS9." },
   { nome: "MC5 qualunque valore vale come conferma", file: FC, cerca: '  return dati.get("conferma") === "si";', con: '  return dati.get("conferma") !== null;', richiede: "FS9." },
   { nome: "MC6 TED: controllo della conferma dopo la lettura del registro", file: CA, cerca: '  if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };\n  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted", process.env);\n    if (!permesso.ok) return { errore: permesso.motivo };\n  }\n  const admin = createAdminClient();\n  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };\n', con: '  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted", process.env);\n    if (!permesso.ok) return { errore: permesso.motivo };\n  }\n  const admin = createAdminClient();\n  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };\n  if (azione === "accendi" && !accensioneConfermata(formData)) return { errore: ERRORE_CONFERMA_ACCENSIONE };\n', richiede: "FS9." },
-  { nome: "MC7 pagina TI: TED si accende senza casella", file: CV, cerca: '{tedAttiva ? null : confermaAccensione("TED")}', con: "{null}", richiede: "FS10." },
-  { nome: "MC8 pagina TI: PVL si accende senza casella", file: CV, cerca: '{attiva ? null : confermaAccensione("PVL ANAC")}', con: "{null}", richiede: "FS10." },
-  { nome: "MC9 pagina TI: regionali si accendono senza casella", file: CV, cerca: "{f.attiva ? null : confermaAccensione(NOME_REGIONALE[f.fonte] ?? f.fonte)}", con: "{null}", richiede: "FS10." },
-  { nome: "MC10 pagina TI: casella non obbligatoria", file: CV, cerca: '<input type="checkbox" name="conferma" value="si" required /> Confermo: accendo {nome}', con: '<input type="checkbox" name="conferma" value="si" /> Confermo: accendo {nome}', richiede: "FS10." },
-  { nome: "MC11 pagina TI: casella senza il valore «si»", file: CV, cerca: '<input type="checkbox" name="conferma" value="si" required /> Confermo: accendo {nome}', con: '<input type="checkbox" name="conferma" required /> Confermo: accendo {nome}', richiede: "FS10." },
-  { nome: "MC12 pagina TI: casella anche per spegnere TED", file: CV, cerca: '{tedAttiva ? null : confermaAccensione("TED")}', con: '{confermaAccensione("TED")}', richiede: "FS10." },
+  // MC7–MC12 tolte col riordino (25/11): mutavano i moduli di accensione della vecchia pagina unica, che non esistono più (l'accensione
+  // sta solo nella pagina «Fonti»: MF11–MF14 e le due qui sotto)
+  { nome: "MC13 pagina «Fonti»: un secondo modulo di accensione nei dettagli della fonte", file: FV, cerca: "        {ti ? dettagliFonteTi(f.fonte, f.attiva, ti) : null}\n", con: "        {ti ? dettagliFonteTi(f.fonte, f.attiva, ti) : null}\n        {ti ? accendiSpegni(f) : null}\n", richiede: "FS10." },
+  { nome: "MC14 pagina «Fonti»: accensione sparita coi dati della console", file: FV, cerca: "        {accendiSpegni(f)}\n", con: "        {ti ? null : accendiSpegni(f)}\n", richiede: "FS10." },
   // orari, interruttori e righe cron dei giri SOLO da programmazione-calcoli.ts (K1 di B2, 51 §9)
   { nome: "MG1 orari senza i giorni", file: FC, cerca: "`${ore.join(\", \")} ${GIORNI_LEGGIBILI[giorni]}`", con: "`${ore.join(\", \")}`", richiede: "FS11." },
   { nome: "MG2 feriali detti «tutti i giorni»", file: FC, cerca: 'feriali: "dal lunedì al venerdì"', con: 'feriali: "tutti i giorni"', richiede: "FS11." },
@@ -273,9 +276,11 @@ const MUTAZIONI = [
   { nome: "MG5 giri spenti senza le righe cron proposte", file: FC, cerca: '${g.cronProposti.length === 1 ? "la riga" : "le righe"} «${g.cronProposti.join("», «")}» in vercel.json', con: "la riga in vercel.json", richiede: "FS11." },
   { nome: "MG6 pagina «Fonti» senza la frase dei giri", file: FV, cerca: '        <p className="cn-nota">{testoGiriProgrammati(f.giriProgrammati)}</p>\n', con: "", richiede: "FS11." },
   { nome: "MG7 prossimo giro senza guardare l'interruttore", file: "src/lib/console/fonti.ts", cerca: "prossimoGiro(x.fonte, x.attiva, giri.attivi, adesso)", con: "prossimoGiro(x.fonte, x.attiva, true, adesso)", richiede: "FS3." },
-  { nome: "MG8 scheda PVL con gli orari vecchi scritti a mano", file: CV, cerca: "{testoGiri(giri, attiva)}", con: '<p className="cn-nota">Giri programmati alle 8:00, 13:00, 18:00 ora italiana.</p>', richiede: "FS12." },
-  { nome: "MG9 scheda regionali col solo vecchio interruttore", file: CV, cerca: "{testoGiri(giri[f.fonte], f.attiva)}", con: '<p className="cn-nota">Giri programmati: servono la riga in vercel.json e RADAR_REGIONALI_CRON=attivo.</p>', richiede: "FS12." },
-  { nome: "MG10 scheda TED con le 9:15 UTC", file: CV, cerca: "{testoGiriProgrammati(dati.giriProgrammati.ted)} I giri partono solo con la fonte accesa.", con: "Importazione automatica nei giorni feriali alle 9:15 UTC (cron), solo con la fonte accesa.", richiede: "FS12." },
+  // MG8–MG10 tolte col riordino (25/11): mutavano le frasi dei giri della vecchia pagina unica, che non esistono più; le stesse regressioni
+  // sui nuovi punti (dettagli delle fonti nella pagina «Fonti», Panoramica)
+  { nome: "MG14 dettagli PVL con gli orari vecchi scritti a mano", file: CV, cerca: "{FRASE_ESEGUI_GIRO} Dall&apos;ultimo giorno letto meno uno a oggi", con: "{FRASE_ESEGUI_GIRO} Giri programmati alle 8:00, 13:00, 18:00 ora italiana. Dall&apos;ultimo giorno letto meno uno a oggi", richiede: "FS12." },
+  { nome: "MG15 dettagli regionali col solo vecchio interruttore", file: CV, cerca: '<span className="cn-nota">{FRASE_ESEGUI_GIRO}</span>', con: '<span className="cn-nota">{FRASE_ESEGUI_GIRO} Giri programmati: servono la riga in vercel.json e RADAR_REGIONALI_CRON=attivo.</span>', richiede: "FS12." },
+  { nome: "MG16 Panoramica con le 9:15 UTC di TED", file: CV, cerca: '<p className="cn-nota">Stato calcolato, allarmi, accensione e giri sono nella scheda «Fonti».</p>', con: '<p className="cn-nota">Importazione TED nei giorni feriali alle 9:15 UTC. Stato calcolato, allarmi, accensione e giri sono nella scheda «Fonti».</p>', richiede: "FS12." },
   { nome: "MG11 messaggio TED dopo l'accensione scritto a mano", file: CA, cerca: '`Fonte TED accesa. ${testoGiriProgrammati(giriProgrammatiFonte("ted", process.env, new Date()))} Un giro subito: «Esegui un giro adesso».`', con: "\"Fonte TED accesa: l'importazione partirà al prossimo giro (giorni feriali, 9:15 UTC).\"", richiede: "FS12." },
   { nome: "MG12 messaggio PVL con gli orari di TED", file: CA, cerca: 'testoGiriProgrammati(giriProgrammatiFonte("pvl", process.env, new Date()))', con: 'testoGiriProgrammati(giriProgrammatiFonte("ted", process.env, new Date()))', richiede: "FS12." },
   { nome: "MG13 dati della console con un interruttore scritto a mano", file: CL, cerca: "const giriProgrammati = giriProgrammatiTutti(process.env, new Date());", con: 'const giriProgrammati = giriProgrammatiTutti({ ...process.env, RADAR_TED_CRON: "attivo" }, new Date());', richiede: "FS12." },
@@ -299,6 +304,34 @@ const MUTAZIONI = [
   { nome: "MK2 controllo dell'ambiente anche per spegnere TED", file: CA, cerca: '  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted", process.env);', con: '  {\n    const permesso = scrittureRadarConsentite("ted", process.env);', richiede: "FS16." },
   { nome: "MK3 TED rifiutato senza il motivo", file: CA, cerca: '    const permesso = scrittureRadarConsentite("ted", process.env);\n    if (!permesso.ok) return { errore: permesso.motivo };', con: '    const permesso = scrittureRadarConsentite("ted", process.env);\n    if (!permesso.ok) return { errore: "Ambiente non consentito." };', richiede: "FS16." },
   { nome: "MK4 TED: controllo dell'ambiente dopo la lettura del registro", file: CA, cerca: '  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted", process.env);\n    if (!permesso.ok) return { errore: permesso.motivo };\n  }\n  const admin = createAdminClient();\n  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };\n', con: '  const admin = createAdminClient();\n  if (!(await registroDisponibile(admin))) return { errore: "Il registro delle modifiche non esiste ancora (migrazione 0112): nessuna modifica salvata." };\n  if (azione === "accendi") {\n    const permesso = scrittureRadarConsentite("ted", process.env);\n    if (!permesso.ok) return { errore: permesso.motivo };\n  }\n', richiede: "FS16." },
+  // riordino della console (25/11, proposta 43 con il via dell'utente): barra di schede, ordine delle fonti, «Avanzate» chiusa, frasi
+  { nome: "MX1 pagine senza la barra di schede (testata)", file: CV, cerca: "      <SchedeTenderIntelligence attiva={attiva} />\n", con: "", richiede: "CR1." },
+  { nome: "MX2 pagina «Fonti» senza la barra di schede", file: FV, cerca: '      <SchedeTenderIntelligence attiva="fonti" />\n', con: "", richiede: "CR1." },
+  { nome: "MX3 pagina «Fonti» segnata come Panoramica", file: FV, cerca: '<SchedeTenderIntelligence attiva="fonti" />', con: '<SchedeTenderIntelligence attiva="panoramica" />', richiede: "CR1." },
+  { nome: "MX4 pagina «Email» senza la barra di schede", file: `${PTI}/email/page.tsx`, cerca: '<SchedeTenderIntelligence attiva="email" />', con: "{null}", richiede: "CR1." },
+  { nome: "MX5 scheda aperta anche come collegamento", file: CV, cerca: '<span aria-current="page">Registro</span>', con: '<Link href="/tender-intelligence/registro" prefetch={false} aria-current="page">Registro</Link>', richiede: "CR1." },
+  { nome: "MX6 «Avanzate» aperta di base", file: CV, cerca: '<details className="cn-dettagli cn-sezione cn-avanzate">', con: '<details className="cn-dettagli cn-sezione cn-avanzate" open>', richiede: "CR3." },
+  { nome: "MX7 «Avanzate» con un altro nome", file: CV, cerca: "<summary>Avanzate</summary>", con: "<summary>Altri parametri</summary>", richiede: "CR3." },
+  { nome: "MX8 un limite non usato anche tra quelli in uso", file: TT, cerca: 'LIMITI_IN_USO: readonly NomeLimite[] = ["ricerche_minuto"];', con: 'LIMITI_IN_USO: readonly NomeLimite[] = ["ricerche_minuto", "sintesi_giorno"];', richiede: "CR3." },
+  { nome: "MX9 il limite in uso spostato in «Avanzate»", file: TT, cerca: 'LIMITI_NON_IN_USO: readonly NomeLimite[] = ["progetti_senza_analisi",', con: 'LIMITI_NON_IN_USO: readonly NomeLimite[] = ["ricerche_minuto", "progetti_senza_analisi",', richiede: "CR3." },
+  { nome: "MX10 «Avanzate» senza la frase dei costi", file: CV, cerca: '            <p className="cn-nota">{FRASE_COSTI}</p>\n', con: "", richiede: "CR3." },
+  { nome: "MX11 un limite non usato senza «oggi non ha effetto»", file: TT, cerca: "  sintesi_giorno: FRASE_NON_IN_USO,\n", con: '  sintesi_giorno: "Quante sintesi al giorno può fare un\'impresa.",\n', richiede: "CR3." },
+  { nome: "MX12 costi detti scalati", file: TT, cerca: "Oggi il codice non li scala per nessuna azione: i valori sono preparati per il futuro e cambiarli non ha effetto.", con: "Il codice li scala a ogni azione.", richiede: "CR5." },
+  { nome: "MX13 «Cerca» legge un limite detto non usato", file: CERCA, cerca: 'limiteEffettivo(parametri, cliente, "ricerche_minuto")', con: 'limiteEffettivo(parametri, cliente, "sintesi_giorno")', richiede: "CR5." },
+  { nome: "MX14 limiti della PVL sotto un altro titolo", file: CV, cerca: "<summary>Limiti verso la PVL</summary>", con: "<summary>Limiti</summary>", richiede: "CR2." },
+  { nome: "MX15 catalogo delle fonti aperto di base", file: CV, cerca: '<details className="cn-dettagli cn-sezione">\n      <summary>Catalogo delle fonti</summary>', con: '<details className="cn-dettagli cn-sezione" open>\n      <summary>Catalogo delle fonti</summary>', richiede: "CR2." },
+  { nome: "MX16 catalogo delle fonti tolto dalla pagina «Fonti»", file: FV, cerca: "      {ti ? catalogoFonti(ti) : null}\n", con: "", richiede: "CR2." },
+  { nome: "MX17 regionali visibili con «Mostra» invece di «Nascondi»", file: CV, cerca: 'campi={{ fonte: f.fonte, azione: "nascondi" }}', con: 'campi={{ fonte: f.fonte, azione: "mostra" }}', richiede: "CR2." },
+  { nome: "MX18 TED accesa senza «Esegui un giro adesso»", file: CV, cerca: "      {attiva && (\n        <ModuloAzione azione={eseguiGiroTed}", con: "      {false && (\n        <ModuloAzione azione={eseguiGiroTed}", richiede: "CR2." },
+  { nome: "MX19 PVL spenta con «Esegui un giro adesso»", file: CV, cerca: "      {attiva && (\n        <ModuloAzione azione={eseguiGiroPvl}", con: "      {true && (\n        <ModuloAzione azione={eseguiGiroPvl}", richiede: "CR2." },
+  { nome: "MX20 Panoramica con «(solo staging)»", file: CV, cerca: "Scouting delle gare per le imprese abilitate.", con: "Scouting delle gare per le imprese abilitate (solo staging).", richiede: "CR6." },
+  { nome: "MX21 pagina «Modulo e clienti» senza la guardia degli amministratori", file: `${PTI}/modulo/page.tsx`, cerca: "  await richiediAdminPagina();\n", con: "", richiede: "CR7." },
+  { nome: "MX22 pagina «Gare da controllare» senza la guardia degli amministratori", file: `${PTI}/gare/page.tsx`, cerca: "  await richiediAdminPagina();\n", con: "", richiede: "CR7." },
+  { nome: "MX23 pagina «Registro» senza la guardia degli amministratori", file: `${PTI}/registro/page.tsx`, cerca: "  await richiediAdminPagina();\n", con: "", richiede: "CR7." },
+  { nome: "MX24 «Accendi» senza la frase", file: FV, cerca: '  const frase = f.attiva ? null : <p className="cn-nota">{FRASE_ACCENDI}</p>;', con: "  const frase = null;", richiede: "CR4." },
+  { nome: "MX25 «Spegni» TED senza la frase del giro a metà", file: FV, cerca: '<ModuloAzione azione={impostaFonteTed} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ azione }}>\n        {conferma}\n        {frase ?? <p className="cn-nota">{FRASE_SPEGNI_A_META}</p>}', con: '<ModuloAzione azione={impostaFonteTed} etichetta={etichetta} etichettaInCorso="Salvo…" campi={{ azione }}>\n        {conferma}\n        {frase}', richiede: "CR4." },
+  { nome: "MX26 un limite della PVL senza la frase", file: CV, cerca: '              <p className="cn-nota">{FRASE_LIMITE_PVL[k]}</p>\n', con: "", richiede: "CR4." },
+  { nome: "MX27 «Esegui un giro» regionale senza la frase", file: CV, cerca: '<span className="cn-nota">{FRASE_ESEGUI_GIRO}</span>', con: '<span className="cn-nota">Un giro subito.</span>', richiede: "CR4." },
 ];
 
 process.exit(eseguiMutazioni({ radice: RADICE, verifica: "scripts/verifica-monitorate-fonti-nascoste.ts", mutazioni: MUTAZIONI, tempoMassimoMs: 120_000 }));
