@@ -11,7 +11,7 @@
 // gli orari dei giri vengono da ORARI_GIRI (programmazione-calcoli.ts): frase neutra («giri previsti»), vera anche finché i giri sono spenti
 import { testoOrari } from "../programmazione-calcoli";
 
-export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
+export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
 
 export type StatoFonte = "attiva" | "in_costruzione" | "transitoria" | "prevista";
 
@@ -112,6 +112,24 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     ],
     // confermata sul campione vero (addendum 60C): CC BY 4.0, riuso anche commerciale con l'attribuzione della fonte
     licenza: "Agenzia regionale Intercent-ER: dati del portale in licenza CC BY 4.0, riusati citando la fonte, con il collegamento alla pagina ufficiale del bando",
+    porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
+  },
+  // Fase 2 (documento 60, connettore TuttoGare; in produzione per decisione dell'utente del 26/11): parte spenta e nascosta ai clienti (0135).
+  // Testi per il cliente SENZA il nome del software delle piattaforme (indicazione del coordinamento: le istanze sono le piattaforme degli enti,
+  // anche con il loro marchio, come Roma); diventano pubblici solo quando la fonte è accesa e resa visibile dalla console.
+  {
+    id: "tuttogare",
+    nome: "Piattaforme telematiche di alcune stazioni appaltanti",
+    stato: "in_costruzione",
+    copertura: "Gare, indagini di mercato e richieste di preventivo aperte che alcuni enti pubblicano sulle proprie piattaforme telematiche, anche sotto la soglia europea (Roma Capitale, Università di Bari, Regione Siciliana e due centrali di committenza di Lazio e Puglia)",
+    aggiornamento: `Giri previsti ${testoOrari("tuttogare")} (ora italiana), dalle pagine pubbliche delle gare degli enti`,
+    limiti: [
+      "Comprende solo gli enti collegati, non tutte le stazioni appaltanti delle loro regioni",
+      "Il codice fiscale dell'ente non è indicato: si ricava dal CIG quando la gara è pubblicata anche su altre fonti",
+      "Il CIG manca spesso nelle indagini di mercato e nelle richieste di preventivo",
+      "Non comprende procedure su invito né affidamenti diretti",
+    ],
+    licenza: "Dati pubblicati dalle stazioni appaltanti sulle proprie piattaforme: solo dati di fatto, con il collegamento alla pagina ufficiale della gara",
     porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
   {

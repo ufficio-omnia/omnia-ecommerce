@@ -5,14 +5,15 @@ import { FONTI_UNITE, eFonteUnita, type FonteUnita, type ProvenienzaCampi } from
 // Fase B2a: le fonti di una gara sono quelle del motore di unione (TED, PVL, Sintel, SardegnaCAT).
 export type FonteGara = FonteUnita;
 
-export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare" };
+export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "Piattaforma dell'ente" };
 export const NOME_FONTE_ESTESO: Record<FonteGara, string> = {
   ted: "TED, Gazzetta ufficiale dell'Unione europea",
   pvl: "ANAC, Piattaforma di pubblicità a valore legale",
   sintel: "Sintel, piattaforma di e-procurement della Regione Lombardia (dati aperti)",
   sardegnacat: "SardegnaCAT, piattaforma di e-procurement della Regione Sardegna (feed pubblico dei bandi)",
   sater: "SATER, piattaforma di e-procurement della Regione Emilia-Romagna (portale Intercent-ER)",
-  tuttogare: "TuttoGare, piattaforme di e-procurement delle stazioni appaltanti (pagine pubbliche delle gare)",
+  // TuttoGare: per il cliente senza il nome del software (indicazione del coordinamento del 26/11; le istanze sono le piattaforme degli enti)
+  tuttogare: "Piattaforme telematiche delle stazioni appaltanti (pagine pubbliche delle gare)",
 };
 export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
   ted: "TED, Ufficio delle pubblicazioni dell'Unione europea (riuso libero citando la fonte)",
@@ -22,8 +23,8 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
   sintel: "Regione Lombardia – Open Data Lombardia (Sintel), licenza CC0 1.0",
   sardegnacat: "Regione Autonoma della Sardegna – SardegnaCAT (feed RSS pubblico dei bandi)",
   sater: "Agenzia regionale Intercent-ER – SATER, Regione Emilia-Romagna (dati del portale, licenza CC BY 4.0)",
-  // TuttoGare (in costruzione): uguale a CANALE_TUTTOGARE.attribuzione (tuttogare-calcoli.ts), controllata da verifica-radar-tuttogare
-  tuttogare: "Piattaforme TuttoGare delle stazioni appaltanti (dati pubblicati dagli enti)",
+  // TuttoGare: uguale a CANALE_TUTTOGARE.attribuzione (tuttogare-calcoli.ts), controllata da verifica-radar-tuttogare; senza il nome del software
+  tuttogare: "Piattaforme telematiche delle stazioni appaltanti (dati pubblicati dagli enti)",
 };
 
 const eFonte = eFonteUnita;
@@ -107,8 +108,10 @@ export function descriviAvvisoLetto(a: Pick<AvvisoLetto, "fonte" | "id_fonte" | 
     const tipo = /^(A\d|NAG)/.test(t) ? "esito" : /^P[12]_/.test(t) ? "bando" : "avviso";
     return `${NOME_FONTE.pvl}, ${tipo}${t ? ` (scheda ${t})` : ""}`;
   }
-  // piattaforme: «Sintel, procedura 226427680»
-  if (a.fonte === "sintel" || a.fonte === "sardegnacat" || a.fonte === "sater" || a.fonte === "tuttogare") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
+  // piattaforme: «Sintel, procedura 226427680»; TuttoGare solo con il codice della gara («Piattaforma dell'ente, gara 13584»: l'indirizzo
+  // dell'istanza è nel collegamento alla pagina ufficiale)
+  if (a.fonte === "tuttogare") return `${NOME_FONTE.tuttogare}, gara ${a.id_fonte.split(":").pop()}`;
+  if (a.fonte === "sintel" || a.fonte === "sardegnacat" || a.fonte === "sater") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
   return `${NOME_FONTE.ted} ${a.id_fonte}`;
 }
 

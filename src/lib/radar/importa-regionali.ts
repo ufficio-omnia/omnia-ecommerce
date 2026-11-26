@@ -63,7 +63,7 @@ function schemaAssente(e: { message: string; code?: string }): boolean {
 /**
  * Un giro di Sintel, SardegnaCAT o SATER, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere.
  * SATER (Fase 2): la riga si scrive solo dopo la 0134, che estende il vincolo della 0128; prima la scrittura non riesce senza fermare nulla.
- * TuttoGare (Fase 2, in costruzione) allo stesso modo con la 0135 PROPOSTA (FONTI_REGISTRO; non in console né negli allarmi).
+ * TuttoGare (Fase 2) allo stesso modo con la 0135.
  */
 export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
   return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);

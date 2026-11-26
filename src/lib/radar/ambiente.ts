@@ -32,8 +32,8 @@ export const MOTIVO_ANTEPRIMA = "Anteprima Vercel: le importazioni sono spente (
 
 // Fase 2: «sater» (Intercent-ER / SATER). In produzione come Sintel e SardegnaCAT: solo dal deploy di produzione e con la sua variabile
 // della tabella VARIABILI_PRODUZIONE (decisione dell'utente del 26/11: SATER in produzione); senza la variabile non importa e non notifica.
-// Fase 2: «tuttogare» (TuttoGare PA, in costruzione). NON ha la variabile di produzione (VARIABILI_PRODUZIONE): fuori dallo staging non è
-// mai autorizzata, qualunque cosa ci sia nel database o nell'ambiente.
+// Fase 2: «tuttogare» (TuttoGare PA, molte istanze) come SATER (decisione dell'utente del 26/11: in produzione): solo dal deploy di produzione e
+// con la sua variabile della tabella VARIABILI_PRODUZIONE; senza la variabile non importa e non notifica.
 export const FONTI_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"] as const;
 export type FonteRadar = (typeof FONTI_RADAR)[number];
 
@@ -54,6 +54,8 @@ export const VARIABILI_PRODUZIONE: Readonly<Partial<Record<FonteRadar, string>>>
   sintel: "RADAR_SINTEL_PRODUZIONE",
   sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE",
   sater: "RADAR_SATER_PRODUZIONE",
+  // Fase 2 (decisione dell'utente del 26/11: TuttoGare in produzione), con la stessa regola
+  tuttogare: "RADAR_TUTTOGARE_PRODUZIONE",
 };
 const NOMI_FONTI: Record<FonteRadar, string> = { ted: "TED", pvl: "La PVL", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare" };
 

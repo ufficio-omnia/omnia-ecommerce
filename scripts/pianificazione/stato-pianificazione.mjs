@@ -16,6 +16,8 @@ export const ORARI_ATTESI = {
   sardegnacat: [{ ora: "08:20", giorni: "feriali" }, { ora: "11:20", giorni: "feriali" }, { ora: "14:20", giorni: "feriali" }, { ora: "17:20", giorni: "feriali" }, { ora: "12:20", giorni: "fine_settimana" }],
   // Fase 2 (26/11): SATER, copia di ORARI_GIRI.sater
   sater: [{ ora: "08:50", giorni: "feriali" }, { ora: "12:50", giorni: "feriali" }, { ora: "16:50", giorni: "feriali" }, { ora: "12:50", giorni: "fine_settimana" }],
+  // Fase 2 (26/11): TuttoGare, copia di ORARI_GIRI.tuttogare
+  tuttogare: [{ ora: "09:35", giorni: "feriali" }, { ora: "13:35", giorni: "feriali" }, { ora: "17:35", giorni: "feriali" }, { ora: "13:35", giorni: "fine_settimana" }],
 };
 
 const FMT = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short" });

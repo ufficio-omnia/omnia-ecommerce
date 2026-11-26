@@ -20,13 +20,12 @@ import type { SettoreRadar } from "./settori";
 import type { IdRegione } from "./territorio";
 import type { VersioneFonte } from "./unione-calcoli";
 
-// Fase 2: «tuttogare» (TuttoGare PA, molte istanze, in costruzione) è una fonte regionale per il motore, ma NON è gestita: fuori da console,
-// cron, programmatore e registro dei giri finché non ha la sua migrazione e l'autorizzazione dell'utente.
 export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare";
 
 // Le fonti regionali GESTITE da console e giri programmati. Fase 2: anche SATER (decisione dell'utente del 26/11: in produzione), con la
-// sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti). TuttoGare no (in costruzione).
-export const FONTI_REGIONALI = ["sintel", "sardegnacat", "sater"] as const satisfies readonly FonteRegionale[];
+// sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti). TuttoGare allo stesso modo (decisione
+// dell'utente del 26/11), con la riga della 0135.
+export const FONTI_REGIONALI = ["sintel", "sardegnacat", "sater", "tuttogare"] as const satisfies readonly FonteRegionale[];
 export type FonteRegionaleGestita = (typeof FONTI_REGIONALI)[number];
 
 export type BandoRegionale = {

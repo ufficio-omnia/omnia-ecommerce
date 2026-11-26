@@ -95,7 +95,7 @@ export const SOGLIE_ALLARMI = {
   divisioneAvvisiPerGiorno: 10,
 } as const;
 
-const NOME: Record<FonteEsecuzione, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER" };
+const NOME: Record<FonteEsecuzione, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare" };
 // giorni di calendario della finestra «da»–«a» (estremi compresi); 0 se non leggibile
 function giorniFinestra(da: unknown, a: unknown): number {
   if (typeof da !== "string" || typeof a !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(da) || !/^\d{4}-\d{2}-\d{2}$/.test(a)) return 0;
@@ -130,7 +130,7 @@ export function tipiSconosciuti(fonte: FonteEsecuzione, avvisi: Record<string, u
   }
   const esclusi = oggetto(a.esclusi);
   if (fonte === "sintel") return numero(esclusi.modalita_sconosciuta) > 0 ? [`modalita_sconosciuta×${numero(esclusi.modalita_sconosciuta)}`] : [];
-  if (fonte === "sardegnacat" || fonte === "sater") return numero(esclusi.tipo_sconosciuto) > 0 ? [`tipo_sconosciuto×${numero(esclusi.tipo_sconosciuto)}`] : [];
+  if (fonte === "sardegnacat" || fonte === "sater" || fonte === "tuttogare") return numero(esclusi.tipo_sconosciuto) > 0 ? [`tipo_sconosciuto×${numero(esclusi.tipo_sconosciuto)}`] : [];
   return [];
 }
 

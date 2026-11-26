@@ -75,6 +75,9 @@ const ETICHETTA_OGGETTO: Record<string, string> = {
   "fonte:sater:attiva": "Fonte SATER",
   "fonte:sater:nascosta_ai_clienti": "SATER nascosta ai clienti",
   "fonte:sater:giro": "Giro di SATER dalla console",
+  "fonte:tuttogare:attiva": "Fonte TuttoGare",
+  "fonte:tuttogare:nascosta_ai_clienti": "TuttoGare nascosta ai clienti",
+  "fonte:tuttogare:giro": "Giro di TuttoGare dalla console",
   "cliente:attivo": "Modulo per l'impresa",
   "gara:decisione_classificazione": "Decisione su una gara da verificare",
 };
@@ -527,7 +530,7 @@ export function catalogoFonti(dati: DatiTenderIntelligenceConsole) {
 
 // ───── Panoramica (/tender-intelligence): solo lettura, come va e che cosa c'è da fare ─────
 
-const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater"];
+const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"];
 
 export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
   const { parametri } = dati;

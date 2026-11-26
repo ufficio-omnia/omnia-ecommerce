@@ -230,8 +230,8 @@ export async function impostaImpresaRadar(_stato: StatoAzioneTi, formData: FormD
 // ───── fase B2a: fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione ─────
 
 const UUID_GARA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Le fonti regionali gestite dalla console: Sintel, SardegnaCAT e (Fase 2) SATER.
-const NOME_REGIONALE: Record<FonteRegionaleGestita, string> = { sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER" };
+// Le fonti regionali gestite dalla console: Sintel, SardegnaCAT e (Fase 2) SATER e TuttoGare.
+const NOME_REGIONALE: Record<FonteRegionaleGestita, string> = { sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare" };
 
 function fonteRegionale(v: FormDataEntryValue | null): FonteRegionaleGestita | null {
   const s = String(v ?? "");

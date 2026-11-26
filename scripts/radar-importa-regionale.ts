@@ -30,9 +30,8 @@ async function main() {
   const { controllaPorta } = await import(new URL(`file:///${registro.replace(/\\/g, "/").replace(/^\/+/, "")}/registro.mjs`).href);
   try { controllaPorta({ script: "radar-importa-regionale.ts" }); } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(2); }
 
-  // Fase 2: SATER è tra le fonti regionali (FONTI_REGIONALI); TuttoGare (in costruzione) SOLO da questo script, con un'autorizzazione
-  // registrata (non è tra le fonti di console e cron)
-  const ammesse: readonly FonteRegionale[] = [...FONTI_REGIONALI, "tuttogare"];
+  // Fase 2: SATER e TuttoGare sono tra le fonti regionali (FONTI_REGIONALI)
+  const ammesse: readonly FonteRegionale[] = FONTI_REGIONALI;
   const [fonte, a1] = process.argv.slice(2);
   if (!(ammesse as readonly string[]).includes(fonte ?? "")) {
     console.error(`Uso: <${ammesse.join("|")}> [richieste massime]`);

@@ -44,7 +44,8 @@ export const CANALE_TUTTOGARE = {
   // una gara già letta si rilegge se la sua riga della home cambia, o comunque dopo questi giorni (proroghe non visibili nella home)
   rileggiDopoGiorni: 7,
   // R4: norme tecniche senza licenza dei dati né divieto di riuso; riuso commerciale da far confermare all'avvocato (D.Lgs. 33/2013 art. 7)
-  attribuzione: "Piattaforme TuttoGare delle stazioni appaltanti (dati pubblicati dagli enti)",
+  // per il cliente senza il nome del software (indicazione del coordinamento del 26/11)
+  attribuzione: "Piattaforme telematiche delle stazioni appaltanti (dati pubblicati dagli enti)",
   licenza: "Da confermare: nessuna licenza dei dati né divieto di riuso nelle norme tecniche delle piattaforme (parere legale richiesto)",
 };
 

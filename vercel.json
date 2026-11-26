@@ -38,6 +38,10 @@
       "schedule": "50 6,7,10,11,14,15 * * *"
     },
     {
+      "path": "/api/cron/radar-tuttogare",
+      "schedule": "35 7,8,11,12,15,16 * * *"
+    },
+    {
       "path": "/api/cron/radar-promemoria",
       "schedule": "*/30 5-19 * * *"
     }
