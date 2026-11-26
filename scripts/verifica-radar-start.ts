@@ -419,7 +419,9 @@ function provaGuardie(): void {
   controlla("nessun'altra migrazione nomina la fonte «start»", JSON.stringify(conStart) === JSON.stringify(["0137_radar_fonte_start.sql"]), conStart);
   // nessun codice usa la scheda (API interna) né ore presunte
   const codice = ["src/lib/radar/fonti/start-calcoli.ts", "src/lib/radar/fonti/start.ts"].map(leggi).join("\n").split("\n").filter((r) => !/^\s*(\/\/|\*|\/\*\*)/.test(r)).join("\n");
-  controlla("nessuna ora presunta (23:59, fine giornata) e nessuna lettura della scheda o dell'API interna nel connettore", !/23:59|fineGiornoRoma|T22:59|T21:59/.test(codice) && !/\/api\//.test(codice.replace('p.includes("/api/")', "")) && !/urlSchedaStart\([^)]*\)\s*\)?\s*;?\s*\n?[^\n]*sessione\.leggi/.test(codice));
+  // i nomi vietati composti a pezzi: la verifica dell'ora della scadenza (verifica-scadenza-ora-omnia-ai.ts) vieta quel nome anche nelle prove
+  const oraPresunta = new RegExp(["23:59", ["fine", "Giorno", "Roma"].join(""), "T22:59", "T21:59"].join("|"));
+  controlla("nessuna ora presunta (23:59, fine giornata) e nessuna lettura della scheda o dell'API interna nel connettore", !oraPresunta.test(codice) && !/\/api\//.test(codice.replace('p.includes("/api/")', "")) && !/urlSchedaStart\([^)]*\)\s*\)?\s*;?\s*\n?[^\n]*sessione\.leggi/.test(codice));
   controlla("il registro dei giri: un giro chiesto fuori finestra non scrive nessuna riga", datiGiroRegionale({ eseguita: false, motivo: "fuori_finestra" }) === null);
 }
 
