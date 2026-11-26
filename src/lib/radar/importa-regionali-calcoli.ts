@@ -10,7 +10,8 @@
 //     piattaforma_id: così la stessa gara letta da TED (collegamento ai documenti) si riconosce con una chiave esatta.
 import type { BandoSintel } from "./fonti/sintel-calcoli";
 import type { BandoAflink } from "./fonti/aflink-calcoli";
-import type { ScadenzaTed } from "./fonti/ted-calcoli";
+import type { BandoIntercenter } from "./fonti/intercenter-calcoli";
+import { giornoDiRoma, type ScadenzaTed } from "./fonti/ted-calcoli";
 import type { RecordProcedura } from "./fonti/tipi";
 import { rigaDaBando, type RigaProcedura } from "./importa-calcoli";
 import { perArchivio, type OpportunitaArchivio } from "./opportunita-calcoli";
@@ -102,6 +103,35 @@ export function bandoDaAflink(b: BandoAflink, oggi: string): BandoRegionale | nu
     // il segnale «Bando Rettificato / In Rettifica» del feed non si perde più: arriva al registro come dichiarazione della fonte
     // «Procedura Ripristinata» (23/11, scelta (a) dell'utente): arriva all'unione, che può riportare la gara dallo stato «annullata»
     dichiarazione: b.ripristinato ? "ripristinato" : b.rettificato ? "rettificato" : null,
+  };
+}
+
+// SATER (Fase 2): un bando dell'API del portale Intercent-ER. L'identificativo è quello del collegamento «trovabando» (piattaforma_id e
+// chiave della gara); la versione è la data di modifica dell'elemento nel portale, o il giorno in cui OMNIA lo vede (come Sintel).
+export function bandoDaIntercenter(b: BandoIntercenter, oggi: string): BandoRegionale | null {
+  const opp = perArchivio(b.opportunita);
+  if (!opp) return null;
+  const id = b.meta.idProcedura;
+  const versione = b.meta.ultimaModifica ?? oggi;
+  return {
+    fonte: "sater",
+    idProcedura: id,
+    piattaformaId: b.meta.idPiattaforma,
+    versione: { fonte: "sater", id: `${id}@${versione}`, giorno: b.meta.ultimaModifica ? giornoDiRoma(new Date(b.meta.ultimaModifica)) : oggi, istante: b.meta.ultimaModifica, ted: null },
+    idCambiamento: `${id}@${versione}`.slice(0, 200),
+    record: b.record,
+    opportunita: opp,
+    settori: b.settori,
+    metodoSettore: b.metodoSettore,
+    regioni: b.regioni,
+    scadenzaFonte: b.scadenzaFonte,
+    lottiScadenze: b.lottiScadenze,
+    lottiDocumenti: b.lottiDocumenti,
+    tipoAvvisoFonte: b.record.tipoAvviso,
+    pubblicatoIl: b.record.dataPubblicazione,
+    mancanti: b.mancanti,
+    // l'elenco del portale non dichiara rettifiche: mai una dichiarazione
+    dichiarazione: null,
   };
 }
 

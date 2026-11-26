@@ -15,10 +15,12 @@ import { LIMITI_SINTEL_INTERVALLI, LIMITI_SINTEL_PREDEFINITI, leggiRigheSintel }
 import { LettoreSintel } from "./fonti/sintel";
 import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PREDEFINITI, bucoPossibileFeed, leggiElementiAflink, pubblicazionePiuVecchiaAflink } from "./fonti/aflink-calcoli";
 import { LettoreAflink } from "./fonti/aflink";
+import { LIMITI_INTERCENTER_INTERVALLI, LIMITI_INTERCENTER_PREDEFINITI, leggiElementiIntercenter } from "./fonti/intercenter-calcoli";
+import { LettoreIntercenter } from "./fonti/intercenter";
 import { giornoDiRoma } from "./fonti/ted-calcoli";
 import type { Misure } from "./importa";
 import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
-import { bandoDaAflink, bandoDaSintel, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
+import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
 import { datiGiroRegionale, eFonteEsecuzione, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, nuovoIdEsecuzione, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
@@ -110,7 +112,12 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   let invariataAllaFonte = false;
   let sospesa = false;
   let errore: string | null = null;
-  const limiti = fonte === "sintel" ? limitiValidi(opzioni.limiti, LIMITI_SINTEL_PREDEFINITI, LIMITI_SINTEL_INTERVALLI) : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
+  const limiti =
+    fonte === "sintel"
+      ? limitiValidi(opzioni.limiti, LIMITI_SINTEL_PREDEFINITI, LIMITI_SINTEL_INTERVALLI)
+      : fonte === "sater"
+        ? limitiValidi(opzioni.limiti, LIMITI_INTERCENTER_PREDEFINITI, LIMITI_INTERCENTER_INTERVALLI)
+        : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
   const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore);
   let datiDel: string | null = null;
   // K6: giro scritto per intero entro il tempo massimo; righe di Sintel uguali al conteggio della fonte; allarmi del giro
@@ -142,6 +149,26 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
           if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo === "esclusa_per_oggetto" && p.regole?.length ? `esclusa_per_oggetto:${p.regole.join("+")}` : p.motivo);
           else {
             const b = bandoDaSintel(p, oggi);
+            if (b) bandi.push(b);
+            else conta(stat.esclusi, "riservata");
+          }
+        }
+      }
+    } else if (fonte === "sater") {
+      // SATER (Fase 2): API del portale Intercent-ER, 3 cartelle. Un elenco più corto di quanto dichiara: allarme, si scrive quello che c'è
+      // (mai pagine indovinate). La stessa procedura in due cartelle si legge una volta sola (la prima nell'ordine delle cartelle)
+      const { cartelle } = await new LettoreIntercenter(sessione).leggiCartelle();
+      const visti = new Set<string>();
+      for (const { cartella, elementi, totaleDichiarato } of cartelle) {
+        if (totaleDichiarato !== null && totaleDichiarato > elementi.length && !allarmi.includes("conteggio_diverso")) allarmi.push("conteggio_diverso");
+        const letti = leggiElementiIntercenter(cartella, elementi, inizio);
+        stat.letti += letti.length;
+        for (const p of letti) {
+          if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo === "esclusa_per_oggetto" && p.regole?.length ? `esclusa_per_oggetto:${p.regole.join("+")}` : p.motivo);
+          else if (visti.has(p.meta.idPiattaforma)) conta(stat.esclusi, "doppione_tra_cartelle");
+          else {
+            visti.add(p.meta.idPiattaforma);
+            const b = bandoDaIntercenter(p, oggi);
             if (b) bandi.push(b);
             else conta(stat.esclusi, "riservata");
           }
