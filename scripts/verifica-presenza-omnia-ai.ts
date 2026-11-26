@@ -234,7 +234,7 @@ atteso("«Online adesso» dice di chi è un Ufficio Gare (azienda del titolare o
 const pannPagina = leggi("src/app/site-console/(app)/page.tsx");
 atteso("la Panoramica: pagina riservata agli amministratori, poi legge chi è online e lo passa alla vista", primaDi(pannPagina, "richiediAdminPagina()", "leggiOnlineAdesso()") && /online=\{online\}/.test(pannPagina));
 const schedaPagina = leggi("src/app/site-console/(app)/utenti/[id]/page.tsx");
-atteso("la scheda cliente: pagina riservata, presenza dell'utente e dell'Ufficio Gare (se è il titolare)", primaDi(schedaPagina, "richiediAdminPagina()", "leggiPresenzaUtente(id)") && /legameUfficioGare\?\.ruolo === "titolare" \? await leggiPresenzaUtente\(scheda\.legameUfficioGare\.ufficioGare\.id\)/.test(schedaPagina) && /presenza=\{presenza\} presenzaUfficioGare=\{presenzaUfficioGare\}/.test(schedaPagina));
+atteso("la scheda cliente: pagina riservata, presenza dell'utente e dell'Ufficio Gare (se è il titolare)", primaDi(schedaPagina, "richiediAdminPagina()", "leggiPresenzaUtente(id)") && /legameUfficioGare\?\.ruolo === "titolare" \? await Promise\.all\(scheda\.legameUfficioGare\.uffici\.map\(\(u\) => leggiPresenzaUtente\(u\.id\)\)\)/.test(schedaPagina) && /presenza=\{presenza\} presenzaUfficioGare=\{presenzaUfficioGare\}/.test(schedaPagina));
 const utentiLib = leggi("src/lib/console/utenti.ts");
 atteso("l'elenco utenti legge la presenza insieme al resto e funziona anche senza", /leggiPresenze\(\),\s*\]\);/.test(utentiLib) && /presenze: presenze\.righe/.test(utentiLib) && /presenzaDisponibile: presenze\.disponibile/.test(utentiLib));
 const utentiVista = leggi("src/app/site-console/_componenti/utenti-vista.tsx");
@@ -242,7 +242,7 @@ atteso("elenco utenti: colonna «Presenza», tessera e filtro «Online ora», no
 const pannVista = leggi("src/app/site-console/_componenti/panoramica-vista.tsx");
 atteso("Panoramica: tessera «Online adesso», tabella con ruolo, stato, sezione, in linea da, ultima attività; si aggiorna da sola", /etichetta="Online adesso"/.test(pannVista) && /<th>Dove si trova<\/th>/.test(pannVista) && /<th>In linea da<\/th>/.test(pannVista) && /<RicaricaAutomatica secondi=\{60\} \/>/.test(pannVista) && /Ufficio Gare di \{u\.ufficioGareDi\}/.test(pannVista));
 const schedaVista = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
-atteso("scheda cliente: riquadro Presenza per chi non è amministratore, e la presenza dell'Ufficio Gare nel suo riquadro", /\{s\.utente\.ruolo !== "admin" && \(\s*<div className="cn-sezione">\s*<PannelloPresenza presenza=\{presenza\} \/>/.test(schedaVista) && /<dt>Presenza<\/dt>/.test(schedaVista) && /presenzaUfficioGare\?\.disponibile/.test(schedaVista));
+atteso("scheda cliente: riquadro Presenza per chi non è amministratore, e la presenza dell'Ufficio Gare nel suo riquadro", /\{s\.utente\.ruolo !== "admin" && \(\s*<div className="cn-sezione">\s*<PannelloPresenza presenza=\{presenza\} \/>/.test(schedaVista) && /<dt>Presenza<\/dt>/.test(schedaVista) && /const presenzaUfficio = presenzaUfficioGare\?\.\[i\];/.test(schedaVista) && /presenzaUfficio\?\.disponibile/.test(schedaVista));
 atteso("la scheda cliente NON si ricarica da sola (ha dei moduli da compilare: si perderebbe ciò che si sta scrivendo)", !/RicaricaAutomatica/.test(schedaVista));
 const ricarica = senzaCommenti(leggi("src/app/site-console/_componenti/ricarica-automatica.tsx"));
 atteso(

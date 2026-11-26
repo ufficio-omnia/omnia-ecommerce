@@ -12,7 +12,21 @@ import { testoPerEmail } from "@/lib/html";
 import { aggiungiGiorni, mezzanotteRoma } from "@/lib/console/periodo";
 import { abbonamentiDaAnnullareSuStripe, eAnonimizzato, messaggioAbbonamentoDaAnnullare } from "@/lib/console/utenti-calcoli";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
-import { MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO, MESSAGGIO_E_UN_UFFICIO_GARE, leggiMembroDelTitolare, leggiTitolareDelMembro } from "@/lib/console/ufficio-gare";
+import { MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO, MESSAGGIO_E_UN_UFFICIO_GARE, leggiMembriDelTitolare, leggiTitolareDelMembro } from "@/lib/console/ufficio-gare";
+
+// Elimina gli Uffici Gare (letti dal database PRIMA di toccare il titolare) di un cliente appena eliminato o
+// anonimizzato. Restituisce gli identificativi che NON si sono potuti eliminare.
+async function eliminaMembriDelTitolare(admin: ReturnType<typeof createAdminClient>, membriDelTitolare: string[]): Promise<string[]> {
+  const nonEliminati: string[] = [];
+  for (const membroId of membriDelTitolare) {
+    const { error: erroreMembro } = await admin.auth.admin.deleteUser(membroId);
+    if (erroreMembro) {
+      console.error("Console: eliminazione di un Ufficio Gare del cliente fallita", membroId, erroreMembro.message);
+      nonEliminati.push(membroId);
+    }
+  }
+  return nonEliminati;
+}
 
 // Azioni sulla scheda cliente: rispondere, abbonamento a mano, eliminare e anonimizzare.
 // Ognuna parte da richiediAdminAzione(). Spostate dal vecchio pannello admin
@@ -180,10 +194,10 @@ export async function eliminaUtente(_stato: StatoAzioneUtente, formData: FormDat
 
   const admin = createAdminClient();
 
-  // L'Ufficio Gare di questo cliente (se c'è) va eliminato insieme a lui: la cascata del database toglie il legame ma
-  // NON l'utente, che resterebbe in giro come un account orfano. Lo si cerca PRIMA (dopo, il legame non c'è più).
-  const membroDelTitolare = await leggiMembroDelTitolare(bersaglio.id, admin);
-  if (membroDelTitolare === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+  // Gli Uffici Gare di questo cliente (se ci sono) vanno eliminati insieme a lui: la cascata del database toglie il legame ma
+  // NON l'utente, che resterebbe in giro come un account orfano. Si cercano PRIMA (dopo, il legame non c'è più).
+  const membriDelTitolare = await leggiMembriDelTitolare(bersaglio.id, admin);
+  if (membriDelTitolare === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
 
   const [ordiniPagati, incassiReali, creditiReali, revisioniReali, pianiLavoroReali, pacchettiReali, copertineReali] = await Promise.all([
     admin.from("orders").select("id", { count: "exact", head: true }).eq("user_id", bersaglio.id).eq("status", "pagato"),
@@ -217,14 +231,11 @@ export async function eliminaUtente(_stato: StatoAzioneUtente, formData: FormDat
 
   if (percorsi.length > 0) await admin.storage.from("invoices").remove(percorsi);
 
-  // Solo ora che il titolare è stato eliminato si toglie il suo Ufficio Gare (se il titolare non si fosse potuto eliminare, non si tocca nulla).
-  if (membroDelTitolare) {
-    const { error: erroreMembro } = await admin.auth.admin.deleteUser(membroDelTitolare);
-    if (erroreMembro) {
-      console.error("Console: eliminazione dell'Ufficio Gare del cliente eliminato fallita", membroDelTitolare, erroreMembro.message);
-      ricarica();
-      return { errore: `Il cliente è stato eliminato, ma il suo Ufficio Gare (id ${membroDelTitolare}) NO: eliminalo dall'elenco utenti.` };
-    }
+  // Solo ora che il titolare è stato eliminato si tolgono i suoi Uffici Gare (se il titolare non si fosse potuto eliminare, non si tocca nulla).
+  const nonEliminati = await eliminaMembriDelTitolare(admin, membriDelTitolare);
+  if (nonEliminati.length > 0) {
+    ricarica();
+    return { errore: `Il cliente è stato eliminato, ma questi suoi Uffici Gare NO (id ${nonEliminati.join(", ")}): eliminali dall'elenco utenti.` };
   }
 
   ricarica();
@@ -247,9 +258,9 @@ export async function anonimizzaUtente(_stato: StatoAzioneUtente, formData: Form
 
   const admin = createAdminClient();
 
-  // Anche qui l'Ufficio Gare del cliente non deve restare con l'accesso ai dati di un account anonimizzato.
-  const membroDelTitolare = await leggiMembroDelTitolare(bersaglio.id, admin);
-  if (membroDelTitolare === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
+  // Anche qui gli Uffici Gare del cliente non devono restare con l'accesso ai dati di un account anonimizzato.
+  const membriDelTitolare = await leggiMembriDelTitolare(bersaglio.id, admin);
+  if (membriDelTitolare === "errore") return { errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO };
 
   const emailAnonima = `cliente-anonimizzato-${bersaglio.id.slice(0, 8)}@omniaitalia.invalid`;
 
@@ -279,13 +290,10 @@ export async function anonimizzaUtente(_stato: StatoAzioneUtente, formData: Form
     return { errore: "Errore nella rimozione dei dati di fatturazione." };
   }
 
-  if (membroDelTitolare) {
-    const { error: erroreMembro } = await admin.auth.admin.deleteUser(membroDelTitolare);
-    if (erroreMembro) {
-      console.error("Console: eliminazione dell'Ufficio Gare del cliente anonimizzato fallita", membroDelTitolare, erroreMembro.message);
-      ricarica();
-      return { errore: `Il cliente è stato anonimizzato, ma il suo Ufficio Gare (id ${membroDelTitolare}) NON è stato eliminato: eliminalo dall'elenco utenti.` };
-    }
+  const nonEliminatiAnonimo = await eliminaMembriDelTitolare(admin, membriDelTitolare);
+  if (nonEliminatiAnonimo.length > 0) {
+    ricarica();
+    return { errore: `Il cliente è stato anonimizzato, ma questi suoi Uffici Gare NON sono stati eliminati (id ${nonEliminatiAnonimo.join(", ")}): eliminali dall'elenco utenti.` };
   }
 
   ricarica();

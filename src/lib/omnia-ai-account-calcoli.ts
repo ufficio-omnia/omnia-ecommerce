@@ -109,7 +109,10 @@ export const TESTO_CONSENSO_TITOLARE =
 
 // ───── stato dell'Ufficio Gare, visto dal titolare ─────
 
-export type StatoUfficioGare = "in_attesa" | "attivo" | "sospeso";
+// Quanti Uffici Gare può avere un titolare (migrazione 0136: lo stesso limite lo impone il database).
+export const MASSIMO_UFFICI_GARE = 3;
+
+export type StatoUfficioGare ="in_attesa" | "attivo" | "sospeso";
 
 // «In attesa»: l'accesso è stato creato ma la persona non è ancora mai entrata (non ha scelto la password).
 export function statoUfficioGare({ attivo, ultimoAccesso }: { attivo: boolean; ultimoAccesso: string | null }): StatoUfficioGare {

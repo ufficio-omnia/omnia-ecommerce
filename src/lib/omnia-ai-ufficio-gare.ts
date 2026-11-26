@@ -19,50 +19,51 @@ export type UfficioGare = {
   ultimoAccesso: string | null;
 };
 
-export type LetturaUfficioGare =
-  | { esito: "assente" }
-  | { esito: "presente"; ufficio: UfficioGare }
+export type LetturaUfficiGare =
+  // uffici vuoto = nessun Ufficio Gare; al massimo MASSIMO_UFFICI_GARE, dal più vecchio al più recente
+  | { esito: "ok"; uffici: UfficioGare[] }
   // la migrazione 0092 non è stata eseguita: nessun Ufficio Gare può esistere né essere creato
   | { esito: "schema_assente" }
   | { esito: "errore" };
 
 type RigaMembro = { membro_id: string; attivo: boolean; creato_il: string; invito_inviato_il: string };
 
-export async function leggiUfficioGare(titolareId: string, admin: SupabaseClient): Promise<LetturaUfficioGare> {
+export async function leggiUfficiGare(titolareId: string, admin: SupabaseClient): Promise<LetturaUfficiGare> {
   const { data, error } = await admin
     .from("omnia_ai_membri")
     .select("membro_id, attivo, creato_il, invito_inviato_il")
     .eq("titolare_id", titolareId)
     .eq("ruolo", "ufficio_gare")
-    .maybeSingle<RigaMembro>();
+    .order("creato_il", { ascending: true });
   if (error) {
     if (schemaAssente(error)) return { esito: "schema_assente" };
     console.error("Ufficio Gare: lettura non riuscita", error.code, error.message);
     return { esito: "errore" };
   }
-  if (!data) return { esito: "assente" };
 
-  const [{ data: utente }, accesso] = await Promise.all([
-    admin.from("users").select("email").eq("id", data.membro_id).maybeSingle<{ email: string }>(),
-    admin.auth.admin.getUserById(data.membro_id),
-  ]);
-  if (!utente) {
-    console.error("Ufficio Gare: riga dell'utente mancante per", data.membro_id);
-    return { esito: "errore" };
-  }
-  const ultimoAccesso = accesso.data?.user?.last_sign_in_at ?? null;
-  return {
-    esito: "presente",
-    ufficio: {
-      membroId: data.membro_id,
+  const righe = (data ?? []) as RigaMembro[];
+  const uffici: UfficioGare[] = [];
+  for (const riga of righe) {
+    const [{ data: utente }, accesso] = await Promise.all([
+      admin.from("users").select("email").eq("id", riga.membro_id).maybeSingle<{ email: string }>(),
+      admin.auth.admin.getUserById(riga.membro_id),
+    ]);
+    if (!utente) {
+      console.error("Ufficio Gare: riga dell'utente mancante per", riga.membro_id);
+      return { esito: "errore" };
+    }
+    const ultimoAccesso = accesso.data?.user?.last_sign_in_at ?? null;
+    uffici.push({
+      membroId: riga.membro_id,
       email: utente.email,
-      attivo: data.attivo,
-      stato: statoUfficioGare({ attivo: data.attivo, ultimoAccesso }),
-      creatoIl: data.creato_il,
-      invitoInviatoIl: data.invito_inviato_il,
+      attivo: riga.attivo,
+      stato: statoUfficioGare({ attivo: riga.attivo, ultimoAccesso }),
+      creatoIl: riga.creato_il,
+      invitoInviatoIl: riga.invito_inviato_il,
       ultimoAccesso,
-    },
-  };
+    });
+  }
+  return { esito: "ok", uffici };
 }
 
 // Genera il link per scegliere la password (stesso meccanismo dell'attivazione di tutti gli altri account:

@@ -36,7 +36,7 @@ export default async function PaginaSchedaCliente({
   const omaggi = await leggiOmaggiCliente(id);
   // Presenza nell'area riservata (migrazione 0094): dell'utente e, se questo cliente ha un Ufficio Gare, anche della sua.
   const presenza = await leggiPresenzaUtente(id);
-  const presenzaUfficioGare = scheda.stato === "ok" && scheda.legameUfficioGare?.ruolo === "titolare" ? await leggiPresenzaUtente(scheda.legameUfficioGare.ufficioGare.id) : null;
+  const presenzaUfficioGare = scheda.stato === "ok" && scheda.legameUfficioGare?.ruolo === "titolare" ? await Promise.all(scheda.legameUfficioGare.uffici.map((u) => leggiPresenzaUtente(u.id))) : null;
 
   return <SchedaClienteVista scheda={scheda} idSessione={sessione.userId} esito={esito} accessi={accessi} prova={prova} pilot={pilot} copertina={copertina} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} omaggi={omaggi} />;
 }
