@@ -9,15 +9,20 @@
 //   - per ogni bando l'elenco dei CIG dei lotti, la scadenza con l'ora in UTC e il collegamento permanente «trovabando», che è lo stesso
 //     collegamento (BT-15) riportato da PVL e TED: l'identificativo della procedura è esatto per costruzione.
 //
-// DA CONFERMARE prima di qualunque lettura (CANALE_INTERCENTER.confermato = false finché non arrivano le conferme):
-//   1. il canale: l'API del portale è davvero ammessa per questo uso e i percorsi delle 3 cartelle (oggi null);
-//   2. la licenza CC BY 4.0 copre i dati serviti dall'API;
-//   3. i NOMI dei campi propri del contenuto «bando» (CAMPI_INTERCENTER: quelli marcati «da confermare»). Quelli di Plone («@id», «title»,
-//      «description», «effective», «modified», «items», «items_total») sono dell'API documentata. Se i campi attesi mancano in TUTTI gli
-//      elementi, il formato è diverso da quello dichiarato: la fonte si sospende e non si scrive nulla (mai un campo indovinato).
+// Mappa dei campi: quella OSSERVATA dalla ricognizione R2 (sola lettura, 26/11; nomi riportati dal coordinamento il 27/11), marcata «visto
+// in R2». È l'uscita di un modello, quindi resta DICHIARATA e da confermare su un campione vero (passo autorizzato). Quelli di Plone
+// («@id», «title», «description», «effective», «modified», «items», «items_total», «batching») sono dell'API documentata.
 //
-// Dati personali: il dettaglio dei bandi contiene i referenti; qui si leggono SOLO i campi elencati in CAMPI_INTERCENTER (gli altri si
-// scartano subito, elementoIntercenterDaGrezzo) e il dettaglio non si legge mai.
+// DA CONFERMARE prima di qualunque lettura (CANALE_INTERCENTER.confermato = false finché non arrivano le conferme):
+//   1. il canale: l'API del portale è davvero ammessa per questo uso, con i percorsi delle 3 cartelle e l'indirizzo dell'elenco visti in R2;
+//   2. la licenza CC BY 4.0 copre i dati serviti dall'API;
+//   3. i nomi dei campi su un campione vero, e due corrispondenze DEDOTTE da R2 (non viste): «id_intercenter» = numero del collegamento
+//      «trovabando» (BANDO_GARA_PORTALE@<numero>, il BT-15 di PVL e TED) = IdMsg del feed AF Soluzioni.
+// Se i campi attesi mancano in TUTTI gli elementi, il formato non è quello dichiarato: la fonte si sospende e non si scrive nulla.
+//
+// Nell'elenco NON ci sono CPV né importo (R2): la classificazione è sul testo (regole comuni) e il valore resta mancante. Il dettaglio
+// (~60 KB per bando, con importo, CPV in codice interno e i dati personali dei referenti) NON si legge mai: qui si leggono SOLO i campi
+// elencati in CAMPI_INTERCENTER, gli altri si scartano subito (elementoIntercenterDaGrezzo).
 import { classificaGara, type SettoreRadar } from "../settori";
 import { maiuscoleIniziali, type IdRegione } from "../territorio";
 import { entraInOpportunita, opportunitaAflink, type Opportunita } from "../opportunita-calcoli";
@@ -35,43 +40,57 @@ export type CartellaIntercenter = {
   nome: "bandi_altri_enti" | "avvisi_altri_enti" | "bandi_intercenter";
   // il tipo dell'avviso, dalla cartella (bandi / avvisi e indagini): quello che nel feed AF Soluzioni è «Tipo»
   tipo: "Bando" | "Avviso";
-  // percorso della cartella nel portale (dopo «/++api++/»): DA CONFERMARE, null = la cartella non si legge
+  // percorso della cartella nel portale (dopo «/++api++/»), visto in R2; null = la cartella non si legge
   percorso: string | null;
 };
 
 export const CANALE_INTERCENTER = {
   // le tre conferme sopra (canale, licenza, nomi dei campi): finché è false il lettore si ferma prima di qualunque richiesta
   confermato: false as boolean,
+  // le 3 cartelle degli avvisi APERTI viste in R2 (voci: 238, 6, 7). Le cartelle «chiusi», «in corso» e «consultazioni preliminari» no
   cartelle: [
-    { nome: "bandi_altri_enti", tipo: "Bando", percorso: null },
-    { nome: "avvisi_altri_enti", tipo: "Avviso", percorso: null },
-    { nome: "bandi_intercenter", tipo: "Bando", percorso: null },
+    { nome: "bandi_altri_enti", tipo: "Bando", percorso: "bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-bandi-e-procedure-di-gara/bandi-altri-enti-aperti" },
+    { nome: "avvisi_altri_enti", tipo: "Avviso", percorso: "bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-avvisi-e-indagini-di-mercato/avvisi-altri-enti-aperti" },
+    { nome: "bandi_intercenter", tipo: "Bando", percorso: "bandi-e-strumenti-di-acquisto/bandi-intercenter/bandi-e-procedure-di-gara/bandi-aperti" },
   ] as readonly CartellaIntercenter[],
-  // elementi per richiesta: uno solo per cartella (R2: 238 voci nella cartella più grande). Oltre: allarme, mai pagine indovinate
-  elementiPerRichiesta: 1000,
+  // elementi per richiesta (b_size, come in R2): una pagina per cartella (la più grande ha 238 voci). Più voci: allarme, mai altre pagine
+  elementiPerRichiesta: 500,
   regione: "emilia_romagna" as IdRegione,
   attribuzione: "Agenzia regionale Intercent-ER – SATER, Regione Emilia-Romagna (dati del portale, licenza CC BY 4.0)",
   licenza: "CC BY 4.0 dichiarata nelle note legali di Intercent-ER (da confermare per i dati serviti dall'API)",
 };
 
-// I campi letti di ogni elemento. «plone» = dell'API documentata di Plone; «da_confermare» = del contenuto «bando» del portale, con il nome
-// dichiarato qui e da confermare con la prima lettura autorizzata (uno solo per campo: nessun nome alternativo provato a caso).
+// I campi letti di ogni elemento. «plone» = dell'API documentata di Plone; «visto_r2» = del contenuto «bando» del portale, con il nome visto
+// nella ricognizione R2 (da confermare su un campione vero; uno solo per campo: nessun nome alternativo provato a caso).
 export const CAMPI_INTERCENTER = {
   url: { nome: "@id", origine: "plone" },
   titolo: { nome: "title", origine: "plone" },
   descrizione: { nome: "description", origine: "plone" },
   pubblicazione: { nome: "effective", origine: "plone" },
   modifica: { nome: "modified", origine: "plone" },
-  ente: { nome: "ente", origine: "da_confermare" },
-  cig: { nome: "cig", origine: "da_confermare" },
-  scadenza: { nome: "scadenza", origine: "da_confermare" },
-  collegamento: { nome: "link_trovabando", origine: "da_confermare" },
-  importo: { nome: "importo", origine: "da_confermare" },
+  id: { nome: "id_intercenter", origine: "visto_r2" },
+  ente: { nome: "ente_bando", origine: "visto_r2" },
+  cig: { nome: "cig", origine: "visto_r2" },
+  scadenza: { nome: "scadenza_bando", origine: "visto_r2" },
+  tipologia: { nome: "tipologia_bando_intercenter", origine: "visto_r2" },
+  stato: { nome: "bando_state", origine: "visto_r2" },
 } as const;
 export type CampoIntercenter = keyof typeof CAMPI_INTERCENTER;
 
 // senza questi un elemento non si legge; se mancano in TUTTI il formato non è quello dichiarato e la fonte si sospende
-export const CAMPI_INTERCENTER_OBBLIGATORI: readonly CampoIntercenter[] = ["url", "titolo", "scadenza", "collegamento"];
+export const CAMPI_INTERCENTER_OBBLIGATORI: readonly CampoIntercenter[] = ["url", "titolo", "scadenza", "id"];
+
+// Collegamento permanente «trovabando» (BT-15) di una procedura SATER: la FORMA è quella vista in R2 (LINK_BT15_CALCOLATO del dettaglio,
+// 302 verso la scheda); che il numero sia «id_intercenter» è DEDOTTO (da confermare sul campione vero).
+export function collegamentoTrovabando(numero: string): string | null {
+  return /^\d{1,12}$/.test(numero) ? `${PORTALE_INTERCENTER}/trovabando/BANDO_GARA_PORTALE@${numero}` : null;
+}
+
+// «id_intercenter»: «BANDO_GARA_PORTALE@<numero>» o il solo numero → il numero; altro → null (mai un identificativo indovinato).
+export function numeroIntercenter(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : typeof v === "number" && Number.isInteger(v) ? String(v) : "";
+  return s.match(/^(?:BANDO_GARA_PORTALE@)?(\d{1,12})$/)?.[1] ?? null;
+}
 
 export const LIMITI_INTERCENTER_PREDEFINITI: LimitiFonte = { pausaMs: 5_000, timeoutMs: 60_000, tentativi: 2, richiesteMassime: 4 };
 export const LIMITI_INTERCENTER_INTERVALLI: Record<keyof LimitiFonte, { min: number; max: number }> = {
@@ -84,7 +103,7 @@ export const LIMITI_INTERCENTER_INTERVALLI: Record<keyof LimitiFonte, { min: num
 /** L'indirizzo dell'elenco di una cartella (API REST di Plone), o null se il percorso non è confermato. */
 export function urlCartellaIntercenter(c: CartellaIntercenter): string | null {
   if (!c.percorso || !/^[a-z0-9][a-z0-9\-/]{0,200}$/.test(c.percorso) || c.percorso.includes("..")) return null;
-  return `${PORTALE_INTERCENTER}/++api++/${c.percorso}?b_size=${CANALE_INTERCENTER.elementiPerRichiesta}&fullobjects=1`;
+  return `${PORTALE_INTERCENTER}/++api++/${c.percorso}?b_size=${CANALE_INTERCENTER.elementiPerRichiesta}&metadata_fields=_all`;
 }
 
 // ───── busta dell'API di Plone ─────
@@ -147,19 +166,24 @@ export function cigIntercenter(v: unknown): string[] {
   return out.slice(0, 200);
 }
 
-export function importoIntercenter(v: unknown): number | null {
-  const n = typeof v === "number" ? v : typeof v === "string" && /^\d+(\.\d{1,4})?$/.test(v.trim()) ? Number(v.trim()) : NaN;
-  return Number.isFinite(n) && n > 0 && n < 1e12 ? Math.round(n * 100) / 100 : null;
-}
-
-function urlHttps(v: unknown): string | null {
+// La pagina dell'elemento nel portale («@id»): https e SOLO sull'host del portale; senza «/++api++» (la pagina pubblica, non l'API).
+export function paginaIntercenter(v: unknown): string | null {
   const s = typeof v === "string" ? v.trim() : "";
   if (!/^https:\/\//i.test(s) || s.length > 2000) return null;
   try {
-    return new URL(s).toString();
+    const u = new URL(s);
+    if (u.hostname.toLowerCase() !== new URL(PORTALE_INTERCENTER).hostname) return null;
+    u.pathname = u.pathname.replace(/^\/\+\+api\+\+(?=\/|$)/, "") || "/";
+    return u.toString();
   } catch {
     return null;
   }
+}
+
+// «Bando» o «Avviso» dichiarato dall'elemento (tipologia_bando_intercenter); altro o assente → null (vale allora la cartella).
+export function tipologiaIntercenter(v: unknown): "Bando" | "Avviso" | null {
+  const t = typeof v === "string" ? v.trim().toLowerCase() : "";
+  return t === "bando" ? "Bando" : t === "avviso" ? "Avviso" : null;
 }
 
 // ───── un elemento → bando o esclusione ─────
@@ -168,11 +192,13 @@ export type MotivoEsclusioneIntercenter = "elemento_malformato" | "senza_identif
 
 export type MetaIntercenter = {
   cartella: CartellaIntercenter["nome"];
-  // identificativo della procedura su SATER (dal collegamento «trovabando»): «sater:<numero>»
+  // identificativo della procedura su SATER («id_intercenter» → numero del «trovabando»): «sater:<numero>»
   idPiattaforma: string;
   idProcedura: string;
   // versione: data di modifica dell'elemento nel portale (Plone «modified»), se c'è
   ultimaModifica: string | null;
+  // stato dichiarato dal portale («bando_state»), così com'è: non si interpreta (i valori non sono noti), entra solo nell'impronta
+  stato: string;
 };
 
 export type BandoIntercenter = {
@@ -194,13 +220,16 @@ export type EsclusioneIntercenter = { tipo: "esclusione"; meta: MetaIntercenter 
 export type ElementoIntercenterLetto = BandoIntercenter | EsclusioneIntercenter;
 
 export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: ElementoIntercenter, adesso: Date): ElementoIntercenterLetto {
-  if (!urlHttps(e.url)) return { tipo: "esclusione", meta: null, motivo: "elemento_malformato" };
-  // identità: SOLO dal collegamento permanente «trovabando» (lo stesso di PVL e TED); senza, la gara non si scrive (mai una chiave inventata)
-  const collegamento = urlHttps(e.collegamento);
+  const pagina = paginaIntercenter(e.url);
+  if (!pagina) return { tipo: "esclusione", meta: null, motivo: "elemento_malformato" };
+  // identità: SOLO da «id_intercenter» (numero del collegamento permanente «trovabando», il BT-15 di PVL e TED); senza, la gara non si scrive
+  // (mai una chiave inventata). Il collegamento costruito deve tornare lo stesso identificativo con la regola dei connettori
+  const numero = numeroIntercenter(e.id);
+  const collegamento = numero ? collegamentoTrovabando(numero) : null;
   const idPiattaforma = idPiattaformaDaUrlConnettore(collegamento);
-  if (!collegamento || !idPiattaforma || !idPiattaforma.startsWith("sater:")) return { tipo: "esclusione", meta: null, motivo: "senza_identificativo" };
+  if (!numero || !collegamento || idPiattaforma !== `sater:${numero}`) return { tipo: "esclusione", meta: null, motivo: "senza_identificativo" };
   const modifica = typeof e.modifica === "string" && !Number.isNaN(Date.parse(e.modifica)) ? new Date(e.modifica).toISOString() : null;
-  const meta: MetaIntercenter = { cartella: cartella.nome, idPiattaforma, idProcedura: idPiattaforma.slice("sater:".length), ultimaModifica: modifica };
+  const meta: MetaIntercenter = { cartella: cartella.nome, idPiattaforma, idProcedura: numero, ultimaModifica: modifica, stato: testo(e.stato, 40) };
   const esclusione = (motivo: MotivoEsclusioneIntercenter): EsclusioneIntercenter => ({ tipo: "esclusione", meta, motivo });
 
   const titolo = testo(e.titolo);
@@ -208,10 +237,12 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
   if (!titolo) return esclusione("senza_oggetto");
   const testoGara = [titolo, descrizione].filter(Boolean).join(" ");
 
-  // tipo dalla cartella; procedura SOLO se dichiarata nell'oggetto (l'elenco non ha un campo procedura): come le istanze AF Soluzioni nuove
-  const procedura = cartella.tipo === "Bando" ? proceduraDallOggettoAflink(testoGara) : null;
-  const proceduraIgnota = cartella.tipo === "Bando" && !procedura;
-  const opp = opportunitaAflink(cartella.tipo, procedura ?? (proceduraIgnota ? "Aperta" : ""), titolo);
+  // tipo dichiarato dall'elemento (tipologia_bando_intercenter), altrimenti quello della cartella; procedura SOLO se dichiarata nell'oggetto
+  // (l'elenco non ha un campo procedura): come le istanze AF Soluzioni nuove
+  const tipo = tipologiaIntercenter(e.tipologia) ?? cartella.tipo;
+  const procedura = tipo === "Bando" ? proceduraDallOggettoAflink(testoGara) : null;
+  const proceduraIgnota = tipo === "Bando" && !procedura;
+  const opp = opportunitaAflink(tipo, procedura ?? (proceduraIgnota ? "Aperta" : ""), titolo);
   if (!opp) return esclusione("tipo_sconosciuto");
   if (opp.tipo === "affidamento_diretto") return esclusione("affidamento");
   if (!entraInOpportunita(opp)) return esclusione("riservata");
@@ -228,12 +259,12 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
   const settoriTenuti = settoriDopoNatura(classificazione, null);
   if (settoriTenuti.length === 0) return esclusione("fuori_settore");
 
-  const valoreBase = importoIntercenter(e.importo);
-  if (valoreBase === null) mancanti.push("valore");
+  // l'elenco non dà l'importo (R2): valore mancante, mai preso dal dettaglio (che contiene anche i dati personali dei referenti)
+  mancanti.push("valore");
   const cig = cigIntercenter(e.cig);
   if (cig.length === 0) mancanti.push("cig");
-  // un CIG = un lotto noto (numero d'ordine, senza oggetto: l'elenco non lo dà); l'importo resta della procedura
-  const lotti: RecordLotto[] = cig.map((c, i) => ({ cig: c, numero: `LOT-${String(i + 1).padStart(4, "0")}`, oggetto: null, cpvPrincipale: null, cpvTutti: [], valoreStimato: null, valoreBase: cig.length === 1 ? valoreBase : null, oneriSicurezza: null, durataMesi: null, opzioniRinnovi: null }));
+  // un CIG = un lotto noto (numero d'ordine, senza oggetto: l'elenco non lo dà)
+  const lotti: RecordLotto[] = cig.map((c, i) => ({ cig: c, numero: `LOT-${String(i + 1).padStart(4, "0")}`, oggetto: null, cpvPrincipale: null, cpvTutti: [], valoreStimato: null, valoreBase: null, oneriSicurezza: null, durataMesi: null, opzioniRinnovi: null }));
 
   const denominazione = testo(e.ente, 500) || null;
   const comune = denominazione?.match(/^comune di\s+(.+)$/i)?.[1] ?? null;
@@ -246,7 +277,7 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
     oggetto: titolo.slice(0, 4000),
     descrizione: descrizione || null,
     ente: { codiceFiscale: null, denominazione, comune: comune ? maiuscoleIniziali(comune) : null, provincia: null, regione: CANALE_INTERCENTER.regione, luogoIstat: null, nuts: null },
-    tipoAvviso: cartella.tipo,
+    tipoAvviso: tipo,
     tipoProcedura: tipoProceduraAflink(procedura),
     criterioAggiudicazione: null,
     natura: null,
@@ -256,18 +287,19 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
     scadenzaOfferte: scadenza?.iso ?? null,
     scadenzaOraIndicata: scadenza?.oraIndicata ?? false,
     valoreStimato: null,
-    valoreBase,
+    valoreBase: null,
     oneriSicurezza: null,
     durataMesi: null,
     annullata: false,
-    urlAvviso: collegamento,
+    // la pagina del bando nel portale (vista) e il collegamento permanente «trovabando» (BT-15, lo stesso di PVL e TED)
+    urlAvviso: pagina,
     urlDocumenti: collegamento,
     cpvPrincipale: null,
     cpvTutti: [],
     lotti,
     impronta: "",
   };
-  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti, opportunita: opp.tipo });
+  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti, stato: meta.stato, opportunita: opp.tipo });
 
   return {
     tipo: "bando",
