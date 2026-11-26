@@ -1,7 +1,7 @@
 // SATER (Fase 2, documento 60): elenchi dei bandi del PORTALE Intercent-ER tramite l'API REST di Plone («++api++»). Logica pura: nessuna
 // rete, nessun database. La rete è in intercenter.ts, la scrittura nel motore di unione unico (importa-regionali.ts).
 //
-// Perché questo canale (ricognizione R2 del 26/11, allegati/60/R2_sater_start.md; CONFERMATO su un campione vero, addendum 60C del 27/11):
+// Perché questo canale (ricognizione R2 del 26/11, allegati/60/R2_sater_start.md; CONFERMATO su un campione vero, addendum 60C del 26/11):
 //   - è PUBBLICATO dal portale stesso (Plone 6 / Volto espone l'API «++api++»), robots.txt la permette, e i dati del portale sono in licenza
 //     CC BY 4.0 «per qualsiasi fine, anche commerciale», con l'obbligo di ATTRIBUZIONE (note legali di Intercent-ER; nessuna condizione
 //     sull'API): nessun indirizzo ricavato per analogia;

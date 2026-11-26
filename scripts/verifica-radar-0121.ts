@@ -183,7 +183,7 @@ async function principale() {
     const DEL_SITO = ["0130_copertina_vendita_pacchetti.sql", "0131_omnia_ai_gare_omaggio.sql"];
     const migrazioni = fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01[2-9]\d_/.test(f) && !DEL_SITO.includes(f));
     // fase B4 (19/11): dopo la 0121 solo le B4 0122–0125 del 26B; Z5 (21/11): più la 0128 (registro dei giri); 49A (23/11, sessione PVL):
-    // più la 0133 (stato «da_verificare», schema S4, numero assegnato dal coordinamento), esattamente queste; Fase 2 (27/11, connettore
+    // più la 0133 (stato «da_verificare», schema S4, numero assegnato dal coordinamento), esattamente queste; Fase 2 (26/11, connettore
     // SATER): più la 0134 PROPOSTA (fonte «sater» nel registro dei giri e nello stato delle fonti), mai applicata
     uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo), poi le sole B4 0122–0125, la 0128, la 0133 e la 0134 di SATER", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql", "0122_radar_profili_per_te.sql", "0123_radar_aggiornamenti_evidenza.sql", "0124_radar_avvisi_preferenze.sql", "0125_radar_avvisi_eventi_coda.sql", "0128_radar_esecuzioni.sql", "0133_radar_classificazioni_da_verificare.sql", "0134_radar_fonte_sater.sql"]);
   }
