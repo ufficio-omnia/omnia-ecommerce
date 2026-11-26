@@ -27,7 +27,7 @@ import {
   validaInvitoUfficioGare,
   vociMenuPer,
 } from "../src/lib/omnia-ai-account-calcoli";
-import { leggiUfficioGare, mandaLinkPasswordUfficioGare } from "../src/lib/omnia-ai-ufficio-gare";
+import { leggiUfficiGare, mandaLinkPasswordUfficioGare } from "../src/lib/omnia-ai-ufficio-gare";
 import { ErroreContestoAccount, eUfficioGare, risolviContestoAccount } from "../src/lib/omnia-ai-account";
 import {
   URL_ABBONAMENTO,
@@ -259,6 +259,16 @@ async function main() {
   atteso("la funzione del titolare effettivo ignora i membri sospesi", /m\.membro_id = auth\.uid\(\) and m\.attivo/.test(senzaCommenti));
   atteso("la funzione del titolare effettivo ha un percorso di ricerca fisso e non è eseguibile da tutti", /omnia_ai_titolare_effettivo\(\)\s+returns uuid\s+language sql\s+stable\s+security definer\s+set search_path = public/.test(senzaCommenti) && /revoke all on function public\.omnia_ai_titolare_effettivo\(\) from public;/.test(senzaCommenti));
   atteso("un solo utente per ruolo e per titolare (indice unico)", /create unique index if not exists omnia_ai_membri_un_ruolo_per_titolare on public\.omnia_ai_membri \(titolare_id, ruolo\)/.test(senzaCommenti));
+  {
+    const m136 = leggi("supabase/migrations/0136_omnia_ai_uffici_gare_tre.sql").replace(/--[^\n]*/g, "");
+    atteso("0136: trigger che rifiuta il quarto Ufficio Gare dello stesso titolare", /\) >= 3 then\s+raise exception/.test(m136) && /create trigger omnia_ai_membri_massimo_tre\s+before insert or update of titolare_id, ruolo on public\.omnia_ai_membri/.test(m136));
+    atteso("0136: due inserimenti contemporanei per lo stesso titolare si mettono in fila", /pg_advisory_xact_lock\(hashtext\('omnia_ai_membri:' \|\| new\.titolare_id::text\)\)/.test(m136));
+    atteso("0136: il conteggio esclude la riga stessa (una modifica non conta doppio)", m136.includes("m.membro_id is distinct from new.membro_id") && m136.includes("m.ruolo = new.ruolo"));
+    atteso("0136: il rifiuto usa il codice 23505 (il codice lo traduce in «hai già il massimo»)", m136.includes("errcode = '23505'"));
+    atteso("0136: l'indice unico si toglie DOPO aver creato il trigger (mai un momento senza limite)", m136.indexOf("create trigger omnia_ai_membri_massimo_tre") !== -1 && m136.indexOf("create trigger omnia_ai_membri_massimo_tre") < m136.indexOf("drop index if exists public.omnia_ai_membri_un_ruolo_per_titolare"));
+    atteso("0136: nessuna cancellazione di dati e nessuna regola di accesso toccata", !/\b(delete from|truncate|drop table|drop column|policy)\b/i.test(m136));
+    atteso("il limite nel codice è lo stesso del database (3)", leggi("src/lib/omnia-ai-account-calcoli.ts").includes("export const MASSIMO_UFFICI_GARE = 3;"));
+  }
   atteso("il membro non può essere il proprio titolare (vincolo)", /check \(membro_id <> titolare_id\)/.test(senzaCommenti));
   atteso("trigger contro le catene, su inserimento e modifica", /create trigger omnia_ai_membri_no_catene\s+before insert or update of membro_id, titolare_id on public\.omnia_ai_membri/.test(senzaCommenti));
   atteso("la tabella dei membri ha la RLS e solo la lettura per authenticated", /alter table public\.omnia_ai_membri enable row level security/.test(senzaCommenti) && /grant select on public\.omnia_ai_membri to authenticated;/.test(senzaCommenti) && !/grant[^;]*(insert|update|delete)[^;]*public\.omnia_ai_membri to authenticated/.test(senzaCommenti));
@@ -292,7 +302,7 @@ async function main() {
   console.log("--- Lettura dell'Ufficio Gare ---");
   type Membro = { membro_id: string; attivo: boolean; creato_il: string; invito_inviato_il: string };
   type Opzioni = {
-    membro?: { data: Membro | null; error: { code?: string; message: string } | null };
+    membro?: { data: Membro | Membro[] | null; error: { code?: string; message: string } | null };
     utente?: { email: string } | null;
     ultimoAccesso?: string | null;
     link?: { token?: string | null; errore?: string };
@@ -311,8 +321,18 @@ async function main() {
             chiamate.push(`${tabella}.eq(${colonna}=${valore})`);
             return catena;
           },
+          order: (colonna: string, opzioni: { ascending: boolean }) => {
+            chiamate.push(`${tabella}.order(${colonna},${opzioni.ascending ? "asc" : "desc"})`);
+            return catena;
+          },
+          // omnia_ai_membri si legge come elenco: «membro» può essere una riga sola o già un elenco
+          then: (risolvi: (r: unknown) => unknown, rifiuta?: (e: unknown) => unknown) => {
+            const r = o.membro ?? { data: null, error: null };
+            const elenco = r.error ? r : { data: r.data === null ? [] : Array.isArray(r.data) ? r.data : [r.data], error: null };
+            return Promise.resolve(elenco).then(risolvi, rifiuta);
+          },
           maybeSingle: async () => {
-            if (tabella === "omnia_ai_membri") return o.membro ?? { data: null, error: null };
+            if (tabella === "omnia_ai_membri") throw new Error("omnia_ai_membri si legge come elenco, non con maybeSingle");
             if (tabella === "users") return { data: o.utente ?? null, error: null };
             if (tabella === "companies") return { data: o.azienda === undefined ? null : { ragione_sociale: o.azienda }, error: null };
             throw new Error(`tabella inattesa: ${tabella}`);
@@ -334,43 +354,50 @@ async function main() {
         },
       },
     };
-    return { chiamate, admin: admin as unknown as Parameters<typeof leggiUfficioGare>[1] };
+    return { chiamate, admin: admin as unknown as Parameters<typeof leggiUfficiGare>[1] };
   }
   const riga: Membro = { membro_id: "M1", attivo: true, creato_il: "2026-10-10T08:00:00Z", invito_inviato_il: "2026-10-10T08:00:00Z" };
   {
     const { admin, chiamate } = fintoAdmin({ membro: { data: null, error: null } });
-    uguale("nessun Ufficio Gare: «assente»", await leggiUfficioGare("T1", admin), { esito: "assente" });
+    uguale("nessun Ufficio Gare: elenco vuoto", await leggiUfficiGare("T1", admin), { esito: "ok", uffici: [] });
     uguale(
       "lo cerca per titolare e ruolo, nella tabella giusta",
       chiamate,
-      ["omnia_ai_membri.select(membro_id, attivo, creato_il, invito_inviato_il)", "omnia_ai_membri.eq(titolare_id=T1)", "omnia_ai_membri.eq(ruolo=ufficio_gare)"],
+      ["omnia_ai_membri.select(membro_id, attivo, creato_il, invito_inviato_il)", "omnia_ai_membri.eq(titolare_id=T1)", "omnia_ai_membri.eq(ruolo=ufficio_gare)", "omnia_ai_membri.order(creato_il,asc)"],
     );
   }
   {
     const { admin, chiamate } = fintoAdmin({ membro: { data: riga, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: null });
-    const l = await leggiUfficioGare("T1", admin);
-    uguale("presente, mai entrato: in attesa", l.esito === "presente" ? [l.ufficio.membroId, l.ufficio.email, l.ufficio.stato, l.ufficio.ultimoAccesso] : l, ["M1", "gare@azienda.it", "in_attesa", null]);
+    const l = await leggiUfficiGare("T1", admin);
+    uguale("presente, mai entrato: in attesa", l.esito === "ok" ? l.uffici.map((u) => [u.membroId, u.email, u.stato, u.ultimoAccesso]) : l, [["M1", "gare@azienda.it", "in_attesa", null]]);
     atteso("legge l'email dalla riga dell'utente e l'ultimo accesso dall'autenticazione", chiamate.includes("users.eq(id=M1)") && chiamate.includes("getUserById(M1)"));
   }
   {
     const { admin } = fintoAdmin({ membro: { data: riga, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: "2026-10-12T09:30:00Z" });
-    const l = await leggiUfficioGare("T1", admin);
-    uguale("presente, già entrato: attivo, con la data dell'ultimo accesso", l.esito === "presente" ? [l.ufficio.stato, l.ufficio.ultimoAccesso] : l, ["attivo", "2026-10-12T09:30:00Z"]);
+    const l = await leggiUfficiGare("T1", admin);
+    uguale("presente, già entrato: attivo, con la data dell'ultimo accesso", l.esito === "ok" ? l.uffici.map((u) => [u.stato, u.ultimoAccesso]) : l, [["attivo", "2026-10-12T09:30:00Z"]]);
   }
   {
     const { admin } = fintoAdmin({ membro: { data: { ...riga, attivo: false }, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: "2026-10-12T09:30:00Z" });
-    const l = await leggiUfficioGare("T1", admin);
-    uguale("presente e sospeso: sospeso", l.esito === "presente" ? [l.ufficio.stato, l.ufficio.attivo] : l, ["sospeso", false]);
+    const l = await leggiUfficiGare("T1", admin);
+    uguale("presente e sospeso: sospeso", l.esito === "ok" ? l.uffici.map((u) => [u.stato, u.attivo]) : l, [["sospeso", false]]);
+  }
+  {
+    const tre = [riga, { ...riga, membro_id: "M2" }, { ...riga, membro_id: "M3", attivo: false }];
+    const { admin, chiamate } = fintoAdmin({ membro: { data: tre, error: null }, utente: { email: "gare@azienda.it" }, ultimoAccesso: null });
+    const l = await leggiUfficiGare("T1", admin);
+    uguale("tre Uffici Gare: tutti e tre, nell'ordine, ognuno col suo stato", l.esito === "ok" ? l.uffici.map((u) => [u.membroId, u.stato]) : l, [["M1", "in_attesa"], ["M2", "in_attesa"], ["M3", "sospeso"]]);
+    atteso("per ognuno legge email e ultimo accesso", ["M1", "M2", "M3"].every((id) => chiamate.includes(`users.eq(id=${id})`) && chiamate.includes(`getUserById(${id})`)));
   }
   for (const codice of ["42P01", "PGRST205"]) {
     const { admin } = fintoAdmin({ membro: { data: null, error: { code: codice, message: "assente" } } });
-    uguale(`tabella assente (${codice}): «schema_assente»`, await leggiUfficioGare("T1", admin), { esito: "schema_assente" });
+    uguale(`tabella assente (${codice}): «schema_assente»`, await leggiUfficiGare("T1", admin), { esito: "schema_assente" });
   }
   {
     const { admin } = fintoAdmin({ membro: { data: null, error: { code: "57014", message: "timeout" } } });
-    uguale("errore imprevisto: «errore», non «assente»", (await leggiUfficioGare("T1", admin)).esito, "errore");
+    uguale("errore imprevisto: «errore», non un elenco vuoto", (await leggiUfficiGare("T1", admin)).esito, "errore");
     const { admin: senzaUtente } = fintoAdmin({ membro: { data: riga, error: null }, utente: null });
-    uguale("riga dell'utente mancante: «errore»", (await leggiUfficioGare("T1", senzaUtente)).esito, "errore");
+    uguale("riga dell'utente mancante: «errore»", (await leggiUfficiGare("T1", senzaUtente)).esito, "errore");
   }
 
   console.log("--- Invio del link per scegliere la password ---");
@@ -454,20 +481,29 @@ async function main() {
     );
   }
   atteso("il file dichiara «use server» in testa", azioni.startsWith('"use server";'));
-  atteso("nessuna azione legge l'Ufficio Gare da un dato della richiesta", !/formData\.get\("(membro|membroId|ufficio|userId|titolare)/i.test(azioni) && !/searchParams|headers\(\)\.get\("x-/.test(azioni));
-  atteso("tutte le chiamate a leggiUfficioGare partono dal titolare loggato", [...azioni.matchAll(/leggiUfficioGare\(([^,]+),/g)].length === 5 && [...azioni.matchAll(/leggiUfficioGare\(([^,]+),/g)].every((m) => m[1] === "contesto.accountId"));
+  {
+    const da = azioni.indexOf("async function ufficioDelTitolare(");
+    const aiutante = azioni.slice(da, azioni.indexOf("export async function", da));
+    atteso("l'Ufficio Gare scelto nel modulo si legge SOLO nell'aiutante", (azioni.match(/formData\.get\("membroId"\)/g) ?? []).length === 1 && aiutante.includes('formData.get("membroId")'));
+    atteso("l'aiutante accetta l'Ufficio Gare scelto solo se è fra quelli letti dal database per il titolare", aiutante.includes("leggiUfficiGare(titolareId, createAdminClient())") && aiutante.includes("lettura.uffici.find((u) => u.membroId === scelto)") && aiutante.includes("{ error: MESSAGGIO_NON_TROVATO }"));
+    atteso("nessuna azione legge altri identificativi dalla richiesta", !/formData\.get\("(membro_id|ufficio|userId|titolare)/i.test(azioni) && !/searchParams|headers\(\)\.get\("x-/.test(azioni));
+    for (const nome of ["rinviaLinkUfficioGare", "sospendiUfficioGare", "riattivaUfficioGare", "rimuoviUfficioGare"]) {
+      atteso(`${nome}: sceglie l'Ufficio Gare con l'aiutante, partendo dal titolare loggato`, corpoDi(nome).includes("await ufficioDelTitolare(contesto.accountId, formData)"));
+    }
+    atteso("tutte le letture degli Uffici Gare partono dal titolare loggato", [...azioni.matchAll(/leggiUfficiGare\(([^,]+),/g)].map((m) => m[1]).sort().join("|") === "contesto.accountId|titolareId");
+  }
   {
     const aggiornamenti = [...azioni.matchAll(/from\("omnia_ai_membri"\)\s*\.update\(/g)].length;
     const conTitolare = [...azioni.matchAll(/from\("omnia_ai_membri"\)\s*\.update\([^;]*?\.eq\("titolare_id", contesto\.accountId\)/g)].length;
     atteso("ogni aggiornamento dei membri è limitato al titolare loggato", aggiornamenti === 4 && conTitolare === aggiornamenti, `aggiornamenti ${aggiornamenti}, limitati ${conTitolare}`);
     const eliminazioni = [...azioni.matchAll(/deleteUser\(([^)]*)\)/g)].map((m) => m[1]);
-    uguale("si elimina solo l'utente appena creato o l'Ufficio Gare letto dal database", eliminazioni.sort(), ["lettura.ufficio.membroId", "membroId"]);
+    uguale("si elimina solo l'utente appena creato o l'Ufficio Gare letto dal database", eliminazioni.sort(), ["membroId", "ufficio.membroId"]);
   }
   {
     const c = corpoDi("creaUfficioGare");
     const pos = (testo: string) => c.indexOf(testo);
     atteso("creazione: abbonamento controllato PRIMA di creare l'utente", pos("requireOmniaAiWriteAccess(contesto.accountId, admin)") !== -1 && pos("requireOmniaAiWriteAccess") < pos("createUser"));
-    atteso("creazione: Ufficio Gare già presente e indirizzo già usato controllati PRIMA di creare l'utente", pos("leggiUfficioGare") < pos("createUser") && pos('from("users")') < pos("createUser"));
+    atteso("creazione: Ufficio Gare già presente e indirizzo già usato controllati PRIMA di creare l'utente", pos("leggiUfficiGare") !== -1 && pos("leggiUfficiGare") < pos("createUser") && pos('from("users")') < pos("createUser"));
     atteso("creazione: il consenso è letto dalla casella e validato", c.includes('consenso: formData.get("consenso") === "on"') && c.includes("validaInvitoUfficioGare"));
     atteso("creazione: il consenso registra IP e user agent", c.includes("consenso_ip: meta.ip") && c.includes("consenso_user_agent"));
     atteso("creazione: il legame si scrive DOPO l'utente, con il titolare loggato e il ruolo fisso", pos("createUser") < pos('from("omnia_ai_membri").insert') && c.includes("titolare_id: contesto.accountId") && c.includes('ruolo: "ufficio_gare"'));
@@ -488,10 +524,11 @@ async function main() {
     atteso("riattivazione: prima si toglie il blocco del login, poi si riapre l'accesso ai dati", r.indexOf('ban_duration: "none"') !== -1 && r.indexOf('ban_duration: "none"') < r.indexOf("attivo: true"));
     const x = corpoDi("rimuoviUfficioGare");
     atteso("rimozione: prima si chiude l'accesso ai dati, poi si elimina l'utente", x.indexOf("attivo: false") !== -1 && x.indexOf("attivo: false") < x.indexOf("deleteUser"));
-    atteso("rimozione: se l'eliminazione fallisce l'esito è un errore (l'accesso resta chiuso), mai un successo", /deleteUser\(lettura\.ufficio\.membroId\);\s*if \(error\) \{[\s\S]*?return \{ error: "Rimozione non riuscita: l'accesso resta sospeso/.test(x));
+    atteso("rimozione: se l'eliminazione fallisce l'esito è un errore (l'accesso resta chiuso), mai un successo", /deleteUser\(ufficio\.membroId\);\s*if \(error\) \{[\s\S]*?return \{ error: "Rimozione non riuscita: l'accesso resta sospeso/.test(x));
     atteso("sospensione: il blocco del login è di 100 anni e si applica davvero", /const DURATA_SOSPENSIONE = "876000h";/.test(azioni) && s.includes("{ ban_duration: DURATA_SOSPENSIONE }"));
     const ins = corpoDi("creaUfficioGare");
-    atteso("creazione: se l'Ufficio Gare esiste già si rifiuta, con il messaggio che dice cosa fare", /if \(lettura\.esito === "presente"\) return \{ error: "Hai già un Ufficio Gare: se vuoi cambiarlo, rimuovilo prima/.test(ins));
+    atteso("creazione: con 3 Uffici Gare si rifiuta, con il messaggio che dice cosa fare", /if \(lettura\.uffici\.length >= MASSIMO_UFFICI_GARE\) return \{ error: MESSAGGIO_MASSIMO_RAGGIUNTO \};/.test(ins) && azioni.includes("il massimo: per aggiungerne un altro rimuovine prima uno."));
+    atteso("creazione: se il database rifiuta il quarto (23505) l'utente creato si annulla con lo stesso messaggio", /annulla\(erroreLegame\.code === "23505" \? MESSAGGIO_MASSIMO_RAGGIUNTO/.test(ins));
     atteso("creazione: un indirizzo già registrato si rifiuta con il messaggio neutro", /if \(esistente\) return \{ error: MESSAGGIO_EMAIL_NON_UTILIZZABILE \};/.test(ins));
     atteso("creazione: l'indirizzo è dato per confermato (l'ha indicato il titolare: nessun link di conferma)", ins.includes("{ email, password: casuale, email_confirm: true }"));
     const rin = corpoDi("rinviaLinkUfficioGare");
@@ -500,6 +537,9 @@ async function main() {
   const pagina = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/ufficio-gare/page.tsx");
   atteso("la pagina parte dalla guardia del titolare e non legge la sessione per conto suo", pagina.includes("await richiediTitolarePagina()") && !pagina.includes("auth.getUser"));
   atteso("la pagina mostra il motivo se non si può creare (abbonamento non attivo, migrazione mancante)", pagina.includes("Con l'abbonamento non attivo") && pagina.includes("schema_assente"));
+  atteso("la pagina permette di creare solo sotto il massimo", pagina.includes("lettura.uffici.length < MASSIMO_UFFICI_GARE && abbonamentoUtilizzabile"));
+  const gestione = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/ufficio-gare/ufficio-gare-gestione.tsx");
+  atteso("ogni modulo di un Ufficio Gare dice quale (membroId) e lo passa all'azione", (gestione.match(/name="membroId" value=\{ufficio\.membroId\}/g) ?? []).length === 4 && ["rinviaLinkUfficioGare(formData)", "sospendiUfficioGare(formData)", "riattivaUfficioGare(formData)", "rimuoviUfficioGare(formData)"].every((c) => gestione.includes(c)));
   const sidebar = leggi("src/components/omnia-ai/sidebar-nav.tsx");
   atteso("la barra laterale usa le voci del ruolo (titolare di default)", sidebar.includes("VOCI_MENU_TITOLARE") && sidebar.includes("voci.map("));
   atteso("la dashboard passa le voci alla barra laterale", leggi("src/components/omnia-ai/dashboard-shell.tsx").includes("<SidebarNav nomeAzienda={nomeAzienda} voci={voci} />"));

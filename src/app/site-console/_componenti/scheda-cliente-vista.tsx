@@ -145,7 +145,7 @@ export default function SchedaClienteVista({
   copertina: CopertinaCliente;
   // presenza nell'area riservata (migrazione 0094): dell'utente, e dell'Ufficio Gare se questo cliente ne ha uno
   presenza: PresenzaUtente;
-  presenzaUfficioGare: PresenzaUtente | null;
+  presenzaUfficioGare: PresenzaUtente[] | null;
   // gare in più rispetto al piano, per un periodo (migrazione 0131)
   omaggi: OmaggiCliente;
 }) {
@@ -182,7 +182,7 @@ export default function SchedaClienteVista({
   return <SchedaOkVista s={scheda} idSessione={idSessione} esito={esito} indietro={indietro} accessi={accessi} prova={prova} pilot={pilot} copertina={copertina} presenza={presenza} presenzaUfficioGare={presenzaUfficioGare} omaggi={omaggi} />;
 }
 
-function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, copertina, presenza, presenzaUfficioGare, omaggi }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; copertina: CopertinaCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente | null; omaggi: OmaggiCliente }) {
+function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, copertina, presenza, presenzaUfficioGare, omaggi }: { s: SchedaOk; idSessione: string; esito: ParametriEsito; indietro: React.ReactNode; accessi: AccessiCliente; prova: ProvaCliente; pilot: PilotCliente; copertina: CopertinaCliente; presenza: PresenzaUtente; presenzaUfficioGare: PresenzaUtente[] | null; omaggi: OmaggiCliente }) {
   const anonimizzato = eAnonimizzato(s.utente.email);
   const ultimoAbb = s.abbonamenti[0] ?? null;
   const ordiniPagati = s.ordini.filter((o) => o.stato === "pagato");
@@ -260,37 +260,40 @@ function SchedaOkVista({ s, idSessione, esito, indietro, accessi, prova, pilot, 
                   </div>
                 </dl>
               ) : (
-                <dl className="cn-dl">
-                  <div>
-                    <dt>Ufficio Gare</dt>
-                    <dd>
-                      <Link href={`/utenti/${s.legameUfficioGare.ufficioGare.id}`}>{s.legameUfficioGare.ufficioGare.email}</Link>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Stato</dt>
-                    <dd>
-                      {!s.legameUfficioGare.ufficioGare.attivo ? <Badge tono="errore">sospeso</Badge> : s.legameUfficioGare.ufficioGare.ultimoAccesso ? <Badge tono="ok">attivo</Badge> : <Badge tono="avviso">in attesa del primo accesso</Badge>}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Creato il</dt>
-                    <dd>{formattaDataOra(s.legameUfficioGare.ufficioGare.creatoIl)}</dd>
-                  </div>
-                  <div>
-                    <dt>Ultimo accesso</dt>
-                    <dd>{s.legameUfficioGare.ufficioGare.ultimoAccesso ? formattaDataOra(s.legameUfficioGare.ufficioGare.ultimoAccesso) : "mai"}</dd>
-                  </div>
-                  <div>
-                    <dt>Presenza</dt>
-                    <dd>{presenzaUfficioGare?.disponibile ? <CellaPresenza p={presenzaUfficioGare.presenza} /> : "non ancora attiva"}</dd>
-                  </div>
-                </dl>
+                s.legameUfficioGare.uffici.map((ufficio, i) => {
+                  const presenzaUfficio = presenzaUfficioGare?.[i];
+                  return (
+                    <dl className="cn-dl" key={ufficio.id} style={i > 0 ? { marginTop: 14 } : undefined}>
+                      <div>
+                        <dt>Ufficio Gare{s.legameUfficioGare?.ruolo === "titolare" && s.legameUfficioGare.uffici.length > 1 ? ` ${i + 1}` : ""}</dt>
+                        <dd>
+                          <Link href={`/utenti/${ufficio.id}`}>{ufficio.email}</Link>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Stato</dt>
+                        <dd>{!ufficio.attivo ? <Badge tono="errore">sospeso</Badge> : ufficio.ultimoAccesso ? <Badge tono="ok">attivo</Badge> : <Badge tono="avviso">in attesa del primo accesso</Badge>}</dd>
+                      </div>
+                      <div>
+                        <dt>Creato il</dt>
+                        <dd>{formattaDataOra(ufficio.creatoIl)}</dd>
+                      </div>
+                      <div>
+                        <dt>Ultimo accesso</dt>
+                        <dd>{ufficio.ultimoAccesso ? formattaDataOra(ufficio.ultimoAccesso) : "mai"}</dd>
+                      </div>
+                      <div>
+                        <dt>Presenza</dt>
+                        <dd>{presenzaUfficio?.disponibile ? <CellaPresenza p={presenzaUfficio.presenza} /> : "non ancora attiva"}</dd>
+                      </div>
+                    </dl>
+                  );
+                })
               )}
               <p className="cn-nota-inline" style={{ marginTop: 10 }}>
                 {s.legameUfficioGare.ruolo === "ufficio_gare"
                   ? "Lavora sulle gare del titolare: consuma le sue gare e i suoi crediti. Non ha abbonamento, crediti né fatture propri: le operazioni commerciali si fanno sul titolare."
-                  : "L'Ufficio Gare lavora sulle gare di questo cliente, consuma le sue gare e i suoi crediti, e viene eliminato insieme a lui."}
+                  : "Gli Uffici Gare (fino a 3) lavorano sulle gare di questo cliente, consumano le sue gare e i suoi crediti, e vengono eliminati insieme a lui."}
               </p>
             </div>
           </Pannello>

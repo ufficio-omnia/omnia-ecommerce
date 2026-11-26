@@ -12,7 +12,8 @@ import { schemaAssente } from "@/lib/omnia-ai-incassi";
 export type LegameUfficioGare =
   | {
       ruolo: "titolare";
-      ufficioGare: { id: string; email: string; attivo: boolean; creatoIl: string; invitoInviatoIl: string; ultimoAccesso: string | null };
+      // da 1 a 3 (migrazione 0136), dal più vecchio
+      uffici: { id: string; email: string; attivo: boolean; creatoIl: string; invitoInviatoIl: string; ultimoAccesso: string | null }[];
     }
   | {
       ruolo: "ufficio_gare";
@@ -47,27 +48,30 @@ export async function leggiLegameUfficioGare(userId: string, admin: SupabaseClie
     };
   }
 
-  const comeTitolare = await admin.from("omnia_ai_membri").select(COLONNE).eq("titolare_id", userId).maybeSingle<RigaMembro>();
+  const comeTitolare = await admin.from("omnia_ai_membri").select(COLONNE).eq("titolare_id", userId).order("creato_il", { ascending: true });
   if (comeTitolare.error) {
-    console.error("Console: lettura dell'Ufficio Gare del titolare fallita", comeTitolare.error.message);
+    console.error("Console: lettura degli Uffici Gare del titolare fallita", comeTitolare.error.message);
     return "errore";
   }
-  if (!comeTitolare.data) return null;
-  const [{ data: membro }, accesso] = await Promise.all([
-    admin.from("users").select("email").eq("id", comeTitolare.data.membro_id).maybeSingle<{ email: string }>(),
-    admin.auth.admin.getUserById(comeTitolare.data.membro_id),
-  ]);
-  return {
-    ruolo: "titolare",
-    ufficioGare: {
-      id: comeTitolare.data.membro_id,
-      email: membro?.email ?? comeTitolare.data.membro_id,
-      attivo: comeTitolare.data.attivo,
-      creatoIl: comeTitolare.data.creato_il,
-      invitoInviatoIl: comeTitolare.data.invito_inviato_il,
-      ultimoAccesso: accesso.data?.user?.last_sign_in_at ?? null,
-    },
-  };
+  const righe = (comeTitolare.data ?? []) as RigaMembro[];
+  if (righe.length === 0) return null;
+  const uffici = await Promise.all(
+    righe.map(async (riga) => {
+      const [{ data: membro }, accesso] = await Promise.all([
+        admin.from("users").select("email").eq("id", riga.membro_id).maybeSingle<{ email: string }>(),
+        admin.auth.admin.getUserById(riga.membro_id),
+      ]);
+      return {
+        id: riga.membro_id,
+        email: membro?.email ?? riga.membro_id,
+        attivo: riga.attivo,
+        creatoIl: riga.creato_il,
+        invitoInviatoIl: riga.invito_inviato_il,
+        ultimoAccesso: accesso.data?.user?.last_sign_in_at ?? null,
+      };
+    }),
+  );
+  return { ruolo: "titolare", uffici };
 }
 
 // Per le azioni della console: l'utente è l'Ufficio Gare di qualcuno? Restituisce il titolare, null se no, "errore" se non si sa.
@@ -81,15 +85,15 @@ export async function leggiTitolareDelMembro(userId: string, admin: SupabaseClie
   return data?.titolare_id ?? null;
 }
 
-// Per l'eliminazione e l'anonimizzazione di un titolare: l'identificativo del suo Ufficio Gare, se c'è.
-export async function leggiMembroDelTitolare(titolareId: string, admin: SupabaseClient = createAdminClient()): Promise<string | null | "errore"> {
-  const { data, error } = await admin.from("omnia_ai_membri").select("membro_id").eq("titolare_id", titolareId).maybeSingle<{ membro_id: string }>();
+// Per l'eliminazione e l'anonimizzazione di un titolare: gli identificativi dei suoi Uffici Gare (vuoto se non ne ha).
+export async function leggiMembriDelTitolare(titolareId: string, admin: SupabaseClient = createAdminClient()): Promise<string[] | "errore"> {
+  const { data, error } = await admin.from("omnia_ai_membri").select("membro_id").eq("titolare_id", titolareId);
   if (error) {
-    if (schemaAssente(error)) return null;
-    console.error("Console: lettura dell'Ufficio Gare del titolare fallita", error.message);
+    if (schemaAssente(error)) return [];
+    console.error("Console: lettura degli Uffici Gare del titolare fallita", error.message);
     return "errore";
   }
-  return data?.membro_id ?? null;
+  return ((data ?? []) as { membro_id: string }[]).map((r) => r.membro_id);
 }
 
 export const MESSAGGIO_E_UN_UFFICIO_GARE = "Questo utente è l'Ufficio Gare di un'azienda cliente, non un cliente a sé: l'operazione si fa sul titolare.";

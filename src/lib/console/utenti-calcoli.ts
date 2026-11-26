@@ -130,8 +130,8 @@ export type RigaUtente = {
   daRispondere: boolean;
   // questo utente è l'Ufficio Gare di un altro (titolare): non è un cliente a sé
   ufficioGareDi: null | { titolareId: string; titolare: string; attivo: boolean };
-  // questo utente (titolare) ha un Ufficio Gare
-  ufficioGare: null | { id: string; email: string; attivo: boolean };
+  // gli Uffici Gare di questo utente (titolare): vuoto se non ne ha, al massimo 3
+  ufficiGare: { id: string; email: string; attivo: boolean }[];
   // collegato adesso? attivo o fermo, in quale sezione, quando è uscito (migrazione 0094)
   presenza: PresenzaCalcolata;
 };
@@ -156,7 +156,9 @@ export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): Rig
   // Uffici Gare: chi è membro di chi
   const utentePerId = new Map(dati.utenti.map((u) => [u.id, u]));
   const membroPerId = new Map((dati.membri ?? []).map((m) => [m.membro_id, m]));
-  const membroPerTitolare = new Map((dati.membri ?? []).map((m) => [m.titolare_id, m]));
+  // un titolare può avere fino a 3 Uffici Gare (migrazione 0136)
+  const membriPerTitolare = new Map<string, MembroDb[]>();
+  for (const m of dati.membri ?? []) membriPerTitolare.set(m.titolare_id, [...(membriPerTitolare.get(m.titolare_id) ?? []), m]);
 
   return dati.utenti.map((u) => {
     const ordini = ordiniPerUtente.get(u.id) ?? [];
@@ -207,11 +209,7 @@ export function costruisciRigheUtenti(dati: DatiElencoUtenti, adesso: Date): Rig
         const titolare = utentePerId.get(legame.titolare_id);
         return { titolareId: legame.titolare_id, titolare: aziende.get(legame.titolare_id)?.ragione_sociale ?? titolare?.email ?? legame.titolare_id, attivo: legame.attivo };
       })(),
-      ufficioGare: (() => {
-        const legame = membroPerTitolare.get(u.id);
-        if (!legame) return null;
-        return { id: legame.membro_id, email: utentePerId.get(legame.membro_id)?.email ?? legame.membro_id, attivo: legame.attivo };
-      })(),
+      ufficiGare: (membriPerTitolare.get(u.id) ?? []).map((legame) => ({ id: legame.membro_id, email: utentePerId.get(legame.membro_id)?.email ?? legame.membro_id, attivo: legame.attivo })),
       presenza: statoPresenza(dati.presenze?.get(u.id), adesso),
     };
   });
