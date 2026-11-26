@@ -1,8 +1,9 @@
 // Verifica del connettore TuttoGare (Fase 2, seconda priorità del documento 60): un adattatore per molte istanze «TuttoGare PA», canale home
-// HTML + dettaglio (JSON interno predisposto e spento), mappa dei campi DICHIARATA e non confermata (il lettore si ferma prima di qualunque
-// richiesta), fonte «tuttogare» fuori da console, cron, programmatore e registro dei giri, mai in produzione. Tutti i dati sono [SINTETICI]
-// (pagine HTML inventate con la forma dichiarata, enti e CIG di prova: «Comune di Provasintetica»); nessuna rete (fetch vietato), database
-// in memoria. Uso: npx tsx scripts/verifica-radar-tuttogare.ts → codice 0 se passa.
+// HTML + dettaglio (JSON interno predisposto e spento), mappa dei campi CONFERMATA sul campione del 26/11 (schede della home con il badge
+// della procedura, etichette «Importo base», «Pubblicazione», «Scadenza presentazione», impronta StudioAmica), fonte «tuttogare» fuori da
+// console, cron e programmatore, nel registro dei giri dopo la 0135 PROPOSTA, mai in produzione. Tutti i dati sono [SINTETICI] (pagine HTML
+// inventate con la forma confermata, enti e CIG di prova: «Comune di Provasintetica»); nessuna rete (fetch vietato), database in memoria.
+// Uso: npx tsx scripts/verifica-radar-tuttogare.ts → codice 0 se passa.
 import fs from "node:fs";
 import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -40,7 +41,8 @@ import { SessioneFonte, ErroreFonte } from "../src/lib/radar/fonti/sessione-font
 import { idPiattaformaDaUrl, idPiattaformaDaUrlConnettore } from "../src/lib/radar/fonti/piattaforme-calcoli";
 import { FONTI_RADAR, VARIABILI_PRODUZIONE, fonteAutorizzata } from "../src/lib/radar/ambiente";
 import { FONTI_REGIONALI, bandoDaTuttoGare, rigaDaBandoRegionale } from "../src/lib/radar/importa-regionali-calcoli";
-import { FONTI_ESECUZIONI } from "../src/lib/radar/esecuzioni-calcoli";
+import { FONTI_ESECUZIONI, FONTI_REGISTRO } from "../src/lib/radar/esecuzioni-calcoli";
+import { FONTI_ACCENDIBILI } from "./c8/accendi-regionale-staging";
 import { CRON_PROPOSTI, INTERRUTTORI_CRON, ORARI_GIRI, ROTTE_CRON } from "../src/lib/radar/programmazione-calcoli";
 import { FONTI_UNITE, PRECEDENZA_FONTI } from "../src/lib/radar/unione-calcoli";
 import { ATTRIBUZIONE_FONTE, FONTI_NASCOSTE_PREDEFINITE, NOME_FONTE } from "../src/lib/radar/fonti-gara-calcoli";
@@ -69,22 +71,25 @@ const ROMA = istanzaDaHost("appalti.comune.roma.it") as IstanzaTuttoGare;
 const SICILIA = istanzaDaHost("appalti.regionesiciliana.lavoripubblici.sicilia.it") as IstanzaTuttoGare;
 const UNIBA = istanzaDaHost("gareappalti.uniba.it") as IstanzaTuttoGare;
 
-// ───── pagine [SINTETICHE] con la forma dichiarata (R4): home con la tabella delle gare, dettaglio con etichette e valori ─────
-const PIEDE = `<footer>Piattaforma realizzata con <a href="https://app.tuttogare.it">TuttoGare</a></footer>`;
-const pagina = (corpo: string) => `<!DOCTYPE html><html lang="it"><head><title>Gare (prova sintetica)</title><style>@font-face{font-family:x;src:url(/font/StudioAmica.woff2)}</style><script>var codice=999;</script></head><body><header>Menu · Stato · Oggetto</header>${corpo}${PIEDE}</body></html>`;
-const rigaHome = (codice: number, oggetto: string, extra = "", href = `/gare/dettaglio.php?codice=${codice}`) =>
-  `<tr><td>Pubblicato</td><td>Gara #${codice + 9000}</td><td><a href="${href}">${oggetto}</a>${extra}</td><td>15/12/2026 12:00</td></tr>`;
+// ───── pagine [SINTETICHE] con la forma CONFERMATA sul campione del 26/11: home con le schede Bootstrap delle gare (due collegamenti al
+// dettaglio, badge della procedura e della tipologia, scadenza), dettaglio con coppie etichetta-valore; impronta «StudioAmica» (Roma è
+// un'istanza personalizzata: nessun collegamento ad app.tuttogare.it) ─────
+const pagina = (corpo: string) => `<!DOCTYPE html><html lang="it"><head><title>Gare (prova sintetica)</title><link rel="preload" href="/font/StudioAmica.woff2" as="font"><script>var codice=999;</script></head><body><header>Menu · Gare · Oggetto</header>${corpo}<footer>Comune sintetico</footer></body></html>`;
+const scheda = (codice: number, oggetto: string, procedura: string, tipologia: string, extra = "", href = `/gare/dettaglio.php?codice=${codice}`) =>
+  `<div class="col-md-6"><div class="card h-100"><div class="card-body"><span class="badge badge-primary">${procedura}</span> <span class="badge badge-info">${tipologia}</span>` +
+  `<h5 class="card-title"><a href="${href}">${oggetto}</a></h5><p class="card-text">Gara #${codice + 9000} · Scadenza: 15/12/2026 12:00</p>${extra}` +
+  `<a class="btn btn-sm" href="/gare/dettaglio.php?codice=${codice}">Vedi dettagli</a></div></div></div>`;
 const HOME_ROMA = pagina(
-  `<table class="gare"><thead><tr><th>Stato</th><th>Gara</th><th>Oggetto</th><th>Scadenza</th></tr></thead><tbody>` +
-    rigaHome(101, "Servizio di pulizia degli uffici comunali (prova sintetica)", `<br><small>Procedura aperta</small> <a href="/gare/dettaglio.php?codice=101">Vedi</a>`) +
-    rigaHome(102, "Servizio di portierato presso le sedi comunali (prova sintetica)", "<br>Affidamento con indagine di mercato", "https://appalti.comune.roma.it/gare/dettaglio.php?codice=102") +
-    rigaHome(103, "Fornitura di cancelleria (prova sintetica)", "<br>Affidamento diretto", "/gare/dettaglio.php?codice=103&amp;lang=it") +
-    rigaHome(104, "Servizio di vigilanza (prova sintetica)", "<br>Contratto applicativo dell'accordo quadro") +
-    rigaHome(105, "Lavori di rifacimento del manto stradale (prova sintetica)", `<br><a href="/documenti/bando-105.pdf">Bando</a>`) +
-    `<tr><td>Pubblicato</td><td><a href="https://altro.esempio.invalid/gare/dettaglio.php?codice=777">Altra piattaforma</a></td></tr>` +
-    `</tbody></table>`,
+  `<div class="row">` +
+    scheda(101, "Servizio di pulizia degli uffici comunali (prova sintetica)", "Aperta", "Servizi") +
+    scheda(102, "Servizio di portierato presso le sedi comunali (prova sintetica)", "Affidamento con indagine di mercato", "Servizi", "", "https://appalti.comune.roma.it/gare/dettaglio.php?codice=102") +
+    scheda(103, "Fornitura di cancelleria (prova sintetica)", "Affidamento diretto / RDO", "Forniture", "", "/gare/dettaglio.php?codice=103&amp;lang=it") +
+    scheda(104, "Servizio di vigilanza (prova sintetica)", "Affidamento diretto / RDO", "Servizi") +
+    scheda(105, "Lavori di rifacimento del manto stradale (prova sintetica)", "Aperta", "Lavori", `<a href="/documenti/bando-105.pdf">Bando</a>`) +
+    `<div class="col-md-6"><div class="card"><a href="https://altro.esempio.invalid/gare/dettaglio.php?codice=777">Altra piattaforma</a></div></div>` +
+    `</div>`,
 );
-const HOME_VUOTA = pagina(`<table class="gare"><tbody><tr><td>Nessuna gara pubblicata</td></tr></tbody></table>`);
+const HOME_VUOTA = pagina(`<div class="row"><p>Nessuna gara pubblicata</p></div>`);
 const dettaglio = (campi: Record<string, string>, coda = "") =>
   pagina(
     `<h1>Gara (prova sintetica)</h1><table class="dettaglio">${Object.entries(campi)
@@ -98,16 +103,16 @@ const DETTAGLI_ROMA: Record<number, string> = {
     [E.procedura]: "Procedura aperta",
     [E.tipologia]: "Servizi",
     [E.importo]: "€ 120.000,00",
-    [E.cig]: "B11111111A<br>B22222222B",
+    // il CIG è il testo di un collegamento ai dati di ANAC (campione del 26/11); due CIG per difesa (più lotti non visti sul campione)
+    [E.cig]: `<a href="https://dati.anticorruzione.it/superset/dashboard/dettaglio_cig/?cig=B11111111A">B11111111A</a><br><a href="https://dati.anticorruzione.it/superset/dashboard/dettaglio_cig/?cig=B22222222B">B22222222B</a>`,
     [E.cup]: "J11J26000000001",
     [E.pubblicazione]: "20/11/2026",
     [E.scadenza]: "15/12/2026 12:00",
-    [E.categorie]: "<ul><li>90910000-9 - Servizi di pulizia</li><li>9091 - Servizi di pulizia (codice troncato)</li></ul>",
+    [E.categorie]: "<ul><li>90910000 - Servizi di pulizia</li><li>90911200 - Servizi di pulizia di edifici</li></ul>",
     [E.beneficiario]: "Roma Capitale – Dipartimento sintetico",
-    [E.stato]: "Pubblicato",
   }),
   102: pagina(
-    `<p><strong>${E.oggetto}:</strong> Servizio di portierato presso le sedi comunali (prova sintetica)</p><p><strong>${E.procedura}:</strong> Affidamento con indagine di mercato</p><p><strong>${E.scadenza}:</strong> 10/12/2026 ore 12.00</p><p><strong>${E.stato}:</strong> Pubblicato</p>`,
+    `<p><strong>${E.oggetto}:</strong> Servizio di portierato presso le sedi comunali (prova sintetica)</p><p><strong>${E.procedura}:</strong> Affidamento con indagine di mercato</p><p><strong>${E.scadenza}:</strong> 10/12/2026 23:45</p><p><strong>${E.pubblicazione}:</strong> 25/11/2026</p>`,
   ),
   105: dettaglio({ [E.oggetto]: "Lavori di rifacimento del manto stradale (prova sintetica)", [E.procedura]: "Procedura aperta", [E.tipologia]: "Lavori", [E.scadenza]: "15/12/2026 12:00", [E.cig]: "B55555555E" }),
 };
@@ -154,20 +159,24 @@ function provaIndirizzi(): void {
   ];
   controlla("indirizzi ammessi: home e dettaglio dell'host canonico, in https", ammessi.every((u) => percorsoAmmessoTuttoGare(u, ROMA)), ammessi);
   controlla("indirizzi vietati: documenti e allegati (robots.txt), JSON interno spento, parametri in più, http, alias, porta, altri percorsi", vietati.every((u) => !percorsoAmmessoTuttoGare(u, ROMA)), vietati.filter((u) => percorsoAmmessoTuttoGare(u, ROMA)));
-  controlla("JSON interno: spento e senza indirizzo; canale «html»; mappa NON confermata", !CANALE_TUTTOGARE.jsonInterno.acceso && urlTabellaTuttoGare(ROMA) === null && CANALE_TUTTOGARE.canale === "html" && CANALE_TUTTOGARE.confermato === false);
-  controlla("impronte del software: pagina con app.tuttogare.it o StudioAmica sì; pagina qualsiasi o testo non HTML no", sembraPaginaTuttoGare(HOME_ROMA) && sembraPaginaTuttoGare("<html><body>font StudioAmica.woff2</body></html>") && !sembraPaginaTuttoGare("<html><body>Verifica di sicurezza</body></html>") && !sembraPaginaTuttoGare('{"data":[]}'));
+  controlla("JSON interno: spento e senza indirizzo; canale «html»; mappa CONFERMATA sul campione del 26/11", !CANALE_TUTTOGARE.jsonInterno.acceso && urlTabellaTuttoGare(ROMA) === null && CANALE_TUTTOGARE.canale === "html" && CANALE_TUTTOGARE.confermato === true);
+  controlla("impronta del software: StudioAmica sì (anche senza app.tuttogare.it, come Roma); app.tuttogare.it da solo NO; pagina qualsiasi o testo non HTML no", sembraPaginaTuttoGare(HOME_ROMA) && !/app\.tuttogare/.test(HOME_ROMA) && sembraPaginaTuttoGare("<html><body>font StudioAmica.woff2</body></html>") && !sembraPaginaTuttoGare('<html><body><a href="https://app.tuttogare.it">TuttoGare</a></body></html>') && !sembraPaginaTuttoGare("<html><body>Verifica di sicurezza</body></html>") && !sembraPaginaTuttoGare('{"data":[]}'));
 }
 
 // ═════ C. home ═════
 function provaHome(): void {
   const righe = leggiHomeTuttoGare(HOME_ROMA, ROMA);
   controlla("home: i 5 codici delle gare nell'ordine della pagina (un codice una volta, anche con due collegamenti; mai altre piattaforme, documenti o script)", JSON.stringify(righe.map((r) => r.codice)) === JSON.stringify(["101", "102", "103", "104", "105"]), righe.map((r) => r.codice));
-  controlla("home: il testo della riga è quello della sua riga di tabella (oggetto e procedura), non della testata", /pulizia/.test(righe[0]?.testo ?? "") && /Procedura aperta/.test(righe[0]?.testo ?? "") && !/Menu/.test(righe[0]?.testo ?? "") && !/portierato/.test(righe[0]?.testo ?? ""), righe[0]);
-  controlla("home: affidamenti dichiarati nella riga (affidamento diretto, contratto applicativo) → dettaglio non letto; gli altri sì", JSON.stringify(righe.map((r) => affidamentoNellaRiga(r.testo))) === JSON.stringify([false, false, true, true, false]) && !affidamentoNellaRiga("Affidamento diretto previa indagine di mercato"));
+  controlla("home: la riga è la SCHEDA della gara (oggetto, badge, scadenza), non la testata né la scheda accanto", /pulizia/.test(righe[0]?.testo ?? "") && /15\/12\/2026 12:00/.test(righe[0]?.testo ?? "") && !/Menu/.test(righe[0]?.testo ?? "") && !/portierato/.test(righe[0]?.testo ?? ""), righe[0]);
+  controlla("home: dalla scheda l'oggetto (titolo, non «Vedi dettagli»), il badge della procedura e quello della tipologia", righe[0]?.oggetto === "Servizio di pulizia degli uffici comunali (prova sintetica)" && righe[0]?.procedura === "Aperta" && righe[0]?.tipologia === "Servizi" && righe[2]?.procedura === "Affidamento diretto / RDO" && righe[1]?.procedura === "Affidamento con indagine di mercato", righe.map((r) => [r.oggetto, r.procedura, r.tipologia]));
+  controlla("home: esclusi senza dettaglio SOLO gli affidamenti dal badge della procedura («Affidamento diretto / RDO»); un affidamento il cui oggetto dichiara una candidatura si legge; senza badge decide il dettaglio", JSON.stringify(righe.map((r) => affidamentoNellaRiga(r))) === JSON.stringify([false, false, true, true, false]) && !affidamentoNellaRiga({ procedura: "Affidamento diretto / RDO", oggetto: "Indagine di mercato per il servizio di vigilanza" }) && !affidamentoNellaRiga({ procedura: null, oggetto: "Affidamento diretto di cancelleria" }));
   controlla("home vuota: nessuna riga", leggiHomeTuttoGare(HOME_VUOTA, ROMA).length === 0);
   const aBlocchi = pagina(`<div class="gara"><h3><a href="/gare/dettaglio.php?codice=201">Pulizia A (prova sintetica)</a></h3><p>Scadenza 01/12/2026</p></div><div class="gara"><h3><a href="/gare/dettaglio.php?codice=202">Pulizia B (prova sintetica)</a></h3></div>`);
   const rb = leggiHomeTuttoGare(aBlocchi, ROMA);
-  controlla("home senza tabella: il tratto tra i collegamenti vicini (nessuna riga confusa con la gara accanto)", rb.length === 2 && /Pulizia A/.test(rb[0].testo) && !/Pulizia B/.test(rb[0].testo) && /Pulizia B/.test(rb[1].testo) && !/Pulizia A/.test(rb[1].testo), rb);
+  controlla("difesa, home senza schede: il blocco della gara (nessuna riga confusa con la gara accanto), senza badge", rb.length === 2 && /Pulizia A/.test(rb[0].testo) && !/Pulizia B/.test(rb[0].testo) && /Pulizia B/.test(rb[1].testo) && !/Pulizia A/.test(rb[1].testo) && rb[0].procedura === null, rb);
+  const aTabella = pagina(`<table><tr><td><a href="/gare/dettaglio.php?codice=301">Pulizia C (prova sintetica)</a></td></tr><tr><td><a href="/gare/dettaglio.php?codice=302">Pulizia D (prova sintetica)</a></td></tr></table>`);
+  const rt = leggiHomeTuttoGare(aTabella, ROMA);
+  controlla("difesa, home a tabella: una riga per gara", rt.length === 2 && /Pulizia C/.test(rt[0].testo) && !/Pulizia D/.test(rt[0].testo), rt);
   const json = leggiTabellaTuttoGare(JSON.stringify({ recordsTotal: 2, data: [["Pubblicato", "#9101", "B11111111A", '<a href="/gare/dettaglio.php?codice=101">Pulizia (prova sintetica)</a>'], { stato: "Pubblicato", link: '<a href="/gare/dettaglio.php?codice=102">Portierato</a>' }] }), ROMA);
   controlla("JSON interno (predisposto, spento): stessa forma di righe della home; formato inatteso → errore", "righe" in json && json.righe.map((r) => r.codice).join() === "101,102" && json.totale === 2 && "errore" in leggiTabellaTuttoGare("<html>", ROMA) && "errore" in leggiTabellaTuttoGare('{"rows":[]}', ROMA), json);
 }
@@ -175,17 +184,18 @@ function provaHome(): void {
 // ═════ D. dettaglio e campi ═════
 function provaDettaglio(): void {
   const d = leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]);
-  controlla("dettaglio: i campi dichiarati dalle etichette (tabella), il valore fino all'etichetta seguente", d.oggetto === "Servizio di pulizia degli uffici comunali (prova sintetica)" && d.procedura === "Procedura aperta" && d.scadenza === "15/12/2026 12:00" && d.cig === "B11111111A | B22222222B" && /90910000-9/.test(d.categorie ?? "") && /9091 - /.test(d.categorie ?? ""), d);
-  controlla("dettaglio: nessun campo fuori dalla mappa (referenti, email, telefoni scartati; la parola «Stato» del menu non è un'etichetta della gara)", !JSON.stringify(d).includes("esempio.invalid") && !JSON.stringify(d).includes("Persona Sintetica") && d.stato === "Pubblicato" && Object.keys(d).every((k) => k in ETICHETTE_TUTTOGARE), d);
+  controlla("etichette confermate sul campione: «Importo base», «Pubblicazione», «Scadenza presentazione»; nessun campo «Stato» (non esiste nell'HTML)", E.importo === "Importo base" && E.pubblicazione === "Pubblicazione" && E.scadenza === "Scadenza presentazione" && !("stato" in ETICHETTE_TUTTOGARE));
+  controlla("dettaglio: i campi dalle etichette, il valore fino all'etichetta seguente; CIG dal testo del collegamento ad ANAC (mai l'indirizzo)", d.oggetto === "Servizio di pulizia degli uffici comunali (prova sintetica)" && d.procedura === "Procedura aperta" && d.scadenza === "15/12/2026 12:00" && d.pubblicazione === "20/11/2026" && d.importo === "€ 120.000,00" && d.cig === "B11111111A | B22222222B" && /^90910000 - Servizi di pulizia/.test(d.categorie ?? "") && !JSON.stringify(d).includes("anticorruzione"), d);
+  controlla("dettaglio: nessun campo fuori dalla mappa (referenti, email, telefoni scartati)", !JSON.stringify(d).includes("esempio.invalid") && !JSON.stringify(d).includes("Persona Sintetica") && Object.keys(d).every((k) => k in ETICHETTE_TUTTOGARE), d);
   const d2 = leggiDettaglioTuttoGare(DETTAGLI_ROMA[102]);
-  controlla("dettaglio: anche «Etichetta: valore» nella stessa riga", d2.oggetto === "Servizio di portierato presso le sedi comunali (prova sintetica)" && d2.procedura === "Affidamento con indagine di mercato" && d2.scadenza === "10/12/2026 ore 12.00", d2);
+  controlla("dettaglio: anche «Etichetta: valore» nella stessa riga; ora reale della scadenza (23:45)", d2.oggetto === "Servizio di portierato presso le sedi comunali (prova sintetica)" && d2.procedura === "Affidamento con indagine di mercato" && d2.scadenza === "10/12/2026 23:45" && d2.pubblicazione === "25/11/2026" && scadenzaTuttoGare(d2.scadenza)?.iso === "2026-12-10T22:45:00.000Z", d2);
   controlla("dettaglio completo solo con oggetto e procedura (i campi obbligatori dichiarati)", dettaglioCompleto(d) && dettaglioCompleto(d2) && !dettaglioCompleto(leggiDettaglioTuttoGare(pagina("<p>Pagina senza etichette</p>"))));
   const s = scadenzaTuttoGare("15/12/2026 12:00");
   controlla("scadenza con l'ora italiana (inverno: 11:00 UTC), anche «ore 12.00» e data e ora in due celle", s?.iso === "2026-12-15T11:00:00.000Z" && s.oraIndicata && scadenzaTuttoGare("10/12/2026 ore 12.00")?.iso === "2026-12-10T11:00:00.000Z" && scadenzaTuttoGare("10/12/2026 | 12:00")?.iso === "2026-12-10T11:00:00.000Z" && scadenzaTuttoGare("1/7/2027 10:30")?.iso === "2027-07-01T08:30:00.000Z", s);
   controlla("scadenza senza ora o a mezzanotte: solo il giorno (l'ora non si presume mai); date impossibili o altre forme → null", scadenzaTuttoGare("15/12/2026")?.iso === null && scadenzaTuttoGare("15/12/2026 00:00")?.oraIndicata === false && scadenzaTuttoGare("31/02/2026") === null && scadenzaTuttoGare("2026-12-15") === null && scadenzaTuttoGare("15/12/2026 25:00") === null);
-  controlla("importo: «€»/«euro» o con i decimali; un numero qualunque no", importoTuttoGare("€ 120.000,00") === 120000 && importoTuttoGare("Euro 35.000") === 35000 && importoTuttoGare("Lotto 1: 48.500,50 oltre IVA") === 48500.5 && importoTuttoGare("Lotto 1") === null && importoTuttoGare("") === null);
+  controlla("importo: «€»/«euro» o con i decimali (campione: «€ 69.600,00», «€ 4.176.978,42»); un numero qualunque no", importoTuttoGare("€ 69.600,00") === 69600 && importoTuttoGare("€ 4.176.978,42") === 4176978.42 && importoTuttoGare("€ 120.000,00") === 120000 && importoTuttoGare("Euro 35.000") === 35000 && importoTuttoGare("Lotto 1: 48.500,50 oltre IVA") === 48500.5 && importoTuttoGare("Lotto 1") === null && importoTuttoGare("") === null);
   controlla("CIG: uno per lotto, validi, senza doppioni", JSON.stringify(cigTuttoGare("B11111111A | B22222222B, B11111111A; AAAAAAAAAA")) === JSON.stringify(["B11111111A", "B22222222B"]));
-  controlla("categorie → CPV (regola dichiarata): 8 cifre tali e quali, codici troncati completati con zeri; senza codice niente", cpvDaCategoriaTuttoGare("90910000-9 - Servizi di pulizia") === "90910000" && cpvDaCategoriaTuttoGare("9091 - Pulizia") === "90910000" && cpvDaCategoriaTuttoGare("45 - Lavori") === "45000000" && cpvDaCategoriaTuttoGare("Servizi di pulizia") === null && cpvDaCategoriaTuttoGare("1 - x") === null && JSON.stringify(cpvTuttoGare(d.categorie)) === JSON.stringify(["90910000"]));
+  controlla("categorie → CPV: «8 cifre - descrizione» come sul campione («45233142 - Lavori di riparazione stradale»); per difesa la cifra di controllo e i codici troncati; senza codice niente", cpvDaCategoriaTuttoGare("45233142 - Lavori di riparazione stradale") === "45233142" && cpvDaCategoriaTuttoGare("90910000-9 - Servizi di pulizia") === "90910000" && cpvDaCategoriaTuttoGare("9091 - Pulizia") === "90910000" && cpvDaCategoriaTuttoGare("45 - Lavori") === "45000000" && cpvDaCategoriaTuttoGare("Servizi di pulizia") === null && cpvDaCategoriaTuttoGare("1 - x") === null && JSON.stringify(cpvTuttoGare(d.categorie)) === JSON.stringify(["90910000", "90911200"]));
 }
 
 // ═════ E. opportunità ed ente ═════
@@ -273,17 +283,20 @@ async function provaLettore(): Promise<void> {
   const richieste: string[] = [];
   let fermato = false;
   try {
+    // la guardia resta: con la mappa non confermata (per esempio dopo un cambio di formato) il lettore si ferma prima di qualunque richiesta
+    canale.confermato = false;
     await new LettoreTuttoGare(sessione(reteFinta(RISPOSTE_ROMA, richieste))).leggiIstanze([ROMA], {}, OGGI);
   } catch (e) {
     fermato = e instanceof ErroreFonte && /non confermata/.test(e.message) && !e.sospendi;
+  } finally {
+    canale.confermato = prima;
   }
-  controlla("mappa NON confermata: il lettore si ferma PRIMA di qualunque richiesta", fermato && richieste.length === 0);
+  controlla("guardia della conferma (provata spegnendola): il lettore si ferma PRIMA di qualunque richiesta", fermato && richieste.length === 0);
   try {
-    canale.confermato = true;
     const r1: string[] = [];
     const l1 = await new LettoreTuttoGare(sessione(reteFinta(RISPOSTE_ROMA, r1))).leggiIstanze([ROMA], {}, OGGI);
     const roma = l1.istanze[0];
-    controlla("lettura (simulata): home + 3 dettagli (101, 102, 105); affidamento diretto e contratto applicativo esclusi dalla riga senza dettaglio", r1.length === 4 && r1[0] === "https://appalti.comune.roma.it/" && roma.dettagli.map((d) => d.codice).join() === "101,102,105" && roma.esclusiDallaRiga.join() === "103,104" && l1.errori.length === 0, { r1, esclusi: roma?.esclusiDallaRiga });
+    controlla("lettura (simulata): home + 3 dettagli (101, 102, 105); i due «Affidamento diretto / RDO» esclusi dal badge senza dettaglio", r1.length === 4 && r1[0] === "https://appalti.comune.roma.it/" && roma.dettagli.map((d) => d.codice).join() === "101,102,105" && roma.esclusiDallaRiga.join() === "103,104" && l1.errori.length === 0, { r1, esclusi: roma?.esclusiDallaRiga });
     controlla("lettura: SOLO indirizzi ammessi (mai documenti, allegati, altre piattaforme, alias)", r1.every((u) => percorsoAmmessoTuttoGare(u, ROMA)) && !r1.some((u) => /documenti|allegati|altro\.esempio/.test(u)));
     const cursore = aggiornaCursoreTuttoGare({}, l1.istanze.map((l) => ({ host: l.istanza.host, righe: l.righe, trattati: l.trattati })), OGGI);
     const r2: string[] = [];
@@ -319,7 +332,8 @@ async function provaLettore(): Promise<void> {
 function provaGuardie(): void {
   const tutte = Object.fromEntries(Object.values(VARIABILI_PRODUZIONE).map((v) => [v, "autorizzata"]));
   controlla("ambiente: «tuttogare» autorizzata sullo staging; in produzione MAI (nessuna variabile, nemmeno con tutte le altre)", (FONTI_RADAR as readonly string[]).includes("tuttogare") && !("tuttogare" in VARIABILI_PRODUZIONE) && fonteAutorizzata("tuttogare", "importazione", STAGING).ok && !fonteAutorizzata("tuttogare", "importazione", { ...PROD_DEPLOY, ...tutte, RADAR_TUTTOGARE_PRODUZIONE: "autorizzata" }).ok && !fonteAutorizzata("tuttogare", "notifiche", { ...PROD_DEPLOY, ...tutte }).ok);
-  controlla("fuori dalle fonti regionali gestite (console, script dei giri) e dal registro dei giri (vincolo 0128: serve la sua migrazione)", !(FONTI_REGIONALI as readonly string[]).includes("tuttogare") && !(FONTI_ESECUZIONI as readonly string[]).includes("tuttogare"));
+  controlla("fuori dalle fonti regionali gestite (console, cron) e dalle fonti della console e degli allarmi; DENTRO il registro dei giri (FONTI_REGISTRO, come SATER nel collaudo: la riga si scrive dopo la 0135)", !(FONTI_REGIONALI as readonly string[]).includes("tuttogare") && !(FONTI_ESECUZIONI as readonly string[]).includes("tuttogare") && (FONTI_REGISTRO as readonly string[]).includes("tuttogare"));
+  controlla("script dello staging per il collaudo (solo con un'autorizzazione registrata): l'accensione e il giro a mano ammettono «tuttogare»", (FONTI_ACCENDIBILI as readonly string[]).includes("tuttogare") && /\[\.\.\.FONTI_REGIONALI, "tuttogare"\]/.test(leggi("scripts/radar-importa-regionale.ts")));
   controlla("nessun giro programmato: niente orari, righe cron, rotta o interruttore", !("tuttogare" in ORARI_GIRI) && !("tuttogare" in CRON_PROPOSTI) && !("tuttogare" in ROTTE_CRON) && !("tuttogare" in INTERRUTTORI_CRON) && !/tuttogare/i.test(leggi("vercel.json")) && !fs.existsSync(path.join(radice, "src/app/api/cron/radar-tuttogare")));
   const fuori = ["src/app/site-console", "src/lib/console", "src/components", "scripts/pianificazione", "supabase/migrations"].flatMap((d) => {
     const trovati: string[] = [];
@@ -333,7 +347,12 @@ function provaGuardie(): void {
     giro(d);
     return trovati;
   });
-  controlla("nessuna traccia in console, pagine dei clienti, programmatore e migrazioni (la migrazione si prepara DOPO)", fuori.length === 0, fuori);
+  controlla("nessuna traccia in console, pagine dei clienti e programmatore; tra le migrazioni solo la 0135 proposta", JSON.stringify(fuori) === JSON.stringify(["supabase/migrations/0135_radar_fonte_tuttogare.sql"]), fuori);
+  // la 0135 PROPOSTA (mai applicata): vincolo del registro con TUTTE le fonti di prima più «tuttogare», riga spenta, nascosta, semaforo chiuso;
+  // nessuna istruzione su radar_procedure (piattaforma_id non si tocca, decisione (b))
+  const sql = leggi("supabase/migrations/0135_radar_fonte_tuttogare.sql");
+  const istruzioni = sql.split("\n").filter((r) => !/^\s*--/.test(r)).join("\n");
+  controlla("0135 proposta: vincolo del registro = le 5 fonti online + «tuttogare»; riga «tuttogare» spenta, nascosta, semaforo 2099, «on conflict do nothing»; niente su radar_procedure né su piattaforma_id", istruzioni.includes("check (fonte in ('ted', 'pvl', 'sintel', 'sardegnacat', 'sater', 'tuttogare'))") && istruzioni.includes("values ('tuttogare', false, true, '2099-01-01T00:00:00Z')") && /on conflict \(fonte\) do nothing/.test(istruzioni) && !/radar_procedure\b|piattaforma_id/.test(istruzioni) && /^begin;$/m.test(istruzioni) && /^commit;$/m.test(istruzioni) && !/\bdrop table\b|\bdelete\b|\btruncate\b|\bupdate\b/i.test(istruzioni));
   controlla("motore di unione: «tuttogare» tra le fonti unite, precedenza delle piattaforme; nessuna fonte nascosta di base (regola 48A/48E invariata)", FONTI_UNITE.includes("tuttogare") && PRECEDENZA_FONTI.tuttogare === PRECEDENZA_FONTI.sater && FONTI_NASCOSTE_PREDEFINITE.length === 0);
   controlla("nome e attribuzione della fonte uguali a quelli del connettore", NOME_FONTE.tuttogare === "TuttoGare" && ATTRIBUZIONE_FONTE.tuttogare === CANALE_TUTTOGARE.attribuzione);
   // decisione (b) del coordinamento (26/11): il vincolo di piattaforma_id della 0120 non si tocca; la forma TuttoGare non lo rispetta, quindi
@@ -353,20 +372,21 @@ async function provaGiri(): Promise<void> {
   const primaRete = richiesteDiRete;
   const a = mondo("assente");
   const ra = await eseguiImportazioneRegionale(a as unknown as SupabaseClient, "tuttogare", { env: STAGING, adesso: () => ADESSO });
-  controlla("staging SENZA la riga di TuttoGare: «fonte_spenta», nessuna gara, nessuna riga nel registro dei giri (fonte non ancora ammessa)", !ra.eseguita && ra.motivo === "fonte_spenta" && a.t("radar_procedure").length === 0 && a.t("radar_esecuzioni").length === 0 && !ra.esecuzione.scritta, ra);
+  const regA = a.t("radar_esecuzioni");
+  controlla("staging SENZA la riga di TuttoGare (0135 non applicata): «fonte_spenta», nessuna gara, nessuna richiesta; nel registro solo la riga «inerte» (nel database vero solo dopo la 0135)", !ra.eseguita && ra.motivo === "fonte_spenta" && a.t("radar_procedure").length === 0 && regA.length === 1 && regA[0].fonte === "tuttogare" && regA[0].esito === "inerte", { ra, regA });
   const tutte = Object.fromEntries(Object.values(VARIABILI_PRODUZIONE).map((v) => [v, "autorizzata"]));
   const b = mondo("accesa");
   const rb = await eseguiImportazioneRegionale(b as unknown as SupabaseClient, "tuttogare", { env: { ...PROD_DEPLOY, ...tutte, RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
   controlla("produzione, anche con la riga accesa e tutte le variabili: «ambiente_non_consentito», zero accessi al database", !rb.eseguita && rb.motivo === "ambiente_non_consentito" && b.richieste.length === 0, rb);
-  const c = mondo("accesa");
-  const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "tuttogare", { env: STAGING, adesso: () => ADESSO });
-  controlla("staging con la riga accesa ma mappa NON confermata: errore detto, nessuna gara, nessuna richiesta di rete", rc.eseguita && /non confermata/.test(rc.errore ?? "") && c.t("radar_procedure").length === 0 && richiesteDiRete === primaRete, rc.eseguita ? rc.errore : rc);
-
   const canale = CANALE_TUTTOGARE;
   const prima = canale.confermato;
+  const c = mondo("accesa");
+  canale.confermato = false;
+  const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "tuttogare", { env: STAGING, adesso: () => ADESSO }).finally(() => (canale.confermato = prima));
+  controlla("guardia della conferma (provata spegnendola): con la riga accesa errore detto, nessuna gara, nessuna richiesta di rete", rc.eseguita && /non confermata/.test(rc.errore ?? "") && c.t("radar_procedure").length === 0 && richiesteDiRete === primaRete, rc.eseguita ? rc.errore : rc);
+
   const attiveDiPrima = ISTANZE_TUTTOGARE.map((i) => i.attiva);
   try {
-    canale.confermato = true;
     // solo Roma attiva (meno pause tra le richieste); le altre istanze tornano come prima nel finally
     for (const i of ISTANZE_TUTTOGARE) i.attiva = i.host === ROMA.host;
     const richieste: string[] = [];
@@ -375,7 +395,8 @@ async function provaGiri(): Promise<void> {
     const d = mondo("accesa");
     const r = await eseguiImportazioneRegionale(d as unknown as SupabaseClient, "tuttogare", { env: STAGING, adesso: () => ADESSO, fetchFn: rete, origine: "script", limiti: { pausaMs: 2_000, tentativi: 1 } });
     const gare = d.t("radar_procedure");
-    controlla("giro (simulato, staging, solo Roma attiva): home + 3 dettagli, nessun errore; registro dei giri non scritto (fonte non ammessa dalla 0128)", r.eseguita && !r.errore && richieste.length === 4 && !r.esecuzione.scritta && d.t("radar_esecuzioni").length === 0, { r: r.eseguita ? { errore: r.errore, allarmi: r.allarmi } : r, richieste: richieste.length });
+    const regD = d.t("radar_esecuzioni");
+    controlla("giro (simulato, staging, solo Roma attiva): home + 3 dettagli, nessun errore; una riga «ok» di «tuttogare» nel registro dei giri (nel database vero dopo la 0135)", r.eseguita && !r.errore && richieste.length === 4 && r.esecuzione.scritta && regD.length === 1 && regD[0].fonte === "tuttogare" && regD[0].esito === "ok", { r: r.eseguita ? { errore: r.errore, allarmi: r.allarmi } : r, richieste: richieste.length, regD });
     controlla("giro: 2 gare scritte (bando di pulizia e indagine di portierato), lavori stradali esclusi, 2 affidamenti esclusi dalla riga", gare.length === 2 && r.eseguita && (r.statistiche.esclusi.affidamento ?? 0) === 2, { gare: gare.map((g) => g.chiave), esclusi: r.eseguita ? r.statistiche.esclusi : null });
     controlla("gare con la chiave «tuttogare:<host>:<codice>», piattaforma_id VUOTO (decisione (b)), ente e regione dall'anagrafica", gare.every((g) => /^tuttogare:appalti\.comune\.roma\.it:10[12]$/.test(String(g.chiave)) && g.piattaforma_id === null && g.sa_denominazione === "Roma Capitale"), gare.map((g) => [g.chiave, g.piattaforma_id, g.sa_denominazione]));
     controlla("provenienza: righe della fonte «tuttogare»; nessun dato dei referenti nel database", d.t("radar_procedure_fonti").length > 0 && d.t("radar_procedure_fonti").every((f) => f.fonte === "tuttogare") && !JSON.stringify(d.tabelle.radar_procedure).includes("esempio.invalid"));
