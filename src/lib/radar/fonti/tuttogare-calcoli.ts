@@ -452,7 +452,8 @@ export type MotivoEsclusioneTuttoGare =
 export type MetaTuttoGare = {
   host: string;
   codice: string;
-  // «tuttogare:<host>:<codice>»: identità della gara e piattaforma_id
+  // «tuttogare:<host>:<codice>»: identità della gara, cioè la sua CHIAVE. NON va in piattaforma_id (vincolo della 0120; decisione (b) del
+  // coordinamento del 26/11: piattaforma_id vuoto per TuttoGare, bandoDaTuttoGare)
   idPiattaforma: string;
   // identificativo della procedura nella fonte (id_fonte): «<host>:<codice>»
   idProcedura: string;

@@ -147,7 +147,10 @@ export function bandoDaTuttoGare(b: BandoTuttoGare, oggi: string): BandoRegional
   return {
     fonte: "tuttogare",
     idProcedura: id,
-    piattaformaId: b.meta.idPiattaforma,
+    // decisione (b) del coordinamento (26/11): piattaforma_id VUOTO. «tuttogare:<host>:<codice>» non rispetta il vincolo della 0120
+    // (^[a-z0-9_]{2,40}:[0-9]{1,12}$), che non si tocca: l'identità resta nella CHIAVE della gara (record.chiaveProcedura). Oggi non si perde
+    // nulla: TED e PVL non riconoscono i collegamenti TuttoGare (nessun suggerimento per piattaforma), l'unione automatica resta per CIG
+    piattaformaId: null,
     versione: { fonte: "tuttogare", id: `${id}@${oggi}`, giorno: oggi, istante: null, ted: null },
     idCambiamento: `${id}@${oggi}`.slice(0, 200),
     record: b.record,

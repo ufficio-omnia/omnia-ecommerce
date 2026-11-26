@@ -39,7 +39,7 @@ import { LettoreTuttoGare } from "../src/lib/radar/fonti/tuttogare";
 import { SessioneFonte, ErroreFonte } from "../src/lib/radar/fonti/sessione-fonte";
 import { idPiattaformaDaUrl, idPiattaformaDaUrlConnettore } from "../src/lib/radar/fonti/piattaforme-calcoli";
 import { FONTI_RADAR, VARIABILI_PRODUZIONE, fonteAutorizzata } from "../src/lib/radar/ambiente";
-import { FONTI_REGIONALI, bandoDaTuttoGare } from "../src/lib/radar/importa-regionali-calcoli";
+import { FONTI_REGIONALI, bandoDaTuttoGare, rigaDaBandoRegionale } from "../src/lib/radar/importa-regionali-calcoli";
 import { FONTI_ESECUZIONI } from "../src/lib/radar/esecuzioni-calcoli";
 import { CRON_PROPOSTI, INTERRUTTORI_CRON, ORARI_GIRI, ROTTE_CRON } from "../src/lib/radar/programmazione-calcoli";
 import { FONTI_UNITE, PRECEDENZA_FONTI } from "../src/lib/radar/unione-calcoli";
@@ -235,7 +235,9 @@ function provaClassificazione(): void {
   const castelli = leggiGaraTuttoGare(istanzaDaHost("cuccastellidellasapienza.tuttogare.it") as IstanzaTuttoGare, "9", leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]), ADESSO) as BandoTuttoGare;
   controlla("istanza con la regione da confermare: gara senza regione, «regione» tra i mancanti (mai una regione presunta)", castelli.tipo === "bando" && castelli.regioni.length === 0 && castelli.record.ente.regione === null && castelli.mancanti.includes("regione"));
   const br = bandoDaTuttoGare(b, OGGI);
-  controlla("bando per il motore: fonte «tuttogare», versione = giorno di lettura (come Sintel), piattaforma_id = identità, nessuna dichiarazione", br?.fonte === "tuttogare" && br.versione.id === "appalti.comune.roma.it:101@2026-11-26" && br.piattaformaId === "tuttogare:appalti.comune.roma.it:101" && br.dichiarazione === null && br.tipoAvvisoFonte === "Procedura aperta", br);
+  controlla("bando per il motore: fonte «tuttogare», versione = giorno di lettura (come Sintel), piattaforma_id VUOTO (decisione (b)), nessuna dichiarazione", br?.fonte === "tuttogare" && br.versione.id === "appalti.comune.roma.it:101@2026-11-26" && br.piattaformaId === null && br.dichiarazione === null && br.tipoAvvisoFonte === "Procedura aperta", br);
+  const riga = br ? rigaDaBandoRegionale(br, ADESSO) : null;
+  controlla("riga della gara: CHIAVE «tuttogare:<host>:<codice>» e piattaforma_id vuoto (nessun valore fuori dal vincolo della 0120)", riga?.chiave === "tuttogare:appalti.comune.roma.it:101" && riga.piattaforma_id === null, riga && { chiave: riga.chiave, piattaforma_id: riga.piattaforma_id });
 }
 
 // ═════ F. cursore ═════
@@ -334,6 +336,10 @@ function provaGuardie(): void {
   controlla("nessuna traccia in console, pagine dei clienti, programmatore e migrazioni (la migrazione si prepara DOPO)", fuori.length === 0, fuori);
   controlla("motore di unione: «tuttogare» tra le fonti unite, precedenza delle piattaforme; nessuna fonte nascosta di base (regola 48A/48E invariata)", FONTI_UNITE.includes("tuttogare") && PRECEDENZA_FONTI.tuttogare === PRECEDENZA_FONTI.sater && FONTI_NASCOSTE_PREDEFINITE.length === 0);
   controlla("nome e attribuzione della fonte uguali a quelli del connettore", NOME_FONTE.tuttogare === "TuttoGare" && ATTRIBUZIONE_FONTE.tuttogare === CANALE_TUTTOGARE.attribuzione);
+  // decisione (b) del coordinamento (26/11): il vincolo di piattaforma_id della 0120 non si tocca; la forma TuttoGare non lo rispetta, quindi
+  // piattaforma_id resta vuoto e l'identità sta nella chiave (3–200 caratteri, vincolo della 0109), che ci sta anche con l'host più lungo
+  const vincolo0120 = leggi("supabase/migrations/0120_radar_multifonte.sql").match(/piattaforma_id ~ '([^']+)'/)?.[1] ?? "";
+  controlla("schema invariato: la chiave TuttoGare non entra nel vincolo di piattaforma_id della 0120 (per questo resta vuoto) e sta nei 200 caratteri della chiave", vincolo0120 === "^[a-z0-9_]{2,40}:[0-9]{1,12}$" && !new RegExp(vincolo0120).test("tuttogare:appalti.comune.roma.it:101") && ISTANZE_TUTTOGARE.every((i) => `tuttogare:${i.host}:999999999999`.length <= 200), vincolo0120);
 }
 
 // ═════ I. giri col database in memoria ═════
@@ -371,7 +377,7 @@ async function provaGiri(): Promise<void> {
     const gare = d.t("radar_procedure");
     controlla("giro (simulato, staging, solo Roma attiva): home + 3 dettagli, nessun errore; registro dei giri non scritto (fonte non ammessa dalla 0128)", r.eseguita && !r.errore && richieste.length === 4 && !r.esecuzione.scritta && d.t("radar_esecuzioni").length === 0, { r: r.eseguita ? { errore: r.errore, allarmi: r.allarmi } : r, richieste: richieste.length });
     controlla("giro: 2 gare scritte (bando di pulizia e indagine di portierato), lavori stradali esclusi, 2 affidamenti esclusi dalla riga", gare.length === 2 && r.eseguita && (r.statistiche.esclusi.affidamento ?? 0) === 2, { gare: gare.map((g) => g.chiave), esclusi: r.eseguita ? r.statistiche.esclusi : null });
-    controlla("gare con chiave e piattaforma_id «tuttogare:<host>:<codice>», ente e regione dall'anagrafica", gare.every((g) => /^tuttogare:appalti\.comune\.roma\.it:10[12]$/.test(String(g.chiave)) && g.piattaforma_id === g.chiave && g.sa_denominazione === "Roma Capitale"), gare.map((g) => [g.chiave, g.piattaforma_id, g.sa_denominazione]));
+    controlla("gare con la chiave «tuttogare:<host>:<codice>», piattaforma_id VUOTO (decisione (b)), ente e regione dall'anagrafica", gare.every((g) => /^tuttogare:appalti\.comune\.roma\.it:10[12]$/.test(String(g.chiave)) && g.piattaforma_id === null && g.sa_denominazione === "Roma Capitale"), gare.map((g) => [g.chiave, g.piattaforma_id, g.sa_denominazione]));
     controlla("provenienza: righe della fonte «tuttogare»; nessun dato dei referenti nel database", d.t("radar_procedure_fonti").length > 0 && d.t("radar_procedure_fonti").every((f) => f.fonte === "tuttogare") && !JSON.stringify(d.tabelle.radar_procedure).includes("esempio.invalid"));
     const stato = d.t("radar_fonti_stato").find((x) => x.fonte === "tuttogare") as { cursore: { tuttogare?: Record<string, Record<string, unknown>> } } | undefined;
     controlla("cursore salvato a giro finito: le 5 gare di Roma (lette o escluse dalla riga)", Object.keys(stato?.cursore?.tuttogare?.[ROMA.host] ?? {}).sort().join() === "101,102,103,104,105" && Object.keys(stato?.cursore?.tuttogare ?? {}).join() === ROMA.host, stato?.cursore);

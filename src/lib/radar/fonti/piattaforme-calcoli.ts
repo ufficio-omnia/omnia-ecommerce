@@ -59,6 +59,8 @@ export function idPiattaformaDaUrl(url: string | null | undefined): string | nul
 // «https://intercenter.regione.emilia-romagna.it/trovabando/BANDO_GARA_PORTALE@17652665» → «sater:17652665».
 // TuttoGare (Fase 2, in costruzione): la pagina del dettaglio delle SOLE istanze in anagrafica (tuttogare-istanze.ts), con l'host nella
 // chiave perché il codice è dell'istanza: «tuttogare:<host>:<codice>». Anche questa solo nei connettori (stessa decisione a parte di SATER).
+// È l'identità (la CHIAVE della gara), non un valore di piattaforma_id: quella forma non rispetta il vincolo della 0120 (decisione (b) del
+// coordinamento del 26/11: piattaforma_id vuoto per TuttoGare).
 export function idPiattaformaDaUrlConnettore(url: string | null | undefined): string | null {
   return idDaRegole(url, REGOLE) ?? idDaRegole(url, REGOLE_CONNETTORI) ?? idTuttoGareDaUrl(url);
 }
