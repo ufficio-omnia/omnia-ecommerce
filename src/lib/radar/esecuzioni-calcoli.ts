@@ -8,10 +8,13 @@ import { testoContattoMancante } from "./fonti/user-agent";
 export const FONTI_ESECUZIONI = ["ted", "pvl", "sintel", "sardegnacat"] as const;
 export type FonteEsecuzione = (typeof FONTI_ESECUZIONI)[number];
 
-/** Le fonti che il registro dei giri ammette (vincolo della 0128). Le fonti nuove (Fase 2: SATER) entrano con la loro migrazione. */
-export function eFonteEsecuzione(x: string): x is FonteEsecuzione {
-  return (FONTI_ESECUZIONI as readonly string[]).includes(x);
-}
+/**
+ * Le fonti che si REGISTRANO nel registro dei giri: quelle della console, degli allarmi e dei cron (FONTI_ESECUZIONI) più le fonti in
+ * costruzione (Fase 2: SATER), che si registrano senza comparire in console (gli allarmi leggono solo FONTI_ESECUZIONI). Il vincolo della
+ * 0128 ammette «sater» solo con la 0134: prima di quella, la riga di un giro SATER non si scrive (scriviEsecuzione non lancia mai eccezioni).
+ */
+export const FONTI_REGISTRO = [...FONTI_ESECUZIONI, "sater"] as const;
+export type FonteRegistro = (typeof FONTI_REGISTRO)[number];
 export type ModoEsecuzione = "incrementale" | "recupero" | "finestra" | "manuale";
 export type EsitoEsecuzione = "ok" | "errore" | "sospesa" | "occupata" | "inerte" | "gia_eseguito";
 /** Chi ha lanciato il giro: il cron, il pulsante della console («Esegui un giro adesso»), uno script dello staging. */
@@ -26,7 +29,7 @@ const MAX_INT = 2_147_483_647;
 
 export type RigaEsecuzione = {
   id: string;
-  fonte: FonteEsecuzione;
+  fonte: FonteRegistro;
   modo: ModoEsecuzione;
   iniziato_il: string;
   finito_il: string;
@@ -139,7 +142,7 @@ export function allarmiValidi(a: readonly string[] | undefined): string[] {
  * LA riga del registro: rispetta tutti i vincoli della 0128. In particolare il testo dell'errore c'è SOLO con l'esito «errore», ripulito
  * (mai indirizzi email, chiavi o token: erroreDaConservare) e lungo da 1 a 500 caratteri. Un giro lanciato dalla console vale «manuale».
  */
-export function rigaEsecuzione(x: { id: string; fonte: FonteEsecuzione; origine: OrigineGiro; iniziato: Date; finito: Date } & DatiGiro): RigaEsecuzione {
+export function rigaEsecuzione(x: { id: string; fonte: FonteRegistro; origine: OrigineGiro; iniziato: Date; finito: Date } & DatiGiro): RigaEsecuzione {
   const finito = x.finito.getTime() < x.iniziato.getTime() ? x.iniziato : x.finito;
   const errore = x.esito === "errore" ? testoSicuro(erroreDaConservare(x.errore ?? ""), LIMITI_RIGA.errore).trim() || "errore senza descrizione" : null;
   return {

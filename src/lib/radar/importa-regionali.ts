@@ -21,8 +21,8 @@ import { giornoDiRoma } from "./fonti/ted-calcoli";
 import type { Misure } from "./importa";
 import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
 import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
-import { datiGiroRegionale, eFonteEsecuzione, type OrigineGiro } from "./esecuzioni-calcoli";
-import { giroRegistrato, nuovoIdEsecuzione, type EsitoRegistro } from "./esecuzioni";
+import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
+import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
 import { userAgentFonti } from "./fonti/user-agent";
 
@@ -58,14 +58,11 @@ function schemaAssente(e: { message: string; code?: string }): boolean {
   return e.code === "42703" || e.code === "PGRST204" || /column .* does not exist|nascosta_ai_clienti/.test(e.message);
 }
 
-/** Un giro di Sintel o SardegnaCAT, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere. */
+/**
+ * Un giro di Sintel, SardegnaCAT o SATER, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere.
+ * SATER (Fase 2): la riga si scrive solo dopo la 0134, che estende il vincolo della 0128; prima la scrittura non riesce senza fermare nulla.
+ */
 export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
-  // SATER (Fase 2): il registro dei giri (0128) non ammette ancora la fonte (vincolo su radar_esecuzioni.fonte, da estendere con una
-  // migrazione all'accensione): il giro, possibile solo sullo staging e solo con la riga della fonte accesa, non si registra
-  if (!eFonteEsecuzione(fonte)) {
-    const id = (opzioni.nuovoIdEsecuzione ?? nuovoIdEsecuzione)();
-    return giroRegionale(admin, fonte, opzioni, id).then((r) => ({ ...r, esecuzione: { scritta: false, id: null, motivo: "non_registrato" } }));
-  }
   return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
 }
 

@@ -22,7 +22,7 @@ import { SessioneFonte } from "../src/lib/radar/fonti/sessione-fonte";
 import { idPiattaformaDaUrl, idPiattaformaDaUrlConnettore } from "../src/lib/radar/fonti/piattaforme-calcoli";
 import { FONTI_RADAR, VARIABILI_PRODUZIONE, fonteAutorizzata } from "../src/lib/radar/ambiente";
 import { FONTI_REGIONALI, bandoDaAflink } from "../src/lib/radar/importa-regionali-calcoli";
-import { FONTI_ESECUZIONI, eFonteEsecuzione } from "../src/lib/radar/esecuzioni-calcoli";
+import { FONTI_ESECUZIONI, FONTI_REGISTRO } from "../src/lib/radar/esecuzioni-calcoli";
 import { ORARI_GIRI, CRON_PROPOSTI, ROTTE_CRON, INTERRUTTORI_CRON } from "../src/lib/radar/programmazione-calcoli";
 import { FONTI_UNITE, PRECEDENZA_FONTI } from "../src/lib/radar/unione-calcoli";
 import { ATTRIBUZIONE_FONTE, FONTI_NASCOSTE_PREDEFINITE, NOME_FONTE } from "../src/lib/radar/fonti-gara-calcoli";
@@ -34,6 +34,9 @@ import {
   cigIntercenter,
   collegamentoTrovabando,
   leggiElementoIntercenter,
+  numeroDallaPagina,
+  paginaSeguenteIntercenter,
+  PAGINE_MASSIME_INTERCENTER,
   leggiElencoIntercenter,
   numeroIntercenter,
   paginaIntercenter,
@@ -176,13 +179,13 @@ async function provaGuardie(): Promise<void> {
   controlla("produzione, deploy di produzione, anche con variabili: SATER NON ammessa", !prod.ok && /solo sullo staging/.test(prod.ok ? "" : prod.motivo), prod);
   controlla("anteprima: SATER non ammessa", !fonteAutorizzata("sater", "importazione", { ...STAGING, VERCEL_ENV: "preview" }).ok);
   controlla("console e cron: SATER fuori dalle fonti regionali gestite", !(FONTI_REGIONALI as readonly string[]).includes("sater"));
-  controlla("registro dei giri (0128): SATER non ammessa", !(FONTI_ESECUZIONI as readonly string[]).includes("sater") && !eFonteEsecuzione("sater") && eFonteEsecuzione("sardegnacat"));
+  controlla("registro dei giri: SATER si registra (dopo la 0134) ma resta fuori da console e allarmi", (FONTI_REGISTRO as readonly string[]).includes("sater") && !(FONTI_ESECUZIONI as readonly string[]).includes("sater"));
   controlla("nessun orario, cron, rotta o interruttore per SATER", !("sater" in ORARI_GIRI) && !("sater" in CRON_PROPOSTI) && !("sater" in ROTTE_CRON) && !("sater" in INTERRUTTORI_CRON));
   controlla("nessuna rotta cron di SATER e nessuna riga in vercel.json", !fs.existsSync(path.join(__dirname, "..", "src/app/api/cron/radar-sater")) && !/sater/i.test(leggi("vercel.json")));
   controlla("console: nessuna voce SATER nelle viste e nelle azioni", !/["']sater["']/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")) && !/sater:/.test(leggi("src/app/site-console/azioni/tender-intelligence.ts")));
   controlla("nessuna fonte nascosta di base (regola 48A/48E invariata)", FONTI_NASCOSTE_PREDEFINITE.length === 0);
-  controlla("descrizione della fonte: in costruzione, senza giri previsti, licenza CC BY 4.0 da confermare", descrizioneFonte("sater").stato === "in_costruzione" && /non ancora previsti/.test(descrizioneFonte("sater").aggiornamento) && /da confermare/.test(descrizioneFonte("sater").licenza));
-  controlla("nomi e citazione della fonte presenti", NOME_FONTE.sater === "SATER" && /Intercent-ER/.test(ATTRIBUZIONE_FONTE.sater));
+  controlla("descrizione della fonte: in costruzione, senza giri previsti, licenza CC BY 4.0 con la citazione della fonte", descrizioneFonte("sater").stato === "in_costruzione" && /non ancora previsti/.test(descrizioneFonte("sater").aggiornamento) && /CC BY 4\.0/.test(descrizioneFonte("sater").licenza) && /citando la fonte/.test(descrizioneFonte("sater").licenza));
+  controlla("attribuzione (obbligo CC BY 4.0) presente come per SardegnaCAT: nome, ente e licenza", NOME_FONTE.sater === "SATER" && /Intercent-ER/.test(ATTRIBUZIONE_FONTE.sater) && /CC BY 4\.0/.test(ATTRIBUZIONE_FONTE.sater) && ATTRIBUZIONE_FONTE.sater === CANALE_INTERCENTER.attribuzione && !!ATTRIBUZIONE_FONTE.sardegnacat);
 
   // giri con il database in memoria: senza la riga della fonte nulla parte; in produzione zero accessi
   const mondo = (conRiga: boolean) => {
@@ -193,30 +196,29 @@ async function provaGuardie(): Promise<void> {
   const prima = richiesteDiRete;
   const a = mondo(false);
   const ra = await eseguiImportazioneRegionale(a as unknown as SupabaseClient, "sater", { env: STAGING, adesso: () => ADESSO });
-  controlla("staging SENZA la riga di SATER: «fonte_spenta», nessuna gara, nessuna riga nel registro dei giri", !ra.eseguita && ra.motivo === "fonte_spenta" && !ra.esecuzione.scritta && (a.tabelle.radar_procedure ?? []).length === 0 && (a.tabelle.radar_esecuzioni ?? []).length === 0, ra);
-  const b = mondo(true);
-  const rb = await eseguiImportazioneRegionale(b as unknown as SupabaseClient, "sater", { env: STAGING, adesso: () => ADESSO });
-  controlla("staging CON la riga accesa (simulata): il canale non confermato non legge nulla, nessuna gara, fonte NON sospesa", rb.eseguita && !!rb.errore && /non confermato/.test(rb.errore) && !rb.sospesa && (b.tabelle.radar_procedure ?? []).length === 0 && (b.tabelle.radar_esecuzioni ?? []).length === 0, rb);
+  const regA = a.t("radar_esecuzioni");
+  controlla("staging SENZA la riga di SATER: «fonte_spenta», nessuna gara, nessuna richiesta; nel registro solo la riga «inerte»", !ra.eseguita && ra.motivo === "fonte_spenta" && (a.tabelle.radar_procedure ?? []).length === 0 && regA.length === 1 && regA[0].fonte === "sater" && regA[0].esito === "inerte", { ra, regA });
   const c = mondo(true);
   const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "sater", { env: { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "autorizzata", RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
   controlla("produzione: «ambiente_non_consentito», zero accessi al database", !rc.eseguita && rc.motivo === "ambiente_non_consentito" && c.richieste.length === 0, rc);
   controlla("nessuna richiesta di rete in tutti i giri", richiesteDiRete === prima, richiesteDiRete - prima);
 }
 
-// ───── canale dell'API del portale Intercent-ER: struttura DICHIARATA (nomi visti nella ricognizione R2, da confermare su un campione vero);
-// elementi [SINTETICI] con quei nomi, valori inventati ─────
+// ───── canale dell'API del portale Intercent-ER: struttura CONFERMATA sul campione vero (addendum 60C); elementi [SINTETICI] con quella
+// struttura (id_intercenter = solo il numero, «@id» = pagina HTML con «BANDO_GARA_PORTALE@<numero>», date con «+00:00», cig = testi) ─────
 const BANDI: CartellaIntercenter = { nome: "bandi_altri_enti", tipo: "Bando", percorso: null };
 const AVVISI: CartellaIntercenter = { nome: "avvisi_altri_enti", tipo: "Avviso", percorso: null };
 const trovabando = (n: number) => `https://intercenter.regione.emilia-romagna.it/trovabando/BANDO_GARA_PORTALE@${n}`;
-const pagina = (n: number) => `https://intercenter.regione.emilia-romagna.it/bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-bandi-e-procedure-di-gara/bandi-altri-enti-aperti/bando-prova-${n}`;
+const pagina = (n: number) => `https://intercenter.regione.emilia-romagna.it/bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-bandi-e-procedure-di-gara/bandi-altri-enti-aperti/BANDO_GARA_PORTALE@${n}`;
 const voce = (n: number, p: Record<string, unknown> = {}): Record<string, unknown> => ({
   "@id": pagina(n),
   "@type": "Bando",
   title: "Servizio di pulizia degli edifici comunali (prova sintetica)",
   description: "Affidamento del servizio di pulizia (prova sintetica)",
-  effective: "2026-11-24T08:00:00+00:00",
+  // pubblicazione a mezzanotte di Roma, come sul campione
+  effective: "2026-11-23T23:00:00+00:00",
   modified: "2026-11-25T09:00:00+00:00",
-  id_intercenter: `BANDO_GARA_PORTALE@${n}`,
+  id_intercenter: String(n),
   ente_bando: "COMUNE DI PROVASINTETICA",
   cig: ["B11111111A", "B22222222B"],
   scadenza_bando: "2026-12-15T11:00:00+00:00",
@@ -229,32 +231,48 @@ const voce = (n: number, p: Record<string, unknown> = {}): Record<string, unknow
 const elencoJson = (voci: Record<string, unknown>[], totale = voci.length) => JSON.stringify({ "@id": "https://intercenter.regione.emilia-romagna.it/++api++/prova", items: voci, items_total: totale });
 
 function provaCanaleDichiarato(): void {
-  controlla("canale del portale NON confermato (i percorsi sono quelli visti in R2, ma il lettore non li usa)", CANALE_INTERCENTER.confermato === false);
-  controlla("3 cartelle degli avvisi APERTI (R2): bandi di altri enti, avvisi e indagini di altri enti, bandi di Intercent-ER", JSON.stringify(CANALE_INTERCENTER.cartelle.map((c) => [c.nome, c.tipo])) === JSON.stringify([["bandi_altri_enti", "Bando"], ["avvisi_altri_enti", "Avviso"], ["bandi_intercenter", "Bando"]]) && CANALE_INTERCENTER.cartelle.every((c) => /-aperti$/.test(c.percorso ?? "")));
-  controlla("indirizzo dell'elenco come in R2 (API di Plone, b_size=500, metadata_fields=_all)", urlCartellaIntercenter(CANALE_INTERCENTER.cartelle[0]) === "https://intercenter.regione.emilia-romagna.it/++api++/bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-bandi-e-procedure-di-gara/bandi-altri-enti-aperti?b_size=500&metadata_fields=_all");
-  controlla("campi: quelli di Plone dichiarati come tali, gli altri «visti in R2» (da confermare); niente importo né CPV (non nell'elenco)", (["url", "titolo", "descrizione", "pubblicazione", "modifica"] as const).every((k) => CAMPI_INTERCENTER[k].origine === "plone") && (["id", "ente", "cig", "scadenza", "tipologia", "stato"] as const).every((k) => CAMPI_INTERCENTER[k].origine === "visto_r2") && !Object.values(CAMPI_INTERCENTER).some((c) => /importo|cpv/i.test(c.nome)));
+  controlla("canale del portale CONFERMATO (60C): le altre guardie restano (solo staging, nessun cron, console senza SATER)", CANALE_INTERCENTER.confermato === true);
+  controlla("3 cartelle degli avvisi APERTI: bandi di altri enti, avvisi e indagini di altri enti, bandi di Intercent-ER", JSON.stringify(CANALE_INTERCENTER.cartelle.map((c) => [c.nome, c.tipo])) === JSON.stringify([["bandi_altri_enti", "Bando"], ["avvisi_altri_enti", "Avviso"], ["bandi_intercenter", "Bando"]]) && CANALE_INTERCENTER.cartelle.every((c) => /-aperti$/.test(c.percorso ?? "")));
+  controlla("indirizzo dell'elenco: API di Plone, b_size=500, metadata_fields=_all", urlCartellaIntercenter(CANALE_INTERCENTER.cartelle[0]) === "https://intercenter.regione.emilia-romagna.it/++api++/bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-bandi-e-procedure-di-gara/bandi-altri-enti-aperti?b_size=500&metadata_fields=_all");
+  controlla("campi: di Plone e del portale (confermati); niente importo né CPV (non nell'elenco), niente referenti", (["url", "titolo", "descrizione", "pubblicazione", "modifica"] as const).every((k) => CAMPI_INTERCENTER[k].origine === "plone") && (["id", "ente", "cig", "scadenza", "tipologia", "stato"] as const).every((k) => CAMPI_INTERCENTER[k].origine === "portale") && !Object.values(CAMPI_INTERCENTER).some((c) => /importo|cpv|referent|email|telefon/i.test(c.nome)));
+  const base = urlCartellaIntercenter(CANALE_INTERCENTER.cartelle[0]) as string;
+  const seguente = base.replace("?b_size=500", "?b_start=500&b_size=500");
+  controlla("pagina seguente: solo il «batching.next» dello STESSO indirizzo con i soli parametri di paginazione", paginaSeguenteIntercenter(base, seguente) === new URL(seguente).toString()
+    && [base.replace("intercenter.regione", "altro.regione"), base.replace("bandi-altri-enti-aperti", "bandi-altri-enti-chiusi") + "&b_start=500", `${base}&b_start=500&q=x`, base.replace("https:", "http:") + "&b_start=500", seguente.replace("b_start=500", "b_start=-1"), 42].every((x) => paginaSeguenteIntercenter(base, x) === null)
+    && PAGINE_MASSIME_INTERCENTER >= 5);
   controlla("percorso con «..» o caratteri strani: nessun indirizzo", urlCartellaIntercenter({ ...BANDI, percorso: "../etc" }) === null && urlCartellaIntercenter({ ...BANDI, percorso: "Bandi?x=1" }) === null && urlCartellaIntercenter({ ...BANDI, percorso: null }) === null);
   controlla("citazione della fonte uguale a quella mostrata nelle schede", ATTRIBUZIONE_FONTE.sater === CANALE_INTERCENTER.attribuzione);
 }
 
 async function provaLettoreIntercenter(): Promise<void> {
   const richieste: string[] = [];
+  // risposte per percorso: la cartella dei bandi in DUE pagine (il portale ne dà 2 per pagina e indica la seguente in «batching.next»)
+  const pagine: Record<string, string> = {
+    "prova/bandi?b_size=500&metadata_fields=_all": JSON.stringify({ items: [voce(19000001), voce(19000002)], items_total: 3, batching: { next: "https://intercenter.regione.emilia-romagna.it/++api++/prova/bandi?b_start=2&b_size=500&metadata_fields=_all" } }),
+    "prova/bandi?b_start=2&b_size=500&metadata_fields=_all": JSON.stringify({ items: [voce(19000003)], items_total: 3 }),
+    "prova/avvisi?b_size=500&metadata_fields=_all": elencoJson([voce(19000004, { tipologia_bando_intercenter: "Avviso" })]),
+    // un «next» verso un ALTRO percorso non si segue: la cartella resta incompleta (l'importatore accende l'allarme)
+    "prova/intercenter?b_size=500&metadata_fields=_all": JSON.stringify({ items: [voce(19000005)], items_total: 2, batching: { next: "https://intercenter.regione.emilia-romagna.it/++api++/prova/altro?b_start=1" } }),
+  };
   const reteFinta = (async (url: string | URL | Request) => {
-    richieste.push(String(url));
-    return new Response(elencoJson([voce(19000001)]), { status: 200, headers: { "content-type": "application/json" } });
+    const u = String(url);
+    richieste.push(u);
+    const chiave = u.replace("https://intercenter.regione.emilia-romagna.it/++api++/", "");
+    return new Response(pagine[chiave] ?? elencoJson([]), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
-  const sessione = () => new SessioneFonte("SATER", { pausaMs: 0, timeoutMs: 1000, tentativi: 1, richiesteMassime: 4 }, reteFinta);
-  let errore: { message?: string; sospendi?: boolean } | null = null;
-  try {
-    await new LettoreIntercenter(sessione()).leggiCartelle();
-  } catch (e) {
-    errore = e as { message?: string; sospendi?: boolean };
-  }
-  controlla("API del portale: canale non confermato → nessuna richiesta, nessuna sospensione", richieste.length === 0 && /non confermato/.test(errore?.message ?? "") && errore?.sospendi === false, errore?.message);
-  // canale confermato SOLO per la prova (poi rimesso com'era): 3 richieste, una per cartella, verso il portale
+  const sessione = () => new SessioneFonte("SATER", { pausaMs: 0, timeoutMs: 1000, tentativi: 1, richiesteMassime: 10 }, reteFinta);
   const canale = CANALE_INTERCENTER as unknown as { confermato: boolean; cartelle: CartellaIntercenter[] };
   const prima = { confermato: canale.confermato, cartelle: canale.cartelle };
+  let errore: { message?: string; sospendi?: boolean } | null = null;
   try {
+    // canale NON confermato (solo per la prova): nessuna richiesta
+    canale.confermato = false;
+    try {
+      await new LettoreIntercenter(sessione()).leggiCartelle();
+    } catch (e) {
+      errore = e as { message?: string; sospendi?: boolean };
+    }
+    controlla("API del portale: canale non confermato → nessuna richiesta, nessuna sospensione", richieste.length === 0 && /non confermato/.test(errore?.message ?? "") && errore?.sospendi === false, errore?.message);
     canale.confermato = true;
     canale.cartelle = [{ ...BANDI, percorso: "prova/bandi" }, { ...AVVISI, percorso: null }, { nome: "bandi_intercenter", tipo: "Bando", percorso: "prova/intercenter" }];
     errore = null;
@@ -266,13 +284,15 @@ async function provaLettoreIntercenter(): Promise<void> {
     controlla("un solo percorso mancante: nessuna richiesta (mai letture parziali)", richieste.length === 0 && /avvisi_altri_enti/.test(errore?.message ?? ""), errore?.message);
     canale.cartelle = [{ ...BANDI, percorso: "prova/bandi" }, { ...AVVISI, percorso: "prova/avvisi" }, { nome: "bandi_intercenter", tipo: "Bando", percorso: "prova/intercenter" }];
     const letto = await new LettoreIntercenter(sessione()).leggiCartelle();
-    controlla("canale confermato (simulato): una richiesta per cartella, solo verso l'API del portale", richieste.length === 3 && richieste.every((u) => u.startsWith("https://intercenter.regione.emilia-romagna.it/++api++/prova/")) && letto.cartelle.length === 3, richieste);
+    const [bandi, avvisi, intercenter] = letto.cartelle;
+    controlla("pagine: la seguente letta dal «batching.next» del portale fino a «items_total»; 4 richieste, solo verso l'API", richieste.length === 4 && richieste.every((u) => u.startsWith("https://intercenter.regione.emilia-romagna.it/++api++/prova/")) && bandi.elementi.length === 3 && bandi.pagine === 2 && bandi.totaleDichiarato === 3, { richieste, pagine: letto.cartelle.map((c) => c.pagine) });
+    controlla("un «next» verso un altro percorso NON si segue: cartella incompleta (1 su 2), dichiarata dal totale", intercenter.elementi.length === 1 && intercenter.totaleDichiarato === 2 && intercenter.pagine === 1 && avvisi.elementi.length === 1);
     controlla("i dati dei referenti non escono mai dalla lettura", !JSON.stringify(letto).includes("esempio.invalid") && !JSON.stringify(letto).includes("Persona Sintetica"));
   } finally {
     canale.confermato = prima.confermato;
     canale.cartelle = prima.cartelle;
   }
-  controlla("canale rimesso com'era dopo la prova", CANALE_INTERCENTER.confermato === false && CANALE_INTERCENTER.cartelle.every((c) => /^bandi-e-strumenti-di-acquisto\//.test(c.percorso ?? "")));
+  controlla("canale rimesso com'era dopo la prova", CANALE_INTERCENTER.confermato === true && CANALE_INTERCENTER.cartelle.every((c) => /^bandi-e-strumenti-di-acquisto\//.test(c.percorso ?? "")));
 }
 
 function provaElenco(): void {
@@ -292,7 +312,7 @@ function provaElementiIntercenter(): void {
   const motivo = (x: ReturnType<typeof el>) => (x?.tipo === "esclusione" ? (x as EsclusioneIntercenter).motivo : null);
 
   const b = bando(el(BANDI, voce(19000001)));
-  controlla("bando: chiave e identificativo da «id_intercenter» (sater:<numero>); pagina del portale e collegamento «trovabando»", !!b && b.record.chiaveProcedura === "sater:19000001" && b.meta.idPiattaforma === "sater:19000001" && b.record.urlAvviso === pagina(19000001) && b.record.urlDocumenti === trovabando(19000001), b?.meta);
+  controlla("bando: chiave e identificativo da «id_intercenter» (sater:<numero>); collegamento mostrato = pagina del bando, mai il «trovabando» (rotta non provata)", !!b && b.record.chiaveProcedura === "sater:19000001" && b.meta.idPiattaforma === "sater:19000001" && b.record.urlAvviso === pagina(19000001) && b.record.urlDocumenti === pagina(19000001) && b.lottiDocumenti.every((x) => x === pagina(19000001)) && !JSON.stringify(b.record).includes("/trovabando/"), b?.record.urlDocumenti);
   controlla("bando: un lotto per CIG, nell'ordine dato", JSON.stringify(b?.record.lotti.map((l) => [l.numero, l.cig])) === JSON.stringify([["LOT-0001", "B11111111A"], ["LOT-0002", "B22222222B"]]));
   controlla("bando: scadenza UTC → giorno di Roma e istante; ente e regione", b?.record.scadenzaGiorno === "2026-12-15" && b?.record.scadenzaOfferte === "2026-12-15T11:00:00.000Z" && b?.record.scadenzaOraIndicata === true && b?.record.ente.denominazione === "COMUNE DI PROVASINTETICA" && b?.record.ente.regione === "emilia_romagna");
   controlla("bando: senza procedura nell'oggetto entra, procedura non scritta, mancanti dichiarati (cpv, tipo_procedura)", b?.record.tipoProcedura === null && !!b?.mancanti.includes("tipo_procedura") && !!b?.mancanti.includes("cpv") && b?.opportunita.tipo === "bando");
@@ -300,14 +320,16 @@ function provaElementiIntercenter(): void {
   controlla("bando: lo stato del portale entra nell'impronta, senza essere interpretato", !!b && b.meta.stato === "aperto" && bando(el(BANDI, voce(19000001, { bando_state: "altro_valore" })))?.record.impronta !== b.record.impronta && bando(el(BANDI, voce(19000001, { bando_state: "altro_valore" })))?.record.annullata === false);
   controlla("tipologia dell'elemento: vale più della cartella («Avviso» in una cartella di bandi)", bando(el(BANDI, voce(19000012, { tipologia_bando_intercenter: "Avviso", title: "Avviso di indagine di mercato. Servizio di pulizia degli edifici comunali (prova sintetica)" })))?.opportunita.tipo === "indagine_mercato" && tipologiaIntercenter("bando") === "Bando" && tipologiaIntercenter("Esito") === null);
   controlla("pagina del portale: solo https sul suo host, senza «/++api++»", paginaIntercenter("https://intercenter.regione.emilia-romagna.it/++api++/bandi/x") === "https://intercenter.regione.emilia-romagna.it/bandi/x" && paginaIntercenter("http://intercenter.regione.emilia-romagna.it/bandi/x") === null && paginaIntercenter("https://altro.esempio.invalid/bandi/x") === null && motivo(el(BANDI, voce(19000013, { "@id": "https://altro.esempio.invalid/bandi/x" }))) === "elemento_malformato");
-  controlla("identificativo: «BANDO_GARA_PORTALE@<numero>» o il numero; collegamento «trovabando» coerente con la regola dei connettori", numeroIntercenter("BANDO_GARA_PORTALE@17652665") === "17652665" && numeroIntercenter(17652665) === "17652665" && numeroIntercenter("ESITO@1") === null && numeroIntercenter("12a") === null && collegamentoTrovabando("17652665") === trovabando(17652665) && idPiattaformaDaUrlConnettore(collegamentoTrovabando("17652665")) === "sater:17652665");
+  controlla("identificativo: SOLO il numero (come sul campione); «trovabando» calcolato coerente con la regola dei connettori", numeroIntercenter("18703298") === "18703298" && numeroIntercenter(18703298) === "18703298" && numeroIntercenter("BANDO_GARA_PORTALE@18703298") === null && numeroIntercenter("12a") === null && numeroIntercenter(-5) === null && collegamentoTrovabando("18703298") === trovabando(18703298) && idPiattaformaDaUrlConnettore(collegamentoTrovabando("18703298")) === "sater:18703298");
+  controlla("numero nella pagina del bando: letto dall'«@id»", numeroDallaPagina(pagina(18703298)) === "18703298" && numeroDallaPagina("https://intercenter.regione.emilia-romagna.it/bandi/altro") === null);
+  controlla("numero dell'«@id» diverso da «id_intercenter»: elemento incoerente, non si scrive", motivo(el(BANDI, voce(19000014, { "@id": pagina(19000099) }))) === "identificativo_incoerente");
   controlla("procedura aperta nell'oggetto: scritta", bando(el(BANDI, voce(19000003, { title: "Procedura aperta per il servizio di pulizia delle scuole (prova sintetica)" })))?.record.tipoProcedura === "Procedura aperta");
   controlla("negoziata nell'oggetto: non entra", motivo(el(BANDI, voce(19000004, { title: "Procedura negoziata per il servizio di pulizia (prova sintetica)" }))) === "riservata");
   // (classificazione sul solo testo: il classificatore comune vuole il servizio affidato come attività principale; «Indagine di mercato per
   // il servizio di …» da solo resta «citato», regola parola_chiave_citata, invariata)
   const avviso = bando(el(AVVISI, voce(19000005, { title: "Avviso di indagine di mercato. Servizio di pulizia degli edifici comunali (prova sintetica)", description: "", cig: [], tipologia_bando_intercenter: "Avviso" })));
   controlla("cartella degli avvisi: indagine di mercato, senza CIG (mancante «cig», nessun lotto)", avviso?.opportunita.tipo === "indagine_mercato" && avviso?.record.lotti.length === 0 && !!avviso?.mancanti.includes("cig") && !avviso?.mancanti.includes("tipo_procedura"), avviso?.opportunita);
-  controlla("senza «id_intercenter» o con un identificativo di altra forma: nessuna chiave inventata, non si scrive", motivo(el(BANDI, voce(19000006, { id_intercenter: "" }))) === "senza_identificativo" && motivo(el(BANDI, voce(19000007, { id_intercenter: "ESITO_GARA@19000007" }))) === "senza_identificativo");
+  controlla("senza «id_intercenter» o con un identificativo di altra forma: nessuna chiave inventata, non si scrive", motivo(el(BANDI, voce(19000006, { id_intercenter: "" }))) === "senza_identificativo" && motivo(el(BANDI, voce(19000007, { id_intercenter: "BANDO_GARA_PORTALE@19000007" }))) === "senza_identificativo");
   controlla("scaduta: non entra", motivo(el(BANDI, voce(19000008, { scadenza_bando: "2026-11-20T10:00:00+00:00" }))) === "scaduta");
   controlla("fuori dai settori: non entra", ["fuori_settore", "esclusa_per_oggetto"].includes(motivo(el(BANDI, voce(19000009, { title: "Lavori di manutenzione straordinaria delle strade comunali (prova sintetica)", description: "Lavori stradali (prova sintetica)" }))) ?? ""));
   controlla("scadenza: mezzanotte di Roma = giorno senza ora; senza fuso = nessuna scadenza (mai interpretata)", JSON.stringify(scadenzaIntercenter("2026-12-14T23:00:00Z")) === JSON.stringify({ giorno: "2026-12-15", iso: null, oraIndicata: false, fonte: "2026-12-14T23:00:00Z (UTC; mezzanotte: ora non indicata)" }) && scadenzaIntercenter("2026-12-15T12:00:00") === null);
@@ -346,7 +368,8 @@ async function provaGiroIntercenter(): Promise<void> {
     canale.cartelle = [{ ...BANDI, percorso: "prova/bandi" }, { ...AVVISI, percorso: "prova/avvisi" }, { nome: "bandi_intercenter", tipo: "Bando", percorso: "prova/intercenter" }];
     const r = await eseguiImportazioneRegionale(db as unknown as SupabaseClient, "sater", { env: STAGING, adesso: () => ADESSO, fetchFn: reteFinta, origine: "script", limiti: { tentativi: 1 } });
     const gare = db.t("radar_procedure");
-    controlla("giro (simulato): 3 richieste, nessun errore, nessuna riga nel registro dei giri (0128 non la ammette)", r.eseguita && !r.errore && richieste.length === 3 && db.t("radar_esecuzioni").length === 0 && !r.esecuzione.scritta, r);
+    const reg = db.t("radar_esecuzioni");
+    controlla("giro (simulato): 3 richieste, nessun errore; una riga «ok» di «sater» nel registro dei giri (dopo la 0134)", r.eseguita && !r.errore && richieste.length === 3 && r.esecuzione.scritta && reg.length === 1 && reg[0].fonte === "sater" && reg[0].esito === "ok", { r, reg });
     controlla("giro: 2 gare scritte (bando di pulizia e manifestazione di portierato), lavori stradali esclusi, doppione tra cartelle contato", gare.length === 2 && r.eseguita && (r.statistiche.esclusi.doppione_tra_cartelle ?? 0) === 1, { gare: gare.map((g) => g.chiave), esclusi: r.eseguita ? r.statistiche.esclusi : null });
     controlla("gare con chiave e piattaforma_id «sater:<numero>»", gare.every((g) => typeof g.chiave === "string" && /^sater:\d+$/.test(g.chiave) && g.piattaforma_id === g.chiave), gare.map((g) => [g.chiave, g.piattaforma_id]));
     controlla("provenienza: righe della fonte «sater»", db.t("radar_procedure_fonti").length > 0 && db.t("radar_procedure_fonti").every((f) => f.fonte === "sater"));

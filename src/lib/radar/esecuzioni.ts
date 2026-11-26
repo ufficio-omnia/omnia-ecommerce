@@ -6,7 +6,7 @@
 // MAI una riga se l'ambiente non è consentito o se le tabelle mancano (esecuzioni-calcoli.ts, datiUscita).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { scrittureRadarConsentite } from "./ambiente";
-import { GIORNI_CONSERVAZIONE_ESECUZIONI, rigaEsecuzione, type DatiGiro, type FonteEsecuzione, type OrigineGiro, type RigaEsecuzione } from "./esecuzioni-calcoli";
+import { GIORNI_CONSERVAZIONE_ESECUZIONI, rigaEsecuzione, type DatiGiro, type FonteRegistro, type OrigineGiro, type RigaEsecuzione } from "./esecuzioni-calcoli";
 import { cronAttiviDa } from "./programmazione-calcoli";
 import { COLONNE_ESECUZIONI_ALLARMI, COLONNE_STATO_FONTI, allarmiFonti, type RigaEsecuzioneLetta, type RigaStatoFonte, type SituazioneFonte } from "./stato-fonti-calcoli";
 
@@ -49,7 +49,7 @@ export async function scriviEsecuzione(admin: SupabaseClient, riga: RigaEsecuzio
  */
 export async function giroRegistrato<R extends object>(
   admin: SupabaseClient,
-  fonte: FonteEsecuzione,
+  fonte: FonteRegistro,
   opzioni: OpzioniRegistro,
   giro: (esecuzioneId: string) => Promise<R>,
   comeDati: (r: R) => DatiGiro | null,

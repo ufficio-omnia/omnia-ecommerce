@@ -108,7 +108,8 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
       "Il CIG manca in circa un terzo degli avvisi (soprattutto indagini di mercato e manifestazioni di interesse)",
       "Non comprende procedure su invito né affidamenti diretti",
     ],
-    licenza: "Agenzia regionale Intercent-ER: dati del portale in licenza CC BY 4.0 (da confermare per i dati serviti dall'API), con il collegamento alla pagina ufficiale e la citazione della fonte",
+    // confermata sul campione vero (addendum 60C): CC BY 4.0, riuso anche commerciale con l'attribuzione della fonte
+    licenza: "Agenzia regionale Intercent-ER: dati del portale in licenza CC BY 4.0, riusati citando la fonte, con il collegamento alla pagina ufficiale del bando",
     porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
   {

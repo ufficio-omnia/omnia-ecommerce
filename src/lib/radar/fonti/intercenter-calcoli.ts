@@ -1,28 +1,23 @@
 // SATER (Fase 2, documento 60): elenchi dei bandi del PORTALE Intercent-ER tramite l'API REST di Plone («++api++»). Logica pura: nessuna
 // rete, nessun database. La rete è in intercenter.ts, la scrittura nel motore di unione unico (importa-regionali.ts).
 //
-// Perché questo canale (ricognizione R2 del 26/11, allegati/60/R2_sater_start.md):
-//   - è PUBBLICATO dal portale stesso (Plone 6 / Volto espone l'API «++api++»), robots.txt non la vieta, e i dati del portale sono dichiarati
-//     in licenza CC BY 4.0 «per qualsiasi fine, anche commerciale» (note legali di Intercent-ER): nessun indirizzo ricavato per analogia;
-//   - 3 cartelle (bandi di altri enti, avvisi e indagini di altri enti, bandi di Intercent-ER), una richiesta ciascuna: ~250 avvisi in 3
-//     richieste (il feed AF Soluzioni ne dà 20 per pagina e il suo indirizzo per SATER non è stato visto pubblicato);
-//   - per ogni bando l'elenco dei CIG dei lotti, la scadenza con l'ora in UTC e il collegamento permanente «trovabando», che è lo stesso
-//     collegamento (BT-15) riportato da PVL e TED: l'identificativo della procedura è esatto per costruzione.
+// Perché questo canale (ricognizione R2 del 26/11, allegati/60/R2_sater_start.md; CONFERMATO su un campione vero, addendum 60C del 27/11):
+//   - è PUBBLICATO dal portale stesso (Plone 6 / Volto espone l'API «++api++»), robots.txt la permette, e i dati del portale sono in licenza
+//     CC BY 4.0 «per qualsiasi fine, anche commerciale», con l'obbligo di ATTRIBUZIONE (note legali di Intercent-ER; nessuna condizione
+//     sull'API): nessun indirizzo ricavato per analogia;
+//   - 3 cartelle (bandi di altri enti, avvisi e indagini di altri enti, bandi di Intercent-ER): ~250 avvisi (237, 6 e 7 sul campione);
+//   - per ogni bando l'elenco dei CIG dei lotti (testi), la scadenza con l'ora (istante con il fuso, «+00:00») e l'identificativo SATER.
 //
-// Mappa dei campi: quella OSSERVATA dalla ricognizione R2 (sola lettura, 26/11; nomi riportati dal coordinamento il 27/11), marcata «visto
-// in R2». È l'uscita di un modello, quindi resta DICHIARATA e da confermare su un campione vero (passo autorizzato). Quelli di Plone
-// («@id», «title», «description», «effective», «modified», «items», «items_total», «batching») sono dell'API documentata.
+// Mappa dei campi CONFERMATA sul campione (60C): quelli di Plone («@id» = pagina HTML del bando, «title», «description», «effective»,
+// «modified», «items», «items_total», «batching» solo quando ci sono più pagine) e quelli del contenuto «bando» (id_intercenter = SOLO il
+// numero; lo stesso numero compare nell'«@id» come «BANDO_GARA_PORTALE@<numero>»). Se i campi attesi mancano in TUTTI gli elementi, il
+// formato è cambiato: la fonte si sospende e non si scrive nulla.
 //
-// DA CONFERMARE prima di qualunque lettura (CANALE_INTERCENTER.confermato = false finché non arrivano le conferme):
-//   1. il canale: l'API del portale è davvero ammessa per questo uso, con i percorsi delle 3 cartelle e l'indirizzo dell'elenco visti in R2;
-//   2. la licenza CC BY 4.0 copre i dati serviti dall'API;
-//   3. i nomi dei campi su un campione vero, e due corrispondenze DEDOTTE da R2 (non viste): «id_intercenter» = numero del collegamento
-//      «trovabando» (BANDO_GARA_PORTALE@<numero>, il BT-15 di PVL e TED) = IdMsg del feed AF Soluzioni.
-// Se i campi attesi mancano in TUTTI gli elementi, il formato non è quello dichiarato: la fonte si sospende e non si scrive nulla.
-//
-// Nell'elenco NON ci sono CPV né importo (R2): la classificazione è sul testo (regole comuni) e il valore resta mancante. Il dettaglio
-// (~60 KB per bando, con importo, CPV in codice interno e i dati personali dei referenti) NON si legge mai: qui si leggono SOLO i campi
-// elencati in CAMPI_INTERCENTER, gli altri si scartano subito (elementoIntercenterDaGrezzo).
+// Nell'elenco NON ci sono CPV né importo: la classificazione è sul testo (regole comuni) e il valore resta mancante. Il dettaglio (con
+// importo, CPV in codice interno e i dati personali dei referenti) NON si legge mai: qui si leggono SOLO i campi elencati in
+// CAMPI_INTERCENTER, gli altri si scartano subito (elementoIntercenterDaGrezzo): referenti, email e telefoni non si memorizzano mai.
+// Il collegamento permanente «trovabando» (BT-15) NON è nell'elenco e la sua rotta non è stata provata: si calcola dal numero SOLO per
+// l'identificativo della procedura (lo stesso di PVL e TED), e non si mostra; il collegamento mostrato è la pagina del bando («@id»).
 import { classificaGara, type SettoreRadar } from "../settori";
 import { maiuscoleIniziali, type IdRegione } from "../territorio";
 import { entraInOpportunita, opportunitaAflink, type Opportunita } from "../opportunita-calcoli";
@@ -40,65 +35,97 @@ export type CartellaIntercenter = {
   nome: "bandi_altri_enti" | "avvisi_altri_enti" | "bandi_intercenter";
   // il tipo dell'avviso, dalla cartella (bandi / avvisi e indagini): quello che nel feed AF Soluzioni è «Tipo»
   tipo: "Bando" | "Avviso";
-  // percorso della cartella nel portale (dopo «/++api++/»), visto in R2; null = la cartella non si legge
+  // percorso della cartella nel portale (dopo «/++api++/»), confermato sul campione; null = la cartella non si legge
   percorso: string | null;
 };
 
 export const CANALE_INTERCENTER = {
-  // le tre conferme sopra (canale, licenza, nomi dei campi): finché è false il lettore si ferma prima di qualunque richiesta
-  confermato: false as boolean,
-  // le 3 cartelle degli avvisi APERTI viste in R2 (voci: 238, 6, 7). Le cartelle «chiusi», «in corso» e «consultazioni preliminari» no
+  // canale, licenza e campi CONFERMATI sul campione vero (addendum 60C). Con false il lettore si ferma prima di qualunque richiesta.
+  // Le altre guardie restano: solo staging (nessuna variabile di produzione), nessuna rotta cron, console e programmatore senza SATER, e
+  // senza la riga accesa in radar_fonti_stato il giro esce con «fonte_spenta»
+  confermato: true as boolean,
+  // le 3 cartelle degli avvisi APERTI (campione: 237, 6, 7 voci). Le cartelle «chiusi», «in corso» e «consultazioni preliminari» no
   cartelle: [
     { nome: "bandi_altri_enti", tipo: "Bando", percorso: "bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-bandi-e-procedure-di-gara/bandi-altri-enti-aperti" },
     { nome: "avvisi_altri_enti", tipo: "Avviso", percorso: "bandi-e-strumenti-di-acquisto/bandi-altri-enti/altri-enti-avvisi-e-indagini-di-mercato/avvisi-altri-enti-aperti" },
     { nome: "bandi_intercenter", tipo: "Bando", percorso: "bandi-e-strumenti-di-acquisto/bandi-intercenter/bandi-e-procedure-di-gara/bandi-aperti" },
   ] as readonly CartellaIntercenter[],
-  // elementi per richiesta (b_size, come in R2): una pagina per cartella (la più grande ha 238 voci). Più voci: allarme, mai altre pagine
+  // elementi per pagina chiesti (b_size). Se il portale ne dà meno, le pagine seguenti si leggono SOLO dal collegamento «batching.next»
+  // che il portale stesso restituisce (stesso indirizzo, mai pagine costruite qui), fino a PAGINE_MASSIME_INTERCENTER per cartella;
+  // la completezza si controlla sempre con «items_total» (allarme «conteggio_diverso» se mancano voci)
   elementiPerRichiesta: 500,
   regione: "emilia_romagna" as IdRegione,
+  // attribuzione obbligatoria (CC BY 4.0): la stessa di ATTRIBUZIONE_FONTE.sater, mostrata nelle schede delle gare
   attribuzione: "Agenzia regionale Intercent-ER – SATER, Regione Emilia-Romagna (dati del portale, licenza CC BY 4.0)",
-  licenza: "CC BY 4.0 dichiarata nelle note legali di Intercent-ER (da confermare per i dati serviti dall'API)",
+  licenza: "CC BY 4.0 (note legali di Intercent-ER): riuso anche commerciale, con l'attribuzione della fonte",
 };
 
-// I campi letti di ogni elemento. «plone» = dell'API documentata di Plone; «visto_r2» = del contenuto «bando» del portale, con il nome visto
-// nella ricognizione R2 (da confermare su un campione vero; uno solo per campo: nessun nome alternativo provato a caso).
+// I campi letti di ogni elemento, confermati sul campione (60C). «plone» = dell'API documentata di Plone; «portale» = del contenuto «bando»
+// del portale Intercent-ER (uno solo per campo: nessun nome alternativo provato a caso).
 export const CAMPI_INTERCENTER = {
   url: { nome: "@id", origine: "plone" },
   titolo: { nome: "title", origine: "plone" },
   descrizione: { nome: "description", origine: "plone" },
   pubblicazione: { nome: "effective", origine: "plone" },
   modifica: { nome: "modified", origine: "plone" },
-  id: { nome: "id_intercenter", origine: "visto_r2" },
-  ente: { nome: "ente_bando", origine: "visto_r2" },
-  cig: { nome: "cig", origine: "visto_r2" },
-  scadenza: { nome: "scadenza_bando", origine: "visto_r2" },
-  tipologia: { nome: "tipologia_bando_intercenter", origine: "visto_r2" },
-  stato: { nome: "bando_state", origine: "visto_r2" },
+  id: { nome: "id_intercenter", origine: "portale" },
+  ente: { nome: "ente_bando", origine: "portale" },
+  cig: { nome: "cig", origine: "portale" },
+  scadenza: { nome: "scadenza_bando", origine: "portale" },
+  tipologia: { nome: "tipologia_bando_intercenter", origine: "portale" },
+  stato: { nome: "bando_state", origine: "portale" },
 } as const;
 export type CampoIntercenter = keyof typeof CAMPI_INTERCENTER;
 
 // senza questi un elemento non si legge; se mancano in TUTTI il formato non è quello dichiarato e la fonte si sospende
 export const CAMPI_INTERCENTER_OBBLIGATORI: readonly CampoIntercenter[] = ["url", "titolo", "scadenza", "id"];
 
-// Collegamento permanente «trovabando» (BT-15) di una procedura SATER: la FORMA è quella vista in R2 (LINK_BT15_CALCOLATO del dettaglio,
-// 302 verso la scheda); che il numero sia «id_intercenter» è DEDOTTO (da confermare sul campione vero).
+// Collegamento permanente «trovabando» (BT-15) di una procedura SATER, calcolato dal numero: serve SOLO all'identificativo della procedura
+// (la stessa forma che PVL e TED riportano). Non è nell'elenco e la rotta non è stata provata: non si mostra mai come collegamento.
 export function collegamentoTrovabando(numero: string): string | null {
   return /^\d{1,12}$/.test(numero) ? `${PORTALE_INTERCENTER}/trovabando/BANDO_GARA_PORTALE@${numero}` : null;
 }
 
-// «id_intercenter»: «BANDO_GARA_PORTALE@<numero>» o il solo numero → il numero; altro → null (mai un identificativo indovinato).
+// «id_intercenter»: SOLO il numero (confermato sul campione, per esempio «18703298»); altro → null (mai un identificativo indovinato).
 export function numeroIntercenter(v: unknown): string | null {
-  const s = typeof v === "string" ? v.trim() : typeof v === "number" && Number.isInteger(v) ? String(v) : "";
-  return s.match(/^(?:BANDO_GARA_PORTALE@)?(\d{1,12})$/)?.[1] ?? null;
+  const s = typeof v === "string" ? v.trim() : typeof v === "number" && Number.isInteger(v) && v > 0 ? String(v) : "";
+  return /^\d{1,12}$/.test(s) ? s : null;
 }
 
-export const LIMITI_INTERCENTER_PREDEFINITI: LimitiFonte = { pausaMs: 5_000, timeoutMs: 60_000, tentativi: 2, richiesteMassime: 4 };
+// Il numero nell'«@id» (pagina del bando: «…/BANDO_GARA_PORTALE@<numero>»), se c'è. Deve essere lo stesso di «id_intercenter».
+export function numeroDallaPagina(pagina: string): string | null {
+  return pagina.match(/\/BANDO_GARA_PORTALE@(\d{1,12})(?:[/?#]|$)/)?.[1] ?? null;
+}
+
+// pagine massime lette per cartella (seguendo «batching.next»): 237 voci stanno in 5 pagine anche se il portale ne desse solo 50 per pagina
+export const PAGINE_MASSIME_INTERCENTER = 8;
+
+// richieste per giro: 3 cartelle, più le pagine seguenti se il portale riduce la pagina
+export const LIMITI_INTERCENTER_PREDEFINITI: LimitiFonte = { pausaMs: 5_000, timeoutMs: 60_000, tentativi: 2, richiesteMassime: 10 };
 export const LIMITI_INTERCENTER_INTERVALLI: Record<keyof LimitiFonte, { min: number; max: number }> = {
   pausaMs: { min: 2_000, max: 60_000 },
   timeoutMs: { min: 5_000, max: 120_000 },
   tentativi: { min: 1, max: 3 },
-  richiesteMassime: { min: 3, max: 6 },
+  richiesteMassime: { min: 3, max: 16 },
 };
+
+/**
+ * La pagina seguente di un elenco, dal «batching.next» restituito dal portale: ammessa SOLO se è lo stesso indirizzo della cartella (https,
+ * stesso host, stesso percorso) e cambia soltanto i parametri di paginazione. Altrimenti null: nessuna pagina in più.
+ */
+export function paginaSeguenteIntercenter(indirizzoCartella: string, prossima: unknown): string | null {
+  if (typeof prossima !== "string" || prossima.length > 2000) return null;
+  try {
+    const base = new URL(indirizzoCartella);
+    const p = new URL(prossima);
+    if (p.protocol !== "https:" || p.host !== base.host || p.pathname !== base.pathname) return null;
+    const ammessi = new Set(["b_start", "b_size", "metadata_fields"]);
+    if ([...p.searchParams.keys()].some((k) => !ammessi.has(k)) || !/^\d{1,6}$/.test(p.searchParams.get("b_start") ?? "")) return null;
+    return p.toString();
+  } catch {
+    return null;
+  }
+}
 
 /** L'indirizzo dell'elenco di una cartella (API REST di Plone), o null se il percorso non è confermato. */
 export function urlCartellaIntercenter(c: CartellaIntercenter): string | null {
@@ -111,7 +138,9 @@ export function urlCartellaIntercenter(c: CartellaIntercenter): string | null {
 /** Un elemento ridotto ai SOLI campi dichiarati (tutto il resto, referenti compresi, è già scartato). */
 export type ElementoIntercenter = Partial<Record<CampoIntercenter, unknown>>;
 
-export type ElencoIntercenter = { elementi: ElementoIntercenter[]; totaleDichiarato: number | null };
+// prossima: «batching.next» così come lo dà il portale (c'è solo quando le pagine sono più d'una); si usa SOLO se paginaSeguenteIntercenter
+// lo ammette
+export type ElencoIntercenter = { elementi: ElementoIntercenter[]; totaleDichiarato: number | null; prossima: string | null };
 
 export function elementoIntercenterDaGrezzo(x: Record<string, unknown>): ElementoIntercenter {
   const e: ElementoIntercenter = {};
@@ -135,7 +164,9 @@ export function leggiElencoIntercenter(testo: string): ElencoIntercenter | { err
   const elementi = items.filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)).map(elementoIntercenterDaGrezzo);
   if (elementi.length > 0 && elementi.every((e) => CAMPI_INTERCENTER_OBBLIGATORI.some((k) => !presente(e[k])))) return { errore: "agli elementi mancano i campi dichiarati (formato da confermare)" };
   if (elementi.length === 0 && Number.isFinite(totale) && totale > 0) return { errore: "l'elenco dichiara elementi ma non ne contiene" };
-  return { elementi, totaleDichiarato: Number.isFinite(totale) ? totale : null };
+  const batching = (j as { batching?: unknown }).batching;
+  const prossima = batching && typeof batching === "object" && typeof (batching as { next?: unknown }).next === "string" ? (batching as { next: string }).next : null;
+  return { elementi, totaleDichiarato: Number.isFinite(totale) ? totale : null, prossima };
 }
 
 // ───── campi ─────
@@ -188,7 +219,8 @@ export function tipologiaIntercenter(v: unknown): "Bando" | "Avviso" | null {
 
 // ───── un elemento → bando o esclusione ─────
 
-export type MotivoEsclusioneIntercenter = "elemento_malformato" | "senza_identificativo" | "senza_oggetto" | "esclusa_per_oggetto" | "fuori_settore" | "riservata" | "affidamento" | "tipo_sconosciuto" | "scaduta";
+export type MotivoEsclusioneIntercenter =
+  | "elemento_malformato" | "senza_identificativo" | "identificativo_incoerente" | "senza_oggetto" | "esclusa_per_oggetto" | "fuori_settore" | "riservata" | "affidamento" | "tipo_sconosciuto" | "scaduta";
 
 export type MetaIntercenter = {
   cartella: CartellaIntercenter["nome"];
@@ -222,12 +254,15 @@ export type ElementoIntercenterLetto = BandoIntercenter | EsclusioneIntercenter;
 export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: ElementoIntercenter, adesso: Date): ElementoIntercenterLetto {
   const pagina = paginaIntercenter(e.url);
   if (!pagina) return { tipo: "esclusione", meta: null, motivo: "elemento_malformato" };
-  // identità: SOLO da «id_intercenter» (numero del collegamento permanente «trovabando», il BT-15 di PVL e TED); senza, la gara non si scrive
-  // (mai una chiave inventata). Il collegamento costruito deve tornare lo stesso identificativo con la regola dei connettori
+  // identità: SOLO da «id_intercenter» (il numero SATER, lo stesso del collegamento «trovabando» che PVL e TED riportano); senza, la gara non
+  // si scrive (mai una chiave inventata). Il collegamento calcolato deve tornare lo stesso identificativo con la regola dei connettori, e il
+  // numero nella pagina del bando, se c'è, deve essere lo stesso: due numeri diversi = elemento incoerente, non si scrive
   const numero = numeroIntercenter(e.id);
   const collegamento = numero ? collegamentoTrovabando(numero) : null;
   const idPiattaforma = idPiattaformaDaUrlConnettore(collegamento);
   if (!numero || !collegamento || idPiattaforma !== `sater:${numero}`) return { tipo: "esclusione", meta: null, motivo: "senza_identificativo" };
+  const numeroPagina = numeroDallaPagina(pagina);
+  if (numeroPagina && numeroPagina !== numero) return { tipo: "esclusione", meta: null, motivo: "identificativo_incoerente" };
   const modifica = typeof e.modifica === "string" && !Number.isNaN(Date.parse(e.modifica)) ? new Date(e.modifica).toISOString() : null;
   const meta: MetaIntercenter = { cartella: cartella.nome, idPiattaforma, idProcedura: numero, ultimaModifica: modifica, stato: testo(e.stato, 40) };
   const esclusione = (motivo: MotivoEsclusioneIntercenter): EsclusioneIntercenter => ({ tipo: "esclusione", meta, motivo });
@@ -291,9 +326,9 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
     oneriSicurezza: null,
     durataMesi: null,
     annullata: false,
-    // la pagina del bando nel portale (vista) e il collegamento permanente «trovabando» (BT-15, lo stesso di PVL e TED)
+    // la pagina del bando nel portale («@id», vista sul campione); il «trovabando» calcolato non si mostra (rotta non provata)
     urlAvviso: pagina,
-    urlDocumenti: collegamento,
+    urlDocumenti: pagina,
     cpvPrincipale: null,
     cpvTutti: [],
     lotti,
@@ -311,7 +346,7 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
     regioni: [CANALE_INTERCENTER.regione],
     scadenzaFonte: scadenza?.fonte ?? null,
     lottiScadenze: lotti.map(() => scadenza),
-    lottiDocumenti: lotti.map(() => collegamento),
+    lottiDocumenti: lotti.map(() => pagina),
     mancanti,
   };
 }
