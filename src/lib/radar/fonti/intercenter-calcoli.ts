@@ -217,6 +217,27 @@ export function tipologiaIntercenter(v: unknown): "Bando" | "Avviso" | null {
   return t === "bando" ? "Bando" : t === "avviso" ? "Avviso" : null;
 }
 
+// L'ente del bando: «ente_bando» è un ELENCO di testi (campione 60C, per esempio ['COMUNE DI SCANDIANO']); più enti si uniscono con «, »,
+// senza doppioni. Un testo semplice vale come un elenco di uno. Elenco vuoto o senza testi → null (ente mancante, mai inventato).
+export function enteIntercenter(v: unknown): { denominazione: string | null; enti: number } {
+  const grezzi = Array.isArray(v) ? v : typeof v === "string" ? [v] : [];
+  const enti: string[] = [];
+  for (const g of grezzi) {
+    const t = testo(g, 300);
+    if (t && !enti.some((x) => x.toLowerCase() === t.toLowerCase())) enti.push(t);
+  }
+  return { denominazione: enti.length ? enti.join(", ").slice(0, 500) : null, enti: enti.length };
+}
+
+// D2 (collaudo del 26/11): un elemento «Bando» il cui TITOLO dichiara un'indagine di mercato, una manifestazione di interesse o un avviso
+// esplorativo è una candidatura, come un «Avviso»: si legge con le regole degli avvisi (indagine di mercato o manifestazione di interesse).
+// Solo il titolo, solo queste forme (prudente: la descrizione non conta).
+const CANDIDATURA_NEL_TITOLO = /\bindagine\s+di\s+mercato\b|\bmanifestazion[ei]\s+d[i']\s*interesse\b|\bavviso\s+esplorativo\b/i;
+
+export function tipoEffettivoIntercenter(tipo: "Bando" | "Avviso", titolo: string): "Bando" | "Avviso" {
+  return tipo === "Bando" && CANDIDATURA_NEL_TITOLO.test(titolo) ? "Avviso" : tipo;
+}
+
 // ───── un elemento → bando o esclusione ─────
 
 export type MotivoEsclusioneIntercenter =
@@ -272,12 +293,14 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
   if (!titolo) return esclusione("senza_oggetto");
   const testoGara = [titolo, descrizione].filter(Boolean).join(" ");
 
-  // tipo dichiarato dall'elemento (tipologia_bando_intercenter), altrimenti quello della cartella; procedura SOLO se dichiarata nell'oggetto
-  // (l'elenco non ha un campo procedura): come le istanze AF Soluzioni nuove
+  // tipo dichiarato dall'elemento (tipologia_bando_intercenter), altrimenti quello della cartella; un «Bando» che nel titolo dichiara una
+  // candidatura (indagine di mercato, manifestazione di interesse, avviso esplorativo) si legge come un «Avviso» (D2). Procedura SOLO se
+  // dichiarata nell'oggetto (l'elenco non ha un campo procedura): come le istanze AF Soluzioni nuove
   const tipo = tipologiaIntercenter(e.tipologia) ?? cartella.tipo;
-  const procedura = tipo === "Bando" ? proceduraDallOggettoAflink(testoGara) : null;
-  const proceduraIgnota = tipo === "Bando" && !procedura;
-  const opp = opportunitaAflink(tipo, procedura ?? (proceduraIgnota ? "Aperta" : ""), titolo);
+  const tipoLetto = tipoEffettivoIntercenter(tipo, titolo);
+  const procedura = tipoLetto === "Bando" ? proceduraDallOggettoAflink(testoGara) : null;
+  const proceduraIgnota = tipoLetto === "Bando" && !procedura;
+  const opp = opportunitaAflink(tipoLetto, procedura ?? (proceduraIgnota ? "Aperta" : ""), titolo);
   if (!opp) return esclusione("tipo_sconosciuto");
   if (opp.tipo === "affidamento_diretto") return esclusione("affidamento");
   if (!entraInOpportunita(opp)) return esclusione("riservata");
@@ -301,8 +324,12 @@ export function leggiElementoIntercenter(cartella: CartellaIntercenter, e: Eleme
   // un CIG = un lotto noto (numero d'ordine, senza oggetto: l'elenco non lo dà)
   const lotti: RecordLotto[] = cig.map((c, i) => ({ cig: c, numero: `LOT-${String(i + 1).padStart(4, "0")}`, oggetto: null, cpvPrincipale: null, cpvTutti: [], valoreStimato: null, valoreBase: null, oneriSicurezza: null, durataMesi: null, opzioniRinnovi: null }));
 
-  const denominazione = testo(e.ente, 500) || null;
-  const comune = denominazione?.match(/^comune di\s+(.+)$/i)?.[1] ?? null;
+  // ente: elenco di testi (D1); il comune SOLO quando l'ente è uno e si chiama «Comune di …» (la stessa regola di SardegnaCAT): altrimenti
+  // resta mancante, mai ricavato per somiglianza
+  const ente = enteIntercenter(e.ente);
+  const denominazione = ente.denominazione;
+  if (!denominazione) mancanti.push("ente");
+  const comune = ente.enti === 1 ? (denominazione?.match(/^comune di\s+(.+)$/i)?.[1] ?? null) : null;
   const pubblicazione = typeof e.pubblicazione === "string" && !Number.isNaN(Date.parse(e.pubblicazione)) ? giornoDiRoma(new Date(e.pubblicazione)) : null;
 
   const record: RecordProcedura = {

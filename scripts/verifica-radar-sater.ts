@@ -39,6 +39,8 @@ import {
   PAGINE_MASSIME_INTERCENTER,
   leggiElencoIntercenter,
   numeroIntercenter,
+  enteIntercenter,
+  tipoEffettivoIntercenter,
   paginaIntercenter,
   scadenzaIntercenter,
   tipologiaIntercenter,
@@ -219,7 +221,8 @@ const voce = (n: number, p: Record<string, unknown> = {}): Record<string, unknow
   effective: "2026-11-23T23:00:00+00:00",
   modified: "2026-11-25T09:00:00+00:00",
   id_intercenter: String(n),
-  ente_bando: "COMUNE DI PROVASINTETICA",
+  // un ELENCO di testi, come sul campione (60C)
+  ente_bando: ["COMUNE DI PROVASINTETICA"],
   cig: ["B11111111A", "B22222222B"],
   scadenza_bando: "2026-12-15T11:00:00+00:00",
   tipologia_bando_intercenter: "Bando",
@@ -317,6 +320,20 @@ function provaElementiIntercenter(): void {
   controlla("bando: scadenza UTC → giorno di Roma e istante; ente e regione", b?.record.scadenzaGiorno === "2026-12-15" && b?.record.scadenzaOfferte === "2026-12-15T11:00:00.000Z" && b?.record.scadenzaOraIndicata === true && b?.record.ente.denominazione === "COMUNE DI PROVASINTETICA" && b?.record.ente.regione === "emilia_romagna");
   controlla("bando: senza procedura nell'oggetto entra, procedura non scritta, mancanti dichiarati (cpv, tipo_procedura)", b?.record.tipoProcedura === null && !!b?.mancanti.includes("tipo_procedura") && !!b?.mancanti.includes("cpv") && b?.opportunita.tipo === "bando");
   controlla("bando: nessun importo (l'elenco non lo dà: mancante «valore», mai dal dettaglio); pubblicazione al giorno di Roma", b?.record.valoreBase === null && !!b?.mancanti.includes("valore") && b?.record.dataPubblicazione === "2026-11-24");
+  // D1 (collaudo del 26/11): ente_bando è un ELENCO di testi
+  controlla("D1 ente dall'elenco (forma del campione): denominazione e comune del «Comune di …», nessun mancante «ente»", b?.record.ente.denominazione === "COMUNE DI PROVASINTETICA" && b?.record.ente.comune === "Provasintetica" && !b?.mancanti.includes("ente"), b?.record.ente);
+  controlla("D1 più enti: uniti con «, » senza doppioni; il comune NON si ricava (mai per somiglianza)", JSON.stringify(enteIntercenter(["COMUNE DI A", "comune di a", "UNIONE DEI COMUNI B", 7, ""])) === JSON.stringify({ denominazione: "COMUNE DI A, UNIONE DEI COMUNI B", enti: 2 }) && bando(el(BANDI, voce(19000015, { ente_bando: ["COMUNE DI A", "COMUNE DI B"] })))?.record.ente.comune === null);
+  const senzaEnte = bando(el(BANDI, voce(19000016, { ente_bando: [] })));
+  controlla("D1 elenco vuoto: ente mancante (dichiarato), la gara entra lo stesso", !!senzaEnte && senzaEnte.record.ente.denominazione === null && senzaEnte.record.ente.comune === null && senzaEnte.mancanti.includes("ente") && enteIntercenter(null).denominazione === null && enteIntercenter("ENTE UNICO").denominazione === "ENTE UNICO");
+  // D2 (collaudo del 26/11): un «Bando» che nel TITOLO dichiara una candidatura si legge come un «Avviso»
+  const titoloD2 = (inizio: string) => `${inizio}. Servizio di pulizia degli edifici comunali (prova sintetica)`;
+  const d2 = (n: number, inizio: string) => bando(el(BANDI, voce(n, { title: titoloD2(inizio), tipologia_bando_intercenter: "Bando" })));
+  const indD2 = d2(19000017, "Avviso pubblico di indagine di mercato");
+  const manD2 = d2(19000018, "Manifestazione di interesse");
+  const espD2 = d2(19000019, "Avviso esplorativo");
+  controlla("D2 «Bando» con «indagine di mercato» nel titolo: indagine di mercato, senza mancante «tipo_procedura»", indD2?.opportunita.tipo === "indagine_mercato" && !indD2.mancanti.includes("tipo_procedura") && indD2.record.tipoProcedura === null, indD2?.opportunita);
+  controlla("D2 «manifestazione di interesse» e «avviso esplorativo» nel titolo: manifestazione di interesse", manD2?.opportunita.tipo === "manifestazione_interesse" && espD2?.opportunita.tipo === "manifestazione_interesse", [manD2?.opportunita.tipo, espD2?.opportunita.tipo]);
+  controlla("D2 prudente: solo il titolo, solo queste forme; un bando normale resta bando", tipoEffettivoIntercenter("Bando", "Servizio di pulizia") === "Bando" && tipoEffettivoIntercenter("Bando", "Manifestazione d'interesse per…") === "Avviso" && tipoEffettivoIntercenter("Avviso", "Servizio") === "Avviso" && bando(el(BANDI, voce(19000020, { description: "Indagine di mercato (prova sintetica)" })))?.opportunita.tipo === "bando" && b?.opportunita.tipo === "bando");
   controlla("bando: lo stato del portale entra nell'impronta, senza essere interpretato", !!b && b.meta.stato === "aperto" && bando(el(BANDI, voce(19000001, { bando_state: "altro_valore" })))?.record.impronta !== b.record.impronta && bando(el(BANDI, voce(19000001, { bando_state: "altro_valore" })))?.record.annullata === false);
   controlla("tipologia dell'elemento: vale più della cartella («Avviso» in una cartella di bandi)", bando(el(BANDI, voce(19000012, { tipologia_bando_intercenter: "Avviso", title: "Avviso di indagine di mercato. Servizio di pulizia degli edifici comunali (prova sintetica)" })))?.opportunita.tipo === "indagine_mercato" && tipologiaIntercenter("bando") === "Bando" && tipologiaIntercenter("Esito") === null);
   controlla("pagina del portale: solo https sul suo host, senza «/++api++»", paginaIntercenter("https://intercenter.regione.emilia-romagna.it/++api++/bandi/x") === "https://intercenter.regione.emilia-romagna.it/bandi/x" && paginaIntercenter("http://intercenter.regione.emilia-romagna.it/bandi/x") === null && paginaIntercenter("https://altro.esempio.invalid/bandi/x") === null && motivo(el(BANDI, voce(19000013, { "@id": "https://altro.esempio.invalid/bandi/x" }))) === "elemento_malformato");
@@ -371,6 +388,7 @@ async function provaGiroIntercenter(): Promise<void> {
     const reg = db.t("radar_esecuzioni");
     controlla("giro (simulato): 3 richieste, nessun errore; una riga «ok» di «sater» nel registro dei giri (dopo la 0134)", r.eseguita && !r.errore && richieste.length === 3 && r.esecuzione.scritta && reg.length === 1 && reg[0].fonte === "sater" && reg[0].esito === "ok", { r, reg });
     controlla("giro: 2 gare scritte (bando di pulizia e manifestazione di portierato), lavori stradali esclusi, doppione tra cartelle contato", gare.length === 2 && r.eseguita && (r.statistiche.esclusi.doppione_tra_cartelle ?? 0) === 1, { gare: gare.map((g) => g.chiave), esclusi: r.eseguita ? r.statistiche.esclusi : null });
+    controlla("D1 nel giro: gare con l'ente e il comune dall'elenco «ente_bando»", gare.every((g) => g.sa_denominazione === "COMUNE DI PROVASINTETICA" && g.sa_comune === "Provasintetica"), gare.map((g) => [g.sa_denominazione, g.sa_comune]));
     controlla("gare con chiave e piattaforma_id «sater:<numero>»", gare.every((g) => typeof g.chiave === "string" && /^sater:\d+$/.test(g.chiave) && g.piattaforma_id === g.chiave), gare.map((g) => [g.chiave, g.piattaforma_id]));
     controlla("provenienza: righe della fonte «sater»", db.t("radar_procedure_fonti").length > 0 && db.t("radar_procedure_fonti").every((f) => f.fonte === "sater"));
     controlla("nessun dato dei referenti nel database", !JSON.stringify(db.tabelle).includes("esempio.invalid"));
