@@ -28,6 +28,8 @@ function mondo(righe = [
   { fonte: "ted", attiva: true, nascosta_ai_clienti: false, blocco_fino_a: SEMAFORO, cursore: { versione: 1 }, conteggi: {}, aggiornata_il: "2026-11-17T13:00:00Z" },
   // Fase 2: la riga di SATER come la crea la 0134 (spenta, nascosta ai clienti, semaforo chiuso)
   { fonte: "sater", attiva: false, nascosta_ai_clienti: true, blocco_fino_a: SEMAFORO, cursore: null, conteggi: {}, aggiornata_il: "2026-11-27T10:00:00Z" },
+  // Fase 2: la riga di TuttoGare come la crea la 0135 proposta (spenta, nascosta ai clienti, semaforo chiuso)
+  { fonte: "tuttogare", attiva: false, nascosta_ai_clienti: true, blocco_fino_a: SEMAFORO, cursore: null, conteggi: {}, aggiornata_il: "2026-11-27T10:00:00Z" },
 ]) {
   const db = new DbFinto();
   db.tabelle.radar_fonti_stato = righe.map((r) => ({ ...r }));
@@ -36,14 +38,14 @@ function mondo(righe = [
 const tranne = (db: DbFinto, f: string) => JSON.stringify(db.t("radar_fonti_stato").filter((r) => r.fonte !== f));
 
 async function principale(): Promise<void> {
-  controlla("fonti accendibili: solo Sintel, SardegnaCAT e SATER (Fase 2, collaudo sullo staging)", JSON.stringify(FONTI_ACCENDIBILI) === '["sintel","sardegnacat","sater"]');
+  controlla("fonti accendibili: solo Sintel, SardegnaCAT, SATER e TuttoGare (Fase 2, collaudo sullo staging)", JSON.stringify(FONTI_ACCENDIBILI) === '["sintel","sardegnacat","sater","tuttogare"]');
   for (const fonte of FONTI_ACCENDIBILI) {
     const db = mondo();
     const prima = tranne(db, fonte);
     const e = await accendiFonteRegionale(db as unknown as ClientDb, fonte, ORA);
     const riga = db.t("radar_fonti_stato").find((r) => r.fonte === fonte)!;
     controlla(`${fonte}: da spenta ad accesa, UNA riga cambiata`, e.cambiate === 1 && !e.primaAttiva && e.dopoAttiva && riga.attiva === true, e);
-    controlla(`${fonte}: cambiano SOLO attiva e aggiornata_il (blocco del semaforo, visibilità, cursore intatti)`, riga.blocco_fino_a === SEMAFORO && riga.cursore === null && riga.aggiornata_il === ORA.toISOString() && riga.nascosta_ai_clienti === (fonte === "sardegnacat" || fonte === "sater"), riga);
+    controlla(`${fonte}: cambiano SOLO attiva e aggiornata_il (blocco del semaforo, visibilità, cursore intatti)`, riga.blocco_fino_a === SEMAFORO && riga.cursore === null && riga.aggiornata_il === ORA.toISOString() && riga.nascosta_ai_clienti === (fonte === "sardegnacat" || fonte === "sater" || fonte === "tuttogare"), riga);
     controlla(`${fonte}: le altre fonti IDENTICHE`, tranne(db, fonte) === prima);
     controlla(`${fonte}: 3 richieste (lettura, scrittura condizionata, rilettura), UNA scrittura`, db.conta() === 3 && db.richieste.filter((r) => r.metodo === "update").length === 1);
     const foto = JSON.stringify(db.t("radar_fonti_stato"));

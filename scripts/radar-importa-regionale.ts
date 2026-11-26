@@ -2,7 +2,7 @@
 // cron e della console). Per le prove della fase B2b, con un'autorizzazione registrata del coordinatore.
 //
 // Uso (variabili dello staging nell'ambiente, mai quelle di produzione), SOLO tramite il lanciatore autorizzato:
-//   RADAR_STAGING_REF=<identificativo del progetto di staging> npx tsx scripts/radar-importa-regionale.ts <sintel|sardegnacat|sater> [richieste massime]
+//   RADAR_STAGING_REF=<identificativo del progetto di staging> npx tsx scripts/radar-importa-regionale.ts <sintel|sardegnacat|sater|tuttogare> [richieste massime]
 // Si ferma se l'indirizzo del database non è quello dello staging dichiarato, se è quello di produzione, se la guardia del codice
 // (src/lib/radar/ambiente.ts) non riconosce lo staging, o se non c'è una ricevuta aperta del lanciatore. Stampa solo numeri e motivi.
 import { createClient } from "@supabase/supabase-js";
@@ -30,10 +30,12 @@ async function main() {
   const { controllaPorta } = await import(new URL(`file:///${registro.replace(/\\/g, "/").replace(/^\/+/, "")}/registro.mjs`).href);
   try { controllaPorta({ script: "radar-importa-regionale.ts" }); } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(2); }
 
-  // Fase 2: SATER è tra le fonti regionali (FONTI_REGIONALI)
+  // Fase 2: SATER è tra le fonti regionali (FONTI_REGIONALI); TuttoGare (in costruzione) SOLO da questo script, con un'autorizzazione
+  // registrata (non è tra le fonti di console e cron)
+  const ammesse: readonly FonteRegionale[] = [...FONTI_REGIONALI, "tuttogare"];
   const [fonte, a1] = process.argv.slice(2);
-  if (!(FONTI_REGIONALI as readonly string[]).includes(fonte ?? "")) {
-    console.error(`Uso: <${FONTI_REGIONALI.join("|")}> [richieste massime]`);
+  if (!(ammesse as readonly string[]).includes(fonte ?? "")) {
+    console.error(`Uso: <${ammesse.join("|")}> [richieste massime]`);
     process.exit(2);
   }
   const richieste = Number(a1);

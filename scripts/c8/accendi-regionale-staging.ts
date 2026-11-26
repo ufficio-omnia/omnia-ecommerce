@@ -5,13 +5,14 @@
 // registrata («correzione_dati»). Idempotente: se la fonte è già accesa non cambia nulla. Si ferma se la riga manca o se cambierebbe più di
 // una riga. NON tocca il blocco (il semaforo resta chiuso: i giri li apre solo il lanciatore), né la visibilità, né il cursore. Una fonte
 // SOSPESA dal connettore (nota di sospensione in conteggi) NON si riaccende da qui: si ferma e chiede la console.
-// Uso: node …/esegui-autorizzato.mjs AUT-… local_… -- npx tsx scripts/c8/accendi-regionale-staging.ts applica <sintel|sardegnacat|sater>
+// Uso: node …/esegui-autorizzato.mjs AUT-… local_… -- npx tsx scripts/c8/accendi-regionale-staging.ts applica <sintel|sardegnacat|sater|tuttogare>
 import { createClient } from "@supabase/supabase-js";
 import type { ClientDb } from "../../src/lib/radar/notifiche/motore";
 import { FermoCollaudo, PRODUZIONE_REF, STAGING_REF, installaOsservatore } from "../collaudo-z8/collaudo-motore-z8";
 
-// Fase 2: anche SATER, per il collaudo sullo staging (la sua riga nasce spenta con la 0134); stessa regola: solo da spenta ad accesa
-export const FONTI_ACCENDIBILI = ["sintel", "sardegnacat", "sater"] as const;
+// Fase 2: anche SATER (riga spenta della 0134) e TuttoGare (riga spenta della 0135 proposta), per il collaudo sullo staging; stessa regola:
+// solo da spenta ad accesa
+export const FONTI_ACCENDIBILI = ["sintel", "sardegnacat", "sater", "tuttogare"] as const;
 export type FonteAccendibile = (typeof FONTI_ACCENDIBILI)[number];
 export type EsitoAccensione = { fonte: FonteAccendibile; cambiate: number; primaAttiva: boolean; dopoAttiva: boolean };
 
@@ -59,7 +60,7 @@ export async function applica(ambiente: Record<string, string | undefined>, font
 async function principale(): Promise<number> {
   const [comando, fonte] = process.argv.slice(2);
   if (comando !== "applica" || !(FONTI_ACCENDIBILI as readonly string[]).includes(fonte ?? "")) {
-    console.error("uso: (solo con esegui-autorizzato.mjs) npx tsx scripts/c8/accendi-regionale-staging.ts applica <sintel|sardegnacat|sater>");
+    console.error("uso: (solo con esegui-autorizzato.mjs) npx tsx scripts/c8/accendi-regionale-staging.ts applica <sintel|sardegnacat|sater|tuttogare>");
     return 2;
   }
   const cartellaRegistro = process.env.TI_REGISTRO;
