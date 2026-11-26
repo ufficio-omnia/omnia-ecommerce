@@ -35,7 +35,7 @@ import { aggiungiGiorni, giornoRoma, giorniDiCalendario, gruppiScadenza, oraRoma
 import { chiaveRaggruppamento, pianoInvio, PRIORITA_DEL_TIPO, type ConsegnaInCoda } from "../src/lib/radar/notifiche/coda-calcoli";
 import { invioEmailAcceso, statoInvioEmail, VARIABILE_INTERRUTTORE_EMAIL } from "../src/lib/radar/notifiche/interruttore";
 import { dopoIngressoInLista } from "../src/lib/radar/notifiche/ravvicinata";
-import { ambienteDb, fonteAutorizzata, FONTI_RADAR, MOTIVO_ANTEPRIMA, scrittureRadarConsentite } from "../src/lib/radar/ambiente";
+import { ambienteDb, fonteAutorizzata, FONTI_RADAR, MOTIVO_ANTEPRIMA, scrittureRadarConsentite, VARIABILI_PRODUZIONE } from "../src/lib/radar/ambiente";
 
 // rete bloccata: qualunque fetch fa fallire la verifica
 globalThis.fetch = (async () => {
@@ -397,12 +397,14 @@ const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
         // dal K8, SENZA le variabili RADAR_<FONTE>_PRODUZIONE, l'esito resta identico in ogni cella; cambia solo il TESTO del motivo di PVL,
         // Sintel e SardegnaCAT sul deploy di produzione (dice quale variabile manca). Con le variabili: verifica-radar-ambiente-k8.ts
         const ora = scrittureRadarConsentite(f, env), prima = vecchia(f, env);
-        const soloTesto = f !== "ted" && nome === "produzione, deploy di produzione";
+        // Fase 2: SATER non ha la variabile di produzione, quindi anche lì l'esito è IDENTICO alla regola di prima (testo compreso)
+        const soloTesto = f !== "ted" && nome === "produzione, deploy di produzione" && f in VARIABILI_PRODUZIONE;
         controlla(`importazione identica alla regola di prima: ${fonte}, ${nome}`, soloTesto ? ora.ok === prima.ok && ora.ambiente === prima.ambiente && !ora.ok && /PRODUZIONE=autorizzata/.test(ora.motivo) : JSON.stringify(ora) === JSON.stringify(prima), [ora, prima]);
       }
     }
   }
-  controlla("matrice completa: 7 fonti × 10 ambienti × 2 usi", celle === 140, celle);
+  // le fonti del Radar più le 3 sconosciute («manuale», «ted2», vuota): con SATER (Fase 2) sono 8
+  controlla(`matrice completa: ${FONTI_RADAR.length + 3} fonti × ${ambienti.length} ambienti × 2 usi`, celle === (FONTI_RADAR.length + 3) * ambienti.length * 2, celle);
   controlla("le notifiche dicono «nessuna notifica», l'importazione «nessuna scrittura»", fonteAutorizzata("pvl", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL, VERCEL_ENV: "production" }).ok === false
     && /nessuna notifica/.test((fonteAutorizzata("pvl", "notifiche", { NEXT_PUBLIC_SUPABASE_URL: PROD_URL }) as { motivo: string }).motivo));
   const testoAmbiente = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "ambiente.ts"), "utf8");
