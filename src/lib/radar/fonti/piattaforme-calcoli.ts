@@ -7,6 +7,7 @@
 // per l'abbinamento (decisione S9 aperta).
 //
 // Si riconoscono SOLO le piattaforme elencate qui: un identificativo non si presume mai per somiglianza dell'indirizzo.
+import { idTuttoGareDaUrl } from "./tuttogare-istanze";
 
 export type PiattaformaNota = "sardegnacat" | "sintel" | "sater";
 
@@ -56,8 +57,10 @@ export function idPiattaformaDaUrl(url: string | null | undefined): string | nul
 
 // Come idPiattaformaDaUrl, più le forme dei soli connettori (REGOLE_CONNETTORI):
 // «https://intercenter.regione.emilia-romagna.it/trovabando/BANDO_GARA_PORTALE@17652665» → «sater:17652665».
+// TuttoGare (Fase 2, in costruzione): la pagina del dettaglio delle SOLE istanze in anagrafica (tuttogare-istanze.ts), con l'host nella
+// chiave perché il codice è dell'istanza: «tuttogare:<host>:<codice>». Anche questa solo nei connettori (stessa decisione a parte di SATER).
 export function idPiattaformaDaUrlConnettore(url: string | null | undefined): string | null {
-  return idDaRegole(url, REGOLE) ?? idDaRegole(url, REGOLE_CONNETTORI);
+  return idDaRegole(url, REGOLE) ?? idDaRegole(url, REGOLE_CONNETTORI) ?? idTuttoGareDaUrl(url);
 }
 
 export function idPiattaforma(piattaforma: PiattaformaNota, id: string): string | null {
