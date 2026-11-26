@@ -51,8 +51,8 @@ function atteso(fonte: string, ambiente: string, env: Record<string, string | un
 }
 
 function provaMatrice(): void {
-  // Fase 2 (26/11, SATER in produzione): più RADAR_SATER_PRODUZIONE
-  controlla("tabella delle variabili: PVL, Sintel, SardegnaCAT e SATER; TED no", JSON.stringify(VARIABILI_PRODUZIONE) === JSON.stringify({ pvl: "RADAR_PVL_PRODUZIONE", sintel: "RADAR_SINTEL_PRODUZIONE", sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE", sater: "RADAR_SATER_PRODUZIONE" }));
+  // Fase 2 (26/11, SATER e TuttoGare in produzione): più RADAR_SATER_PRODUZIONE e RADAR_TUTTOGARE_PRODUZIONE
+  controlla("tabella delle variabili: PVL, Sintel, SardegnaCAT, SATER e TuttoGare; TED no", JSON.stringify(VARIABILI_PRODUZIONE) === JSON.stringify({ pvl: "RADAR_PVL_PRODUZIONE", sintel: "RADAR_SINTEL_PRODUZIONE", sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE", sater: "RADAR_SATER_PRODUZIONE", tuttogare: "RADAR_TUTTOGARE_PRODUZIONE" }));
   let celle = 0;
   const sbagliate: unknown[] = [];
   for (const fonte of [...FONTI_RADAR, "manuale", "ted2", ""]) {
@@ -71,7 +71,7 @@ function provaMatrice(): void {
       }
     }
   }
-  // Fase 2: le fonti del Radar più le 3 sconosciute («manuale», «ted2», vuota); con SATER sono 8 (SATER senza variabile: solo staging)
+  // Fase 2: le fonti del Radar più le 3 sconosciute («manuale», «ted2», vuota); con SATER e TuttoGare sono 9
   const nFonti = FONTI_RADAR.length + 3;
   controlla(`matrice completa (${nFonti} fonti × ${AMBIENTI.length} ambienti × ${VARIABILI.length} combinazioni di variabili × 2 usi = ${celle} celle): ogni cella come la regola del 48C §3.7`, sbagliate.length === 0 && celle === nFonti * AMBIENTI.length * VARIABILI.length * 2, sbagliate.slice(0, 4));
   const senza = fonteAutorizzata("pvl", "importazione", { NEXT_PUBLIC_SUPABASE_URL: PROD, VERCEL_ENV: "production" });
