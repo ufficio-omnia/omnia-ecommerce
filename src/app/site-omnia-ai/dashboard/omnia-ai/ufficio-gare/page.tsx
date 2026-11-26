@@ -2,8 +2,8 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOmniaAiAccessState } from "@/lib/omnia-ai-access";
 import { richiediTitolarePagina } from "@/lib/omnia-ai-account-guardie";
-import { leggiUfficioGare } from "@/lib/omnia-ai-ufficio-gare";
-import { MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA } from "@/lib/omnia-ai-account-calcoli";
+import { leggiUfficiGare } from "@/lib/omnia-ai-ufficio-gare";
+import { MASSIMO_UFFICI_GARE, MESSAGGIO_UFFICIO_GARE_VERIFICA_NON_RIUSCITA } from "@/lib/omnia-ai-account-calcoli";
 import UfficioGareGestione from "./ufficio-gare-gestione";
 
 const PUO = [
@@ -32,7 +32,7 @@ export default async function UfficioGarePage() {
       </Link>
       <h1 className="omnia-app-titolo">Ufficio Gare</h1>
       <p className="omnia-app-sottotitolo">
-        Un accesso separato per chi, nella tua azienda, si occupa delle gare: lavora sulle gare ma non vede la parte amministrativa. Ne puoi creare uno solo.
+        Un accesso separato per chi, nella tua azienda, si occupa delle gare: lavora sulle gare ma non vede la parte amministrativa. Ne puoi creare fino a {MASSIMO_UFFICI_GARE}.
       </p>
     </>
   );
@@ -47,7 +47,7 @@ export default async function UfficioGarePage() {
   }
 
   const admin = createAdminClient();
-  const [lettura, statoAccesso] = await Promise.all([leggiUfficioGare(sessione.contesto.accountId, admin), getOmniaAiAccessState(sessione.contesto.accountId, admin)]);
+  const [lettura, statoAccesso] = await Promise.all([leggiUfficiGare(sessione.contesto.accountId, admin), getOmniaAiAccessState(sessione.contesto.accountId, admin)]);
 
   const abbonamentoUtilizzabile = statoAccesso.stato === "attivo" || statoAccesso.stato === "prova";
   const motivoBlocco =
@@ -86,21 +86,22 @@ export default async function UfficioGarePage() {
       </section>
 
       {lettura.esito === "errore" ? (
-        <p className="omnia-messaggio-stato errore">Non riesco a leggere l&apos;Ufficio Gare in questo momento. Riprova tra qualche istante.</p>
+        <p className="omnia-messaggio-stato errore">Non riesco a leggere gli Uffici Gare in questo momento. Riprova tra qualche istante.</p>
       ) : (
         <UfficioGareGestione
-          ufficio={
-            lettura.esito === "presente"
-              ? {
-                  email: lettura.ufficio.email,
-                  stato: lettura.ufficio.stato,
-                  creatoIl: lettura.ufficio.creatoIl,
-                  invitoInviatoIl: lettura.ufficio.invitoInviatoIl,
-                  ultimoAccesso: lettura.ufficio.ultimoAccesso,
-                }
-              : null
+          uffici={
+            lettura.esito === "ok"
+              ? lettura.uffici.map((u) => ({
+                  membroId: u.membroId,
+                  email: u.email,
+                  stato: u.stato,
+                  creatoIl: u.creatoIl,
+                  invitoInviatoIl: u.invitoInviatoIl,
+                  ultimoAccesso: u.ultimoAccesso,
+                }))
+              : []
           }
-          puoCreare={lettura.esito === "assente" && abbonamentoUtilizzabile}
+          puoCreare={lettura.esito === "ok" && lettura.uffici.length < MASSIMO_UFFICI_GARE && abbonamentoUtilizzabile}
           motivoBlocco={motivoBlocco}
         />
       )}

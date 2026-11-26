@@ -8,7 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { conteggiPerTipo, costruisciRigheUtenti, filtraUtenti, type DatiElencoUtenti } from "../src/lib/console/utenti-calcoli";
-import { MESSAGGIO_E_UN_UFFICIO_GARE, leggiLegameUfficioGare, leggiMembroDelTitolare, leggiTitolareDelMembro } from "../src/lib/console/ufficio-gare";
+import { MESSAGGIO_E_UN_UFFICIO_GARE, leggiLegameUfficioGare, leggiMembriDelTitolare, leggiTitolareDelMembro } from "../src/lib/console/ufficio-gare";
 
 const fallimenti: string[] = [];
 function atteso(nome: string, ok: boolean, dettaglio = "") {
@@ -31,6 +31,8 @@ const M = "22222222-2222-4222-8222-222222222222"; // il suo Ufficio Gare
 const T2 = "33333333-3333-4333-8333-333333333333"; // titolare senza azienda
 const M2 = "44444444-4444-4444-8444-444444444444"; // il suo Ufficio Gare (sospeso)
 const V = "55555555-5555-4555-8555-555555555555"; // utente vuoto
+const M3 = "66666666-6666-4666-8666-666666666666"; // secondo Ufficio Gare di T
+const M4 = "77777777-7777-4777-8777-777777777777"; // terzo Ufficio Gare di T (sospeso)
 
 const dati: DatiElencoUtenti = {
   utenti: [
@@ -39,6 +41,8 @@ const dati: DatiElencoUtenti = {
     { id: T2, email: "titolare2@altra.it", role: "cliente", created_at: "2026-09-03T00:00:00Z" },
     { id: M2, email: "gare2@altra.it", role: "cliente", created_at: "2026-09-04T00:00:00Z" },
     { id: V, email: "vuoto@x.it", role: "cliente", created_at: "2026-09-05T00:00:00Z" },
+    { id: M3, email: "gare3@azienda.it", role: "cliente", created_at: "2026-09-06T00:00:00Z" },
+    { id: M4, email: "gare4@azienda.it", role: "cliente", created_at: "2026-09-07T00:00:00Z" },
   ],
   aziende: [{ user_id: T, ragione_sociale: "Azienda Srl", partita_iva: null, codice_fiscale: null, buyer_type: "azienda" }],
   ordini: [],
@@ -51,6 +55,8 @@ const dati: DatiElencoUtenti = {
   membri: [
     { membro_id: M, titolare_id: T, attivo: true },
     { membro_id: M2, titolare_id: T2, attivo: false },
+    { membro_id: M3, titolare_id: T, attivo: true },
+    { membro_id: M4, titolare_id: T, attivo: false },
   ],
 };
 
@@ -60,16 +66,17 @@ async function main() {
   const riga = (id: string) => righe.find((r) => r.id === id)!;
   uguale("l'Ufficio Gare è legato al suo titolare (azienda)", riga(M).ufficioGareDi, { titolareId: T, titolare: "Azienda Srl", attivo: true });
   uguale("se il titolare non ha profilo azienda si usa la sua email", riga(M2).ufficioGareDi, { titolareId: T2, titolare: "titolare2@altra.it", attivo: false });
-  uguale("il titolare sa di avere un Ufficio Gare", [riga(T).ufficioGare, riga(T2).ufficioGare], [{ id: M, email: "gare@azienda.it", attivo: true }, { id: M2, email: "gare2@altra.it", attivo: false }]);
-  uguale("un Ufficio Gare non ha a sua volta un Ufficio Gare, e un titolare non è l'Ufficio Gare di nessuno", [riga(M).ufficioGare, riga(T).ufficioGareDi], [null, null]);
-  uguale("un utente senza legami non ne ha", [riga(V).ufficioGare, riga(V).ufficioGareDi], [null, null]);
-  uguale("senza la tabella dei legami (migrazione 0092 non eseguita) nessuno è un Ufficio Gare", costruisciRigheUtenti({ ...dati, membri: undefined }, ADESSO).map((r) => [r.ufficioGare, r.ufficioGareDi]), righe.map(() => [null, null]));
+  uguale("il titolare sa di avere i suoi Uffici Gare (fino a 3)", [riga(T).ufficiGare, riga(T2).ufficiGare], [[{ id: M, email: "gare@azienda.it", attivo: true }, { id: M3, email: "gare3@azienda.it", attivo: true }, { id: M4, email: "gare4@azienda.it", attivo: false }], [{ id: M2, email: "gare2@altra.it", attivo: false }]]);
+  uguale("ognuno dei 3 Uffici Gare è legato allo stesso titolare", [riga(M3).ufficioGareDi?.titolareId, riga(M4).ufficioGareDi?.titolareId], [T, T]);
+  uguale("un Ufficio Gare non ha a sua volta un Ufficio Gare, e un titolare non è l'Ufficio Gare di nessuno", [riga(M).ufficiGare, riga(T).ufficioGareDi], [[], null]);
+  uguale("un utente senza legami non ne ha", [riga(V).ufficiGare, riga(V).ufficioGareDi], [[], null]);
+  uguale("senza la tabella dei legami (migrazione 0092 non eseguita) nessuno è un Ufficio Gare", costruisciRigheUtenti({ ...dati, membri: undefined }, ADESSO).map((r) => [r.ufficiGare, r.ufficioGareDi]), righe.map(() => [[], null]));
   uguale("un legame verso un titolare che non c'è più mostra l'identificativo, senza rompere l'elenco", costruisciRigheUtenti({ ...dati, utenti: dati.utenti.filter((u) => u.id !== T), aziende: [], membri: [{ membro_id: M, titolare_id: T, attivo: true }] }, ADESSO).find((r) => r.id === M)?.ufficioGareDi, { titolareId: T, titolare: T, attivo: true });
 
   console.log("--- Filtri e conteggi ---");
-  uguale("filtro «Uffici Gare»: solo gli Uffici Gare, non i titolari", filtraUtenti(righe, "ufficio_gare", "").map((r) => r.id), [M, M2]);
+  uguale("filtro «Uffici Gare»: solo gli Uffici Gare, non i titolari", filtraUtenti(righe, "ufficio_gare", "").map((r) => r.id), [M, M2, M3, M4]);
   uguale("«Senza attività» non comprende gli Uffici Gare (lavorano) ma comprende chi non fa nulla", filtraUtenti(righe, "senza_attivita", "").map((r) => r.id).sort(), [T, T2, V].sort());
-  uguale("conteggi per tipo", conteggiPerTipo(righe), { tutti: 5, online: 0, ecommerce: 0, omnia_ai: 0, ufficio_gare: 2, da_rispondere: 0, senza_accettazioni: 0, senza_attivita: 3, admin: 0 });
+  uguale("conteggi per tipo", conteggiPerTipo(righe), { tutti: 7, online: 0, ecommerce: 0, omnia_ai: 0, ufficio_gare: 4, da_rispondere: 0, senza_accettazioni: 0, senza_attivita: 3, admin: 0 });
   uguale("la ricerca per azienda trova il titolare", filtraUtenti(righe, "tutti", "azienda srl").map((r) => r.id), [T]);
 
   console.log("--- Lettura del legame (scheda e controlli) ---");
@@ -88,6 +95,16 @@ async function main() {
             filtro = `${colonna}=${valore}`;
             chiamate.push(`${tabella}.eq(${filtro})`);
             return catena;
+          },
+          order: (colonna: string) => {
+            chiamate.push(`${tabella}.order(${colonna})`);
+            return catena;
+          },
+          // lettura come elenco (per titolare): una riga sola diventa un elenco di una riga
+          then: (risolvi: (r: Risposta) => unknown, rifiuta?: (e: unknown) => unknown) => {
+            const r = opz.comeTitolare ?? { data: [], error: null };
+            const elenco = r.error ? r : { data: r.data === null ? [] : Array.isArray(r.data) ? r.data : [r.data], error: null };
+            return Promise.resolve(elenco).then(risolvi, rifiuta);
           },
           maybeSingle: async (): Promise<Risposta> => {
             if (tabella === "omnia_ai_membri") return (filtro.startsWith("membro_id") ? opz.comeMembro : opz.comeTitolare) ?? { data: null, error: null };
@@ -113,19 +130,25 @@ async function main() {
   }
   {
     const { admin } = fintoAdmin({ comeTitolare: { data: riga0, error: null }, utenti: { [M]: { email: "gare@azienda.it" } }, ultimoAccesso: "2026-10-12T09:00:00Z" });
-    uguale("è un titolare: l'Ufficio Gare con stato e ultimo accesso", await leggiLegameUfficioGare(T, admin), { ruolo: "titolare", ufficioGare: { id: M, email: "gare@azienda.it", attivo: true, creatoIl: "2026-10-10T08:00:00Z", invitoInviatoIl: "2026-10-10T08:00:00Z", ultimoAccesso: "2026-10-12T09:00:00Z" } });
+    uguale("è un titolare: l'Ufficio Gare con stato e ultimo accesso", await leggiLegameUfficioGare(T, admin), { ruolo: "titolare", uffici: [{ id: M, email: "gare@azienda.it", attivo: true, creatoIl: "2026-10-10T08:00:00Z", invitoInviatoIl: "2026-10-10T08:00:00Z", ultimoAccesso: "2026-10-12T09:00:00Z" }] });
+  }
+  {
+    const riga3 = { ...riga0, membro_id: M3, attivo: false, creato_il: "2026-10-11T08:00:00Z", invito_inviato_il: "2026-10-11T08:00:00Z" };
+    const { admin } = fintoAdmin({ comeTitolare: { data: [riga0, riga3], error: null }, utenti: { [M]: { email: "gare@azienda.it" }, [M3]: { email: "gare3@azienda.it" } } });
+    const l = await leggiLegameUfficioGare(T, admin);
+    uguale("un titolare con più Uffici Gare: tutti, nell'ordine", l !== null && l !== "errore" && l.ruolo === "titolare" ? l.uffici.map((u) => [u.id, u.email, u.attivo]) : l, [[M, "gare@azienda.it", true], [M3, "gare3@azienda.it", false]]);
   }
   for (const codice of ["42P01", "PGRST205"]) {
     const errore = { data: null, error: { code: codice, message: "assente" } };
     const { admin } = fintoAdmin({ comeMembro: errore, comeTitolare: errore });
-    uguale(`tabella assente (${codice}): nessun legame, non un errore`, [await leggiLegameUfficioGare(V, admin), await leggiTitolareDelMembro(V, admin), await leggiMembroDelTitolare(V, admin)], [null, null, null]);
+    uguale(`tabella assente (${codice}): nessun legame, non un errore`, [await leggiLegameUfficioGare(V, admin), await leggiTitolareDelMembro(V, admin), await leggiMembriDelTitolare(V, admin)], [null, null, []]);
   }
   {
     const vecchioErrore = console.error;
     console.error = () => {};
     try {
       const guasto = fintoAdmin({ comeMembro: { data: null, error: { code: "57014", message: "timeout" } }, comeTitolare: { data: null, error: { code: "57014", message: "timeout" } } });
-      uguale("errore di lettura: «errore», mai «nessun legame»", [await leggiLegameUfficioGare(V, guasto.admin), await leggiTitolareDelMembro(V, guasto.admin), await leggiMembroDelTitolare(V, guasto.admin)], ["errore", "errore", "errore"]);
+      uguale("errore di lettura: «errore», mai «nessun legame»", [await leggiLegameUfficioGare(V, guasto.admin), await leggiTitolareDelMembro(V, guasto.admin), await leggiMembriDelTitolare(V, guasto.admin)], ["errore", "errore", "errore"]);
       const guastoTitolare = fintoAdmin({ comeTitolare: { data: null, error: { code: "57014", message: "timeout" } } });
       uguale("errore nella lettura come titolare: «errore»", await leggiLegameUfficioGare(V, guastoTitolare.admin), "errore");
     } finally {
@@ -136,8 +159,8 @@ async function main() {
     const { admin, chiamate } = fintoAdmin({ comeMembro: { data: { titolare_id: T }, error: null } });
     uguale("di chi è l'Ufficio Gare: il titolare", await leggiTitolareDelMembro(M, admin), T);
     uguale("cerca per membro nella tabella giusta", chiamate, ["omnia_ai_membri.select(titolare_id)", `omnia_ai_membri.eq(membro_id=${M})`]);
-    const { admin: a2, chiamate: c2 } = fintoAdmin({ comeTitolare: { data: { membro_id: M }, error: null } });
-    uguale("l'Ufficio Gare di un titolare: il suo identificativo", await leggiMembroDelTitolare(T, a2), M);
+    const { admin: a2, chiamate: c2 } = fintoAdmin({ comeTitolare: { data: [{ membro_id: M }, { membro_id: M3 }, { membro_id: M4 }], error: null } });
+    uguale("gli Uffici Gare di un titolare: tutti gli identificativi", await leggiMembriDelTitolare(T, a2), [M, M3, M4]);
     uguale("cerca per titolare", c2, ["omnia_ai_membri.select(membro_id)", `omnia_ai_membri.eq(titolare_id=${T})`]);
   }
 
@@ -154,23 +177,26 @@ async function main() {
   }
   {
     const e = funzione(utenti, "eliminaUtente");
-    atteso("eliminazione: l'Ufficio Gare si cerca PRIMA di eliminare il titolare (dopo, il legame non c'è più)", e.indexOf("leggiMembroDelTitolare(bersaglio.id, admin)") !== -1 && e.indexOf("leggiMembroDelTitolare") < e.indexOf("deleteUser(bersaglio.id)"));
-    atteso("eliminazione: se il controllo non riesce non si tocca nulla", /membroDelTitolare === "errore"\) return \{ errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO \}/.test(e) && e.indexOf('membroDelTitolare === "errore"') < e.indexOf("deleteUser(bersaglio.id)"));
-    atteso("eliminazione: l'Ufficio Gare si elimina DOPO il titolare, e solo se il titolare è stato eliminato", e.indexOf("deleteUser(membroDelTitolare)") > e.indexOf("deleteUser(bersaglio.id)") && e.indexOf("deleteUser(membroDelTitolare)") > e.indexOf('if (error) {') && /if \(membroDelTitolare\) \{/.test(e));
-    atteso("eliminazione: se l'Ufficio Gare non si elimina lo dice con l'identificativo, non finge che sia andato tutto bene", /erroreMembro\) \{[\s\S]*?return \{ errore: `Il cliente è stato eliminato, ma il suo Ufficio Gare \(id \$\{membroDelTitolare\}\) NO/.test(e) && e.indexOf("erroreMembro") < e.indexOf('redirect("/utenti?esito=eliminato")'));
-    atteso("eliminazione: si elimina SOLO l'Ufficio Gare letto dal database (mai un identificativo della richiesta)", [...e.matchAll(/deleteUser\(([^)]*)\)/g)].map((m) => m[1]).sort().join("|") === "bersaglio.id|membroDelTitolare");
+    atteso("eliminazione: gli Uffici Gare si cercano PRIMA di eliminare il titolare (dopo, il legame non c'è più)", e.indexOf("leggiMembriDelTitolare(bersaglio.id, admin)") !== -1 && e.indexOf("leggiMembriDelTitolare") < e.indexOf("deleteUser(bersaglio.id)"));
+    atteso("eliminazione: se il controllo non riesce non si tocca nulla", /membriDelTitolare === "errore"\) return \{ errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO \}/.test(e) && e.indexOf('membriDelTitolare === "errore"') < e.indexOf("deleteUser(bersaglio.id)"));
+    atteso("eliminazione: gli Uffici Gare si eliminano DOPO il titolare, e solo se il titolare è stato eliminato", e.indexOf("eliminaMembriDelTitolare(admin, membriDelTitolare)") > e.indexOf("deleteUser(bersaglio.id)") && e.indexOf("eliminaMembriDelTitolare(admin, membriDelTitolare)") > e.indexOf("if (error) {"));
+    atteso("eliminazione: se un Ufficio Gare non si elimina lo dice con gli identificativi, non finge che sia andato tutto bene", /nonEliminati\.length > 0\) \{[\s\S]*?return \{ errore: \x60Il cliente è stato eliminato, ma questi suoi Uffici Gare NO \(id \$\{nonEliminati\.join\(", "\)\}\)/.test(e) && e.indexOf("nonEliminati.length") < e.indexOf('redirect("/utenti?esito=eliminato")'));
+    atteso("eliminazione: si elimina direttamente SOLO il titolare (gli Uffici Gare passano dall'aiutante, con quelli letti dal database)", [...e.matchAll(/deleteUser\(([^)]*)\)/g)].map((m) => m[1]).join("|") === "bersaglio.id");
+    const da = utenti.indexOf("async function eliminaMembriDelTitolare(");
+    const aiutante = utenti.slice(da, utenti.indexOf("export async function", da));
+    atteso("aiutante: elimina ogni Ufficio Gare ricevuto e restituisce quelli non eliminati", da !== -1 && /for \(const membroId of membriDelTitolare\)/.test(aiutante) && aiutante.includes("deleteUser(membroId)") && aiutante.includes("nonEliminati.push(membroId)") && aiutante.includes("return nonEliminati;"));
     const a = funzione(utenti, "anonimizzaUtente");
-    atteso("anonimizzazione: l'Ufficio Gare si cerca prima, e se il controllo non riesce non si tocca nulla", a.indexOf("leggiMembroDelTitolare(bersaglio.id, admin)") !== -1 && a.indexOf("leggiMembroDelTitolare") < a.indexOf("updateUserById") && /membroDelTitolare === "errore"\) return \{ errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO \}/.test(a));
-    atteso("anonimizzazione: l'Ufficio Gare si elimina dopo l'anonimizzazione del titolare", a.indexOf("deleteUser(membroDelTitolare)") > a.indexOf('from("companies").delete()') && /Il cliente è stato anonimizzato, ma il suo Ufficio Gare/.test(a) && a.indexOf("erroreMembro") < a.indexOf('redirect("/utenti?esito=anonimizzato")'));
-    atteso("anonimizzazione: si elimina solo l'Ufficio Gare letto dal database", [...a.matchAll(/deleteUser\(([^)]*)\)/g)].map((m) => m[1]).join("|") === "membroDelTitolare");
+    atteso("anonimizzazione: gli Uffici Gare si cercano prima, e se il controllo non riesce non si tocca nulla", a.indexOf("leggiMembriDelTitolare(bersaglio.id, admin)") !== -1 && a.indexOf("leggiMembriDelTitolare") < a.indexOf("updateUserById") && /membriDelTitolare === "errore"\) return \{ errore: MESSAGGIO_CONTROLLO_UFFICIO_GARE_NON_RIUSCITO \}/.test(a));
+    atteso("anonimizzazione: gli Uffici Gare si eliminano dopo l'anonimizzazione del titolare", a.indexOf("eliminaMembriDelTitolare(admin, membriDelTitolare)") > a.indexOf('from("companies").delete()') && /Il cliente è stato anonimizzato, ma questi suoi Uffici Gare/.test(a) && a.indexOf("nonEliminatiAnonimo.length") < a.indexOf('redirect("/utenti?esito=anonimizzato")'));
+    atteso("anonimizzazione: nessuna eliminazione diretta (solo l'aiutante con gli Uffici Gare letti dal database)", [...a.matchAll(/deleteUser\(([^)]*)\)/g)].length === 0);
   }
   atteso("i messaggi della console sono chiari", MESSAGGIO_E_UN_UFFICIO_GARE.includes("Ufficio Gare") && MESSAGGIO_E_UN_UFFICIO_GARE.includes("titolare"));
 
   console.log("--- Viste ---");
   const elenco = leggi("src/app/site-console/_componenti/utenti-vista.tsx");
-  atteso("elenco: tessera degli Uffici Gare, badge sul membro (legato al titolare) e sul titolare, filtro", elenco.includes('etichetta="Uffici Gare"') && elenco.includes("{r.ufficioGareDi && (") && elenco.includes("{r.ufficioGare && (") && elenco.includes("<Link href={`/utenti/${r.ufficioGareDi.titolareId}`}>") && elenco.includes("ha un Ufficio Gare") && elenco.includes("sospeso"));
+  atteso("elenco: tessera degli Uffici Gare, badge sul membro (legato al titolare) e sul titolare, filtro", elenco.includes('etichetta="Uffici Gare"') && elenco.includes("{r.ufficioGareDi && (") && elenco.includes("{r.ufficiGare.length > 0 && (") && elenco.includes("<Link href={`/utenti/${r.ufficioGareDi.titolareId}`}>") && elenco.includes("ha un Ufficio Gare") && elenco.includes("sospeso"));
   const scheda = leggi("src/app/site-console/_componenti/scheda-cliente-vista.tsx");
-  atteso("scheda: pannello «Ufficio Gare» per il titolare e per il membro, con i collegamenti reciproci", scheda.includes("{s.legameUfficioGare && (") && scheda.includes('<Pannello titolo="Ufficio Gare">') && scheda.includes("s.legameUfficioGare.titolare.id") && scheda.includes("s.legameUfficioGare.ufficioGare.id") && scheda.includes("in attesa del primo accesso"));
+  atteso("scheda: pannello «Ufficio Gare» per il titolare e per il membro, con i collegamenti reciproci", scheda.includes("{s.legameUfficioGare && (") && scheda.includes('<Pannello titolo="Ufficio Gare">') && scheda.includes("s.legameUfficioGare.titolare.id") && scheda.includes("s.legameUfficioGare.uffici.map(") && scheda.includes("/utenti/${ufficio.id}") && scheda.includes("in attesa del primo accesso"));
   atteso("scheda: se la lettura del legame non riesce lo dice", scheda.includes("{s.legameUfficioGareNonLetto && ("));
   atteso("scheda di un Ufficio Gare: abbonamento a mano e gare gratuite sostituiti dal messaggio", (scheda.match(/MESSAGGIO_E_UN_UFFICIO_GARE/g) ?? []).length >= 3 && scheda.includes('const eMembro = s.legameUfficioGare?.ruolo === "ufficio_gare";') && /\{eMembro \? \(\s*<p className="cn-nota" style=\{\{ padding: 14 \}\}>\s*\{MESSAGGIO_E_UN_UFFICIO_GARE\}/.test(scheda));
   const lettura = leggi("src/lib/console/utenti.ts");

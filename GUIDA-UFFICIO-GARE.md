@@ -11,7 +11,7 @@ Questo documento spiega come funziona, che cosa serve per metterlo online e come
 1. Il cliente (il **titolare**) apre **Ufficio Gare** dal menu a sinistra, scrive l'email della persona, spunta la conferma di responsabilità e preme «Crea l'accesso Ufficio Gare».
 2. La persona riceve un'email con il link per **scegliere la sua password**. Se non arriva, il titolare preme «Rinvia il link» (al massimo una volta al minuto, e solo finché la persona non è mai entrata).
 3. Il titolare può **sospendere** l'accesso (la persona non vede più nulla e non può entrare) e **riattivarlo**, oppure **rimuoverlo**: l'utente viene eliminato, mentre gare, documenti e relazioni restano all'azienda.
-4. Un titolare può avere **un solo** Ufficio Gare.
+4. Un titolare può avere **fino a 3** Uffici Gare (dal 26/11/2026, migrazione 0136; prima uno solo). Il quarto è rifiutato dalla pagina e dal database.
 
 ## Che cosa vede e che cosa fa l'Ufficio Gare
 
@@ -66,7 +66,7 @@ Oggi il titolare, quando crea l'accesso, spunta (e il sistema registra con data,
 
 ## Limiti attuali (decisioni di prodotto)
 
-- Un solo Ufficio Gare per cliente (il modello è già pronto per più ruoli, ma non è esposto).
+- Fino a 3 Uffici Gare per cliente, tutti con lo stesso ruolo (altri ruoli: il modello è pronto ma non esposto).
 - L'Ufficio Gare **non ha la campanella** delle notifiche (sono del titolare).
 - Un Ufficio Gare non può essere anche titolare di un altro account (il database lo impedisce).
 - Se il titolare cambia l'email del suo account, nulla cambia per l'Ufficio Gare.

@@ -7,23 +7,36 @@ import { getRequestMeta } from "@/lib/legal-acceptance";
 import { getOmniaAiRequestOrigin } from "@/lib/omnia-ai-request";
 import { requireOmniaAiWriteAccess } from "@/lib/omnia-ai-access";
 import { richiediTitolareAzione } from "@/lib/omnia-ai-account-guardie";
-import { leggiUfficioGare, mandaLinkPasswordUfficioGare } from "@/lib/omnia-ai-ufficio-gare";
-import { rinvioLinkPermesso, validaInvitoUfficioGare } from "@/lib/omnia-ai-account-calcoli";
+import { leggiUfficiGare, mandaLinkPasswordUfficioGare, type UfficioGare } from "@/lib/omnia-ai-ufficio-gare";
+import { MASSIMO_UFFICI_GARE, rinvioLinkPermesso, validaInvitoUfficioGare } from "@/lib/omnia-ai-account-calcoli";
 
-// Il titolare crea e gestisce il SUO Ufficio Gare. Ogni azione parte da richiediTitolareAzione (l'Ufficio Gare
-// non può usarle) e lavora sempre sull'Ufficio Gare del titolare loggato: l'identificativo dell'Ufficio Gare
-// non arriva mai dalla richiesta, si ricava dal database partendo dal titolare.
+// Il titolare crea e gestisce i SUOI Uffici Gare (fino a MASSIMO_UFFICI_GARE). Ogni azione parte da
+// richiediTitolareAzione (l'Ufficio Gare non può usarle) e lavora sempre sugli Uffici Gare del titolare loggato:
+// il modulo dice QUALE (membroId), ma l'identificativo si accetta solo se è fra quelli letti dal database
+// partendo dal titolare. Un identificativo di un altro account vale «non trovato».
 
 export type UfficioGareState = { error?: string; success?: string; avviso?: string };
 
 const PAGINA = "/dashboard/omnia-ai/ufficio-gare";
 
 const MESSAGGIO_NON_DISPONIBILE = "L'Ufficio Gare non è ancora disponibile. Riprova più tardi o contattaci.";
-const MESSAGGIO_LETTURA_NON_RIUSCITA = "Non riesco a leggere l'Ufficio Gare in questo momento. Riprova tra qualche istante.";
+const MESSAGGIO_LETTURA_NON_RIUSCITA = "Non riesco a leggere gli Uffici Gare in questo momento. Riprova tra qualche istante.";
 // Volutamente generico: non dice se l'indirizzo appartiene già a un altro account (non si deve poter scoprire chi è cliente).
 const MESSAGGIO_EMAIL_NON_UTILIZZABILE = "Questo indirizzo non può essere usato: scegline un altro.";
+const MESSAGGIO_MASSIMO_RAGGIUNTO = `Hai già ${MASSIMO_UFFICI_GARE} Uffici Gare, il massimo: per aggiungerne un altro rimuovine prima uno.`;
+const MESSAGGIO_NON_TROVATO = "Ufficio Gare non trovato: ricarica la pagina.";
 // «ban» a vita per sospendere (100 anni): l'accesso e il rinnovo della sessione si bloccano subito, anche se il browser ha ancora una sessione aperta.
 const DURATA_SOSPENSIONE = "876000h";
+
+// L'Ufficio Gare scelto nel modulo, cercato SOLO fra quelli del titolare loggato.
+async function ufficioDelTitolare(titolareId: string, formData: FormData): Promise<{ ufficio: UfficioGare } | { error: string }> {
+  const lettura = await leggiUfficiGare(titolareId, createAdminClient());
+  if (lettura.esito === "schema_assente") return { error: MESSAGGIO_NON_DISPONIBILE };
+  if (lettura.esito === "errore") return { error: MESSAGGIO_LETTURA_NON_RIUSCITA };
+  const scelto = String(formData.get("membroId") ?? "");
+  const ufficio = lettura.uffici.find((u) => u.membroId === scelto);
+  return ufficio ? { ufficio } : { error: MESSAGGIO_NON_TROVATO };
+}
 
 export async function creaUfficioGare(_prev: UfficioGareState, formData: FormData): Promise<UfficioGareState> {
   const guardia = await richiediTitolareAzione();
@@ -44,10 +57,10 @@ export async function creaUfficioGare(_prev: UfficioGareState, formData: FormDat
   const accessoNegato = await requireOmniaAiWriteAccess(contesto.accountId, admin);
   if (accessoNegato) return { error: accessoNegato };
 
-  const lettura = await leggiUfficioGare(contesto.accountId, admin);
+  const lettura = await leggiUfficiGare(contesto.accountId, admin);
   if (lettura.esito === "schema_assente") return { error: MESSAGGIO_NON_DISPONIBILE };
   if (lettura.esito === "errore") return { error: MESSAGGIO_LETTURA_NON_RIUSCITA };
-  if (lettura.esito === "presente") return { error: "Hai già un Ufficio Gare: se vuoi cambiarlo, rimuovilo prima e creane uno nuovo." };
+  if (lettura.uffici.length >= MASSIMO_UFFICI_GARE) return { error: MESSAGGIO_MASSIMO_RAGGIUNTO };
 
   const { data: esistente, error: erroreUtente } = await admin.from("users").select("id").eq("email", email).maybeSingle<{ id: string }>();
   if (erroreUtente) {
@@ -82,7 +95,12 @@ export async function creaUfficioGare(_prev: UfficioGareState, formData: FormDat
   });
   if (erroreLegame) {
     console.error("Ufficio Gare: registrazione del legame fallita", erroreLegame.code, erroreLegame.message);
-    return annulla(erroreLegame.code === "23505" ? "Hai già un Ufficio Gare." : "Registrazione non riuscita.");
+    // 23505: il database ha rifiutato. Se è il vecchio indice unico della 0092 la migrazione 0136 non è ancora
+    // eseguita (un solo Ufficio Gare possibile); altrimenti è il trigger della 0136: il titolare ha già il massimo.
+    if (erroreLegame.code === "23505" && /un_ruolo_per_titolare/.test(erroreLegame.message ?? "")) {
+      return annulla("Per ora non è possibile aggiungere un altro Ufficio Gare: riprova più tardi o contattaci.");
+    }
+    return annulla(erroreLegame.code === "23505" ? MESSAGGIO_MASSIMO_RAGGIUNTO : "Registrazione non riuscita.");
   }
 
   const inviata = await mandaLinkPasswordUfficioGare({
@@ -100,17 +118,15 @@ export async function creaUfficioGare(_prev: UfficioGareState, formData: FormDat
   return { success: `Accesso creato. Abbiamo inviato a ${email} il link per scegliere la password.` };
 }
 
-export async function rinviaLinkUfficioGare(): Promise<UfficioGareState> {
+export async function rinviaLinkUfficioGare(formData: FormData): Promise<UfficioGareState> {
   const guardia = await richiediTitolareAzione();
   if (!guardia.ok) return { error: guardia.errore };
   const { user, contesto } = guardia;
   const admin = createAdminClient();
 
-  const lettura = await leggiUfficioGare(contesto.accountId, admin);
-  if (lettura.esito === "schema_assente") return { error: MESSAGGIO_NON_DISPONIBILE };
-  if (lettura.esito === "errore") return { error: MESSAGGIO_LETTURA_NON_RIUSCITA };
-  if (lettura.esito === "assente") return { error: "Non hai un Ufficio Gare." };
-  const { ufficio } = lettura;
+  const scelta = await ufficioDelTitolare(contesto.accountId, formData);
+  if ("error" in scelta) return { error: scelta.error };
+  const { ufficio } = scelta;
 
   const permesso = rinvioLinkPermesso({ stato: ufficio.stato, invitoInviatoIl: ufficio.invitoInviatoIl, adesso: new Date() });
   if (!permesso.ok) return { error: permesso.errore };
@@ -139,17 +155,15 @@ export async function rinviaLinkUfficioGare(): Promise<UfficioGareState> {
   return { success: `Link rinviato a ${ufficio.email}.` };
 }
 
-export async function sospendiUfficioGare(): Promise<UfficioGareState> {
+export async function sospendiUfficioGare(formData: FormData): Promise<UfficioGareState> {
   const guardia = await richiediTitolareAzione();
   if (!guardia.ok) return { error: guardia.errore };
   const { contesto } = guardia;
   const admin = createAdminClient();
 
-  const lettura = await leggiUfficioGare(contesto.accountId, admin);
-  if (lettura.esito === "schema_assente") return { error: MESSAGGIO_NON_DISPONIBILE };
-  if (lettura.esito === "errore") return { error: MESSAGGIO_LETTURA_NON_RIUSCITA };
-  if (lettura.esito === "assente") return { error: "Non hai un Ufficio Gare." };
-  const { ufficio } = lettura;
+  const scelta = await ufficioDelTitolare(contesto.accountId, formData);
+  if ("error" in scelta) return { error: scelta.error };
+  const { ufficio } = scelta;
 
   // Prima il segno nel database (da subito l'Ufficio Gare non vede più nulla), poi il blocco dell'accesso.
   const { error } = await admin.from("omnia_ai_membri").update({ attivo: false }).eq("membro_id", ufficio.membroId).eq("titolare_id", contesto.accountId);
@@ -162,21 +176,19 @@ export async function sospendiUfficioGare(): Promise<UfficioGareState> {
 
   revalidatePath(PAGINA);
   return erroreBlocco
-    ? { success: "Accesso sospeso: l'Ufficio Gare non vede più nulla.", avviso: "Il blocco del login non è riuscito; il resto è in vigore. Se vuoi, riprova." }
-    : { success: "Accesso sospeso: l'Ufficio Gare non può più entrare." };
+    ? { success: `Accesso di ${ufficio.email} sospeso: non vede più nulla.`, avviso: "Il blocco del login non è riuscito; il resto è in vigore. Se vuoi, riprova." }
+    : { success: `Accesso di ${ufficio.email} sospeso: non può più entrare.` };
 }
 
-export async function riattivaUfficioGare(): Promise<UfficioGareState> {
+export async function riattivaUfficioGare(formData: FormData): Promise<UfficioGareState> {
   const guardia = await richiediTitolareAzione();
   if (!guardia.ok) return { error: guardia.errore };
   const { contesto } = guardia;
   const admin = createAdminClient();
 
-  const lettura = await leggiUfficioGare(contesto.accountId, admin);
-  if (lettura.esito === "schema_assente") return { error: MESSAGGIO_NON_DISPONIBILE };
-  if (lettura.esito === "errore") return { error: MESSAGGIO_LETTURA_NON_RIUSCITA };
-  if (lettura.esito === "assente") return { error: "Non hai un Ufficio Gare." };
-  const { ufficio } = lettura;
+  const scelta = await ufficioDelTitolare(contesto.accountId, formData);
+  if ("error" in scelta) return { error: scelta.error };
+  const { ufficio } = scelta;
 
   // Prima si toglie il blocco del login, poi si riapre l'accesso ai dati: mai un accesso aperto con il login ancora chiuso a metà.
   const { error: erroreBlocco } = await admin.auth.admin.updateUserById(ufficio.membroId, { ban_duration: "none" });
@@ -191,30 +203,29 @@ export async function riattivaUfficioGare(): Promise<UfficioGareState> {
   }
 
   revalidatePath(PAGINA);
-  return { success: "Accesso riattivato." };
+  return { success: `Accesso di ${ufficio.email} riattivato.` };
 }
 
-// Toglie l'Ufficio Gare: l'utente viene eliminato (e con lui la sua conversazione col supporto). Le gare, i
+// Toglie un Ufficio Gare: l'utente viene eliminato (e con lui la sua conversazione col supporto). Le gare, i
 // documenti e le relazioni restano: sono dell'azienda, non suoi.
-export async function rimuoviUfficioGare(): Promise<UfficioGareState> {
+export async function rimuoviUfficioGare(formData: FormData): Promise<UfficioGareState> {
   const guardia = await richiediTitolareAzione();
   if (!guardia.ok) return { error: guardia.errore };
   const { contesto } = guardia;
   const admin = createAdminClient();
 
-  const lettura = await leggiUfficioGare(contesto.accountId, admin);
-  if (lettura.esito === "schema_assente") return { error: MESSAGGIO_NON_DISPONIBILE };
-  if (lettura.esito === "errore") return { error: MESSAGGIO_LETTURA_NON_RIUSCITA };
-  if (lettura.esito === "assente") return { error: "Non hai un Ufficio Gare." };
+  const scelta = await ufficioDelTitolare(contesto.accountId, formData);
+  if ("error" in scelta) return { error: scelta.error };
+  const { ufficio } = scelta;
 
   // Si chiude prima l'accesso ai dati, così anche una sessione ancora aperta non vede più nulla se l'eliminazione si ferma a metà.
-  const { error: erroreSospensione } = await admin.from("omnia_ai_membri").update({ attivo: false }).eq("membro_id", lettura.ufficio.membroId).eq("titolare_id", contesto.accountId);
+  const { error: erroreSospensione } = await admin.from("omnia_ai_membri").update({ attivo: false }).eq("membro_id", ufficio.membroId).eq("titolare_id", contesto.accountId);
   if (erroreSospensione) {
     console.error("Ufficio Gare: chiusura dell'accesso prima della rimozione non riuscita", erroreSospensione.message);
     return { error: "Rimozione non riuscita. Riprova tra qualche istante." };
   }
 
-  const { error } = await admin.auth.admin.deleteUser(lettura.ufficio.membroId);
+  const { error } = await admin.auth.admin.deleteUser(ufficio.membroId);
   if (error) {
     console.error("Ufficio Gare: eliminazione dell'utente non riuscita", error.message);
     revalidatePath(PAGINA);
@@ -222,5 +233,5 @@ export async function rimuoviUfficioGare(): Promise<UfficioGareState> {
   }
 
   revalidatePath(PAGINA);
-  return { success: "Ufficio Gare rimosso. Le gare e i documenti restano della tua azienda." };
+  return { success: `Ufficio Gare ${ufficio.email} rimosso. Le gare e i documenti restano della tua azienda.` };
 }

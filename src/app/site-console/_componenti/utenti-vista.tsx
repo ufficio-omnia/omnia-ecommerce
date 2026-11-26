@@ -216,10 +216,10 @@ export default function UtentiVista({
                               )}
                             </>
                           )}
-                          {r.ufficioGare && (
+                          {r.ufficiGare.length > 0 && (
                             <>
                               {" "}
-                              <Badge tono="neutro">ha un Ufficio Gare</Badge>
+                              <Badge tono="neutro">{r.ufficiGare.length === 1 ? "ha un Ufficio Gare" : `ha ${r.ufficiGare.length} Uffici Gare`}</Badge>
                             </>
                           )}
                           {r.ruolo === "admin" && (
