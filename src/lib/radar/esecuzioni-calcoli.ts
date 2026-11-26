@@ -10,9 +10,14 @@ import { testoContattoMancante } from "./fonti/user-agent";
 export const FONTI_ESECUZIONI = ["ted", "pvl", "sintel", "sardegnacat", "sater"] as const;
 export type FonteEsecuzione = (typeof FONTI_ESECUZIONI)[number];
 
-/** Le fonti che si registrano nel registro dei giri: le stesse di console, allarmi e cron. */
-export const FONTI_REGISTRO = FONTI_ESECUZIONI;
-export type FonteRegistro = FonteEsecuzione;
+/**
+ * Le fonti che si REGISTRANO nel registro dei giri: quelle della console, degli allarmi e dei cron (FONTI_ESECUZIONI) più le fonti in
+ * costruzione (Fase 2: TuttoGare), che si registrano senza comparire in console (gli allarmi leggono solo FONTI_ESECUZIONI). Il vincolo della
+ * 0128 ammette «tuttogare» solo con la 0135 PROPOSTA: prima di quella, la riga di un giro TuttoGare non si scrive (scriviEsecuzione non lancia
+ * mai eccezioni). Stessa forma di SATER durante il suo collaudo.
+ */
+export const FONTI_REGISTRO = [...FONTI_ESECUZIONI, "tuttogare"] as const;
+export type FonteRegistro = (typeof FONTI_REGISTRO)[number];
 export type ModoEsecuzione = "incrementale" | "recupero" | "finestra" | "manuale";
 export type EsitoEsecuzione = "ok" | "errore" | "sospesa" | "occupata" | "inerte" | "gia_eseguito";
 /** Chi ha lanciato il giro: il cron, il pulsante della console («Esegui un giro adesso»), uno script dello staging. */

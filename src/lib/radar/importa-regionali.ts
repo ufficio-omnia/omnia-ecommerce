@@ -23,8 +23,8 @@ import { giornoDiRoma } from "./fonti/ted-calcoli";
 import type { Misure } from "./importa";
 import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
 import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, bandoDaTuttoGare, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
-import { FONTI_ESECUZIONI, datiGiroRegionale, type FonteEsecuzione, type OrigineGiro } from "./esecuzioni-calcoli";
-import { giroRegistrato, nuovoIdEsecuzione, type EsitoRegistro } from "./esecuzioni";
+import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
+import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
 import { userAgentFonti } from "./fonti/user-agent";
 
@@ -63,17 +63,10 @@ function schemaAssente(e: { message: string; code?: string }): boolean {
 /**
  * Un giro di Sintel, SardegnaCAT o SATER, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere.
  * SATER (Fase 2): la riga si scrive solo dopo la 0134, che estende il vincolo della 0128; prima la scrittura non riesce senza fermare nulla.
+ * TuttoGare (Fase 2, in costruzione) allo stesso modo con la 0135 PROPOSTA (FONTI_REGISTRO; non in console né negli allarmi).
  */
-function fonteDelRegistro(f: FonteRegionale): f is Extract<FonteRegionale, FonteEsecuzione> {
-  return (FONTI_ESECUZIONI as readonly string[]).includes(f);
-}
-
-export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
-  if (fonteDelRegistro(fonte)) return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
-  // Fase 2: una fonte non ancora ammessa dal registro dei giri (TuttoGare, in costruzione: il vincolo della 0128 la rifiuta finché non ha la
-  // sua migrazione) non scrive la riga del registro; per il resto il giro è lo stesso, con le stesse guardie
-  const r = await giroRegionale(admin, fonte, opzioni, (opzioni.nuovoIdEsecuzione ?? nuovoIdEsecuzione)());
-  return { ...r, esecuzione: { scritta: false, id: null, motivo: "non_registrato" } };
+export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
+  return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
 }
 
 async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale, esecuzioneId: string): Promise<RisultatoImportazioneRegionale> {
