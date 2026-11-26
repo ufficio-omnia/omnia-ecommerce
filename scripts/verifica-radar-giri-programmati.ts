@@ -106,13 +106,13 @@ function provaGuardie(): void {
     controlla(`${f}: interruttore acceso fuori orario → «fuori_orario»; all'orario → passa`, (portaGiroProgrammato(f, on, minuti(dentroF, 90)) as { motivo?: string }).motivo === "fuori_orario" && portaGiroProgrammato(f, on, dentroF).passa);
     controlla(`${f}: vale solo «attivo» e solo il suo interruttore`, !portaGiroProgrammato(f, { [INTERRUTTORI_CRON[f]]: "Attivo" }, dentroF).passa && !portaGiroProgrammato(f, { [INTERRUTTORI_CRON[f]]: "1" }, dentroF).passa && !portaGiroProgrammato(f, { RADAR_REGIONALI_CRON: "attivo", ...Object.fromEntries(FONTI_ESECUZIONI.filter((x) => x !== f).map((x) => [INTERRUTTORI_CRON[x], "attivo"])) }, dentroF).passa);
   }
-  // Fase 2 (26/11): più RADAR_SATER_CRON
-  controlla("interruttori: RADAR_TED_CRON, RADAR_PVL_CRON, RADAR_SINTEL_CRON, RADAR_SARDEGNACAT_CRON, RADAR_SATER_CRON", JSON.stringify(INTERRUTTORI_CRON) === JSON.stringify({ ted: "RADAR_TED_CRON", pvl: "RADAR_PVL_CRON", sintel: "RADAR_SINTEL_CRON", sardegnacat: "RADAR_SARDEGNACAT_CRON", sater: "RADAR_SATER_CRON" }));
+  // Fase 2 (26/11): più RADAR_SATER_CRON e RADAR_TUTTOGARE_CRON
+  controlla("interruttori: RADAR_TED_CRON, RADAR_PVL_CRON, RADAR_SINTEL_CRON, RADAR_SARDEGNACAT_CRON, RADAR_SATER_CRON, RADAR_TUTTOGARE_CRON", JSON.stringify(INTERRUTTORI_CRON) === JSON.stringify({ ted: "RADAR_TED_CRON", pvl: "RADAR_PVL_CRON", sintel: "RADAR_SINTEL_CRON", sardegnacat: "RADAR_SARDEGNACAT_CRON", sater: "RADAR_SATER_CRON", tuttogare: "RADAR_TUTTOGARE_CRON" }));
 }
 
 // ═════ rotte cron: testo e comportamento ═════
 const leggi = (f: string) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
-const IMPORTATORE: Record<FonteEsecuzione, string> = { ted: "eseguiImportazioneTed(createAdminClient()", pvl: "eseguiImportazionePvl(createAdminClient()", sintel: 'eseguiImportazioneRegionale(createAdminClient(), "sintel"', sardegnacat: 'eseguiImportazioneRegionale(createAdminClient(), "sardegnacat"', sater: 'eseguiImportazioneRegionale(createAdminClient(), "sater"' };
+const IMPORTATORE: Record<FonteEsecuzione, string> = { ted: "eseguiImportazioneTed(createAdminClient()", pvl: "eseguiImportazionePvl(createAdminClient()", sintel: 'eseguiImportazioneRegionale(createAdminClient(), "sintel"', sardegnacat: 'eseguiImportazioneRegionale(createAdminClient(), "sardegnacat"', sater: 'eseguiImportazioneRegionale(createAdminClient(), "sater"', tuttogare: 'eseguiImportazioneRegionale(createAdminClient(), "tuttogare"' };
 async function provaRotte(): Promise<void> {
   for (const f of FONTI_ESECUZIONI) {
     const file = `src/app${ROTTE_CRON[f]}/route.ts`;

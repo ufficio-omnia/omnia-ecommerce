@@ -2,8 +2,8 @@
 // Configurazione ESATTA di produzione al momento del deploy (documento 57 §2.1 e verbale 56C):
 //   - deploy di produzione (VERCEL_ENV=production) sul database di produzione;
 //   - i cron accesi (RADAR_<FONTE>_CRON=attivo), i permessi RADAR_<FONTE>_PRODUZIONE=autorizzata, il contatto RADAR_CONTATTO_FONTI;
-//   - le fonti come le lasciano le migrazioni: attiva=false, cursore, blocco e date vuoti. Fase 2 (26/11): anche SATER (0134: spenta e
-//     nascosta ai clienti), con il suo cron e il suo permesso; D prova la riga ESATTA della 0134, che ha il blocco 2099-01-01.
+//   - le fonti come le lasciano le migrazioni: attiva=false, cursore, blocco e date vuoti. Fase 2 (26/11): anche SATER e TuttoGare (0134 e
+//     0135: spente e nascoste ai clienti), con il loro cron e il loro permesso; D prova le righe ESATTE della 0134 e della 0135, con il blocco 2099-01-01.
 // Si simulano 7 giorni di cron con gli orari del rilascio (CRON_PROPOSTI = vercel.json del ramo di rilascio, documento 51 §3). Controlli:
 //   A. a ogni orario che passa la porta, ogni importatore si ferma con «fonte_spenta»: ZERO richieste alla fonte (né la funzione di rete
 //      passata né quella globale), nessuna scrittura su radar_fonti_stato (né blocco, né cursore, né aggiornata_il), nessun'altra tabella
@@ -47,6 +47,9 @@ const PRODUZIONE: Record<string, string> = {
   // Fase 2 (26/11): SATER come le altre, cron e permesso creati (il caso più largo: anche così non parte nulla finché la fonte è spenta)
   RADAR_SATER_CRON: "attivo",
   RADAR_SATER_PRODUZIONE: "autorizzata",
+  // Fase 2 (26/11): TuttoGare allo stesso modo (0135: spenta e nascosta ai clienti)
+  RADAR_TUTTOGARE_CRON: "attivo",
+  RADAR_TUTTOGARE_PRODUZIONE: "autorizzata",
   RADAR_CONTATTO_FONTI: "contatto@esempio.invalid",
 };
 
@@ -65,8 +68,9 @@ const STATO_DOPO_MIGRAZIONI: Riga[] = FONTI_ESECUZIONI.map((fonte) => ({
   blocco_fino_a: null,
   dati_aggiornati_al: null,
   conteggi: {},
-  // SATER nasce nascosta (0134); il suo blocco qui è LIBERO: è lo stato da avere in produzione prima dell'accensione (vedi D)
-  nascosta_ai_clienti: fonte === "sater",
+  // SATER e TuttoGare nascono nascoste (0134, 0135); il loro blocco qui è LIBERO: è lo stato da avere in produzione prima dell'accensione
+  // (vedi D)
+  nascosta_ai_clienti: fonte === "sater" || fonte === "tuttogare",
   aggiornata_il: "2026-11-24T18:00:00.000Z",
 }));
 
@@ -138,8 +142,8 @@ async function principale() {
   const attesi = Object.fromEntries(FONTI_ESECUZIONI.map((f) => [f, 0])) as Record<FonteEsecuzione, number>;
   for (const p of s.passaggi) attesi[p.fonte]++;
   controlla(
-    "A1. in 7 giorni la porta oraria fa passare i giri di ogni fonte (TED 10 nei feriali, PVL 21, Sintel 14, SardegnaCAT 4×5 + 1×2, SATER 3×5 + 1×2)",
-    attesi.ted === 10 && attesi.pvl === 21 && attesi.sintel === 14 && attesi.sardegnacat === 22 && attesi.sater === 17,
+    "A1. in 7 giorni la porta oraria fa passare i giri di ogni fonte (TED 10 nei feriali, PVL 21, Sintel 14, SardegnaCAT 4×5 + 1×2, SATER e TuttoGare 3×5 + 1×2)",
+    attesi.ted === 10 && attesi.pvl === 21 && attesi.sintel === 14 && attesi.sardegnacat === 22 && attesi.sater === 17 && attesi.tuttogare === 17,
     attesi,
   );
   controlla("A2. ogni giro si ferma con «fonte_spenta»", s.passaggi.length > 0 && s.passaggi.every((p) => p.motivo === "fonte_spenta"), s.passaggi.filter((p) => p.motivo !== "fonte_spenta"));
@@ -170,7 +174,7 @@ async function principale() {
   // ═════ B. la console «Fonti» il giorno dopo ═════
   const adesso = new Date("2026-12-07T10:00:00.000Z");
   const situazioni = allarmiFonti(righe as unknown as RigaEsecuzioneLetta[], s.db.tabelle.radar_fonti_stato as unknown as RigaStatoFonte[], adesso, { cronAttivi: cronAttiviDa(PRODUZIONE) });
-  controlla(`B1. la console vede le ${FONTI_ESECUZIONI.length} fonti «spente» (con SATER)`, situazioni.length === FONTI_ESECUZIONI.length && FONTI_ESECUZIONI.length === 5 && situazioni.every((x) => x.stato === "spenta" && !x.attiva), situazioni.map((x) => [x.fonte, x.stato]));
+  controlla(`B1. la console vede le ${FONTI_ESECUZIONI.length} fonti «spente» (con SATER e TuttoGare)`, situazioni.length === FONTI_ESECUZIONI.length && FONTI_ESECUZIONI.length === 6 && situazioni.every((x) => x.stato === "spenta" && !x.attiva), situazioni.map((x) => [x.fonte, x.stato]));
   controlla("B2. nessun allarme (né «giro_mancato», né errori ripetuti, né registro mancante)", situazioni.every((x) => x.allarmi.length === 0), situazioni.map((x) => [x.fonte, x.allarmi.map((a) => a.codice)]));
 
   // ═════ C. controprova: con UNA fonte accesa il suo primo giro programmato arriva alla fonte ═════
@@ -184,13 +188,14 @@ async function principale() {
     );
   }
 
-  // ═════ D. SATER con la riga ESATTA della 0134 (blocco 2099-01-01, il semaforo dello staging) ═════
+  // ═════ D. SATER e TuttoGare con la riga ESATTA della 0134 e della 0135 (blocco 2099-01-01, il semaforo dello staging) ═════
   // Spenta: «fonte_spenta» come le altre (nessuna richiesta). ACCESA senza togliere quel blocco: ogni giro esce «occupata» e non arriva mai
   // alla fonte. In produzione il blocco va liberato PRIMA dell'accensione (decisione del coordinamento: proposta nel rapporto di B2).
-  {
+  for (const nuova of ["sater", "tuttogare"] as const) {
+    const migrazione = nuova === "sater" ? "0134" : "0135";
     const conBlocco = (attiva: boolean) => {
       const db = new DbFinto();
-      db.tabelle.radar_fonti_stato = STATO_DOPO_MIGRAZIONI.map((r) => (r.fonte === "sater" ? { ...r, attiva, blocco_fino_a: BLOCCO_0134 } : { ...r }));
+      db.tabelle.radar_fonti_stato = STATO_DOPO_MIGRAZIONI.map((r) => (r.fonte === nuova ? { ...r, attiva, blocco_fino_a: BLOCCO_0134 } : { ...r }));
       db.tabelle.radar_esecuzioni = [];
       return db;
     };
@@ -203,11 +208,11 @@ async function principale() {
     globalThis.fetch = reteVietata;
     try {
       const il = new Date("2026-11-30T07:50:00.000Z"); // lunedì 08:50 di Roma
-      const spenta = (await giro("sater", conBlocco(false), il, reteVietata, true)) as { eseguita: boolean; motivo?: string };
+      const spenta = (await giro(nuova, conBlocco(false), il, reteVietata, true)) as { eseguita: boolean; motivo?: string };
       const dbAccesa = conBlocco(true);
-      const accesa = (await giro("sater", dbAccesa, il, reteVietata, true)) as { eseguita: boolean; motivo?: string };
-      controlla("D1. SATER con la riga della 0134, spenta: «fonte_spenta», nessuna richiesta", !spenta.eseguita && spenta.motivo === "fonte_spenta" && rete.length === 0, spenta);
-      controlla("D2. SATER con la riga della 0134 ACCESA senza liberare il blocco 2099: «occupata», nessuna richiesta (il blocco va tolto prima dell'accensione)", !accesa.eseguita && accesa.motivo === "occupata" && rete.length === 0, accesa);
+      const accesa = (await giro(nuova, dbAccesa, il, reteVietata, true)) as { eseguita: boolean; motivo?: string };
+      controlla(`D1. ${nuova} con la riga della ${migrazione}, spenta: «fonte_spenta», nessuna richiesta`, !spenta.eseguita && spenta.motivo === "fonte_spenta" && rete.length === 0, spenta);
+      controlla(`D2. ${nuova} con la riga della ${migrazione} ACCESA senza liberare il blocco 2099: «occupata», nessuna richiesta (il blocco va tolto prima dell'accensione)`, !accesa.eseguita && accesa.motivo === "occupata" && rete.length === 0, accesa);
     } finally {
       globalThis.fetch = globale;
     }

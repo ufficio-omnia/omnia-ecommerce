@@ -1561,6 +1561,8 @@ async function principale(): Promise<void> {
         statoF("sardegnacat", false),
         // Fase 2 (26/11): SATER come la riga della 0134, spenta e nascosta ai clienti, nessun giro
         statoF("sater", false, { nascosta_ai_clienti: true }),
+        // Fase 2 (26/11): TuttoGare come la riga della 0135, spenta e nascosta ai clienti, nessun giro
+        statoF("tuttogare", false, { nascosta_ai_clienti: true }),
       ],
       radar_esecuzioni: [
         // ultimo giro TED pesante (avviso «risorse») e con due allarmi suoi: uno «avviso», uno «informazione» (fermata dalla console, K7)
@@ -1611,16 +1613,16 @@ async function principale(): Promise<void> {
   const scrittureLettura = mondo.admin.richieste.filter((r) => r.metodo !== "select").length;
   const albF = vistaFonti && datiF ? vistaFonti({ dati: datiF }) : null;
   const tF = testi(albF);
-  const pannelli = elementi(albF).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT", "SATER"].some((n) => String(e.props.titolo).startsWith(n)));
+  const pannelli = elementi(albF).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT", "SATER", "TuttoGare"].some((n) => String(e.props.titolo).startsWith(n)));
   const testiPannello = (i: number) => testi(pannelli[i]?.props.children);
   const STATO_LEGGIBILE: Record<string, RegExp> = { ok: /In funzione/, in_errore: /In errore/, sospesa: /Sospesa/, spenta: /Spenta/ };
   controlla(
-    "FS1. pagina «Fonti»: le cinque fonti nell'ordine ted, pvl, sintel, sardegnacat, sater (Fase 2), ciascuna con lo stato calcolato da B2 detto in chiaro (ok, in errore, sospesa, spenta, spenta) e accesa o spenta; la lettura non scrive nulla",
+    "FS1. pagina «Fonti»: le sei fonti nell'ordine ted, pvl, sintel, sardegnacat, sater, tuttogare (Fase 2), ciascuna con lo stato calcolato da B2 detto in chiaro (ok, in errore, sospesa, spenta, spenta, spenta) e accesa o spenta; la lettura non scrive nulla",
     !!datiF &&
-      JSON.stringify(datiF.fonti.map((f) => f.fonte)) === JSON.stringify(["ted", "pvl", "sintel", "sardegnacat", "sater"]) &&
+      JSON.stringify(datiF.fonti.map((f) => f.fonte)) === JSON.stringify(["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"]) &&
       JSON.stringify(datiF.fonti.map((f) => [f.stato, f.attiva])) === JSON.stringify(rif.situazioni.map((s) => [s.stato, s.attiva])) &&
-      JSON.stringify(rif.situazioni.map((s) => s.stato)) === JSON.stringify(["ok", "in_errore", "sospesa", "spenta", "spenta"]) &&
-      pannelli.length === 5 &&
+      JSON.stringify(rif.situazioni.map((s) => s.stato)) === JSON.stringify(["ok", "in_errore", "sospesa", "spenta", "spenta", "spenta"]) &&
+      pannelli.length === 6 &&
       datiF.fonti.every((f, i) => testiPannello(i).some((t) => STATO_LEGGIBILE[f.stato].test(t)) && testiPannello(i).some((t) => (f.attiva ? /^Accesa/ : /^Spenta/).test(t))) &&
       scrittureLettura === 0,
     { stati: datiF?.fonti.map((f) => f.stato), rif: rif.situazioni.map((s) => s.stato), pannelli: pannelli.length, scrittureLettura },
@@ -1659,17 +1661,17 @@ async function principale(): Promise<void> {
   const pSoloSintel = await prossimiCon({ [INTERRUTTORI_CRON.sintel]: "attivo" }, true);
   mondo = mondoFonti();
   const datiSenzaCron = leggiDatiFonti ? await leggiDatiFonti(mondo.admin, ADESSO_F, {}) : null;
-  const tuttiNull = (xs: (string | null)[]) => xs.length === 5 && xs.every((x) => x === null);
+  const tuttiNull = (xs: (string | null)[]) => xs.length === 6 && xs.every((x) => x === null);
   controlla(
     "FS3. prossimo giro: dagli orari di B2 solo per una fonte accesa col SUO interruttore acceso (K1: TED con RADAR_TED_CRON, regionali col proprio o col vecchio RADAR_REGIONALI_CRON; PVL 13:05 di Roma); nessuno per una fonte spenta o coi giri spenti; ultimo giro e ultimo successo nella pagina",
     !!datiF &&
       prossimoPvl === "2026-11-25T12:05:00.000Z" &&
-      JSON.stringify(datiF.fonti.map((f) => f.prossimoGiro)) === JSON.stringify([primoOrario("ted"), prossimoPvl, null, null, null]) &&
+      JSON.stringify(datiF.fonti.map((f) => f.prossimoGiro)) === JSON.stringify([primoOrario("ted"), prossimoPvl, null, null, null, null]) &&
       typeof primoOrario("ted") === "string" &&
       tuttiNull(pNessuno) &&
-      JSON.stringify(pSoloPvl) === JSON.stringify([null, prossimoPvl, null, null, null]) &&
-      JSON.stringify(pRegVecchio) === JSON.stringify([null, null, primoOrario("sintel"), primoOrario("sardegnacat"), null]) &&
-      JSON.stringify(pSoloSintel) === JSON.stringify([null, null, primoOrario("sintel"), null, null]) &&
+      JSON.stringify(pSoloPvl) === JSON.stringify([null, prossimoPvl, null, null, null, null]) &&
+      JSON.stringify(pRegVecchio) === JSON.stringify([null, null, primoOrario("sintel"), primoOrario("sardegnacat"), null, null]) &&
+      JSON.stringify(pSoloSintel) === JSON.stringify([null, null, primoOrario("sintel"), null, null, null]) &&
       typeof primoOrario("sintel") === "string" &&
       testiPannello(1).some((t) => /Ultimo giro/.test(t)) && testiPannello(1).some((t) => /Ultimo successo/.test(t)) && testiPannello(1).some((t) => /Prossimo giro/.test(t)),
     { prossimi: datiF?.fonti.map((f) => f.prossimoGiro), pNessuno, pSoloPvl, pRegVecchio, pSoloSintel },
@@ -1686,9 +1688,9 @@ async function principale(): Promise<void> {
     }
     return gruppi.map(([g, ore]) => `${ore.join(", ")} ${GIORNI_ATTESI[g]}`).join("; ");
   };
-  const FONTI_ORDINE = ["ted", "pvl", "sintel", "sardegnacat", "sater"];
+  const FONTI_ORDINE = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"];
   const albSenzaCron = vistaFonti && datiSenzaCron ? vistaFonti({ dati: datiSenzaCron }) : null;
-  const pannelliSenzaCron = elementi(albSenzaCron).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT", "SATER"].some((n) => String(e.props.titolo).startsWith(n)));
+  const pannelliSenzaCron = elementi(albSenzaCron).filter((e) => typeof e.props.titolo === "string" && ["TED", "PVL ANAC", "Sintel", "SardegnaCAT", "SATER", "TuttoGare"].some((n) => String(e.props.titolo).startsWith(n)));
   const fraseGiri = (pannello: { props: Record<string, unknown> } | undefined) => testi(pannello?.props.children).find((t) => t.startsWith("Giri programmati alle ")) ?? "";
   const giriAccesi = FONTI_ORDINE.map((_, i) => fraseGiri(pannelli[i]));
   const giriSpenti = FONTI_ORDINE.map((_, i) => fraseGiri(pannelliSenzaCron[i]));
@@ -1732,8 +1734,8 @@ async function principale(): Promise<void> {
   const tStato = testi(vistaFonti && datiStato ? vistaFonti({ dati: datiStato }) : null);
   controlla(
     "FS5. registro dei giri assente: avviso in pagina, stato dal solo radar_fonti_stato, nessun elenco di giri; registro guasto: errore in pagina, stato sì; stato illeggibile: errore, nessuna fonte inventata",
-    !!datiAssente && datiAssente.registroAssente && datiAssente.fonti.length === 5 && datiAssente.fonti.every((f) => f.giri.length === 0) && tAssente.some((t) => /registro dei giri.*(non c'è|assente)/i.test(t)) &&
-      !!datiGuasto && /registro dei giri/.test(datiGuasto.errore ?? "") && datiGuasto.fonti.length === 5 && tGuasto.some((t) => /registro dei giri/.test(t)) &&
+    !!datiAssente && datiAssente.registroAssente && datiAssente.fonti.length === 6 && datiAssente.fonti.every((f) => f.giri.length === 0) && tAssente.some((t) => /registro dei giri.*(non c'è|assente)/i.test(t)) &&
+      !!datiGuasto && /registro dei giri/.test(datiGuasto.errore ?? "") && datiGuasto.fonti.length === 6 && tGuasto.some((t) => /registro dei giri/.test(t)) &&
       !!datiStato && /stato delle fonti/.test(datiStato.errore ?? "") && datiStato.fonti.length === 0 && tStato.some((t) => /stato delle fonti/.test(t)),
     { assente: datiAssente && { r: datiAssente.registroAssente, n: datiAssente.fonti.length }, guasto: datiGuasto?.errore, stato: datiStato && { e: datiStato.errore, n: datiStato.fonti.length } },
   );
@@ -1784,6 +1786,7 @@ async function principale(): Promise<void> {
     { fonte: "sintel", azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sintel" } },
     { fonte: "sardegnacat", azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sardegnacat" } },
     { fonte: "sater", azione: azioniTi.impostaFonteRegionale, campi: { fonte: "sater" } },
+    { fonte: "tuttogare", azione: azioniTi.impostaFonteRegionale, campi: { fonte: "tuttogare" } },
   ] as { fonte: string; azione: (s: unknown, fd: FormData) => Promise<EsitoAzioneFonte>; campi: Record<string, string> }[];
   const { PROGETTO_STAGING: stagingF } = richiedi(src("lib/radar/ambiente.ts")) as { PROGETTO_STAGING: string };
   // PVL e regionali si accendono solo sullo staging (regola invariata): la prova si mette sullo staging solo in memoria e poi ripristina
@@ -1812,7 +1815,7 @@ async function principale(): Promise<void> {
       registro: mondo.admin.tabelle.radar_console_registro.filter((r) => r.oggetto === `fonte:${fonte}:attiva`).map((r) => r.valore_nuovo),
     };
   };
-  const FONTI_Q = ["ted", "pvl", "sintel", "sardegnacat", "sater"];
+  const FONTI_Q = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"];
   // una prova alla volta: ognuna ha il suo database in memoria («mondo» è condiviso dalle sostituzioni dei moduli)
   const inFila = async (campi: Record<string, string>, accese: boolean) => {
     const esiti = [] as Awaited<ReturnType<typeof provaAzioneFonte>>[];
@@ -1851,7 +1854,7 @@ async function principale(): Promise<void> {
   const datiTi = (accese: boolean, env: Record<string, string> = {}) => ({
     schemaPresente: true,
     parametri: { attivo: false, costi: {}, limiti: {} },
-    fonti: ["ted", "pvl", "sintel", "sardegnacat", "sater"].map((id) => ({ id, nome: `[prova] ${id}`, stato: "attiva", limiti: [], licenza: "[prova]", copertura: "[prova]", aggiornamento: "[prova]", db: { attiva: accese } })),
+    fonti: ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"].map((id) => ({ id, nome: `[prova] ${id}`, stato: "attiva", limiti: [], licenza: "[prova]", copertura: "[prova]", aggiornamento: "[prova]", db: { attiva: accese } })),
     procedure: null,
     procedureAperte: null,
     gareCollegate: null,
@@ -1875,7 +1878,7 @@ async function principale(): Promise<void> {
       collegamenti: null,
     },
     regionali: {
-      fonti: ["sintel", "sardegnacat", "sater"].map((fonte) => ({ fonte, attiva: accese, nascosta: false, accensioneConsentita: true, sospensione: null, ultimoSuccesso: null, datiAl: null, ultimoGiro: null, procedure: null })),
+      fonti: ["sintel", "sardegnacat", "sater", "tuttogare"].map((fonte) => ({ fonte, attiva: accese, nascosta: false, accensioneConsentita: true, sospensione: null, ultimoSuccesso: null, datiAl: null, ultimoGiro: null, procedure: null })),
       proposte: null,
       classificazioni: null,
     },
@@ -1917,7 +1920,7 @@ async function principale(): Promise<void> {
   const fontiAccese = moduliAccensione(paginaFontiTi(true));
   controlla(
     "FS10. accensione delle fonti SOLO nella pagina «Fonti» (riordino del 25/11): nessun modulo di accensione nelle altre pagine di Tender Intelligence; nella pagina «Fonti» con i dati della console una sola «Accendi la fonte» per fonte, ciascuna con la casella di conferma obbligatoria («si»), e una sola «Spegni la fonte» per fonte accesa",
-    fuoriDaFonti.every((n) => n === 0) && fontiSpente.length === 5 && fontiSpente.every((m) => m.azione === "accendi" && m.conferma) && fontiAccese.length === 5 && fontiAccese.every((m) => m.azione === "spegni"),
+    fuoriDaFonti.every((n) => n === 0) && fontiSpente.length === 6 && fontiSpente.every((m) => m.azione === "accendi" && m.conferma) && fontiAccese.length === 6 && fontiAccese.every((m) => m.azione === "spegni"),
     { fuoriDaFonti, fontiSpente, fontiAccese },
   );
 
@@ -1972,9 +1975,9 @@ async function principale(): Promise<void> {
     "FS12. orari dei giri SOLO da programmazione-calcoli.ts: nelle pagine di Tender Intelligence (Panoramica, Modulo e clienti, Gare, Registro, Fonti) nessun orario vecchio scritto a mano e una sola frase dei giri per fonte, nella pagina «Fonti»; messaggi dopo l'accensione; nei sorgenti della console nessun orario, riga cron o interruttore scritto a mano",
     testiTi.length > 0 &&
       !testiTi.some((t) => /^eccezione/.test(t) || /\b(8:00|9:15|13:00|18:00)\b|ora italiana/.test(t)) &&
-      frasiGiriFonti.length === 5 &&
+      frasiGiriFonti.length === 6 &&
       VISTE_TI.every(([nome]) => !testi(vistaTi(nome, false)).some((t) => t.startsWith("Giri programmati alle "))) &&
-      avvisiAccensione.length === 5 &&
+      avvisiAccensione.length === 6 &&
       FONTI_ORDINE.every((f, i) => avvisiAccensione[i].includes(`Giri programmati alle ${orariAttesi(f)} (ora di Roma)`) && avvisiAccensione[i].includes(`${INTERRUTTORI_CRON[f]}=attivo`)) &&
       scrittoAMano.length === 0,
     { frasiGiriFonti: frasiGiriFonti.length, eccezioni: testiTi.filter((t) => /^eccezione/.test(t)), avvisiAccensione: avvisiAccensione.map((a) => a.slice(0, 120)), scrittoAMano },
@@ -2114,10 +2117,10 @@ async function principale(): Promise<void> {
   const frasiMancanti = [
     ...[T.generale, T.imprese, T.limite.ricerche_minuto].filter((f) => !f || !tModulo.includes(f)).map((f) => `modulo: ${String(f).slice(0, 30)}`),
     ...Object.values(T.limitePvl).filter((f) => !testi(limitiPvl?.props.children).includes(f)).map((f) => `PVL: ${f.slice(0, 30)}`),
-    ...(tFontiSpente.filter((t) => t === T.accendi).length === 5 ? [] : ["accendi"]),
+    ...(tFontiSpente.filter((t) => t === T.accendi).length === 6 ? [] : ["accendi"]),
     ...(tFontiAccese.filter((t) => t === T.spegniAMeta).length === 2 ? [] : ["spegni TED e PVL"]),
-    ...(tFontiAccese.filter((t) => t.startsWith(T.eseguiGiro ?? "§")).length === 5 ? [] : ["esegui un giro"]),
-    ...(tFontiAccese.filter((t) => t === T.visibilita).length === 3 ? [] : ["visibilità"]),
+    ...(tFontiAccese.filter((t) => t.startsWith(T.eseguiGiro ?? "§")).length === 6 ? [] : ["esegui un giro"]),
+    ...(tFontiAccese.filter((t) => t === T.visibilita).length === 4 ? [] : ["visibilità"]),
   ];
   controlla(
     "CR4. una frase per ogni parametro (interruttore, imprese, ricerche al minuto, 5 limiti PVL) e per ogni azione sulle fonti (accendi, spegni TED e PVL a metà giro, esegui un giro, visibilità)",
@@ -2274,17 +2277,17 @@ async function principale(): Promise<void> {
   const celleFonti = (fonte: string) => elementi(adesso8.gare).filter((e) => e.type === "div" && JSON.stringify(e.props.children) === JSON.stringify(["Fonti: ", fonte])).length;
   const pagineUfficiali = elementi(adesso8.gare).filter((e) => e.type === "a" && String(e.props.href ?? "").startsWith("https://esempio.invalid/gara/")).length;
   controlla(
-    "CR8. stato di adesso (sintetico): 5 fonti accese (con SATER, Fase 2), 5 suggerimenti di unione aperti (3 Sintel, 2 SardegnaCAT), radar_attivo acceso con 1 impresa abilitata → ogni pagina si disegna con la sua barra; Panoramica «Acceso», 1 impresa, 5 suggerimenti; Fonti: 5 «Spegni» con conferma, 5 «Esegui un giro adesso», 3 «Nascondi ai clienti»; Modulo: «Spegni il modulo» (radar_attivo 0) e l'impresa abilitata; Gare: «Unisci» e «Non sono la stessa gara» per ognuno dei 5",
+    "CR8. stato di adesso (sintetico): 6 fonti accese (con SATER e TuttoGare, Fase 2), 5 suggerimenti di unione aperti (3 Sintel, 2 SardegnaCAT), radar_attivo acceso con 1 impresa abilitata → ogni pagina si disegna con la sua barra; Panoramica «Acceso», 1 impresa, 5 suggerimenti; Fonti: 6 «Spegni» con conferma, 6 «Esegui un giro adesso», 4 «Nascondi ai clienti»; Modulo: «Spegni il modulo» (radar_attivo 0) e l'impresa abilitata; Gare: «Unisci» e «Non sono la stessa gara» per ognuno dei 5",
     eccezioniAdesso.length === 0 &&
       barreAdesso.length === 0 &&
       tessereAdesso["Modulo per i clienti"] === "Acceso" &&
       tessereAdesso["Imprese abilitate"] === "1" &&
       tPanoramica.includes("Suggerimenti di unione: 5") &&
-      tPanoramica.filter((t) => t === "accesa").length === 5 &&
-      accensioneAdesso.length === 5 &&
+      tPanoramica.filter((t) => t === "accesa").length === 6 &&
+      accensioneAdesso.length === 6 &&
       accensioneAdesso.every((m) => m.azione === "spegni" && m.conferma) &&
-      giriAdesso === 5 &&
-      JSON.stringify(visibilitaAdesso) === JSON.stringify(["nascondi", "nascondi", "nascondi"]) &&
+      giriAdesso === 6 &&
+      JSON.stringify(visibilitaAdesso) === JSON.stringify(["nascondi", "nascondi", "nascondi", "nascondi"]) &&
       testi(adesso8.fonti).filter((t) => t === T.spegniAMeta).length === 2 &&
       JSON.stringify(interruttoreAdesso) === JSON.stringify([["Spegni il modulo", "0"]]) &&
       elementi(adesso8.modulo).some((e) => e.type === "strong" && e.props.children === "acceso") &&
@@ -2555,7 +2558,7 @@ async function principale(): Promise<void> {
   adminAutenticato = true;
   controlla(
     "FS7. pagina vera /tender-intelligence/fonti: solo amministratori, legge e passa i dati alla vista; collegata dalla pagina Tender Intelligence",
-    !!paginaFonti && elPagina.some((e) => e.type === vistaFonti && Array.isArray((e.props.dati as DatiFontiProva | undefined)?.fonti) && (e.props.dati as DatiFontiProva).fonti.length === 5) && respinta &&
+    !!paginaFonti && elPagina.some((e) => e.type === vistaFonti && Array.isArray((e.props.dati as DatiFontiProva | undefined)?.fonti) && (e.props.dati as DatiFontiProva).fonti.length === 6) && respinta &&
       /href="\/tender-intelligence\/fonti"/.test(fs.readFileSync(src("app/site-console/_componenti/tender-intelligence-vista.tsx"), "utf8")),
     { pagina: !!paginaFonti, respinta },
   );

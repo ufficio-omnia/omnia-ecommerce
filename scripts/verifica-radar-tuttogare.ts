@@ -1,7 +1,7 @@
 // Verifica del connettore TuttoGare (Fase 2, seconda priorità del documento 60): un adattatore per molte istanze «TuttoGare PA», canale home
 // HTML + dettaglio (JSON interno predisposto e spento), mappa dei campi CONFERMATA sul campione del 26/11 (schede della home con il badge
-// della procedura, etichette «Importo base», «Pubblicazione», «Scadenza presentazione», impronta StudioAmica), fonte «tuttogare» fuori da
-// console, cron e programmatore, nel registro dei giri dopo la 0135 PROPOSTA, mai in produzione. Tutti i dati sono [SINTETICI] (pagine HTML
+// della procedura, etichette «Importo base», «Pubblicazione», «Scadenza presentazione», impronta StudioAmica), fonte «tuttogare» in console,
+// cron e programmatore e nel registro dei giri (0135); in produzione solo con RADAR_TUTTOGARE_PRODUZIONE (decisione dell'utente del 26/11). Tutti i dati sono [SINTETICI] (pagine HTML
 // inventate con la forma confermata, enti e CIG di prova: «Comune di Provasintetica»); nessuna rete (fetch vietato), database in memoria.
 // Uso: npx tsx scripts/verifica-radar-tuttogare.ts → codice 0 se passa.
 import fs from "node:fs";
@@ -45,7 +45,8 @@ import { FONTI_ESECUZIONI, FONTI_REGISTRO } from "../src/lib/radar/esecuzioni-ca
 import { FONTI_ACCENDIBILI } from "./c8/accendi-regionale-staging";
 import { CRON_PROPOSTI, INTERRUTTORI_CRON, ORARI_GIRI, ROTTE_CRON } from "../src/lib/radar/programmazione-calcoli";
 import { FONTI_UNITE, PRECEDENZA_FONTI } from "../src/lib/radar/unione-calcoli";
-import { ATTRIBUZIONE_FONTE, FONTI_NASCOSTE_PREDEFINITE, NOME_FONTE } from "../src/lib/radar/fonti-gara-calcoli";
+import { ATTRIBUZIONE_FONTE, FONTI_NASCOSTE_PREDEFINITE, NOME_FONTE, NOME_FONTE_ESTESO, descriviAvvisoLetto } from "../src/lib/radar/fonti-gara-calcoli";
+import { descrizioneFonte } from "../src/lib/radar/fonti/tipi";
 import { eseguiImportazioneRegionale } from "../src/lib/radar/importa-regionali";
 import { DbFinto } from "./lib/db-finto-motore";
 
@@ -334,33 +335,35 @@ async function provaLettore(): Promise<void> {
   }
 }
 
-// ═════ H. guardie: fuori da console, cron, programmatore e registro; mai in produzione ═════
+// ═════ H. guardie di produzione (decisione dell'utente del 26/11: TuttoGare in produzione, tutto spento) ═════
 function provaGuardie(): void {
   const tutte = Object.fromEntries(Object.values(VARIABILI_PRODUZIONE).map((v) => [v, "autorizzata"]));
-  controlla("ambiente: «tuttogare» autorizzata sullo staging; in produzione MAI (nessuna variabile, nemmeno con tutte le altre)", (FONTI_RADAR as readonly string[]).includes("tuttogare") && !("tuttogare" in VARIABILI_PRODUZIONE) && fonteAutorizzata("tuttogare", "importazione", STAGING).ok && !fonteAutorizzata("tuttogare", "importazione", { ...PROD_DEPLOY, ...tutte, RADAR_TUTTOGARE_PRODUZIONE: "autorizzata" }).ok && !fonteAutorizzata("tuttogare", "notifiche", { ...PROD_DEPLOY, ...tutte }).ok);
-  controlla("fuori dalle fonti regionali gestite (console, cron) e dalle fonti della console e degli allarmi; DENTRO il registro dei giri (FONTI_REGISTRO, come SATER nel collaudo: la riga si scrive dopo la 0135)", !(FONTI_REGIONALI as readonly string[]).includes("tuttogare") && !(FONTI_ESECUZIONI as readonly string[]).includes("tuttogare") && (FONTI_REGISTRO as readonly string[]).includes("tuttogare"));
-  controlla("script dello staging per il collaudo (solo con un'autorizzazione registrata): l'accensione e il giro a mano ammettono «tuttogare»", (FONTI_ACCENDIBILI as readonly string[]).includes("tuttogare") && /\[\.\.\.FONTI_REGIONALI, "tuttogare"\]/.test(leggi("scripts/radar-importa-regionale.ts")));
-  controlla("nessun giro programmato: niente orari, righe cron, rotta o interruttore", !("tuttogare" in ORARI_GIRI) && !("tuttogare" in CRON_PROPOSTI) && !("tuttogare" in ROTTE_CRON) && !("tuttogare" in INTERRUTTORI_CRON) && !/tuttogare/i.test(leggi("vercel.json")) && !fs.existsSync(path.join(radice, "src/app/api/cron/radar-tuttogare")));
-  const fuori = ["src/app/site-console", "src/lib/console", "src/components", "scripts/pianificazione", "supabase/migrations"].flatMap((d) => {
-    const trovati: string[] = [];
-    const giro = (rel: string) => {
-      for (const v of fs.readdirSync(path.join(radice, rel), { withFileTypes: true })) {
-        const r = `${rel}/${v.name}`;
-        if (v.isDirectory()) giro(r);
-        else if (/tuttogare/i.test(fs.readFileSync(path.join(radice, r), "utf8"))) trovati.push(r);
-      }
-    };
-    giro(d);
-    return trovati;
-  });
-  controlla("nessuna traccia in console, pagine dei clienti e programmatore; tra le migrazioni solo la 0135 proposta", JSON.stringify(fuori) === JSON.stringify(["supabase/migrations/0135_radar_fonte_tuttogare.sql"]), fuori);
+  const senzaLaSua = Object.fromEntries(Object.entries(tutte).filter(([k]) => k !== "RADAR_TUTTOGARE_PRODUZIONE"));
+  const senza = fonteAutorizzata("tuttogare", "importazione", PROD_DEPLOY);
+  controlla("ambiente: variabile RADAR_TUTTOGARE_PRODUZIONE; staging sì; produzione SENZA la sua variabile (anche con tutte le altre) NO e il motivo la nomina; con la variabile sì; locale e anteprima mai", VARIABILI_PRODUZIONE.tuttogare === "RADAR_TUTTOGARE_PRODUZIONE" && fonteAutorizzata("tuttogare", "importazione", STAGING).ok && !senza.ok && senza.motivo.includes("RADAR_TUTTOGARE_PRODUZIONE=autorizzata") && !fonteAutorizzata("tuttogare", "importazione", { ...PROD_DEPLOY, ...senzaLaSua }).ok && !fonteAutorizzata("tuttogare", "notifiche", { ...PROD_DEPLOY, ...senzaLaSua }).ok && fonteAutorizzata("tuttogare", "importazione", { ...PROD_DEPLOY, RADAR_TUTTOGARE_PRODUZIONE: "autorizzata" }).ok && !fonteAutorizzata("tuttogare", "importazione", { NEXT_PUBLIC_SUPABASE_URL: PROD_DEPLOY.NEXT_PUBLIC_SUPABASE_URL, ...tutte }).ok && !fonteAutorizzata("tuttogare", "importazione", { ...PROD_DEPLOY, VERCEL_ENV: "preview", ...tutte }).ok, senza);
+  controlla("console, cron e registro: TuttoGare tra le fonti regionali gestite, le fonti dei giri e del registro; script dello staging (accensione e giro a mano) compresi", (FONTI_REGIONALI as readonly string[]).includes("tuttogare") && (FONTI_ESECUZIONI as readonly string[]).includes("tuttogare") && (FONTI_REGISTRO as readonly string[]).includes("tuttogare") && (FONTI_ACCENDIBILI as readonly string[]).includes("tuttogare"));
+  const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string; schedule: string }[] };
+  const righe = vercel.crons.filter((c) => c.path === "/api/cron/radar-tuttogare");
+  const altreRadar = vercel.crons.filter((c) => c.path.startsWith("/api/cron/radar-") && c.path !== "/api/cron/radar-tuttogare");
+  controlla("giri programmati: 09:35, 13:35, 17:35 feriali e 13:35 nel fine settimana; rotta e interruttore RADAR_TUTTOGARE_CRON; UNA riga in vercel.json uguale a CRON_PROPOSTI; il minuto :35 non è usato da altri cron del radar", JSON.stringify(ORARI_GIRI.tuttogare) === JSON.stringify([{ ora: "09:35", giorni: "feriali" }, { ora: "13:35", giorni: "feriali" }, { ora: "17:35", giorni: "feriali" }, { ora: "13:35", giorni: "fine_settimana" }]) && ROTTE_CRON.tuttogare === "/api/cron/radar-tuttogare" && INTERRUTTORI_CRON.tuttogare === "RADAR_TUTTOGARE_CRON" && righe.length === 1 && JSON.stringify([righe[0].schedule]) === JSON.stringify(CRON_PROPOSTI.tuttogare) && altreRadar.every((c) => !c.schedule.startsWith("35 ")), { righe, CRON: CRON_PROPOSTI.tuttogare });
+  const rotta = leggi("src/app/api/cron/radar-tuttogare/route.ts");
+  controlla("rotta del cron: segreto, poi porta oraria di TuttoGare, poi l'importatore con «tuttogare»", rotta.indexOf("cronAutorizzato(") > 0 && rotta.indexOf("cronAutorizzato(") < rotta.indexOf('portaGiroProgrammato("tuttogare"') && rotta.indexOf('portaGiroProgrammato("tuttogare"') < rotta.indexOf('eseguiImportazioneRegionale(createAdminClient(), "tuttogare"'));
+  controlla("console: etichette del registro e TuttoGare tra le fonti della pagina «Fonti»", /"fonte:tuttogare:attiva"/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")) && /"tuttogare"\]/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")) && /tuttogare: "TuttoGare"/.test(leggi("src/app/site-console/azioni/tender-intelligence.ts")));
+  // testi per il CLIENTE senza il nome del software delle piattaforme (indicazione del coordinamento del 26/11)
+  const d = descrizioneFonte("tuttogare");
+  const testiCliente = [NOME_FONTE.tuttogare, NOME_FONTE_ESTESO.tuttogare, ATTRIBUZIONE_FONTE.tuttogare, d.nome, d.copertura, d.aggiornamento, d.licenza, ...d.limiti, leggi("src/components/omnia-ai/opportunita/fonti-ricerca.tsx").match(/tuttogare: "([^"]+)"/)?.[1] ?? "MANCANTE"];
+  controlla("testi per il cliente senza il nome del software (né «TuttoGare» né «Studio Amica»), con gli orari veri e la regione degli enti", testiCliente.every((t) => !/tutto\s*gare|studio\s*amica|MANCANTE/i.test(t)) && d.aggiornamento.startsWith("Giri previsti alle 09:35, 13:35 e 17:35 dal lunedì al venerdì; alle 13:35 il sabato e la domenica"), testiCliente);
+  // la scheda della gara: «Piattaforma dell'ente, gara 13584» (l'indirizzo dell'istanza, che può contenere il nome del software, resta nel collegamento)
+  controlla("scheda della gara: «Piattaforma dell'ente, gara <codice>», senza l'indirizzo dell'istanza", descriviAvvisoLetto({ fonte: "tuttogare", id_fonte: "cucterradileuca.tuttogare.it:12", tipo_avviso: "Aperta" }) === "Piattaforma dell'ente, gara 12");
+  const fuori = ["supabase/migrations"].flatMap((d) => fs.readdirSync(path.join(radice, d)).filter((f) => /tuttogare/i.test(fs.readFileSync(path.join(radice, d, f), "utf8"))).map((f) => `${d}/${f}`));
+  controlla("nessuna migrazione nuova: tra le migrazioni solo la 0135 nomina TuttoGare", JSON.stringify(fuori) === JSON.stringify(["supabase/migrations/0135_radar_fonte_tuttogare.sql"]), fuori);
   // la 0135 PROPOSTA (mai applicata): vincolo del registro con TUTTE le fonti di prima più «tuttogare», riga spenta, nascosta, semaforo chiuso;
   // nessuna istruzione su radar_procedure (piattaforma_id non si tocca, decisione (b))
   const sql = leggi("supabase/migrations/0135_radar_fonte_tuttogare.sql");
   const istruzioni = sql.split("\n").filter((r) => !/^\s*--/.test(r)).join("\n");
   controlla("0135 proposta: vincolo del registro = le 5 fonti online + «tuttogare»; riga «tuttogare» spenta, nascosta, semaforo 2099, «on conflict do nothing»; niente su radar_procedure né su piattaforma_id", istruzioni.includes("check (fonte in ('ted', 'pvl', 'sintel', 'sardegnacat', 'sater', 'tuttogare'))") && istruzioni.includes("values ('tuttogare', false, true, '2099-01-01T00:00:00Z')") && /on conflict \(fonte\) do nothing/.test(istruzioni) && !/radar_procedure\b|piattaforma_id/.test(istruzioni) && /^begin;$/m.test(istruzioni) && /^commit;$/m.test(istruzioni) && !/\bdrop table\b|\bdelete\b|\btruncate\b|\bupdate\b/i.test(istruzioni));
   controlla("motore di unione: «tuttogare» tra le fonti unite, precedenza delle piattaforme; nessuna fonte nascosta di base (regola 48A/48E invariata)", FONTI_UNITE.includes("tuttogare") && PRECEDENZA_FONTI.tuttogare === PRECEDENZA_FONTI.sater && FONTI_NASCOSTE_PREDEFINITE.length === 0);
-  controlla("nome e attribuzione della fonte uguali a quelli del connettore", NOME_FONTE.tuttogare === "TuttoGare" && ATTRIBUZIONE_FONTE.tuttogare === CANALE_TUTTOGARE.attribuzione);
+  controlla("nome per il cliente e attribuzione uguali a quelli del connettore", NOME_FONTE.tuttogare === "Piattaforma dell'ente" && ATTRIBUZIONE_FONTE.tuttogare === CANALE_TUTTOGARE.attribuzione);
   // decisione (b) del coordinamento (26/11): il vincolo di piattaforma_id della 0120 non si tocca; la forma TuttoGare non lo rispetta, quindi
   // piattaforma_id resta vuoto e l'identità sta nella chiave (3–200 caratteri, vincolo della 0109), che ci sta anche con l'host più lungo
   const vincolo0120 = leggi("supabase/migrations/0120_radar_multifonte.sql").match(/piattaforma_id ~ '([^']+)'/)?.[1] ?? "";
@@ -369,10 +372,12 @@ function provaGuardie(): void {
 
 // ═════ I. giri col database in memoria ═════
 async function provaGiri(): Promise<void> {
-  const mondo = (tuttogare: "assente" | "accesa") => {
+  // la riga di TuttoGare: assente, accesa (blocco libero) o come la crea la 0135 (spenta, nascosta, blocco 2099), anche accesa senza sbloccarla
+  const mondo = (tuttogare: "assente" | "accesa" | "spenta_0135" | "accesa_0135") => {
     const db = new DbFinto();
-    const altre = FONTI_ESECUZIONI.map((f) => ({ fonte: f, attiva: false, ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: false, dati_aggiornati_al: null }));
-    db.tabelle.radar_fonti_stato = tuttogare === "assente" ? altre : [...altre, { fonte: "tuttogare", attiva: true, ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: true, dati_aggiornati_al: null }];
+    const altre = FONTI_ESECUZIONI.filter((f) => f !== "tuttogare").map((f) => ({ fonte: f, attiva: false, ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: false, dati_aggiornati_al: null }));
+    const blocco = tuttogare.endsWith("_0135") ? "2099-01-01T00:00:00.000Z" : null;
+    db.tabelle.radar_fonti_stato = tuttogare === "assente" ? altre : [...altre, { fonte: "tuttogare", attiva: tuttogare.startsWith("accesa"), ultimo_successo_il: null, cursore: null, blocco_fino_a: blocco, conteggi: {}, nascosta_ai_clienti: true, dati_aggiornati_al: null }];
     return db;
   };
   const primaRete = richiesteDiRete;
@@ -380,10 +385,20 @@ async function provaGiri(): Promise<void> {
   const ra = await eseguiImportazioneRegionale(a as unknown as SupabaseClient, "tuttogare", { env: STAGING, adesso: () => ADESSO });
   const regA = a.t("radar_esecuzioni");
   controlla("staging SENZA la riga di TuttoGare (0135 non applicata): «fonte_spenta», nessuna gara, nessuna richiesta; nel registro solo la riga «inerte» (nel database vero solo dopo la 0135)", !ra.eseguita && ra.motivo === "fonte_spenta" && a.t("radar_procedure").length === 0 && regA.length === 1 && regA[0].fonte === "tuttogare" && regA[0].esito === "inerte", { ra, regA });
+  // produzione (go-live, come SATER): senza la SUA variabile nessun accesso; con la variabile e la riga della 0135 spenta solo «inerte»;
+  // accesa senza liberare il blocco 2099 della 0135: «occupata» (il blocco si libera con una riga autorizzata prima dell'accensione)
   const tutte = Object.fromEntries(Object.values(VARIABILI_PRODUZIONE).map((v) => [v, "autorizzata"]));
+  const senzaLaSua = Object.fromEntries(Object.entries(tutte).filter(([k]) => k !== "RADAR_TUTTOGARE_PRODUZIONE"));
   const b = mondo("accesa");
-  const rb = await eseguiImportazioneRegionale(b as unknown as SupabaseClient, "tuttogare", { env: { ...PROD_DEPLOY, ...tutte, RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
-  controlla("produzione, anche con la riga accesa e tutte le variabili: «ambiente_non_consentito», zero accessi al database", !rb.eseguita && rb.motivo === "ambiente_non_consentito" && b.richieste.length === 0, rb);
+  const rb = await eseguiImportazioneRegionale(b as unknown as SupabaseClient, "tuttogare", { env: { ...PROD_DEPLOY, ...senzaLaSua, RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
+  controlla("produzione SENZA RADAR_TUTTOGARE_PRODUZIONE (anche con la riga accesa e tutte le altre variabili): «ambiente_non_consentito», zero accessi al database (nemmeno il registro)", !rb.eseguita && rb.motivo === "ambiente_non_consentito" && b.richieste.length === 0, rb);
+  const PROD_CON_VAR = { ...PROD_DEPLOY, RADAR_TUTTOGARE_PRODUZIONE: "autorizzata", RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" };
+  const bs = mondo("spenta_0135");
+  const rbs = await eseguiImportazioneRegionale(bs as unknown as SupabaseClient, "tuttogare", { env: PROD_CON_VAR, adesso: () => ADESSO });
+  controlla("produzione CON la variabile e TuttoGare spenta (riga della 0135): «fonte_spenta», solo la riga «inerte» nel registro, nessuna gara", !rbs.eseguita && rbs.motivo === "fonte_spenta" && bs.t("radar_esecuzioni").length === 1 && bs.t("radar_esecuzioni")[0].esito === "inerte" && bs.t("radar_procedure").length === 0, rbs);
+  const bo = mondo("accesa_0135");
+  const rbo = await eseguiImportazioneRegionale(bo as unknown as SupabaseClient, "tuttogare", { env: PROD_CON_VAR, adesso: () => ADESSO });
+  controlla("produzione, TuttoGare accesa ma con il blocco 2099 della 0135: «occupata» (il blocco va liberato prima dell'accensione)", !rbo.eseguita && rbo.motivo === "occupata", rbo);
   const canale = CANALE_TUTTOGARE;
   const prima = canale.confermato;
   const c = mondo("accesa");
