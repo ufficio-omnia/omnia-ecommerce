@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ETICHETTA_OPPORTUNITA, FONTI_CON_CONSULTAZIONI, PARTECIPAZIONE, consultazioniAccese, entraInOpportunita, opportunita, opportunitaAflink, opportunitaDaTipoAvviso, perArchivio } from "../src/lib/radar/opportunita-calcoli";
-import { CATEGORIA_DEL_TIPO, CATEGORIE_TIPO, COME_SI_PARTECIPA_CONSULTAZIONE, ETICHETTA_TIPO, condizioneTipi, eCategoriaTipo, tipoDellaGara } from "../src/lib/radar/tipo-gara-calcoli";
+import { CATEGORIA_CONSULTAZIONI, CATEGORIA_DEL_TIPO, CATEGORIE_TIPO, CONSULTAZIONI_IN_CERCA, COME_SI_PARTECIPA_CONSULTAZIONE, ETICHETTA_TIPO, condizioneTipi, eCategoriaTipo, tipoDellaGara } from "../src/lib/radar/tipo-gara-calcoli";
 import { leggiElementoAflink, type ElementoAflink } from "../src/lib/radar/fonti/aflink-calcoli";
 import { leggiGaraStart, type EsclusioneStart } from "../src/lib/radar/fonti/start-calcoli";
 import { FONTI_UNITE } from "../src/lib/radar/unione-calcoli";
@@ -38,7 +38,8 @@ controlla("l'interruttore non dipende dall'ambiente: nessuna lettura di variabil
 // ═════ C. lato lettura: tipo mostrato, etichette, filtro distinto ═════
 controlla("la colonna «consultazione_preliminare» si mostra col suo tipo e la sua etichetta (prima: tipo vuoto)", tipoDellaGara({ tipo_opportunita: "consultazione_preliminare", tipo_avviso: "Avviso" }) === "consultazione_preliminare" && ETICHETTA_TIPO.consultazione_preliminare === "Consultazione preliminare di mercato");
 controlla("ogni tipo mostrato ha un'etichetta non vuota e una categoria", Object.entries(ETICHETTA_TIPO).every(([k, v]) => v.length > 3 && k in CATEGORIA_DEL_TIPO));
-controlla("categoria «consultazioni» DISTINTA da bandi, candidature e iscrizioni, con la sua voce nel filtro di «Cerca»", CATEGORIA_DEL_TIPO.consultazione_preliminare === "consultazioni" && CATEGORIE_TIPO.some((x) => x.id === "consultazioni" && x.breve === "Consultazioni") && eCategoriaTipo("consultazioni") && CATEGORIE_TIPO.length === 4);
+controlla("categoria «consultazioni» DISTINTA da bandi, candidature e iscrizioni, con la sua voce pronta", CATEGORIA_DEL_TIPO.consultazione_preliminare === "consultazioni" && CATEGORIA_CONSULTAZIONI.id === "consultazioni" && CATEGORIA_CONSULTAZIONI.breve === "Consultazioni");
+controlla("voce «Consultazioni» in «Cerca» SPENTA (si accende con la decisione dell'utente, insieme alla pagina pubblica «Ricerca gare»): tre caselle, parametro non accettato", CONSULTAZIONI_IN_CERCA === false && CATEGORIE_TIPO.length === 3 && !CATEGORIE_TIPO.some((x) => x.id === "consultazioni") && !eCategoriaTipo("consultazioni"));
 const cond = (k: Parameters<typeof condizioneTipi>[0][number]) => condizioneTipi([k]);
 controlla("filtro nel database: «consultazioni» = solo la colonna; bandi, candidature e iscrizioni NON la comprendono", cond("consultazioni") === "tipo_opportunita.eq.consultazione_preliminare" && !cond("bandi").includes("consultazione") && !cond("candidature").includes("consultazione") && !cond("iscrizioni").includes("consultazione"));
 controlla("candidature invariate (manifestazioni, indagini, preinformazioni)", cond("candidature").startsWith("tipo_opportunita.in.(manifestazione_interesse,indagine_mercato)"));

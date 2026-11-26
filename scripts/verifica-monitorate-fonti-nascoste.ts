@@ -1110,8 +1110,8 @@ async function principale(): Promise<void> {
   const spuntata = elementi(albCerca).find((e) => e.type === "input" && e.props.name === "tipo" && e.props.value === "candidature")?.props.defaultChecked === true;
   const conta = (alb: unknown) => testi(alb).filter((t) => /^Candidature/.test(t)).length;
   controlla(
-    "MT7. «Cerca»: nel pannello dei filtri le quattro caselle del tipo (Fase 2: più «Consultazioni», distinta da bandi e candidature); con un tipo scelto la casella è spuntata e il filtro attivo compare tra quelli da togliere",
-    JSON.stringify(campiTipo) === JSON.stringify(["bandi", "candidature", "iscrizioni", "consultazioni"]) && spuntata && conta(albCerca) > conta(albSenza),
+    "MT7. «Cerca»: nel pannello dei filtri le tre caselle del tipo (Fase 2: «Consultazioni» solo con CONSULTAZIONI_IN_CERCA, spenta); con un tipo scelto la casella è spuntata e il filtro attivo compare tra quelli da togliere",
+    JSON.stringify(campiTipo) === JSON.stringify(["bandi", "candidature", "iscrizioni"]) && spuntata && conta(albCerca) > conta(albSenza),
     { campiTipo, spuntata, con: conta(albCerca), senza: conta(albSenza) },
   );
   const sQ = await scheda(TIPI.find((t) => t.k === "qusy")!.id);

@@ -54,11 +54,21 @@ export function tipoDellaGara(g: { tipo_opportunita?: string | null; tipo_avviso
 // Fase 2: «consultazioni» (consultazioni preliminari di mercato), DISTINTE da bandi e candidature (decisione dell'utente del 26/11)
 export type CategoriaTipo = "bandi" | "candidature" | "iscrizioni" | "consultazioni";
 
+/**
+ * La voce «Consultazioni» nel filtro di «Cerca»: SPENTA finché l'utente non decide di mostrarla, INSIEME al testo della pagina pubblica
+ * «Ricerca gare» (src/lib/ricerca-gare-testi.ts, verifica-testi-ricerca-gare B1.8), quando una fonte visibile ai clienti produce davvero
+ * consultazioni. Spenta: nessuna casella vuota in «Cerca», il parametro «tipo=consultazioni» non si accetta. Il tipo, la sua etichetta e il
+ * colore restano pronti per elenchi, scheda ed email.
+ */
+export const CONSULTAZIONI_IN_CERCA = false as boolean;
+
+export const CATEGORIA_CONSULTAZIONI: { id: CategoriaTipo; etichetta: string; breve: string } = { id: "consultazioni", etichetta: "Consultazioni preliminari di mercato (prima della gara)", breve: "Consultazioni" };
+
 export const CATEGORIE_TIPO: readonly { id: CategoriaTipo; etichetta: string; breve: string }[] = [
   { id: "bandi", etichetta: "Bandi di gara", breve: "Bandi di gara" },
   { id: "candidature", etichetta: "Candidature: manifestazioni di interesse, indagini di mercato, avvisi di preinformazione", breve: "Candidature" },
   { id: "iscrizioni", etichetta: "Iscrizioni: elenchi, sistemi di qualificazione, SDA", breve: "Iscrizioni" },
-  { id: "consultazioni", etichetta: "Consultazioni preliminari di mercato (prima della gara)", breve: "Consultazioni" },
+  ...(CONSULTAZIONI_IN_CERCA ? [CATEGORIA_CONSULTAZIONI] : []),
 ];
 
 export const CATEGORIA_DEL_TIPO: Record<TipoMostrato, CategoriaTipo> = {
