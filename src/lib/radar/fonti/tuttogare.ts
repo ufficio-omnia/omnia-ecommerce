@@ -29,7 +29,7 @@ export type IstanzaTuttoGareLetta = {
   istanza: IstanzaTuttoGare;
   righe: RigaHomeTuttoGare[];
   dettagli: { codice: string; dettaglio: DettaglioTuttoGare }[];
-  // affidamenti dichiarati già nella riga della home: il dettaglio non si legge
+  // affidamenti dichiarati dal badge della procedura nella scheda della home: il dettaglio non si legge
   esclusiDallaRiga: string[];
   // gare da leggere rimaste fuori dai tetti (si leggono al giro dopo)
   rimandati: number;
@@ -86,7 +86,7 @@ export class LettoreTuttoGare {
         const letta: IstanzaTuttoGareLetta = { istanza, righe, dettagli: [], esclusiDallaRiga: [], rimandati: 0, trattati: new Set() };
         for (const riga of righe) {
           if (!dettaglioDaLeggere(riga, voci[riga.codice], oggi)) continue;
-          if (affidamentoNellaRiga(riga.testo)) {
+          if (affidamentoNellaRiga(riga)) {
             letta.esclusiDallaRiga.push(riga.codice);
             letta.trattati.add(riga.codice);
             continue;

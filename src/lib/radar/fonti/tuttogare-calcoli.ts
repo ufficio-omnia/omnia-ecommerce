@@ -7,10 +7,10 @@
 // istanze di R4): «Disallow /documenti/», «Disallow /allegati/», «Allow /»: si leggono SOLO la home e il dettaglio (percorsoAmmessoTuttoGare),
 // mai documenti o allegati. Il JSON interno «/gare/table.php» (DataTables) NON è documentato: è predisposto e SPENTO (jsonInterno.acceso).
 //
-// MAPPA DEI CAMPI DICHIARATA, DA CONFERMARE su un campione vero prima del collaudo (come il 60C di SATER): le etichette del dettaglio
-// (ETICHETTE_TUTTOGARE), la forma delle date, la regola dei codici delle categorie merceologiche → CPV, la riga della home. Finché non è
-// confermata CANALE_TUTTOGARE.confermato = false e il lettore si ferma PRIMA di qualunque richiesta. Se le etichette obbligatorie mancano in
-// TUTTI i dettagli letti, il formato non è quello dichiarato: la fonte si sospende e non si scrive nulla.
+// MAPPA DEI CAMPI CONFERMATA sul campione del coordinamento del 26/11 (Roma, Uniba, CUC Terra di Leuca; come il 60C di SATER): etichette del
+// dettaglio (ETICHETTE_TUTTOGARE), date, importo, CPV delle categorie merceologiche, schede della home con il badge della procedura. Se le
+// etichette obbligatorie mancano in TUTTI i dettagli letti, il formato è cambiato: la fonte si sospende e non si scrive nulla. NON verificato
+// sul campione: più CIG nella stessa gara (nessuna gara a più lotti): la lettura resta difensiva (tutti i CIG del campo).
 //
 // Cosa NON si legge mai: documenti e allegati (robots.txt), referenti, email e telefoni (le celle non dichiarate si scartano subito).
 import { classificaGara, normalizzaCpv, type SettoreRadar } from "../settori";
@@ -27,17 +27,20 @@ import type { LimitiFonte } from "./sessione-fonte";
 import type { RecordLotto, RecordProcedura } from "./tipi";
 
 export const CANALE_TUTTOGARE = {
-  // mappa dei campi DICHIARATA (R4), non ancora confermata su un campione: con false il lettore si ferma prima di qualunque richiesta. Le
-  // altre guardie restano: solo staging (nessuna variabile di produzione), fuori da console, cron e programmatore, e senza la riga accesa
-  // in radar_fonti_stato il giro esce con «fonte_spenta»
-  confermato: false as boolean,
+  // mappa dei campi CONFERMATA sul campione del coordinamento del 26/11 (Roma, Uniba, CUC Terra di Leuca; 16 richieste, robots rispettato),
+  // con le correzioni applicate (etichette «Importo base», «Pubblicazione», «Scadenza presentazione»; nessun campo «Stato»; impronta
+  // StudioAmica; schede della home con il badge della procedura). Con false il lettore si ferma prima di qualunque richiesta. Le altre
+  // guardie restano: solo staging (nessuna variabile di produzione), fuori da console, cron e programmatore, e senza la riga accesa in
+  // radar_fonti_stato (migrazione proposta, non applicata) il giro esce con «fonte_spenta»
+  confermato: true as boolean,
   // «html» = home + dettaglio (decisione del coordinamento del 26/11); «json» solo se l'HTML non basta, con jsonInterno acceso
   canale: "html" as "html" | "json",
   // il JSON interno della tabella delle gare: NON documentato (rischio: può cambiare o sparire senza avviso). Spento: non si chiama mai
   jsonInterno: { acceso: false as boolean, percorso: "/gare/table.php" },
-  // impronte del software (R4: collegamento ad app.tuttogare.it nel piè di pagina, carattere StudioAmica.woff2): una pagina senza nessuna
-  // delle due non è una pagina TuttoGare (verifica anti-robot, errore travestito, cambio di software) → sospensione
-  impronte: [/app\.tuttogare\.it/i, /studioamica/i] as readonly RegExp[],
+  // impronta del software: «StudioAmica» (carattere StudioAmica.woff2), presente su tutte le istanze del campione. Una pagina senza non è una
+  // pagina TuttoGare (verifica anti-robot, errore travestito, cambio di software) → sospensione. Il collegamento ad app.tuttogare.it NON
+  // basta e non serve: manca nelle istanze personalizzate (Roma, campione del 26/11)
+  impronta: /studioamica/i,
   // una gara già letta si rilegge se la sua riga della home cambia, o comunque dopo questi giorni (proroghe non visibili nella home)
   rileggiDopoGiorni: 7,
   // R4: norme tecniche senza licenza dei dati né divieto di riuso; riuso commerciale da far confermare all'avvocato (D.Lgs. 33/2013 art. 7)
@@ -92,9 +95,9 @@ export function percorsoAmmessoTuttoGare(url: string, istanza: IstanzaTuttoGare)
   return false;
 }
 
-/** La risposta è una pagina TuttoGare: HTML con almeno un'impronta del software. */
+/** La risposta è una pagina TuttoGare: HTML con l'impronta del software (StudioAmica). */
 export function sembraPaginaTuttoGare(testo: string): boolean {
-  return /<html[\s>]/i.test(testo) && CANALE_TUTTOGARE.impronte.some((r) => r.test(testo));
+  return /<html[\s>]/i.test(testo) && CANALE_TUTTOGARE.impronta.test(testo);
 }
 
 // ───── HTML: testo e celle (senza dipendenze; il formato è quello dichiarato e controllato) ─────
@@ -138,7 +141,26 @@ export function righeHtml(html: string): string[][] {
 
 // ───── home: i codici delle gare pubblicate, con il testo della loro riga ─────
 
-export type RigaHomeTuttoGare = { codice: string; testo: string; impronta: string };
+// La gara nella home (campione del 26/11): una scheda Bootstrap («div.card») con due collegamenti al dettaglio (titolo = oggetto, «Vedi
+// dettagli»), il badge della PROCEDURA («badge-primary»), quello della TIPOLOGIA («badge-info») e la scadenza. Nessun campo «Stato»: la
+// home elenca solo le gare pubblicate (esiti e aggiudicazioni non compaiono).
+export type RigaHomeTuttoGare = { codice: string; testo: string; impronta: string; oggetto: string | null; procedura: string | null; tipologia: string | null };
+
+// il testo del primo elemento con la classe data (badge della scheda), o null
+function testoConClasse(html: string, classe: string): string | null {
+  const m = html.match(new RegExp(`<(span|div|a|small|label|strong)\\b[^>]*class\\s*=\\s*["'][^"']*\\b${classe}\\b[^"']*["'][^>]*>([\\s\\S]*?)</\\1\\s*>`, "i"));
+  return m ? testoHtml(m[2], 200) || null : null;
+}
+
+// il testo del primo collegamento al dettaglio con un testo (il titolo della scheda = l'oggetto); «Vedi dettagli» non è un oggetto
+function oggettoDellaRiga(html: string, istanza: IstanzaTuttoGare): string | null {
+  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
+    const href = m[1].match(/href\s*=\s*(["'])([^"']*)\1/i)?.[2];
+    const t = testoHtml(m[2], 1000);
+    if (href && codiceDaHref(href, istanza) && t && !/^vedi\b/i.test(t)) return t;
+  }
+  return null;
+}
 
 const HREF_DETTAGLIO = /href\s*=\s*(["'])([^"']*dettaglio\.php\?[^"']*)\1/gi;
 
@@ -166,13 +188,14 @@ function chiusura(basso: string, nome: string, inizio: number): number {
   return -1;
 }
 
-// La riga della gara nella home: l'elemento più esterno (riga di tabella o voce di elenco; altrimenti un blocco di al più 6.000 caratteri)
-// che contiene il collegamento e nessun collegamento a un'altra gara; altrimenti il tratto tra i collegamenti vicini. DA CONFERMARE sul
-// campione (R4: home con la tabella delle gare resa dal server).
+// La riga della gara nella home: la SCHEDA («div.card», confermata sul campione del 26/11) che contiene il collegamento e nessun collegamento
+// a un'altra gara; in mancanza (difesa per istanze diverse) la riga di tabella o la voce di elenco, poi un blocco di al più 6.000 caratteri;
+// altrimenti il tratto tra i collegamenti vicini.
 function rigaAttorno(html: string, basso: string, pos: number, fine: number, prima: number, dopo: number): string {
-  for (const nomi of [["tr", "li"], ["div", "article", "section"]]) {
+  for (const [nomi, soloSchede] of [[["div"], true], [["tr", "li"], false], [["div", "article", "section"], false]] as const) {
     let scelto: [number, number] | null = null;
     for (const m of basso.slice(Math.max(prima, 0), pos).matchAll(new RegExp(`<(${nomi.join("|")})\\b[^>]*>`, "g"))) {
+      if (soloSchede && !/\bclass\s*=\s*["'](?:[^"']*\s)?card(?:\s[^"']*)?["']/.test(m[0])) continue;
       const a = Math.max(prima, 0) + (m.index ?? 0);
       const c = chiusura(basso, m[1], a);
       if (c >= fine && c <= dopo && (nomi[0] === "tr" || c - a <= 6000) && (!scelto || a < scelto[0])) scelto = [a, c];
@@ -203,8 +226,9 @@ export function leggiHomeTuttoGare(html: string, istanza: IstanzaTuttoGare): Rig
     // confini: l'ultimo collegamento a un'ALTRA gara prima e il primo dopo (più collegamenti alla stessa gara stanno nella stessa riga)
     const primaAltra = [...link.slice(0, i)].reverse().find((x) => x.codice !== l.codice);
     const dopoAltra = link.slice(i + 1).find((x) => x.codice !== l.codice);
-    const testo = testoHtml(rigaAttorno(pulito, basso, l.pos, l.fine, primaAltra ? primaAltra.fine : -1, dopoAltra ? dopoAltra.pos : pulito.length), 2000);
-    righe.push({ codice: l.codice, testo, impronta: impronta({ codice: l.codice, testo }) });
+    const html = rigaAttorno(pulito, basso, l.pos, l.fine, primaAltra ? primaAltra.fine : -1, dopoAltra ? dopoAltra.pos : pulito.length);
+    const testo = testoHtml(html, 2000);
+    righe.push({ codice: l.codice, testo, impronta: impronta({ codice: l.codice, testo }), oggetto: oggettoDellaRiga(html, istanza), procedura: testoConClasse(html, "badge-primary"), tipologia: testoConClasse(html, "badge-info") });
   }
   return righe.slice(0, 2000);
 }
@@ -227,7 +251,8 @@ export function leggiTabellaTuttoGare(testo: string, istanza: IstanzaTuttoGare):
     const codice = [...html.matchAll(HREF_DETTAGLIO)].map((m) => codiceDaHref(m[2], istanza)).find((c) => c !== null) ?? null;
     if (!codice || righe.some((x) => x.codice === codice)) continue;
     const t = celle.map((c) => testoHtml(c, 500)).filter(Boolean).join(" | ").slice(0, 2000);
-    righe.push({ codice, testo: t, impronta: impronta({ codice, testo: t }) });
+    // il JSON (spento) non ha il badge della procedura in una colonna propria: senza esclusione dalla riga, decide il dettaglio
+    righe.push({ codice, testo: t, impronta: impronta({ codice, testo: t }), oggetto: null, procedura: null, tipologia: null });
   }
   const totale = Number((j as { recordsTotal?: unknown }).recordsTotal);
   if (righe.length === 0 && Number.isFinite(totale) && totale > 0) return { errore: "la tabella dichiara gare ma non ne contiene di leggibili" };
@@ -236,20 +261,21 @@ export function leggiTabellaTuttoGare(testo: string, istanza: IstanzaTuttoGare):
 
 // ───── dettaglio: le etichette dichiarate → i campi ─────
 
-// UNA etichetta per campo (nessun nome alternativo provato a caso), DICHIARATA e DA CONFERMARE sul campione. Si confronta il testo intero
-// della cella (minuscole, senza accenti, senza i due punti finali); anche «Etichetta: valore» nella stessa cella.
+// UNA etichetta per campo (nessun nome alternativo provato a caso), CONFERMATA sul campione del 26/11 (coppie etichetta-valore del
+// dettaglio). Si confronta il testo intero della cella (minuscole, senza accenti, senza i due punti finali); anche «Etichetta: valore» nella
+// stessa cella. Il campo «Stato» NON esiste nell'HTML (né in home né nel dettaglio): non si legge. Il CIG è il testo di un collegamento ai
+// dati di ANAC (si legge il testo, mai l'indirizzo); il beneficiario non ha codice fiscale.
 export const ETICHETTE_TUTTOGARE = {
   oggetto: "Oggetto",
   procedura: "Procedura",
   tipologia: "Tipologia",
-  importo: "Importo",
+  importo: "Importo base",
   cig: "CIG",
   cup: "CUP",
-  pubblicazione: "Data pubblicazione",
-  scadenza: "Scadenza presentazione offerte",
+  pubblicazione: "Pubblicazione",
+  scadenza: "Scadenza presentazione",
   categorie: "Categorie merceologiche",
   beneficiario: "Beneficiario",
-  stato: "Stato",
 } as const;
 export type CampoTuttoGare = keyof typeof ETICHETTE_TUTTOGARE;
 
@@ -305,8 +331,9 @@ export function dettaglioCompleto(d: DettaglioTuttoGare): boolean {
 
 // ───── campi ─────
 
-// «10/12/2026 12:00», «10/12/2026 ore 12:00», «10/12/2026 - 12.00» (ora italiana) → giorno e istante. Senza ora, o a mezzanotte esatta: giorno
-// senza ora (la stessa regola delle altre fonti: l'ora non si presume mai). Forma DA CONFERMARE sul campione.
+// «Scadenza presentazione»: «gg/mm/aaaa hh:mm» (campione del 26/11: ora reale e variabile, 12:00, 23:45), ora italiana → giorno e istante;
+// tollerati «ore 12.00» e data e ora in due celle. Senza ora, o a mezzanotte esatta: giorno senza ora (la stessa regola delle altre fonti:
+// l'ora non si presume mai). «Pubblicazione»: «gg/mm/aaaa» senza ora (giornoTuttoGare).
 export function scadenzaTuttoGare(v: string | null | undefined): ScadenzaTed | null {
   const s = (v ?? "").trim();
   // data e ora anche in due celle («10/12/2026 | 12:00», le celle del valore unite da « | »)
@@ -330,7 +357,8 @@ export function giornoTuttoGare(v: string | null | undefined): string | null {
 }
 
 // L'importo: il primo importo preceduto da «€» o «euro» («€ 1.234.567,89», «Euro 35.000,00»); altrimenti il primo con i decimali
-// («35.000,00»). Un numero qualunque («Lotto 1») non è un importo. Altro → null (mai indovinato). Forma DA CONFERMARE sul campione.
+// («35.000,00»). Un numero qualunque («Lotto 1») non è un importo. Altro → null (mai indovinato). «Importo base» sul campione del 26/11:
+// «€ 69.600,00», «€ 4.176.978,42».
 export function importoTuttoGare(v: string | null | undefined): number | null {
   const s = v ?? "";
   const m = s.match(/(?:€|\beuro\b)\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)/i) ?? s.match(/(?<![\d.,])(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})(?![\d,])/);
@@ -347,9 +375,9 @@ export function cigTuttoGare(v: string | null | undefined): string[] {
   return out.slice(0, 200);
 }
 
-// Categorie merceologiche → CPV (regola DICHIARATA, da confermare sul campione; R4: «CPV troncati»): per ogni voce del campo, il codice
-// numerico all'inizio. 8 cifre (con o senza la cifra di controllo) = CPV; da 2 a 7 cifre = codice troncato, completato con zeri a destra
-// (il gruppo o la classe del CPV). Si tiene solo se è un CPV valido; la classificazione usa comunque solo le voci del file approvato.
+// Categorie merceologiche → CPV: per ogni voce del campo, il codice numerico all'inizio. Campione del 26/11: 8 cifre, « - » e la descrizione
+// («45233142 - Lavori di riparazione stradale»). Per difesa (R4 parlava di codici troncati): da 2 a 7 cifre = codice troncato, completato con
+// zeri a destra (il gruppo o la classe del CPV). Si tiene solo se è un CPV valido; la classificazione usa comunque solo le voci del file approvato.
 export function cpvDaCategoriaTuttoGare(voce: string): string | null {
   const m = voce.trim().match(/^(\d{2,8})(?:-\d)?(?=\D|$)/);
   if (!m) return null;
@@ -378,7 +406,9 @@ export function chiaveBeneficiario(v: string | null | undefined): string {
 //   - negoziata senza pubblicazione, appalto specifico di un SDA → riservata (fuori);
 //   - albo, elenco, sistema di qualificazione, SDA istitutivo → iscrizione;
 //   - consultazione preliminare di mercato e valori sconosciuti → null (la gara non entra finché la regola non si aggiorna).
-// Valori DA CONFERMARE sul campione (R4 li ha visti nei titoli delle colonne e negli oggetti, non come elenco chiuso).
+// Valori del badge e del campo «Procedura» visti sul campione del 26/11: «Affidamento diretto / RDO», «Affidamento con indagine di mercato»,
+// «Richiesta di preventivo aperta», «Aperta», «Negoziata», «Ristretta». «Negoziata» senza «previa pubblicazione» resta RISERVATA, come per le
+// altre fonti (nessuna gara su invito presentata come aperta a tutti): da confermare con il coordinamento, che l'ha indicata tra i bandi.
 export function opportunitaTuttoGare(procedura: string | null | undefined, oggetto: string | null | undefined): Opportunita | null {
   const p = norm(procedura);
   const o = norm(oggetto);
@@ -418,12 +448,12 @@ export function tipoProceduraTuttoGare(procedura: string | null | undefined): st
   return null;
 }
 
-// Un affidamento dichiarato già nella riga della home: il dettaglio non si legge (risparmio di richieste). Solo forme esplicite e senza una
-// candidatura nella stessa riga («Affidamento diretto previa indagine di mercato» si legge). Regola DA CONFERMARE sul campione.
-export function affidamentoNellaRiga(testo: string): boolean {
-  const t = norm(testo);
-  if (/indagine di mercato|preventiv\w* apert\w*|manifestazion[ei] d[i']\s*interesse|avviso esplorativo/.test(t)) return false;
-  return /\baffidamento diretto\b|contratt\w* applicativ\w*/.test(t);
+// Un affidamento dichiarato già nella scheda della home: il dettaglio non si legge (risparmio di richieste). SOLO dal badge della procedura
+// (campione del 26/11: «Affidamento diretto / RDO»), con la stessa regola del dettaglio (opportunitaTuttoGare, oggetto della scheda
+// compreso: un affidamento il cui oggetto dichiara una candidatura si legge). Senza badge: decide il dettaglio.
+export function affidamentoNellaRiga(riga: Pick<RigaHomeTuttoGare, "procedura" | "oggetto">): boolean {
+  if (!riga.procedura) return false;
+  return opportunitaTuttoGare(riga.procedura, riga.oggetto)?.tipo === "affidamento_diretto";
 }
 
 // L'ente della gara (decisione del coordinamento: nessun codice fiscale dalla fonte, solo dall'anagrafica):
@@ -457,8 +487,6 @@ export type MetaTuttoGare = {
   idPiattaforma: string;
   // identificativo della procedura nella fonte (id_fonte): «<host>:<codice>»
   idProcedura: string;
-  // lo stato dichiarato dal dettaglio, così com'è (solo per l'impronta)
-  stato: string;
 };
 
 export type BandoTuttoGare = {
@@ -487,7 +515,7 @@ export function leggiGaraTuttoGare(istanza: IstanzaTuttoGare, codice: string, d:
   const pagina = urlDettaglioTuttoGare(istanza, codice);
   const idPiattaforma = idPiattaformaDaUrlConnettore(pagina);
   if (!pagina || idPiattaforma !== `tuttogare:${istanza.host}:${codice}`) return { tipo: "esclusione", meta: null, motivo: "senza_identificativo" };
-  const meta: MetaTuttoGare = { host: istanza.host, codice, idPiattaforma, idProcedura: `${istanza.host}:${codice}`, stato: breve(d.stato, 60) };
+  const meta: MetaTuttoGare = { host: istanza.host, codice, idPiattaforma, idProcedura: `${istanza.host}:${codice}` };
   const esclusione = (motivo: MotivoEsclusioneTuttoGare): EsclusioneTuttoGare => ({ tipo: "esclusione", meta, motivo });
 
   const titolo = breve(d.oggetto);
@@ -553,7 +581,7 @@ export function leggiGaraTuttoGare(istanza: IstanzaTuttoGare, codice: string, d:
     lotti,
     impronta: "",
   };
-  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti, stato: meta.stato, opportunita: opp.tipo });
+  record.impronta = impronta({ ...record, impronta: null, settori: settoriTenuti, opportunita: opp.tipo });
 
   return {
     tipo: "bando",
