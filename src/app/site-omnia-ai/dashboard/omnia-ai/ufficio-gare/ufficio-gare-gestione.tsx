@@ -79,7 +79,7 @@ export default function UfficioGareGestione({
             I tuoi Uffici Gare ({uffici.length} di {MASSIMO_UFFICI_GARE})
           </span>
           {uffici.map((ufficio, i) => (
-            <div key={ufficio.membroId} style={{ marginTop: i === 0 ? 14 : 22, paddingTop: i === 0 ? 0 : 18, borderTop: i === 0 ? undefined : "1px solid var(--omnia-bordo, rgba(127,127,127,0.25))" }}>
+            <div key={ufficio.membroId} style={{ marginTop: i === 0 ? 14 : 22, paddingTop: i === 0 ? 0 : 18, borderTop: i === 0 ? undefined : "1px solid var(--bordo)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <strong style={{ fontSize: 17, overflowWrap: "anywhere" }}>{ufficio.email}</strong>
                 <span className={`omnia-badge ${COLORE_STATO[ufficio.stato]}`}>{ETICHETTA_STATO_UFFICIO_GARE[ufficio.stato]}</span>

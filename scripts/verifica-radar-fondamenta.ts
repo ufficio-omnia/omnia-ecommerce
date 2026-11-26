@@ -197,7 +197,8 @@ const inizioRadar = precedenti.indexOf("0109_radar_archivio_pubblico.sql");
 uguale("le migrazioni della fase A partono da 0109, subito dopo la 0108 (chat delle copertine)", [precedenti[inizioRadar - 1], ...precedenti.slice(inizioRadar, inizioRadar + 3)], ["0108_copertine_chat.sql", ...migrazioni]);
 // Rilascio (piano 55, F3 passo 9): master ha due migrazioni sue nello stesso intervallo, già eseguite in produzione (0130 copertina in
 // vendita, 0131 gare omaggio). Sono ammesse per nome; nessun'altra migrazione estranea al radar.
-const MIGRAZIONI_DEL_SITO = ["0130_copertina_vendita_pacchetti.sql", "0131_omnia_ai_gare_omaggio.sql"];
+// 0136 (26/11): fino a 3 Uffici Gare per titolare, migrazione del sito estranea al radar.
+const MIGRAZIONI_DEL_SITO = ["0130_copertina_vendita_pacchetti.sql", "0131_omnia_ai_gare_omaggio.sql", "0136_omnia_ai_uffici_gare_tre.sql"];
 atteso(
   "dopo la 0109 ci sono solo migrazioni di Tender Intelligence (più le due del sito già in produzione: 0130 e 0131)",
   precedenti.slice(inizioRadar).every((m) => /^01\d\d_radar_/.test(m) || MIGRAZIONI_DEL_SITO.includes(m)),
