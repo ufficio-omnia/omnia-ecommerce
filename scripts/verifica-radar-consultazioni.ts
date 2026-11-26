@@ -47,6 +47,13 @@ const scheda = leggi("src/app/site-omnia-ai/dashboard/omnia-ai/opportunita/gara/
 controlla("scheda della gara: per una consultazione la riga «Che cos'è» (non è una gara né una candidatura)", /tipo === "consultazione_preliminare" && <Dato etichetta="Che cos'è" valore=\{COME_SI_PARTECIPA_CONSULTAZIONE\} \/>/.test(scheda) && /Non è una gara né una candidatura/.test(COME_SI_PARTECIPA_CONSULTAZIONE) && !/\d{1,2}:\d{2}/.test(COME_SI_PARTECIPA_CONSULTAZIONE));
 controlla("riga della gara ed email: l'etichetta arriva da ETICHETTA_TIPO (nessun testo a parte)", /ETICHETTA_TIPO\[d\.tipo\]/.test(leggi("src/components/omnia-ai/opportunita/riga-gara.tsx")) && /ETICHETTA_TIPO\[mostrato\]/.test(leggi("src/lib/radar/notifiche/eventi-calcoli.ts")));
 
+// ═════ C-bis. «Per te» ed email (decisione dell'utente del 26/11: come le candidature) ═════
+const profilo = leggi("src/lib/radar/profilo-calcoli.ts");
+const eventi = leggi("src/lib/radar/notifiche/eventi-calcoli.ts");
+const filtroNuove = eventi.slice(eventi.indexOf("const candidate = x.nuove.filter("), eventi.indexOf("const perId = new Map(candidate"));
+controlla("«Per te»: tutti i tipi (nessun filtro di tipo dal profilo), quindi anche le consultazioni, ognuna con la sua etichetta", /\/\/ «Per te» mostra tutti i tipi, ognuno con la sua etichetta \(C5\)\s*\n\s*tipi: \[\],/.test(profilo));
+controlla("avvisi email delle nuove opportunità: nessun filtro di tipo (le consultazioni entrano come le candidature; email oggi spente)", filtroNuove.length > 100 && !/tipo_opportunita|tipoDellaGara|candidatur|consultazion/.test(filtroNuove));
+
 // ═════ D. NON REGRESSIONE della famiglia AF (SATER, SardegnaCAT): la regola delle opportunità dà ESATTAMENTE i valori di prima ═════
 const casi: [string, string, string, string | null][] = [
   ["Bando", "Aperta", "Servizio di pulizia", "bando"],
