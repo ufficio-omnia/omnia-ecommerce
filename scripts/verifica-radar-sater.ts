@@ -175,34 +175,47 @@ function provaPiattaforme(): void {
 
 async function provaGuardie(): Promise<void> {
   controlla("fonte «sater» riconosciuta (FONTI_RADAR, FONTI_UNITE), precedenza come SardegnaCAT", (FONTI_RADAR as readonly string[]).includes("sater") && FONTI_UNITE.includes("sater") && PRECEDENZA_FONTI.sater === PRECEDENZA_FONTI.sardegnacat);
-  controlla("nessuna variabile di produzione per SATER", !("sater" in VARIABILI_PRODUZIONE));
+  // Fase 2 (26/11, decisione dell'utente: SATER in produzione): come Sintel e SardegnaCAT
+  controlla("variabile di produzione: RADAR_SATER_PRODUZIONE", VARIABILI_PRODUZIONE.sater === "RADAR_SATER_PRODUZIONE");
   controlla("staging: SATER ammessa (importazione e notifiche)", fonteAutorizzata("sater", "importazione", STAGING).ok && fonteAutorizzata("sater", "notifiche", STAGING).ok);
-  const prod = fonteAutorizzata("sater", "importazione", { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "autorizzata", RADAR_SARDEGNACAT_PRODUZIONE: "autorizzata" });
-  controlla("produzione, deploy di produzione, anche con variabili: SATER NON ammessa", !prod.ok && /solo sullo staging/.test(prod.ok ? "" : prod.motivo), prod);
-  controlla("anteprima: SATER non ammessa", !fonteAutorizzata("sater", "importazione", { ...STAGING, VERCEL_ENV: "preview" }).ok);
-  controlla("console e cron: SATER fuori dalle fonti regionali gestite", !(FONTI_REGIONALI as readonly string[]).includes("sater"));
-  controlla("registro dei giri: SATER si registra (dopo la 0134) ma resta fuori da console e allarmi", (FONTI_REGISTRO as readonly string[]).includes("sater") && !(FONTI_ESECUZIONI as readonly string[]).includes("sater"));
-  controlla("nessun orario, cron, rotta o interruttore per SATER", !("sater" in ORARI_GIRI) && !("sater" in CRON_PROPOSTI) && !("sater" in ROTTE_CRON) && !("sater" in INTERRUTTORI_CRON));
-  controlla("nessuna rotta cron di SATER e nessuna riga in vercel.json", !fs.existsSync(path.join(__dirname, "..", "src/app/api/cron/radar-sater")) && !/sater/i.test(leggi("vercel.json")));
-  controlla("console: nessuna voce SATER nelle viste e nelle azioni", !/["']sater["']/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")) && !/sater:/.test(leggi("src/app/site-console/azioni/tender-intelligence.ts")));
-  controlla("nessuna fonte nascosta di base (regola 48A/48E invariata)", FONTI_NASCOSTE_PREDEFINITE.length === 0);
-  controlla("descrizione della fonte: in costruzione, senza giri previsti, licenza CC BY 4.0 con la citazione della fonte", descrizioneFonte("sater").stato === "in_costruzione" && /non ancora previsti/.test(descrizioneFonte("sater").aggiornamento) && /CC BY 4\.0/.test(descrizioneFonte("sater").licenza) && /citando la fonte/.test(descrizioneFonte("sater").licenza));
+  const senzaVar = fonteAutorizzata("sater", "importazione", { ...PROD_DEPLOY, RADAR_SARDEGNACAT_PRODUZIONE: "autorizzata" });
+  controlla("produzione SENZA RADAR_SATER_PRODUZIONE (anche con quelle delle altre fonti): NON ammessa, il motivo dice la variabile", !senzaVar.ok && /RADAR_SATER_PRODUZIONE=autorizzata/.test(senzaVar.ok ? "" : senzaVar.motivo), senzaVar);
+  controlla("produzione CON RADAR_SATER_PRODUZIONE=autorizzata, deploy di produzione: ammessa (importazione e notifiche)", fonteAutorizzata("sater", "importazione", { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "autorizzata" }).ok && fonteAutorizzata("sater", "notifiche", { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "autorizzata" }).ok);
+  controlla("valori diversi da «autorizzata», computer locale verso la produzione, anteprima: NON ammessa", !fonteAutorizzata("sater", "importazione", { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "si" }).ok && !fonteAutorizzata("sater", "importazione", { NEXT_PUBLIC_SUPABASE_URL: PROD_DEPLOY.NEXT_PUBLIC_SUPABASE_URL, RADAR_SATER_PRODUZIONE: "autorizzata" }).ok && !fonteAutorizzata("sater", "importazione", { ...STAGING, VERCEL_ENV: "preview" }).ok);
+  controlla("console, cron e registro: SATER tra le fonti regionali gestite e le fonti dei giri", (FONTI_REGIONALI as readonly string[]).includes("sater") && (FONTI_ESECUZIONI as readonly string[]).includes("sater") && (FONTI_REGISTRO as readonly string[]).includes("sater"));
+  controlla("orari: 08:50, 12:50, 16:50 nei feriali e 12:50 nel fine settimana; una riga cron; rotta e interruttore propri", JSON.stringify(ORARI_GIRI.sater) === JSON.stringify([{ ora: "08:50", giorni: "feriali" }, { ora: "12:50", giorni: "feriali" }, { ora: "16:50", giorni: "feriali" }, { ora: "12:50", giorni: "fine_settimana" }]) && JSON.stringify(CRON_PROPOSTI.sater) === JSON.stringify(["50 6,7,10,11,14,15 * * *"]) && ROTTE_CRON.sater === "/api/cron/radar-sater" && INTERRUTTORI_CRON.sater === "RADAR_SATER_CRON");
+  const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string; schedule: string }[] };
+  controlla("vercel.json: UNA riga per /api/cron/radar-sater, uguale alla riga proposta", vercel.crons.filter((c) => c.path === "/api/cron/radar-sater").length === 1 && vercel.crons.find((c) => c.path === "/api/cron/radar-sater")?.schedule === CRON_PROPOSTI.sater[0]);
+  controlla("vercel.json: il minuto :50 non coincide con quello di un'altra fonte del Radar", vercel.crons.filter((c) => /radar-(ted|pvl|sintel|sardegnacat|promemoria)/.test(c.path)).every((c) => c.schedule.split(" ")[0] !== "50" && !/^\*\/(5|10|25|50)$/.test(c.schedule.split(" ")[0])));
+  controlla("rotta cron di SATER presente", fs.existsSync(path.join(__dirname, "..", "src/app/api/cron/radar-sater/route.ts")));
+  controlla("console: SATER nelle viste (fonti, registro) e nelle azioni", /"sater"/.test(leggi("src/app/site-console/_componenti/tender-intelligence-vista.tsx")) && /sater: "SATER"/.test(leggi("src/app/site-console/azioni/tender-intelligence.ts")));
+  controlla("nessuna fonte nascosta di base (regola 48A/48E invariata): SATER nasce nascosta dalla riga della 0134", FONTI_NASCOSTE_PREDEFINITE.length === 0 && /'sater', false, true/.test(leggi("supabase/migrations/0134_radar_fonte_sater.sql")));
+  controlla("descrizione della fonte: orari veri, limiti (CPV e importo assenti), licenza CC BY 4.0 con la citazione", /^Giri previsti alle 08:50, 12:50 e 16:50 dal lunedì al venerdì; alle 12:50 il sabato e la domenica/.test(descrizioneFonte("sater").aggiornamento) && descrizioneFonte("sater").limiti.some((l) => /CPV e l'importo/.test(l)) && /CC BY 4\.0/.test(descrizioneFonte("sater").licenza) && /citando la fonte/.test(descrizioneFonte("sater").licenza), descrizioneFonte("sater").aggiornamento);
   controlla("attribuzione (obbligo CC BY 4.0) presente come per SardegnaCAT: nome, ente e licenza", NOME_FONTE.sater === "SATER" && /Intercent-ER/.test(ATTRIBUZIONE_FONTE.sater) && /CC BY 4\.0/.test(ATTRIBUZIONE_FONTE.sater) && ATTRIBUZIONE_FONTE.sater === CANALE_INTERCENTER.attribuzione && !!ATTRIBUZIONE_FONTE.sardegnacat);
 
-  // giri con il database in memoria: senza la riga della fonte nulla parte; in produzione zero accessi
-  const mondo = (conRiga: boolean) => {
+  // giri con il database in memoria (riga di SATER come la crea la 0134: spenta, nascosta, blocco 2099; oppure assente)
+  const BLOCCO_0134 = "2099-01-01T00:00:00.000Z";
+  const mondo = (sater: "assente" | "spenta" | "accesa_con_blocco_0134") => {
     const db = new DbFinto();
-    db.tabelle.radar_fonti_stato = [...FONTI_ESECUZIONI, ...(conRiga ? ["sater"] : [])].map((f) => ({ fonte: f, attiva: f === "sater", ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: f === "sater" }));
+    const altre = FONTI_ESECUZIONI.filter((f) => f !== "sater").map((f) => ({ fonte: f, attiva: false, ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: false }));
+    db.tabelle.radar_fonti_stato = sater === "assente" ? altre : [...altre, { fonte: "sater", attiva: sater !== "spenta", ultimo_successo_il: null, cursore: null, blocco_fino_a: BLOCCO_0134, conteggi: {}, nascosta_ai_clienti: true }];
     return db;
   };
+  const PROD_CON_VAR = { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "autorizzata", RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" };
   const prima = richiesteDiRete;
-  const a = mondo(false);
+  const a = mondo("assente");
   const ra = await eseguiImportazioneRegionale(a as unknown as SupabaseClient, "sater", { env: STAGING, adesso: () => ADESSO });
   const regA = a.t("radar_esecuzioni");
   controlla("staging SENZA la riga di SATER: «fonte_spenta», nessuna gara, nessuna richiesta; nel registro solo la riga «inerte»", !ra.eseguita && ra.motivo === "fonte_spenta" && (a.tabelle.radar_procedure ?? []).length === 0 && regA.length === 1 && regA[0].fonte === "sater" && regA[0].esito === "inerte", { ra, regA });
-  const c = mondo(true);
-  const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "sater", { env: { ...PROD_DEPLOY, RADAR_SATER_PRODUZIONE: "autorizzata", RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
-  controlla("produzione: «ambiente_non_consentito», zero accessi al database", !rc.eseguita && rc.motivo === "ambiente_non_consentito" && c.richieste.length === 0, rc);
+  const c = mondo("spenta");
+  const rc = await eseguiImportazioneRegionale(c as unknown as SupabaseClient, "sater", { env: { ...PROD_DEPLOY, RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
+  controlla("produzione SENZA la variabile: «ambiente_non_consentito», zero accessi al database (nemmeno il registro)", !rc.eseguita && rc.motivo === "ambiente_non_consentito" && c.richieste.length === 0, rc);
+  const d = mondo("spenta");
+  const rd = await eseguiImportazioneRegionale(d as unknown as SupabaseClient, "sater", { env: PROD_CON_VAR, adesso: () => ADESSO });
+  controlla("produzione CON la variabile e SATER spenta (0134): «fonte_spenta», solo la riga «inerte» nel registro", !rd.eseguita && rd.motivo === "fonte_spenta" && d.t("radar_esecuzioni").length === 1 && d.t("radar_esecuzioni")[0].esito === "inerte", rd);
+  const e = mondo("accesa_con_blocco_0134");
+  const re = await eseguiImportazioneRegionale(e as unknown as SupabaseClient, "sater", { env: PROD_CON_VAR, adesso: () => ADESSO });
+  controlla("produzione, SATER accesa ma con il blocco 2099 della 0134: «occupata» (il blocco va liberato prima dell'accensione)", !re.eseguita && re.motivo === "occupata", re);
   controlla("nessuna richiesta di rete in tutti i giri", richiesteDiRete === prima, richiesteDiRete - prima);
 }
 
@@ -379,7 +392,7 @@ async function provaGiroIntercenter(): Promise<void> {
     return new Response(elencoJson(risposte[chiave] ?? []), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
   const db = new DbFinto();
-  db.tabelle.radar_fonti_stato = [...FONTI_ESECUZIONI, "sater"].map((f) => ({ fonte: f, attiva: f === "sater", ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: f === "sater", dati_aggiornati_al: null }));
+  db.tabelle.radar_fonti_stato = [...FONTI_ESECUZIONI].map((f) => ({ fonte: f, attiva: f === "sater", ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: f === "sater", dati_aggiornati_al: null }));
   try {
     canale.confermato = true;
     canale.cartelle = [{ ...BANDI, percorso: "prova/bandi" }, { ...AVVISI, percorso: "prova/avvisi" }, { nome: "bandi_intercenter", tipo: "Bando", percorso: "prova/intercenter" }];

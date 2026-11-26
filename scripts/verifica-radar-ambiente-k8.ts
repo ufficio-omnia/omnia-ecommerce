@@ -51,7 +51,8 @@ function atteso(fonte: string, ambiente: string, env: Record<string, string | un
 }
 
 function provaMatrice(): void {
-  controlla("tabella delle variabili: PVL, Sintel e SardegnaCAT; TED no", JSON.stringify(VARIABILI_PRODUZIONE) === JSON.stringify({ pvl: "RADAR_PVL_PRODUZIONE", sintel: "RADAR_SINTEL_PRODUZIONE", sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE" }));
+  // Fase 2 (26/11, SATER in produzione): più RADAR_SATER_PRODUZIONE
+  controlla("tabella delle variabili: PVL, Sintel, SardegnaCAT e SATER; TED no", JSON.stringify(VARIABILI_PRODUZIONE) === JSON.stringify({ pvl: "RADAR_PVL_PRODUZIONE", sintel: "RADAR_SINTEL_PRODUZIONE", sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE", sater: "RADAR_SATER_PRODUZIONE" }));
   let celle = 0;
   const sbagliate: unknown[] = [];
   for (const fonte of [...FONTI_RADAR, "manuale", "ted2", ""]) {
