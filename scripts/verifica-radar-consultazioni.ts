@@ -83,7 +83,11 @@ controlla("START: consultazione ancora esclusa e contata a parte (passa al tipo 
 const sql = leggi("supabase/migrations/0140_radar_tipo_consultazione_preliminare.sql");
 const istruzioni = sql.split("\n").filter((r) => !/^\s*--/.test(r)).join("\n");
 const vecchi = leggi("supabase/migrations/0120_radar_multifonte.sql").match(/tipo_opportunita in \(([^)]+)\)/)?.[1] ?? "";
-controlla("0140: vincolo di tipo_opportunita = TUTTI i valori della 0120 + «consultazione_preliminare»; idempotente; controllo finale; begin/commit", !!vecchi && istruzioni.includes(`tipo_opportunita in (${vecchi}, 'consultazione_preliminare')`) && /if exists \([\s\S]*consultazione_preliminare%'[\s\S]*\) then\s*return;/.test(istruzioni) && /raise exception '0140/.test(istruzioni) && /^begin;$/m.test(istruzioni) && /^commit;$/m.test(istruzioni), vecchi);
+// richiesta del coordinamento (26/11): i valori del vincolo ricreato vengono dalla definizione CORRENTE (mai riscritti a memoria); il
+// controllo finale verifica che ci siano tutti quelli della 0120 più quello nuovo
+const valori0120 = [...vecchi.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+controlla("0140: valori ricavati dalla definizione CORRENTE del vincolo (regexp_matches su pg_get_constraintdef), più «consultazione_preliminare»; nessun elenco scritto a memoria nel vincolo ricreato", /regexp_matches\(vincolo\.definizione, '''\(\[a-z0-9_\]\+\)''', 'g'\)/.test(istruzioni) && /valori := valori \|\| 'consultazione_preliminare'::text;/.test(istruzioni) && /check \(tipo_opportunita is null or tipo_opportunita in \(%s\)\)', elenco\)/.test(istruzioni) && !/tipo_opportunita in \('/.test(istruzioni));
+controlla("0140: controllo finale = un solo vincolo, con TUTTI i valori della 0120 e quello nuovo; idempotente; begin/commit", valori0120.length === 4 && istruzioni.includes(`array[${[...valori0120, "consultazione_preliminare"].map((v) => `'${v}'`).join(", ")}]`) && /totale <> 1/.test(istruzioni) && /if exists \([\s\S]*consultazione_preliminare%'[\s\S]*\) then\s*return;/.test(istruzioni) && /raise exception '0140/.test(istruzioni) && /^begin;$/m.test(istruzioni) && /^commit;$/m.test(istruzioni), valori0120);
 controlla("0140: additiva, nessuna istruzione sui dati né sulla partecipazione né sulle fonti", !/\bdelete\b|\btruncate\b|\bupdate\b|\binsert\b|drop table|drop column|partecipazione in|radar_fonti_stato|radar_esecuzioni/i.test(istruzioni));
 
 console.log(`Verifica del tipo «consultazione preliminare» (Fase 2): ${ok} ok, ${falliti.length} falliti`);

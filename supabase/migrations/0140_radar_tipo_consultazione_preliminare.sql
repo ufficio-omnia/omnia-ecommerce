@@ -28,9 +28,16 @@
 
 begin;
 
+-- I valori ammessi si RICAVANO dalla definizione CORRENTE del vincolo (richiesta del coordinamento del 26/11): nessun valore aggiunto da una
+-- migrazione dopo la 0120 può andare perso. Verificato il 26/11 sullo staging (sola lettura): un solo vincolo,
+-- «radar_procedure_tipo_opportunita_check», con esattamente i quattro valori della 0120; nessun'altra migrazione del repository tocca
+-- tipo_opportunita.
 do $$
 declare
   vincolo record;
+  valori text[] := '{}';
+  v text;
+  elenco text;
 begin
   -- già fatto: nulla da cambiare (idempotente)
   if exists (
@@ -40,31 +47,45 @@ begin
   ) then
     return;
   end if;
+  -- i valori di OGGI, letti dalla definizione di ogni vincolo su tipo_opportunita (forma: ARRAY['bando'::text, …]), poi il vincolo si toglie
   for vincolo in
-    select conname from pg_constraint
-     where conrelid = 'public.radar_procedure'::regclass and contype = 'c'
-       and pg_get_constraintdef(oid) like '%tipo_opportunita%' and pg_get_constraintdef(oid) like '%sistema_qualificazione%'
+    select conname, pg_get_constraintdef(oid) as definizione from pg_constraint
+     where conrelid = 'public.radar_procedure'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%tipo_opportunita%'
   loop
+    for v in select (regexp_matches(vincolo.definizione, '''([a-z0-9_]+)''', 'g'))[1] loop
+      if not (v = any (valori)) then
+        valori := valori || v;
+      end if;
+    end loop;
     execute format('alter table public.radar_procedure drop constraint %I', vincolo.conname);
   end loop;
-  alter table public.radar_procedure add constraint radar_procedure_tipo_opportunita_check
-    check (tipo_opportunita is null or tipo_opportunita in ('bando', 'manifestazione_interesse', 'indagine_mercato', 'sistema_qualificazione', 'consultazione_preliminare'));
+  if cardinality(valori) = 0 then
+    raise exception '0140: nessun vincolo su tipo_opportunita trovato (o senza valori): nulla applicato';
+  end if;
+  valori := valori || 'consultazione_preliminare'::text;
+  select string_agg(quote_literal(x), ', ' order by n) into elenco from unnest(valori) with ordinality as t(x, n);
+  execute format('alter table public.radar_procedure add constraint radar_procedure_tipo_opportunita_check check (tipo_opportunita is null or tipo_opportunita in (%s))', elenco);
 end
 $$;
 
--- controllo: un solo vincolo su tipo_opportunita, e ammette il valore nuovo
+-- controllo: un solo vincolo su tipo_opportunita; ammette il valore nuovo E tutti i valori della 0120 (nessuno perso)
 do $$
 declare
-  rifiutano integer;
+  definizione text;
   totale integer;
+  manca text;
 begin
-  select count(*) filter (where pg_get_constraintdef(oid) not like '%consultazione_preliminare%'), count(*)
-    into rifiutano, totale
+  select count(*), max(pg_get_constraintdef(oid)) into totale, definizione
     from pg_constraint
    where conrelid = 'public.radar_procedure'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%tipo_opportunita%';
-  if rifiutano > 0 or totale <> 1 then
-    raise exception '0140: vincoli su tipo_opportunita = %, che rifiutano ''consultazione_preliminare'' = %: nulla applicato', totale, rifiutano;
+  if totale <> 1 then
+    raise exception '0140: vincoli su tipo_opportunita = % (atteso 1): nulla applicato', totale;
   end if;
+  foreach manca in array array['bando', 'manifestazione_interesse', 'indagine_mercato', 'sistema_qualificazione', 'consultazione_preliminare'] loop
+    if position(quote_literal(manca) in definizione) = 0 then
+      raise exception '0140: il vincolo non ammette %: nulla applicato', manca;
+    end if;
+  end loop;
 end
 $$;
 
