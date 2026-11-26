@@ -187,7 +187,7 @@ async function principale() {
     // più la 0133 (stato «da_verificare», schema S4, numero assegnato dal coordinamento), esattamente queste; Fase 2 (26/11, connettore
     // SATER): più la 0134 PROPOSTA (fonte «sater» nel registro dei giri e nello stato delle fonti); connettore TuttoGare: più la 0135 PROPOSTA
     // (fonte «tuttogare», stessa forma), mai applicata
-    uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo), poi le sole B4 0122–0125, la 0128, la 0133, la 0134 di SATER e la 0135 di TuttoGare", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql", "0122_radar_profili_per_te.sql", "0123_radar_aggiornamenti_evidenza.sql", "0124_radar_avvisi_preferenze.sql", "0125_radar_avvisi_eventi_coda.sql", "0128_radar_esecuzioni.sql", "0133_radar_classificazioni_da_verificare.sql", "0134_radar_fonte_sater.sql", "0135_radar_fonte_tuttogare.sql"]);
+    uguale("A. dopo la 0120 c'è solo la 0121 (0118 e 0119 riservate alla PVL, non nel ramo), poi le sole B4 0122–0125, la 0128, la 0133, la 0134 di SATER, la 0135 di TuttoGare e la 0137 di START", migrazioni, ["0120_radar_multifonte.sql", "0121_radar_classificazioni.sql", "0122_radar_profili_per_te.sql", "0123_radar_aggiornamenti_evidenza.sql", "0124_radar_avvisi_preferenze.sql", "0125_radar_avvisi_eventi_coda.sql", "0128_radar_esecuzioni.sql", "0133_radar_classificazioni_da_verificare.sql", "0134_radar_fonte_sater.sql", "0135_radar_fonte_tuttogare.sql", "0137_radar_fonte_start.sql"]);
   }
 
   // ═════ A bis. strumenti della prova su un Postgres isolato (si eseguono solo dopo l'approvazione dell'utente) ═════

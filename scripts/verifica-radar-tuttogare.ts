@@ -356,7 +356,8 @@ function provaGuardie(): void {
   // la scheda della gara: «Piattaforma dell'ente, gara 13584» (l'indirizzo dell'istanza, che può contenere il nome del software, resta nel collegamento)
   controlla("scheda della gara: «Piattaforma dell'ente, gara <codice>», senza l'indirizzo dell'istanza", descriviAvvisoLetto({ fonte: "tuttogare", id_fonte: "cucterradileuca.tuttogare.it:12", tipo_avviso: "Aperta" }) === "Piattaforma dell'ente, gara 12");
   const fuori = ["supabase/migrations"].flatMap((d) => fs.readdirSync(path.join(radice, d)).filter((f) => /tuttogare/i.test(fs.readFileSync(path.join(radice, d, f), "utf8"))).map((f) => `${d}/${f}`));
-  controlla("nessuna migrazione nuova: tra le migrazioni solo la 0135 nomina TuttoGare", JSON.stringify(fuori) === JSON.stringify(["supabase/migrations/0135_radar_fonte_tuttogare.sql"]), fuori);
+  // START (Fase 2): la 0137 PROPOSTA ricrea lo stesso vincolo del registro dei giri, che elenca anche 'tuttogare'
+  controlla("nessuna migrazione nuova: tra le migrazioni solo la 0135 nomina TuttoGare (più la 0137 di START, che ricrea il vincolo del registro con tutte le fonti)", JSON.stringify(fuori) === JSON.stringify(["supabase/migrations/0135_radar_fonte_tuttogare.sql", "supabase/migrations/0137_radar_fonte_start.sql"]), fuori);
   // la 0135 PROPOSTA (mai applicata): vincolo del registro con TUTTE le fonti di prima più «tuttogare», riga spenta, nascosta, semaforo chiuso;
   // nessuna istruzione su radar_procedure (piattaforma_id non si tocca, decisione (b))
   const sql = leggi("supabase/migrations/0135_radar_fonte_tuttogare.sql");
