@@ -11,6 +11,7 @@
 import type { BandoSintel } from "./fonti/sintel-calcoli";
 import type { BandoAflink } from "./fonti/aflink-calcoli";
 import type { BandoIntercenter } from "./fonti/intercenter-calcoli";
+import type { BandoTuttoGare } from "./fonti/tuttogare-calcoli";
 import { giornoDiRoma, type ScadenzaTed } from "./fonti/ted-calcoli";
 import type { RecordProcedura } from "./fonti/tipi";
 import { rigaDaBando, type RigaProcedura } from "./importa-calcoli";
@@ -19,10 +20,12 @@ import type { SettoreRadar } from "./settori";
 import type { IdRegione } from "./territorio";
 import type { VersioneFonte } from "./unione-calcoli";
 
-export type FonteRegionale = "sintel" | "sardegnacat" | "sater";
+// Fase 2: «tuttogare» (TuttoGare PA, molte istanze, in costruzione) è una fonte regionale per il motore, ma NON è gestita: fuori da console,
+// cron, programmatore e registro dei giri finché non ha la sua migrazione e l'autorizzazione dell'utente.
+export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare";
 
 // Le fonti regionali GESTITE da console e giri programmati. Fase 2: anche SATER (decisione dell'utente del 26/11: in produzione), con la
-// sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti).
+// sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti). TuttoGare no (in costruzione).
 export const FONTI_REGIONALI = ["sintel", "sardegnacat", "sater"] as const satisfies readonly FonteRegionale[];
 export type FonteRegionaleGestita = (typeof FONTI_REGIONALI)[number];
 
@@ -131,6 +134,34 @@ export function bandoDaIntercenter(b: BandoIntercenter, oggi: string): BandoRegi
     pubblicatoIl: b.record.dataPubblicazione,
     mancanti: b.mancanti,
     // l'elenco del portale non dichiara rettifiche: mai una dichiarazione
+    dichiarazione: null,
+  };
+}
+
+// TuttoGare (Fase 2, in costruzione): una gara letta dal dettaglio di un'istanza. Il dettaglio non dà una data di modifica: la versione è
+// il giorno in cui OMNIA vede il contenuto (come Sintel); un contenuto invariato (stessa impronta) non scrive nulla.
+export function bandoDaTuttoGare(b: BandoTuttoGare, oggi: string): BandoRegionale | null {
+  const opp = perArchivio(b.opportunita);
+  if (!opp) return null;
+  const id = b.meta.idProcedura;
+  return {
+    fonte: "tuttogare",
+    idProcedura: id,
+    piattaformaId: b.meta.idPiattaforma,
+    versione: { fonte: "tuttogare", id: `${id}@${oggi}`, giorno: oggi, istante: null, ted: null },
+    idCambiamento: `${id}@${oggi}`.slice(0, 200),
+    record: b.record,
+    opportunita: opp,
+    settori: b.settori,
+    metodoSettore: b.metodoSettore,
+    regioni: b.regioni,
+    scadenzaFonte: b.scadenzaFonte,
+    lottiScadenze: b.lottiScadenze,
+    lottiDocumenti: b.lottiDocumenti,
+    tipoAvvisoFonte: b.procedura,
+    pubblicatoIl: b.record.dataPubblicazione,
+    mancanti: b.mancanti,
+    // il dettaglio non dichiara rettifiche: mai una dichiarazione
     dichiarazione: null,
   };
 }

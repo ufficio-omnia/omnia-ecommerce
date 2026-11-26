@@ -17,12 +17,14 @@ import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PREDEFINITI, bu
 import { LettoreAflink } from "./fonti/aflink";
 import { LIMITI_INTERCENTER_INTERVALLI, LIMITI_INTERCENTER_PREDEFINITI, leggiElementiIntercenter } from "./fonti/intercenter-calcoli";
 import { LettoreIntercenter } from "./fonti/intercenter";
+import { LIMITI_TUTTOGARE_INTERVALLI, LIMITI_TUTTOGARE_PREDEFINITI, aggiornaCursoreTuttoGare, cursoreTuttoGare, istanzeAttiveTuttoGare, leggiGaraTuttoGare, type CursoreTuttoGare } from "./fonti/tuttogare-calcoli";
+import { LettoreTuttoGare } from "./fonti/tuttogare";
 import { giornoDiRoma } from "./fonti/ted-calcoli";
 import type { Misure } from "./importa";
 import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
-import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
-import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
-import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
+import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, bandoDaTuttoGare, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
+import { FONTI_ESECUZIONI, datiGiroRegionale, type FonteEsecuzione, type OrigineGiro } from "./esecuzioni-calcoli";
+import { giroRegistrato, nuovoIdEsecuzione, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
 import { userAgentFonti } from "./fonti/user-agent";
 
@@ -62,8 +64,16 @@ function schemaAssente(e: { message: string; code?: string }): boolean {
  * Un giro di Sintel, SardegnaCAT o SATER, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere.
  * SATER (Fase 2): la riga si scrive solo dopo la 0134, che estende il vincolo della 0128; prima la scrittura non riesce senza fermare nulla.
  */
-export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
-  return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
+function fonteDelRegistro(f: FonteRegionale): f is Extract<FonteRegionale, FonteEsecuzione> {
+  return (FONTI_ESECUZIONI as readonly string[]).includes(f);
+}
+
+export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
+  if (fonteDelRegistro(fonte)) return giroRegistrato<RisultatoImportazioneRegionale>(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
+  // Fase 2: una fonte non ancora ammessa dal registro dei giri (TuttoGare, in costruzione: il vincolo della 0128 la rifiuta finché non ha la
+  // sua migrazione) non scrive la riga del registro; per il resto il giro è lo stesso, con le stesse guardie
+  const r = await giroRegionale(admin, fonte, opzioni, (opzioni.nuovoIdEsecuzione ?? nuovoIdEsecuzione)());
+  return { ...r, esecuzione: { scritta: false, id: null, motivo: "non_registrato" } };
 }
 
 async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale, esecuzioneId: string): Promise<RisultatoImportazioneRegionale> {
@@ -114,8 +124,12 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       ? limitiValidi(opzioni.limiti, LIMITI_SINTEL_PREDEFINITI, LIMITI_SINTEL_INTERVALLI)
       : fonte === "sater"
         ? limitiValidi(opzioni.limiti, LIMITI_INTERCENTER_PREDEFINITI, LIMITI_INTERCENTER_INTERVALLI)
-        : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
-  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore);
+        : fonte === "tuttogare"
+          ? limitiValidi(opzioni.limiti, LIMITI_TUTTOGARE_PREDEFINITI, LIMITI_TUTTOGARE_INTERVALLI)
+          : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
+  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : fonte === "tuttogare" ? "TuttoGare" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore);
+  // TuttoGare: il cursore nuovo (gare lette per istanza) si salva solo a giro finito, quando i bandi letti sono scritti
+  let cursoreTuttoGareNuovo: CursoreTuttoGare | null = null;
   let datiDel: string | null = null;
   // K6: giro scritto per intero entro il tempo massimo; righe di Sintel uguali al conteggio della fonte; allarmi del giro
   let giroFinito = true;
@@ -171,6 +185,28 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
           }
         }
       }
+    } else if (fonte === "tuttogare") {
+      // TuttoGare (Fase 2, in costruzione): istanze dell'anagrafica, home + dettagli delle gare nuove o cambiate (tuttogare.ts). Un'istanza
+      // non leggibile (rete, 5xx, reindirizzamento) non ferma le altre: allarme; una sospensione (401/403/429, formato) ferma tutto il giro
+      const prima = cursoreTuttoGare((riga.cursore as { tuttogare?: unknown } | null)?.tuttogare);
+      const letto = await new LettoreTuttoGare(sessione).leggiIstanze(istanzeAttiveTuttoGare(), prima, oggi);
+      if (letto.errori.length > 0) allarmi.push("istanza_non_letta");
+      if (letto.rimandati > 0) allarmi.push("dettagli_rimandati");
+      for (const l of letto.istanze) {
+        conta(stat.esclusi, "affidamento", l.esclusiDallaRiga.length);
+        stat.letti += l.esclusiDallaRiga.length + l.dettagli.length;
+        for (const { codice, dettaglio } of l.dettagli) {
+          const p = leggiGaraTuttoGare(l.istanza, codice, dettaglio, inizio);
+          if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo === "esclusa_per_oggetto" && p.regole?.length ? `esclusa_per_oggetto:${p.regole.join("+")}` : p.motivo);
+          else {
+            const b = bandoDaTuttoGare(p, oggi);
+            if (b) bandi.push(b);
+            else conta(stat.esclusi, "riservata");
+          }
+        }
+      }
+      if (letto.errori.length > 0 && letto.istanze.length === 0) errore = `TuttoGare: nessuna istanza letta (${letto.errori.map((e) => e.host).join(", ").slice(0, 600)})`;
+      cursoreTuttoGareNuovo = aggiornaCursoreTuttoGare(prima, letto.istanze.map((l) => ({ host: l.istanza.host, righe: l.righe, trattati: l.trattati })), oggi);
     } else {
       const feed = await new LettoreAflink(fonte, sessione).leggiFeed();
       // feed «scivolato» (K6): l'avviso più vecchio è più recente dell'ultimo giro riuscito → qualcosa può essere uscito dal feed
@@ -197,6 +233,7 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
     }
     bandi = [];
     if (datiDel && giroFinito && completoAllaFonte) cursore = { ...cursore, datiDel };
+    if (cursoreTuttoGareNuovo && giroFinito) cursore = { ...cursore, tuttogare: cursoreTuttoGareNuovo };
   } catch (e) {
     errore = e instanceof Error ? e.message.slice(0, 900) : String(e).slice(0, 900);
     sospesa = e instanceof ErroreFonte && e.sospendi;
