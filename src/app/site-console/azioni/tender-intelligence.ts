@@ -300,7 +300,7 @@ export async function eseguiGiroRegionale(_stato: StatoAzioneTi, formData: FormD
   await registra(admin, [{ oggetto: `fonte:${fonte}:giro`, valore_precedente: null, valore_nuovo: esito.eseguita ? (esito.errore ? `interrotto: ${esito.errore}` : "eseguito") : `non eseguito: ${esito.motivo}` }], sessione);
   ricarica();
   if (!esito.eseguita) {
-    const motivi = { ambiente_non_consentito: "le fonti regionali sono autorizzate solo sullo staging", fonte_spenta: "la fonte è spenta o sospesa", occupata: "un altro giro è in corso o il semaforo del coordinamento è chiuso", gia_eseguito: "un giro programmato è appena riuscito", contatto_mancante: "manca un contatto valido per lo User-Agent (RADAR_CONTATTO_FONTI)", schema_assente: "manca la migrazione 0120", errore_lettura: "lettura dello stato non riuscita" } as const;
+    const motivi = { ambiente_non_consentito: "le fonti regionali sono autorizzate solo sullo staging", fonte_spenta: "la fonte è spenta o sospesa", occupata: "un altro giro è in corso o il semaforo del coordinamento è chiuso", gia_eseguito: "un giro programmato è appena riuscito", contatto_mancante: "manca un contatto valido per lo User-Agent (RADAR_CONTATTO_FONTI)", schema_assente: "manca la migrazione 0120", errore_lettura: "lettura dello stato non riuscita", fuori_finestra: "fuori dalla finestra di lettura indicata dalla fonte" } as const;
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const s = esito.statistiche;

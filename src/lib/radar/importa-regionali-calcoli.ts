@@ -12,6 +12,7 @@ import type { BandoSintel } from "./fonti/sintel-calcoli";
 import type { BandoAflink } from "./fonti/aflink-calcoli";
 import type { BandoIntercenter } from "./fonti/intercenter-calcoli";
 import type { BandoTuttoGare } from "./fonti/tuttogare-calcoli";
+import type { BandoStart } from "./fonti/start-calcoli";
 import { giornoDiRoma, type ScadenzaTed } from "./fonti/ted-calcoli";
 import type { RecordProcedura } from "./fonti/tipi";
 import { rigaDaBando, type RigaProcedura } from "./importa-calcoli";
@@ -20,7 +21,9 @@ import type { SettoreRadar } from "./settori";
 import type { IdRegione } from "./territorio";
 import type { VersioneFonte } from "./unione-calcoli";
 
-export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare";
+// Fase 2: «start» (START Toscana, in costruzione): importabile SOLO sullo staging (nessuna variabile di produzione), fuori da console,
+// cron e programmatore (non è in FONTI_REGIONALI).
+export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare" | "start";
 
 // Le fonti regionali GESTITE da console e giri programmati. Fase 2: anche SATER (decisione dell'utente del 26/11: in produzione), con la
 // sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti). TuttoGare allo stesso modo (decisione
@@ -164,6 +167,37 @@ export function bandoDaTuttoGare(b: BandoTuttoGare, oggi: string): BandoRegional
     pubblicatoIl: b.record.dataPubblicazione,
     mancanti: b.mancanti,
     // il dettaglio non dichiara rettifiche: mai una dichiarazione
+    dichiarazione: null,
+  };
+}
+
+// START (Fase 2, in costruzione): una procedura dell'elenco pubblico delle aperte. L'elenco non dà una data di modifica: la versione è il
+// giorno in cui OMNIA vede il contenuto (come Sintel e TuttoGare); una riga invariata (stessa impronta) non scrive nulla. La scadenza è
+// SEMPRE vuota (non è nell'elenco): arriva dalla PVL con l'unione per CIG, e un valore vuoto non la cancella mai.
+export function bandoDaStart(b: BandoStart, oggi: string): BandoRegionale | null {
+  const opp = perArchivio(b.opportunita);
+  if (!opp) return null;
+  const id = b.meta.numero;
+  return {
+    fonte: "start",
+    idProcedura: id,
+    // decisione (b) del coordinamento (26/11): piattaforma_id VUOTO. «start:NNNNNN-AAAA» non rispetta il vincolo della 0120 (il trattino);
+    // l'identità resta nella CHIAVE della gara (record.chiaveProcedura). I doppioni con le gare TED senza CIG: solo suggerimenti in console
+    piattaformaId: null,
+    versione: { fonte: "start", id: `${id}@${oggi}`, giorno: oggi, istante: null, ted: null },
+    idCambiamento: `${id}@${oggi}`.slice(0, 200),
+    record: b.record,
+    opportunita: opp,
+    settori: b.settori,
+    metodoSettore: b.metodoSettore,
+    regioni: b.regioni,
+    scadenzaFonte: null,
+    lottiScadenze: b.lottiScadenze,
+    lottiDocumenti: b.lottiDocumenti,
+    tipoAvvisoFonte: b.procedura,
+    pubblicatoIl: b.record.dataPubblicazione,
+    mancanti: b.mancanti,
+    // l'elenco non dichiara rettifiche: mai una dichiarazione
     dichiarazione: null,
   };
 }

@@ -30,9 +30,10 @@ import { nomeDiConfronto } from "./province";
 
 // Fase B2a: anche Sintel e SardegnaCAT (e le fonti future) passano da QUESTO motore, nessun altro.
 // Fase 2: «tuttogare» (in costruzione) come le altre piattaforme. Senza la sua riga in radar_fonti_stato non scrive nessuna gara.
-export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare";
+// Fase 2: «start» (START Toscana, in costruzione) allo stesso modo: senza la sua riga in radar_fonti_stato non scrive nessuna gara.
+export type FonteUnita = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare" | "start";
 
-export const FONTI_UNITE: readonly FonteUnita[] = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"];
+export const FONTI_UNITE: readonly FonteUnita[] = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare", "start"];
 
 export function eFonteUnita(x: unknown): x is FonteUnita {
   return typeof x === "string" && (FONTI_UNITE as readonly string[]).includes(x);
@@ -42,12 +43,16 @@ export function eFonteUnita(x: unknown): x is FonteUnita {
 // Le piattaforme stanno tra le due: ordine PROVVISORIO, finché l'utente non decide la S8 (documento 10, §8).
 // SATER (Fase 2) come SardegnaCAT, l'altra piattaforma con la scadenza all'ora: le due non si incontrano sulla stessa gara (regioni diverse).
 // TuttoGare (Fase 2, in costruzione) come le altre piattaforme con la scadenza all'ora (la piattaforma dell'ente è la fonte primaria).
-export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 4, sardegnacat: 3, sater: 3, tuttogare: 3, sintel: 2, ted: 1 };
+// START (Fase 2, in costruzione) come le altre piattaforme. Non dà MAI la scadenza: per la scadenza la precedenza non conta (un valore vuoto
+// non cancella mai quello di un'altra fonte); vale per oggetto, ente e procedura, dove la PVL resta prima.
+export const PRECEDENZA_FONTI: Record<FonteUnita, number> = { pvl: 4, sardegnacat: 3, sater: 3, tuttogare: 3, start: 3, sintel: 2, ted: 1 };
 
 // Quali fonti indicano la SEDE dell'ente (comune, provincia e regione dell'amministrazione): TED (buyer-city, buyer-country-sub), Sintel e
 // SardegnaCAT («Comune di …» e la regione della piattaforma). La PVL no: il suo comune e la sua provincia sono quelli del luogo di esecuzione
 // del primo lotto, e valgono come sede solo finché nessun'altra fonte la indica. Una fonte sconosciuta vale come sede (regole di sempre).
-export const SEDE_DELL_ENTE: Record<FonteUnita, boolean> = { ted: true, sintel: true, sardegnacat: true, sater: true, tuttogare: true, pvl: false };
+// START no: l'elenco dà solo il nome dell'ente (il comune solo per «Comune di …») e la regione della piattaforma; vale come la PVL (riempie i
+// campi vuoti, non toglie il comune e la provincia di un'altra fonte).
+export const SEDE_DELL_ENTE: Record<FonteUnita, boolean> = { ted: true, sintel: true, sardegnacat: true, sater: true, tuttogare: true, start: false, pvl: false };
 
 export function indicaLaSede(fonte: string): boolean {
   return SEDE_DELL_ENTE[fonte as FonteUnita] !== false;
