@@ -1112,15 +1112,15 @@ async function main() {
   atteso("cron: i tre passi partono DOPO il blocco (se un altro giro è in corso non si tocca niente)", ciclo.indexOf("acquisisciBlocco(") < ciclo.indexOf("sincronizzaCalendario(") && ciclo.indexOf("sincronizzaCalendario(") < ciclo.indexOf("inviaConversioniGa4(") && ciclo.indexOf("inviaConversioniGa4(") < ciclo.indexOf("inviaConversioniAds("));
   const vercel = JSON.parse(leggi("vercel.json")) as { crons: { path: string; schedule: string }[] };
   atteso("vercel.json: sincronizzazione ogni 10 minuti (richiede il piano Pro di Vercel, che il progetto ha già) e conservazione ogni giorno; i cron di prima restano", vercel.crons.some((c) => c.path === "/api/cron/omnia-ai-demo-sync" && c.schedule === "*/10 * * * *") && vercel.crons.some((c) => c.path === "/api/cron/omnia-ai-demo-purge" && c.schedule === "30 3 * * *") && vercel.crons.some((c) => c.path === "/api/cron/omnia-ai-purge-cessati") && vercel.crons.some((c) => c.path === "/api/cron/omnia-ai-email-retry" && c.schedule === "*/15 * * * *") && vercel.crons.filter((c) => !c.path.startsWith("/api/cron/radar-")).length === 4);
-  // Tender Intelligence (rilascio, documento 51 §5): oltre ai quattro di prima, solo i quattro cron del radar (TED, PVL, Sintel, SardegnaCAT),
-  // verificati da scripts/verifica-radar-b2a.ts (righe di CRON_PROPOSTI)
+  // Tender Intelligence (rilascio, documento 51 §5): oltre ai quattro di prima, solo i cron del radar (TED, PVL, Sintel, SardegnaCAT e, dalla
+  // Fase 2 del 26/11, SATER), verificati da scripts/verifica-radar-b2a.ts e verifica-radar-sater.ts (righe di CRON_PROPOSTI)
   atteso(
-    "vercel.json: oltre ai quattro di prima, solo i quattro cron del radar di Tender Intelligence e quello dei promemoria (F8, 51 §10)",
+    "vercel.json: oltre ai quattro di prima, solo i cinque cron del radar di Tender Intelligence (con SATER) e quello dei promemoria (F8, 51 §10)",
     vercel.crons
       .filter((c) => c.path.startsWith("/api/cron/radar-"))
       .map((c) => c.path)
       .sort()
-      .join(",") === ["/api/cron/radar-promemoria", "/api/cron/radar-pvl", "/api/cron/radar-sardegnacat", "/api/cron/radar-sintel", "/api/cron/radar-ted"].join(","),
+      .join(",") === ["/api/cron/radar-promemoria", "/api/cron/radar-pvl", "/api/cron/radar-sardegnacat", "/api/cron/radar-sater", "/api/cron/radar-sintel", "/api/cron/radar-ted"].join(","),
   );
 
   const sorgentiIntegrazioni = ["src/lib/demo-calendario-sync.ts", "src/lib/demo-ga4.ts", "src/lib/demo-ads-data-manager.ts", "src/lib/google-oauth.ts", "src/lib/demo-leads.ts", "src/lib/demo-consensi.ts", "src/lib/demo-blocco.ts", "src/lib/demo-ciclo.ts"].map((f) => [f, leggi(f)] as const);
