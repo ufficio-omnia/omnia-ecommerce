@@ -10,6 +10,9 @@ export type TipoOpportunita =
   | "manifestazione_interesse" // si presenta la candidatura per essere invitati
   | "indagine_mercato" // come sopra, per una procedura successiva
   | "sistema_qualificazione" // elenco, sistema di qualificazione, SDA istitutivo: ci si iscrive
+  // Fase 2 (decisione dell'utente del 26/11, migrazione 0140 proposta): l'ente raccoglie informazioni e contributi dagli operatori PRIMA di
+  // preparare la gara. Non è una gara né una candidatura; distinta da entrambe in elenchi, filtri e scheda
+  | "consultazione_preliminare"
   | "riservata" // procedura su invito, negoziata senza bando, appalto specifico di un SDA
   | "affidamento_diretto"; // nessuna competizione aperta
 
@@ -20,6 +23,7 @@ export const PARTECIPAZIONE: Record<TipoOpportunita, Partecipazione> = {
   manifestazione_interesse: "libera",
   indagine_mercato: "libera",
   sistema_qualificazione: "iscrizione",
+  consultazione_preliminare: "libera",
   riservata: "riservata",
   affidamento_diretto: "non_partecipabile",
 };
@@ -29,6 +33,7 @@ export const ETICHETTA_OPPORTUNITA: Record<TipoOpportunita, string> = {
   manifestazione_interesse: "Manifestazione di interesse",
   indagine_mercato: "Indagine di mercato",
   sistema_qualificazione: "Iscrizione a elenco o sistema di qualificazione",
+  consultazione_preliminare: "Consultazione preliminare di mercato",
   riservata: "Procedura riservata agli invitati",
   affidamento_diretto: "Affidamento diretto",
 };
@@ -56,6 +61,18 @@ export function opportunitaDaTipoAvviso(tipoAvviso: string | null | undefined): 
   if (/^P7_1_3$/.test(t)) return { tipo: "indagine_mercato", partecipazione: "libera" };
   if (/^P7_3$/.test(t)) return { tipo: "sistema_qualificazione", partecipazione: "iscrizione" };
   return null;
+}
+
+/**
+ * Le fonti che possono PRODURRE il tipo «consultazione_preliminare» (decisione del coordinamento del 26/11, opzione (a): interruttore PER
+ * FONTE, nel codice e non in una variabile d'ambiente). Le fonti fuori elenco restano ESATTAMENTE come prima: SATER e SardegnaCAT (in
+ * produzione) non cambiano finché l'utente non dà un via separato, dopo la 0140 in produzione e un collaudo. Il tipo si scrive nell'archivio
+ * SOLO dopo la 0140 (vincolo di tipo_opportunita della 0120): la 0140 va applicata PRIMA di ogni giro che produce consultazioni.
+ */
+export const FONTI_CON_CONSULTAZIONI: readonly string[] = ["start", "empulia", "siaps"];
+
+export function consultazioniAccese(fonte: string): boolean {
+  return FONTI_CON_CONSULTAZIONI.includes(fonte);
 }
 
 export function opportunita(tipo: TipoOpportunita): Opportunita {

@@ -18,7 +18,7 @@ import { TESTO_PULSANTI_SALVA } from "@/lib/opportunita-testi-calcoli";
 import ClassificazioneGara from "@/components/omnia-ai/opportunita/classificazione-gara";
 import { classificazioniAttive } from "@/lib/radar/ambiente";
 import { giorno, regioniLeggibili, settoriLeggibili } from "@/components/omnia-ai/opportunita/formato";
-import { COME_SI_PARTECIPA_PREINFORMAZIONE, ETICHETTA_TIPO, tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
+import { COME_SI_PARTECIPA_CONSULTAZIONE, COME_SI_PARTECIPA_PREINFORMAZIONE, ETICHETTA_TIPO, tipoDellaGara } from "@/lib/radar/tipo-gara-calcoli";
 
 // Scheda di una gara del Radar (fase B1): «In sintesi» con le quattro informazioni chiave, panoramica senza modello (solo i dati
 // dell'avviso), lotti, soglia UE spiegata, fonti verificabili (avviso ufficiale, versioni lette, date di verifica), cambiamenti rilevati.
@@ -205,6 +205,8 @@ export default async function SchedaGaraPage({ params, searchParams }: { params:
           />
           {/* C11 (nome deciso dall'utente): per una preinformazione che indice la gara si presenta prima la candidatura o la domanda */}
           {tipo === "preinformazione" && <Dato etichetta="Come si partecipa" valore={COME_SI_PARTECIPA_PREINFORMAZIONE} />}
+          {/* Fase 2 (consultazioni preliminari, 26/11): non è una gara né una candidatura */}
+          {tipo === "consultazione_preliminare" && <Dato etichetta="Che cos'è" valore={COME_SI_PARTECIPA_CONSULTAZIONE} />}
           <Dato etichetta="Stato" valore={ETICHETTA_STATO[stato]} />
           <Dato etichetta="Requisiti" valore="Non ancora analizzati" nota="L'analisi dei requisiti sui documenti di gara arriverà nelle prossime fasi." />
           <Dato
