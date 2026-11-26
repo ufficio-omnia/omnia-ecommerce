@@ -60,8 +60,8 @@ function unite(r1: RigaProcedura, v1: VersioneFonte, r2: RigaProcedura, v2: Vers
 
 async function principale() {
   // ───── 1. la regola, fonte per fonte ─────
-  // Fase 2: SATER come le altre piattaforme (ente e regione della piattaforma)
-  uguale("sede dell'ente: TED, Sintel, SardegnaCAT e SATER sì, la PVL no (luogo di esecuzione)", SEDE_DELL_ENTE, { ted: true, sintel: true, sardegnacat: true, sater: true, pvl: false });
+  // Fase 2: SATER e TuttoGare (in costruzione) come le altre piattaforme (ente dalla piattaforma o dall'anagrafica delle istanze)
+  uguale("sede dell'ente: TED, Sintel, SardegnaCAT, SATER e TuttoGare sì, la PVL no (luogo di esecuzione)", SEDE_DELL_ENTE, { ted: true, sintel: true, sardegnacat: true, sater: true, tuttogare: true, pvl: false });
   uguale("una fonte sconosciuta vale come sede (regole di sempre)", [indicaLaSede("ted"), indicaLaSede("pvl"), indicaLaSede("altra")], [true, false, true]);
   uguale("gruppi: la sede (3 campi) e le regioni del luogo di esecuzione sono separate", GRUPPI_CAMPI.filter((g) => g.nome === "luogo" || g.nome === "luogo_regioni").map((g) => [g.nome, g.colonne]), [["luogo", ["sa_comune", "sa_provincia", "sa_regione"]], ["luogo_regioni", ["luogo_regioni"]]]);
 

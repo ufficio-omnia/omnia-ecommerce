@@ -69,7 +69,7 @@ function fonteDelRegistro(f: FonteRegionale): f is Extract<FonteRegionale, Fonte
 }
 
 export async function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
-  if (fonteDelRegistro(fonte)) return giroRegistrato<RisultatoImportazioneRegionale>(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
+  if (fonteDelRegistro(fonte)) return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
   // Fase 2: una fonte non ancora ammessa dal registro dei giri (TuttoGare, in costruzione: il vincolo della 0128 la rifiuta finché non ha la
   // sua migrazione) non scrive la riga del registro; per il resto il giro è lo stesso, con le stesse guardie
   const r = await giroRegionale(admin, fonte, opzioni, (opzioni.nuovoIdEsecuzione ?? nuovoIdEsecuzione)());
