@@ -25,7 +25,8 @@ export const ETICHETTA_TIPO: Record<TipoMostrato, string> = {
   preinformazione: "Avviso di preinformazione",
 };
 
-// Fase 2 (consultazioni preliminari, 26/11): la riga della scheda che dice che cosa è (testo da far confermare all'utente)
+// Fase 2 (consultazioni preliminari, 26/11): la riga della scheda che dice che cosa è. Testo CONFERMATO dall'utente il 26/11 («va bene così»):
+// da usare così
 export const COME_SI_PARTECIPA_CONSULTAZIONE =
   "Consultazione preliminare di mercato: l'ente raccoglie informazioni e contributi dagli operatori prima di preparare la gara. Non è una gara né una candidatura: si risponde con le informazioni richieste entro il termine indicato.";
 
