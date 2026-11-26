@@ -95,17 +95,19 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     licenza: "Regione Autonoma della Sardegna – SardegnaCAT: licenza del feed non dichiarata; solo dati di fatto, con il collegamento alla pagina ufficiale e la citazione della fonte",
     porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
-  // Fase 2 (documento 60, connettore SATER): in costruzione, spenta, nascosta ai clienti, senza giri programmati. I testi diventano pubblici
-  // solo quando la fonte si accende con l'autorizzazione dell'utente (fonti-ricerca.tsx mostra SOLO le fonti attive e visibili).
+  // Fase 2 (documento 60, connettore SATER; in produzione dal 26/11 per decisione dell'utente): parte spenta e nascosta ai clienti (0134). I
+  // testi diventano pubblici solo quando la fonte è accesa e resa visibile dalla console (fonti-ricerca.tsx mostra SOLO le fonti attive e
+  // visibili).
   {
     id: "sater",
     nome: "SATER, piattaforma di e-procurement della Regione Emilia-Romagna (Intercent-ER)",
     stato: "in_costruzione",
     copertura: "Gare degli enti emiliano-romagnoli pubblicate su SATER, anche sotto la soglia europea (bandi, avvisi e indagini di mercato)",
-    aggiornamento: "Giri non ancora previsti (connettore in costruzione)",
+    aggiornamento: `Giri previsti ${testoOrari("sater")} (ora italiana), dagli elenchi pubblici del portale Intercent-ER`,
     limiti: [
       "Comprende solo le gare pubblicate su SATER",
       "Il CIG manca in circa un terzo degli avvisi (soprattutto indagini di mercato e manifestazioni di interesse)",
+      "Il CPV e l'importo non sono indicati negli elenchi: il settore si riconosce dall'oggetto",
       "Non comprende procedure su invito né affidamenti diretti",
     ],
     // confermata sul campione vero (addendum 60C): CC BY 4.0, riuso anche commerciale con l'attribuzione della fonte

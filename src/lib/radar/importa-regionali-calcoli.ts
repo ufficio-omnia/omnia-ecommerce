@@ -21,9 +21,9 @@ import type { VersioneFonte } from "./unione-calcoli";
 
 export type FonteRegionale = "sintel" | "sardegnacat" | "sater";
 
-// Le fonti regionali GESTITE da console e giri programmati. SATER (Fase 2, in costruzione) non c'è: la console non la mostra, non la accende
-// e non la lancia, e non ha una rotta cron. Entra qui solo con l'accensione autorizzata dall'utente.
-export const FONTI_REGIONALI = ["sintel", "sardegnacat"] as const satisfies readonly FonteRegionale[];
+// Le fonti regionali GESTITE da console e giri programmati. Fase 2: anche SATER (decisione dell'utente del 26/11: in produzione), con la
+// sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti).
+export const FONTI_REGIONALI = ["sintel", "sardegnacat", "sater"] as const satisfies readonly FonteRegionale[];
 export type FonteRegionaleGestita = (typeof FONTI_REGIONALI)[number];
 
 export type BandoRegionale = {

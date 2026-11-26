@@ -30,8 +30,8 @@ export type PermessoScrittura = { ok: true; ambiente: AmbienteDb } | { ok: false
 // fonti nel database. Non cambia nulla per il deploy di produzione né per gli script locali (VERCEL_ENV assente).
 export const MOTIVO_ANTEPRIMA = "Anteprima Vercel: le importazioni sono spente (la Preview legge lo staging, non lo scrive).";
 
-// Fase 2: «sater» (Intercent-ER / SATER, in costruzione). NON ha la variabile di produzione (VARIABILI_PRODUZIONE): fuori dallo staging non
-// è mai autorizzata, qualunque cosa ci sia nel database o nell'ambiente.
+// Fase 2: «sater» (Intercent-ER / SATER). In produzione come Sintel e SardegnaCAT: solo dal deploy di produzione e con la sua variabile
+// della tabella VARIABILI_PRODUZIONE (decisione dell'utente del 26/11: SATER in produzione); senza la variabile non importa e non notifica.
 export const FONTI_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater"] as const;
 export type FonteRadar = (typeof FONTI_RADAR)[number];
 
@@ -51,6 +51,7 @@ export const VARIABILI_PRODUZIONE: Readonly<Partial<Record<FonteRadar, string>>>
   pvl: "RADAR_PVL_PRODUZIONE",
   sintel: "RADAR_SINTEL_PRODUZIONE",
   sardegnacat: "RADAR_SARDEGNACAT_PRODUZIONE",
+  sater: "RADAR_SATER_PRODUZIONE",
 };
 const NOMI_FONTI: Record<FonteRadar, string> = { ted: "TED", pvl: "La PVL", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER" };
 

@@ -72,6 +72,9 @@ const ETICHETTA_OGGETTO: Record<string, string> = {
   "fonte:sardegnacat:nascosta_ai_clienti": "SardegnaCAT nascosta ai clienti",
   "fonte:sintel:giro": "Giro di Sintel dalla console",
   "fonte:sardegnacat:giro": "Giro di SardegnaCAT dalla console",
+  "fonte:sater:attiva": "Fonte SATER",
+  "fonte:sater:nascosta_ai_clienti": "SATER nascosta ai clienti",
+  "fonte:sater:giro": "Giro di SATER dalla console",
   "cliente:attivo": "Modulo per l'impresa",
   "gara:decisione_classificazione": "Decisione su una gara da verificare",
 };
@@ -524,7 +527,7 @@ export function catalogoFonti(dati: DatiTenderIntelligenceConsole) {
 
 // ───── Panoramica (/tender-intelligence): solo lettura, come va e che cosa c'è da fare ─────
 
-const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat"];
+const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater"];
 
 export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
   const { parametri } = dati;

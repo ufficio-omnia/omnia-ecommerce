@@ -21,7 +21,7 @@ export const GRAVITA_CONSOLE: Record<GravitaAllarme, { testo: string; tono: Tono
   informazione: { testo: "informazione", tono: "neutro" },
 };
 
-export const NOME_FONTE_CONSOLE: Record<FonteEsecuzione, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT" };
+export const NOME_FONTE_CONSOLE: Record<FonteEsecuzione, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER" };
 
 const MODO: Record<string, string> = { incrementale: "incrementale", recupero: "recupero", finestra: "finestra", manuale: "manuale (console)" };
 const ESITO: Record<string, string> = { ok: "riuscito", errore: "errore", sospesa: "sospesa", occupata: "occupata (altro giro in corso)", inerte: "nulla da fare", gia_eseguito: "già eseguito" };
@@ -110,7 +110,7 @@ export function giriProgrammatiFonte(fonte: FonteEsecuzione, env: Record<string,
 }
 
 export function giriProgrammatiTutti(env: Record<string, string | undefined>, adesso: Date): Record<FonteEsecuzione, GiriProgrammatiConsole> {
-  return { ted: giriProgrammatiFonte("ted", env, adesso), pvl: giriProgrammatiFonte("pvl", env, adesso), sintel: giriProgrammatiFonte("sintel", env, adesso), sardegnacat: giriProgrammatiFonte("sardegnacat", env, adesso) };
+  return { ted: giriProgrammatiFonte("ted", env, adesso), pvl: giriProgrammatiFonte("pvl", env, adesso), sintel: giriProgrammatiFonte("sintel", env, adesso), sardegnacat: giriProgrammatiFonte("sardegnacat", env, adesso), sater: giriProgrammatiFonte("sater", env, adesso) };
 }
 
 /** «RADAR_SINTEL_CRON=attivo (o il vecchio RADAR_REGIONALI_CRON=attivo)» */

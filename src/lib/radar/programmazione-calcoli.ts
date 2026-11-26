@@ -30,6 +30,14 @@ export const ORARI_GIRI: Readonly<Record<FonteEsecuzione, readonly OrarioGiro[]>
     { ora: "17:20", giorni: "feriali" },
     { ora: "12:20", giorni: "fine_settimana" },
   ],
+  // Fase 2 (26/11, proposta B2): SATER al minuto :50, lontano dai giri delle altre fonti (:05 PVL, :15 TED, :20 SardegnaCAT, :40 Sintel)
+  // e dai promemoria (:00, :30); 3 giri nei feriali a 4 ore di distanza e uno nel fine settimana (3 richieste al portale per giro)
+  sater: [
+    { ora: "08:50", giorni: "feriali" },
+    { ora: "12:50", giorni: "feriali" },
+    { ora: "16:50", giorni: "feriali" },
+    { ora: "12:50", giorni: "fine_settimana" },
+  ],
 };
 
 const TESTO_GIORNI: Record<GiorniGiro, string> = { tutti: "tutti i giorni", feriali: "dal lunedì al venerdì", fine_settimana: "il sabato e la domenica" };
@@ -112,6 +120,8 @@ export const CRON_PROPOSTI: Readonly<Record<FonteEsecuzione, readonly string[]>>
   sintel: ["40 5,6,11,12 * * *"],
   // una riga per rotta: chiama tutte le ore UTC possibili dei giorni feriali e del fine settimana, e decide la porta oraria
   sardegnacat: ["20 6,7,9,10,11,12,13,15,16 * * *"],
+  // 08:50, 12:50 e 16:50 di Roma = 7, 11, 15 UTC d'inverno e 6, 10, 14 UTC d'estate; la porta oraria tiene solo quelli giusti
+  sater: ["50 6,7,10,11,14,15 * * *"],
 };
 /**
  * Doppio richiamo (48C §3.1 punto 7): un giro PROGRAMMATO non riparte se l'ultimo giro riuscito della fonte è di meno di 45 minuti fa
@@ -126,10 +136,10 @@ export function eDoppioRichiamo(origine: OrigineGiro | undefined, ultimoSuccesso
 }
 
 /** Le rotte cron per fonte (K1: Sintel e SardegnaCAT hanno ciascuna la sua; la vecchia radar-regionali resta finché vercel.json non cambia). */
-export const ROTTE_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "/api/cron/radar-ted", pvl: "/api/cron/radar-pvl", sintel: "/api/cron/radar-sintel", sardegnacat: "/api/cron/radar-sardegnacat" };
+export const ROTTE_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "/api/cron/radar-ted", pvl: "/api/cron/radar-pvl", sintel: "/api/cron/radar-sintel", sardegnacat: "/api/cron/radar-sardegnacat", sater: "/api/cron/radar-sater" };
 
 /** L'interruttore d'ambiente di ogni rotta cron (= «attivo» per accenderla; spento di base). */
-export const INTERRUTTORI_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "RADAR_TED_CRON", pvl: "RADAR_PVL_CRON", sintel: "RADAR_SINTEL_CRON", sardegnacat: "RADAR_SARDEGNACAT_CRON" };
+export const INTERRUTTORI_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "RADAR_TED_CRON", pvl: "RADAR_PVL_CRON", sintel: "RADAR_SINTEL_CRON", sardegnacat: "RADAR_SARDEGNACAT_CRON", sater: "RADAR_SATER_CRON" };
 /** Il vecchio interruttore della rotta unica radar-regionali (Sintel e SardegnaCAT insieme), finché quella rotta esiste. */
 export const INTERRUTTORE_REGIONALI_VECCHIO = "RADAR_REGIONALI_CRON";
 

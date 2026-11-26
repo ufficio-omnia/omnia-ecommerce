@@ -34,6 +34,10 @@
       "schedule": "20 6,7,9,10,11,12,13,15,16 * * *"
     },
     {
+      "path": "/api/cron/radar-sater",
+      "schedule": "50 6,7,10,11,14,15 * * *"
+    },
+    {
       "path": "/api/cron/radar-promemoria",
       "schedule": "*/30 5-19 * * *"
     }
