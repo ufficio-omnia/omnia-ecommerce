@@ -7,8 +7,8 @@
 //     stesso formato verificato sulle tre;
 //   - collegamenti già presenti nell'archivio (D3 del 26/11, allegati/60/D3_risultato_26nov.csv): i domini «*.tuttogare.it» con più gare.
 //
-// DA CONFERMARE sul campione (prima del collaudo): nome esatto degli enti, regione delle centrali di committenza, beneficiari delle istanze a
-// più enti. I CODICI FISCALI NON si scrivono qui finché non vengono dall'anagrafica ufficiale (IPA) o dal CIG tramite la PVL: mai indovinati.
+// DA CONFERMARE: nome esatto degli enti e beneficiari delle istanze a più enti. Regioni confermate (collaudo del 26/11, verbale 60G: la
+// CUC Castelli della Sapienza è nel Lazio). I CODICI FISCALI NON si scrivono qui finché non vengono dall'anagrafica ufficiale (IPA) o dal CIG tramite la PVL: mai indovinati.
 // La scoperta automatica di altre istanze è un tema a parte (non ora).
 import type { IdRegione } from "../territorio";
 
@@ -79,8 +79,9 @@ export const ISTANZE_TUTTOGARE: readonly IstanzaTuttoGare[] = [
     host: "cuccastellidellasapienza.tuttogare.it",
     alias: [],
     nome: "Centrale unica di committenza «Castelli della Sapienza»",
-    // regione da confermare sul campione
-    regione: null,
+    // Lazio: confermato dal collaudo sullo staging del 26/11 (verbale 60G), le gare unite per CIG sono di Castel Gandolfo e Marcellina
+    // (provincia di Roma); fix autorizzato dal coordinamento. La provincia resta vuota (la centrale può servire comuni di più province)
+    regione: "lazio",
     ente: { denominazione: "Centrale unica di committenza Castelli della Sapienza", codiceFiscale: null, comune: null, provincia: null },
     multiEnte: true,
     beneficiari: {},

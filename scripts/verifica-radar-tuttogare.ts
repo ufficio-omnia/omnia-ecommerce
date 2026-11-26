@@ -122,7 +122,8 @@ function provaAnagrafica(): void {
   const attive = istanzeAttiveTuttoGare();
   controlla("pilota: 5 istanze attive (Roma, Uniba, Regione Siciliana da R4; due centrali di committenza da D3), host unici e minuscoli", attive.length === 5 && new Set(attive.map((i) => i.host)).size === 5 && attive.every((i) => i.host === i.host.toLowerCase()) && attive.filter((i) => i.scoperta === "R4").length === 3, attive.map((i) => i.host));
   controlla("anagrafica: NESSUN codice fiscale scritto (vengono dall'IPA o dal CIG via PVL, mai indovinati) e mappe dei beneficiari vuote finché il campione non le conferma", ISTANZE_TUTTOGARE.every((i) => i.ente.codiceFiscale === null && Object.keys(i.beneficiari).length === 0));
-  controlla("anagrafica: Roma e Uniba enti singoli, le centrali a più enti; regione da confermare dove non è certa (null, mai presunta)", !ROMA.multiEnte && !UNIBA.multiEnte && SICILIA.multiEnte && ROMA.regione === "lazio" && UNIBA.regione === "puglia" && SICILIA.regione === "sicilia" && istanzaDaHost("cuccastellidellasapienza.tuttogare.it")?.regione === null);
+  // CUC Castelli della Sapienza: Lazio, confermato dal collaudo del 26/11 (verbale 60G: gare unite di Castel Gandolfo e Marcellina)
+  controlla("anagrafica: Roma e Uniba enti singoli, le centrali a più enti; regioni (Castelli della Sapienza nel Lazio dal collaudo del 26/11)", !ROMA.multiEnte && !UNIBA.multiEnte && SICILIA.multiEnte && ROMA.regione === "lazio" && UNIBA.regione === "puglia" && SICILIA.regione === "sicilia" && istanzaDaHost("cuccastellidellasapienza.tuttogare.it")?.regione === "lazio" && istanzaDaHost("cucterradileuca.tuttogare.it")?.regione === "puglia");
   controlla("le altre istanze di D3 sono candidate, fuori dal pilota", ISTANZE_CANDIDATE_TUTTOGARE.length === 5 && ISTANZE_CANDIDATE_TUTTOGARE.every((h) => istanzaDaHost(h) === null));
   controlla("tetti per istanza tra 2 e 12 richieste (home compresa)", ISTANZE_TUTTOGARE.every((i) => i.richiesteMassime >= 2 && i.richiesteMassime <= 12));
   const casi: [string, string | null][] = [
@@ -242,8 +243,13 @@ function provaClassificazione(): void {
   const ignota = leggiGaraTuttoGare(ROMA, "101", { ...leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]), procedura: "Consultazione preliminare di mercato" }, ADESSO);
   const senza = leggiGaraTuttoGare(ROMA, "abc", leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]), ADESSO);
   controlla("esclusioni: scaduta, affidamento, tipo sconosciuto, codice non valido (nessuna identità inventata)", scaduta.tipo === "esclusione" && scaduta.motivo === "scaduta" && affidamento.tipo === "esclusione" && affidamento.motivo === "affidamento" && ignota.tipo === "esclusione" && ignota.motivo === "tipo_sconosciuto" && senza.tipo === "esclusione" && senza.motivo === "senza_identificativo");
-  const castelli = leggiGaraTuttoGare(istanzaDaHost("cuccastellidellasapienza.tuttogare.it") as IstanzaTuttoGare, "9", leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]), ADESSO) as BandoTuttoGare;
-  controlla("istanza con la regione da confermare: gara senza regione, «regione» tra i mancanti (mai una regione presunta)", castelli.tipo === "bando" && castelli.regioni.length === 0 && castelli.record.ente.regione === null && castelli.mancanti.includes("regione"));
+  // la regola resta per le istanze future: un'istanza con la regione non confermata (qui una copia sintetica senza regione) dà una gara senza
+  // regione, mai presunta
+  const castelliIstanza = istanzaDaHost("cuccastellidellasapienza.tuttogare.it") as IstanzaTuttoGare;
+  const senzaRegione = leggiGaraTuttoGare({ ...castelliIstanza, regione: null }, "9", leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]), ADESSO) as BandoTuttoGare;
+  controlla("istanza con la regione da confermare: gara senza regione, «regione» tra i mancanti (mai una regione presunta)", senzaRegione.tipo === "bando" && senzaRegione.regioni.length === 0 && senzaRegione.record.ente.regione === null && senzaRegione.mancanti.includes("regione"));
+  const castelli = leggiGaraTuttoGare(castelliIstanza, "9", leggiDettaglioTuttoGare(DETTAGLI_ROMA[101]), ADESSO) as BandoTuttoGare;
+  controlla("CUC Castelli della Sapienza: gara nel Lazio, «regione» non più tra i mancanti", castelli.tipo === "bando" && JSON.stringify(castelli.regioni) === '["lazio"]' && castelli.record.ente.regione === "lazio" && !castelli.mancanti.includes("regione"));
   const br = bandoDaTuttoGare(b, OGGI);
   controlla("bando per il motore: fonte «tuttogare», versione = giorno di lettura (come Sintel), piattaforma_id VUOTO (decisione (b)), nessuna dichiarazione", br?.fonte === "tuttogare" && br.versione.id === "appalti.comune.roma.it:101@2026-11-26" && br.piattaformaId === null && br.dichiarazione === null && br.tipoAvvisoFonte === "Procedura aperta", br);
   const riga = br ? rigaDaBandoRegionale(br, ADESSO) : null;
