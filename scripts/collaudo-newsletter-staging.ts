@@ -6,6 +6,7 @@
 //                                                            un'autorizzazione «scrittura_prova» registrata dal coordinatore
 //
 // Mai la produzione: guardia anti-produzione condivisa (TENDER_INTELLIGENCE_FASE0/autorizzazioni/guardia-staging.mjs).
+// Con la 0142 la prova copre anche iscrizione dal sito, conferma, inserimenti manuali e vincoli nuovi.
 // La prova di scrittura lascia sullo staging UNA edizione di collaudo (oggetto «[COLLAUDO STAGING …]», stato finale
 // «annullata») con le sue versioni e un iscritto fittizio @example.com disiscritto: le tabelle della newsletter non
 // concedono DELETE alla service role. Le righe di costo di prova in ai_operazioni vengono invece cancellate.
@@ -72,6 +73,8 @@ async function main() {
   atteso("riga delle impostazioni con i valori predefiniti (giovedì 18:00, venerdì 10:00)", !imp.error && imp.data?.giorno_generazione === 4 && imp.data?.ora_generazione === "18:00" && imp.data?.giorno_invio === 5 && imp.data?.ora_invio === "10:00", JSON.stringify(imp.data ?? imp.error));
   const det = await db.from("ai_operazioni").select("dettaglio").limit(1);
   atteso("ai_operazioni.dettaglio presente", !det.error, det.error?.message);
+  const c142 = await db.from("newsletter_iscritti").select("provenienza, azienda, note_admin, consenso_testo, informativa_versione, consenso_ip_hash, consenso_user_agent, conferma_token, conferma_inviata_il, conferme_inviate, confermato_il").limit(1);
+  atteso("0142: colonne delle iscrizioni pubbliche presenti", !c142.error, c142.error?.message);
   const rpc = await db.rpc("console_costi_per_cliente", { p_da: "2026-01-01T00:00:00Z", p_a: "2027-01-01T00:00:00Z" });
   atteso("funzione dei costi eseguibile dalla service role", !rpc.error, rpc.error?.message);
   const anon = await fetch(`${v.STAGING_SUPABASE_URL}/rest/v1/newsletter_iscritti?select=email&limit=1`, { headers: { apikey: v.STAGING_PUBLISHABLE_KEY ?? "", Authorization: `Bearer ${v.STAGING_PUBLISHABLE_KEY ?? ""}` } }).catch(() => null);
@@ -112,6 +115,33 @@ async function main() {
     atteso("versione riuscita senza contenuto: rifiutata", Boolean(fallitaConTesto.error));
     const programmaSenzaApprovazione = await db.from("newsletter_edizioni").update({ stato: "programmata", approvata_il: null }).eq("id", id);
     atteso("trigger: niente programmazione senza approvazione", Boolean(programmaSenzaApprovazione.error));
+
+    // 0142: vincoli e flussi delle iscrizioni pubbliche (codice vero, email simulate: RESEND_API_KEY tolta nel processo)
+    const stamp = Date.now();
+    const sitoSenzaConsenso = await db.from("newsletter_iscritti").insert({ email: `sito-senza-consenso-${stamp}@example.com`, base_giuridica: "consenso", prova_base: "prova di collaudo dello staging", provenienza: "sito", stato: "iscritto" });
+    atteso("0142: iscritto dal sito senza testo del consenso: rifiutato", Boolean(sitoSenzaConsenso.error));
+    const attesaSenzaGettone = await db.from("newsletter_iscritti").insert({ email: `attesa-${stamp}@example.com`, base_giuridica: "consenso", prova_base: "prova di collaudo dello staging", stato: "in_attesa" });
+    atteso("0142: «in_attesa» senza gettone di conferma: rifiutato", Boolean(attesaSenzaGettone.error));
+    const provenienzaStrana = await db.from("newsletter_iscritti").insert({ email: `strana-${stamp}@example.com`, base_giuridica: "consenso", prova_base: "prova di collaudo dello staging", provenienza: "altro" });
+    atteso("0142: provenienza non prevista: rifiutata", Boolean(provenienzaStrana.error));
+    const isc = await import("../src/lib/newsletter/iscrizioni");
+    const email = `collaudo-sito-${stamp}@example.com`;
+    const ric = await isc.richiediIscrizione({ email, consenso: true, ipHash: `collaudo-${stamp}`, userAgent: "collaudo staging" }, a);
+    const attesa = await a.iscrittoPerEmail(email);
+    atteso("iscrizione dal sito: riga «in_attesa» con consenso e gettone", ric.ok && attesa?.stato === "in_attesa" && attesa.provenienza === "sito" && /^[a-f0-9]{48}$/.test(attesa.conferma_token ?? ""));
+    const conf = await isc.confermaIscrizione(attesa!.conferma_token!, a);
+    const confermato = await a.iscrittoPerEmail(email);
+    atteso("conferma: «iscritto», gettone tolto, data di conferma", conf.ok && confermato?.stato === "iscritto" && confermato.conferma_token === null && Boolean(confermato.confermato_il));
+    const g = await import("../src/lib/newsletter/gestione-iscritti");
+    const ins = await g.inserisciDestinatari({ righe: [{ email, nome: null, azienda: null }, { email: `collaudo-manuale-${stamp}@example.com`, nome: "Prova", azienda: "Collaudo" }], base: "consenso", prova: "prova di collaudo dello staging", baseDal: "2026-11-27", note: "collaudo", categoria: "altro", provenienza: "importazione", nuovaAutorizzazione: false }, null, a);
+    atteso("inserimento manuale: duplicato riconosciuto, nuovo aggiunto con provenienza", ins.giaPresenti.length === 1 && ins.aggiunti.length === 1 && (await a.iscrittoPerEmail(`collaudo-manuale-${stamp}@example.com`))?.provenienza === "importazione");
+    const contratto = await db.from("newsletter_iscritti").insert({ email: `contratto-${stamp}@example.com`, base_giuridica: "contratto_abbonamento", prova_base: "prova di collaudo dello staging", provenienza: "abbonamento" }).select("id").single();
+    atteso("0142: base «contratto_abbonamento» ammessa", !contratto.error, contratto.error?.message);
+    // fine: le righe di collaudo restano disiscritte (nessun invio possibile)
+    for (const e of [email, `collaudo-manuale-${stamp}@example.com`, `contratto-${stamp}@example.com`]) {
+      const x = await a.iscrittoPerEmail(e);
+      if (x) await a.aggiornaIscritto(x.id, { stato: "disiscritto", disiscritto_il: new Date().toISOString(), motivo_uscita: "fine collaudo staging", conferma_token: null });
+    }
     await a.aggiornaIscritto(iscr.id, { stato: "disiscritto", disiscritto_il: new Date().toISOString(), motivo_uscita: "fine collaudo staging" });
     await a.aggiornaEdizione(id, { stato: "annullata" }, ["bozza", "in_revisione", "approvata", "programmata"]);
 

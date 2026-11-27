@@ -85,6 +85,7 @@ async function main() {
     "auth.ts": "autenticazione e account dell'e-commerce",
     "omnia-ai-auth.ts": "accesso, registrazione e scelta della password: l'Ufficio Gare deve poter entrare",
     "omnia-ai-demo.ts": "richiesta demo pubblica",
+    "omnia-ai-newsletter.ts": "iscrizione pubblica alla newsletter Tender Weekly (senza account, nessun dato di aziende clienti)",
     "omnia-ai-notifiche.ts": "notifiche: solo le righe proprie (regole di accesso); l'Ufficio Gare non ne ha",
     "checkout.ts": "acquisto dell'e-commerce",
     "conversion.ts": "e-commerce",
