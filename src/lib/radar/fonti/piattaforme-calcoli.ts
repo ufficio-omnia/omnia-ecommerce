@@ -9,7 +9,10 @@
 // Si riconoscono SOLO le piattaforme elencate qui: un identificativo non si presume mai per somiglianza dell'indirizzo.
 import { idTuttoGareDaUrl } from "./tuttogare-istanze";
 
-export type PiattaformaNota = "sardegnacat" | "sintel" | "sater";
+// Fase 2: «empulia» e «siaps» (piattaforme AF Soluzioni come SardegnaCAT): l'IdMsg del feed è l'identificativo della procedura nei
+// collegamenti pubblici (ricognizione del 27/11: EmPULIA 40 su 40 nel link di dettaglio; SIAPS 2 id su 2 uguali ai collegamenti PVL/TED in
+// archivio). Solo per i connettori: TED e PVL non riconoscono queste forme (nessun cambio a ciò che scrivono).
+export type PiattaformaNota = "sardegnacat" | "sintel" | "sater" | "empulia" | "siaps";
 
 type Regola = { piattaforma: PiattaformaNota; host: RegExp; id: RegExp };
 

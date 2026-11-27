@@ -58,6 +58,9 @@ export class SessioneFonte {
     private readonly segnale?: AbortSignal,
     // K9: lo User-Agent del giro (user-agent.ts); di base quello generico
     private readonly userAgent: string = USER_AGENT_FONTI,
+    // Fase 2 (EmPULIA, SIAPS): un reindirizzamento seguito conta come una richiesta in più (budget in richieste HTTP). Di base no: le fonti
+    // di prima contano come sempre
+    private readonly contaReindirizzamenti = false,
   ) {}
 
   private async una(url: string, accetta: string): Promise<RispostaFonte> {
@@ -75,6 +78,7 @@ export class SessioneFonte {
       // i reindirizzamenti si seguono come farebbe un lettore di feed (l'indirizzo pubblicato non si cambia mai)
       const r = await this.fetchFn(url, { headers: { Accept: accetta, "User-Agent": this.userAgent }, signal: controllo.signal, cache: "no-store", redirect: "follow" });
       const testo = await r.text();
+      if (this.contaReindirizzamenti && r.redirected) this.richieste++;
       const ms = Date.now() - inizio;
       this.byte += testo.length;
       this.ms += ms;

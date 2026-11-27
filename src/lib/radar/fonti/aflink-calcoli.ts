@@ -17,7 +17,7 @@
 import { istanteScadenza } from "../../omnia-ai-revisione-calcoli";
 import { classificaGara, normalizzaCpv, type SettoreRadar } from "../settori";
 import { maiuscoleIniziali, type IdRegione } from "../territorio";
-import { entraInOpportunita, opportunitaAflink, type Opportunita } from "../opportunita-calcoli";
+import { consultazioniAccese, entraInOpportunita, opportunita, opportunitaAflink, type Opportunita } from "../opportunita-calcoli";
 import { idPiattaforma, idPiattaformaDaUrlConnettore, type PiattaformaNota } from "./piattaforme-calcoli";
 import { cigSintel } from "./sintel-calcoli";
 import { giornoDiRoma, impronta, type ScadenzaTed } from "./ted-calcoli";
@@ -29,7 +29,9 @@ export const NAMESPACE_AFLINK = "http://www.aflink.it/XMLBANDI";
 
 // Fase 2 (documento 60, connettore SATER): il lettore vale per PIÙ istanze dello stesso software. Ogni istanza dichiara qui come è fatto il
 // suo feed; SardegnaCAT resta esattamente com'era (stessi campi obbligatori, solo collegamenti https, IdMsg = identificativo della procedura).
-export type IstanzaAflink = "sardegnacat" | "sater";
+// Fase 2 (27/11): anche EmPULIA (InnovaPuglia) e SIAPS (So.Re.Sa.), in costruzione e SPENTE (nessuna variabile di produzione, fuori da console
+// e cron); autorizzazione dell'utente del 26/11 (richiesta di consenso inviata, responsabilità assunta dall'utente).
+export type IstanzaAflink = "sardegnacat" | "sater" | "empulia" | "siaps";
 
 export type DescrizioneIstanzaAflink = {
   nome: string;
@@ -56,6 +58,17 @@ export type DescrizioneIstanzaAflink = {
   // collegamento alla pagina ufficiale ricostruito dall'IdMsg quando il feed non ne dà uno valido; null = mai ricostruito (nessun indirizzo
   // si ricava per analogia)
   collegamentoDaIdMsg: ((idMsg: string) => string) | null;
+  // Fase 2 (EmPULIA): il feed pubblicato dà una pagina per volta e contiene già il numero di pagina («nPag=1»). Si scorrono le pagine
+  // cambiando SOLO quel numero (decisione §6.4 confermata dal coordinamento il 26/11: mai FilterHide, mai numRowForPag), fino al totRecord,
+  // entro pagineMassime. Assente = una sola lettura (SardegnaCAT, come prima)
+  paginazione?: { perPagina: number; pagineMassime: number };
+  // Fase 2 (EmPULIA): altri feed PUBBLICATI della stessa istanza, letti dopo il principale (consultazioni); gli elementi si uniscono per IdMsg
+  feedAggiuntivi?: readonly string[];
+  // Fase 2 (EmPULIA, SIAPS): regole delle opportunità estese (opportunitaAflinkEstesa): consultazioni preliminari, candidature e affidamenti
+  // dichiarati nell'oggetto, richieste di preventivo. Assente = la regola AF di sempre (SardegnaCAT e SATER IDENTICHE)
+  regoleEstese?: boolean;
+  // Fase 2: ogni reindirizzamento seguito conta come una richiesta (budget in richieste HTTP, decisione del coordinamento del 27/11)
+  contaReindirizzamenti?: boolean;
 };
 
 // Campi obbligatori di SardegnaCAT (fase B2-0): invariati.
@@ -99,6 +112,54 @@ export const ISTANZE_AFLINK: Record<IstanzaAflink, DescrizioneIstanzaAflink> = {
     idMsgEIdPiattaforma: false,
     collegamentoDaIdMsg: null,
   },
+  // EmPULIA (InnovaPuglia, Puglia). Ricognizione del 27/11 (17 richieste, sola lettura): pagina «Feed Rss» PUBBLICATA sulla vetrina
+  // http://www.empulia.it/tno-a/empulia/Empulia/SitePages/Feed%20Rss.aspx; feed dei bandi in corso con 20 elementi per pagina (totRecord 116,
+  // pagine 1 e 2 senza sovrapposizioni) e feed delle consultazioni (694 elementi, tutto lo storico: le scadute si escludono qui). Nessun
+  // robots.txt. Mai TipoProcedura; CIG in 13 elementi su 40; dataUltimaModifica sempre; nessun dato personale nei campi. I collegamenti dei
+  // bandi sono la pagina pubblica di dettaglio sulla vetrina (http, host www.empulia.it) con l'IdMsg; quelli delle consultazioni sono https su
+  // eproc.empulia.it. Identità «empulia:<IdMsg>» (confermata dal coordinamento il 27/11).
+  empulia: {
+    nome: "EmPULIA",
+    piattaforma: "empulia",
+    host: "www.empulia.it",
+    urlFeed: "https://eproc.empulia.it/portale/rss_bandi.asp?FilterHide=bScaduto=0+and+tipo<>'Esito'+&numRowForPag=20&nPag=1",
+    paginaFeed: "http://www.empulia.it/tno-a/empulia/Empulia/SitePages/Feed%20Rss.aspx",
+    regione: "puglia",
+    attribuzione: "InnovaPuglia – EmPULIA, piattaforma di e-procurement della Regione Puglia (feed RSS pubblici)",
+    licenza: "Note legali: riproduzione solo con consenso scritto; consenso richiesto con PEC il 26/11, collegamento autorizzato dall'utente che se ne assume la responsabilità",
+    campiObbligatori: CAMPI_AFLINK_ESSENZIALI,
+    proceduraFacoltativa: true,
+    collegamentiHttp: true,
+    idMsgEIdPiattaforma: true,
+    collegamentoDaIdMsg: null,
+    paginazione: { perPagina: 20, pagineMassime: 8 },
+    feedAggiuntivi: ["https://eproc.empulia.it/portale/rss_bandi_consultazione.asp"],
+    regoleEstese: true,
+    contaReindirizzamenti: true,
+  },
+  // SIAPS (So.Re.Sa., Campania, enti sanitari). Ricognizione del 27/11: pagina «Feed RSS» PUBBLICATA
+  // https://siaps.soresa.it/portalegare/index.php/feed-rss; feed con lo stesso indirizzo di SardegnaCAT, tutto in una lettura (73 elementi:
+  // Bando 45, Consultazione Preliminare di Mercato 25, Avviso 3). Nessun robots.txt. Mai CIG, TipoProcedura né dataUltimaModifica; nessun dato
+  // personale nei campi. L'IdMsg è l'id dei collegamenti ufficiali (2 su 2 uguali ai BT-15 di PVL e TED in archivio). I link del feed sono http
+  // e risultavano rotti (R3): il collegamento per il cliente è quello UFFICIALE dei BT-15, ricostruito dall'IdMsg (confermato dal
+  // coordinamento il 27/11); mai la pagina /aflink/document/ (dettaglio con dati personali, non si legge mai).
+  siaps: {
+    nome: "SIAPS",
+    piattaforma: "siaps",
+    host: "siaps.soresa.it",
+    urlFeed: "https://siaps.soresa.it/portale/rss_bandi.asp?FilterHide=bScaduto%3D0+and+tipo%3C%3E%27Esito%27+&sort=DtScadenzaBandoTecnical&sortorder=asc",
+    paginaFeed: "https://siaps.soresa.it/portalegare/index.php/feed-rss",
+    regione: "campania",
+    attribuzione: "So.Re.Sa. – SIAPS, piattaforma di e-procurement della sanità della Regione Campania (feed RSS pubblico)",
+    licenza: "Note legali: riproduzione solo con autorizzazione scritta; consenso richiesto con PEC il 26/11, collegamento autorizzato dall'utente che se ne assume la responsabilità",
+    campiObbligatori: CAMPI_AFLINK_ESSENZIALI,
+    proceduraFacoltativa: true,
+    collegamentiHttp: false,
+    idMsgEIdPiattaforma: true,
+    collegamentoDaIdMsg: (idMsg) => `https://portale.soresa.it/aflink/direct/link/?id=${idMsg}`,
+    regoleEstese: true,
+    contaReindirizzamenti: true,
+  },
 };
 
 // Una lettura del feed per giro; la pagina dei feed chiede una frequenza bassa.
@@ -108,6 +169,16 @@ export const LIMITI_AFLINK_INTERVALLI: Record<keyof LimitiFonte, { min: number; 
   timeoutMs: { min: 5_000, max: 120_000 },
   tentativi: { min: 1, max: 3 },
   richiesteMassime: { min: 1, max: 4 },
+};
+
+// Fase 2 (EmPULIA): istanze con le pagine del feed. Circa 6 pagine dei bandi più il feed delle consultazioni, ognuna con il reindirizzamento
+// del portale (contato come richiesta): circa 14 richieste HTTP a giro (budget confermato dal coordinamento il 27/11), distanziate
+export const LIMITI_AFLINK_PAGINATI_PREDEFINITI: LimitiFonte = { pausaMs: 5_000, timeoutMs: 60_000, tentativi: 2, richiesteMassime: 18 };
+export const LIMITI_AFLINK_PAGINATI_INTERVALLI: Record<keyof LimitiFonte, { min: number; max: number }> = {
+  pausaMs: { min: 3_000, max: 60_000 },
+  timeoutMs: { min: 5_000, max: 120_000 },
+  tentativi: { min: 1, max: 3 },
+  richiesteMassime: { min: 2, max: 24 },
 };
 
 // ───── lettura dell'XML (minima, senza dipendenze: il formato è noto e controllato) ─────
@@ -307,6 +378,76 @@ export function idPiattaformaAflink(istanza: IstanzaAflink, idMsg: string, url: 
   return id && id.startsWith(`${desc.piattaforma}:`) ? id : null;
 }
 
+// ───── Fase 2 (EmPULIA, SIAPS): pagine del feed, regole estese, id nei collegamenti ─────
+
+/**
+ * L'indirizzo PUBBLICATO con il solo numero di pagina cambiato («nPag=1» → «nPag=<n>»), tutto il resto identico carattere per carattere
+ * (decisione §6.4: mai FilterHide, mai numRowForPag). Senza «nPag» nell'indirizzo, o con un numero fuori misura → null (nessuna pagina).
+ */
+export function urlPaginaAflink(urlPubblicato: string, pagina: number): string | null {
+  if (!Number.isInteger(pagina) || pagina < 1 || pagina > 50) return null;
+  const m = urlPubblicato.match(/([?&]nPag=)(\d*)(?=&|$)/);
+  if (!m || m.index === undefined) return null;
+  return `${urlPubblicato.slice(0, m.index)}${m[1]}${pagina}${urlPubblicato.slice(m.index + m[0].length)}`;
+}
+
+// candidature dichiarate nell'oggetto: indagine di mercato (anche «conoscitiva» o «esplorativa»), avviso esplorativo, manifestazione d'interesse
+function candidaturaDichiarata(testo: string): Opportunita | null {
+  if (/indagin[ei]\s+(?:conoscitiv[ao]\s+|esplorativ[ao]\s+)?di\s+mercato/i.test(testo)) return opportunita("indagine_mercato");
+  if (/manifestazion[ei]\s+d[i'’]\s*interesse|avviso\s+esplorativo/i.test(testo)) return opportunita("manifestazione_interesse");
+  return null;
+}
+
+/**
+ * Le regole delle opportunità per le istanze con regoleEstese (EmPULIA, SIAPS; decisioni del coordinamento del 26–27/11). SardegnaCAT e SATER
+ * NON passano di qui (opportunitaAflink invariata):
+ *   - Tipo «Consultazione Preliminare di Mercato»: un oggetto che dichiara una candidatura (indagine di mercato, avviso esplorativo,
+ *     manifestazione d'interesse) → CANDIDATURA; una richiesta di preventivo → indagine di mercato; un affidamento diretto → fuori; altrimenti
+ *     il tipo nuovo «consultazione_preliminare», SOLO se la fonte è nell'interruttore per fonte (FONTI_CON_CONSULTAZIONI), altrimenti nessuna;
+ *   - Tipo «Bando» senza TipoProcedura: affidamento diretto nell'oggetto → fuori (salvo candidatura dichiarata); negoziata → riservata salvo
+ *     previa pubblicazione o candidatura dichiarata (come le altre fonti); richiesta di preventivo → indagine di mercato; candidatura dichiarata
+ *     → candidatura; il resto come la regola AF (bando);
+ *   - altri tipi («Avviso»): la regola AF.
+ */
+export function opportunitaAflinkEstesa(istanza: IstanzaAflink, tipo: string | null | undefined, procedura: string | null | undefined, testo: string): Opportunita | null {
+  const t = (tipo ?? "").trim().toLowerCase();
+  const affidamento = /\baffidamento\s+diretto\b/i.test(testo);
+  const preventivo = /richiest[ae]\s+(?:di\s+)?preventiv/i.test(testo);
+  if (/^consultazion/.test(t)) {
+    const c = candidaturaDichiarata(testo);
+    if (c) return c;
+    if (affidamento) return opportunita("affidamento_diretto");
+    if (preventivo) return opportunita("indagine_mercato");
+    return consultazioniAccese(istanza) ? opportunita("consultazione_preliminare") : null;
+  }
+  if (t === "bando") {
+    const c = candidaturaDichiarata(testo);
+    if (affidamento) return c ?? opportunita("affidamento_diretto");
+    if (/^negoziata/i.test((procedura ?? "").trim()) || /\bprocedura\s+negoziata\b/i.test(testo)) {
+      return /previa\s+(pubblicazione|indizione)|con\s+bando/i.test(testo) ? opportunita("bando") : (c ?? opportunita("riservata"));
+    }
+    if (preventivo) return opportunita("indagine_mercato");
+    if (c) return c;
+  }
+  return opportunitaAflink(tipo, procedura, testo);
+}
+
+/**
+ * L'IdMsg SIAPS in un collegamento ufficiale: «https://portale.soresa.it/aflink/direct/link/?id=<n>» (BT-15 di PVL e TED) o
+ * «http(s)://siaps.soresa.it/application/CustomDoc/DettaglioProcedura.asp?ID=<n>» (TED più vecchi). Solo per i SUGGERIMENTI in console.
+ */
+export function idSiapsDaUrl(url: string | null | undefined): string | null {
+  let u: URL;
+  try {
+    u = new URL((url ?? "").trim());
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  const id = host === "portale.soresa.it" && /^\/aflink\/direct\/link\/?$/i.test(u.pathname) ? u.searchParams.get("id") : host === "siaps.soresa.it" && /^\/application\/customdoc\/dettaglioprocedura\.asp$/i.test(u.pathname) ? (u.searchParams.get("ID") ?? u.searchParams.get("id")) : null;
+  return id && /^\d{1,12}$/.test(id) ? id : null;
+}
+
 // ───── un elemento del feed → bando o esclusione ─────
 
 export type MotivoEsclusioneAflink = "elemento_malformato"
@@ -371,7 +512,9 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
   const proceduraFeed = (e.TipoProcedura ?? "").trim();
   const proceduraOggetto = !proceduraFeed && desc.proceduraFacoltativa ? proceduraDallOggettoAflink([ogg.testo, titoloBreve].filter(Boolean).join(" ")) : null;
   const proceduraIgnota = !proceduraFeed && !proceduraOggetto && desc.proceduraFacoltativa;
-  const opp = opportunitaAflink(e.Tipo, proceduraFeed || proceduraOggetto || (proceduraIgnota ? "Aperta" : e.TipoProcedura), ogg.testo);
+  const proceduraRegola = proceduraFeed || proceduraOggetto || (proceduraIgnota ? "Aperta" : e.TipoProcedura);
+  // Fase 2: regole estese SOLO per le istanze che le dichiarano (EmPULIA, SIAPS); SardegnaCAT e SATER: la regola AF di sempre, identica
+  const opp = desc.regoleEstese ? opportunitaAflinkEstesa(istanza, e.Tipo, proceduraRegola, [ogg.testo, titoloBreve].filter(Boolean).join(" ")) : opportunitaAflink(e.Tipo, proceduraRegola, ogg.testo);
   if (!opp) return esclusione("tipo_sconosciuto");
   if (opp.tipo === "affidamento_diretto") return esclusione("affidamento");
   if (!entraInOpportunita(opp)) return esclusione("riservata");
