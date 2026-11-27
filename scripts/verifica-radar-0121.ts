@@ -181,7 +181,7 @@ async function principale() {
     // Rilascio (piano 55, F3 passo 9): con master entrano le due migrazioni del sito già eseguite in produzione (0130 copertina in vendita,
     // 0131 gare omaggio); escluse per nome dal confronto, l'elenco del radar resta esatto
     // 26/11: più la 0136 del sito (fino a 3 Uffici Gare per titolare)
-    const DEL_SITO = ["0130_copertina_vendita_pacchetti.sql", "0131_omnia_ai_gare_omaggio.sql", "0136_omnia_ai_uffici_gare_tre.sql"];
+    const DEL_SITO = ["0130_copertina_vendita_pacchetti.sql", "0131_omnia_ai_gare_omaggio.sql", "0136_omnia_ai_uffici_gare_tre.sql", "0141_newsletter_tender_weekly.sql"];
     const migrazioni = fs.readdirSync(path.join(RADICE, "supabase/migrations")).filter((f) => /^01[2-9]\d_/.test(f) && !DEL_SITO.includes(f));
     // fase B4 (19/11): dopo la 0121 solo le B4 0122–0125 del 26B; Z5 (21/11): più la 0128 (registro dei giri); 49A (23/11, sessione PVL):
     // più la 0133 (stato «da_verificare», schema S4, numero assegnato dal coordinamento), esattamente queste; Fase 2 (26/11, connettore
