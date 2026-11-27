@@ -6,8 +6,9 @@ import { erroreDaConservare } from "./lavori-calcoli";
 import { testoContattoMancante } from "./fonti/user-agent";
 
 // Fase 2: SATER e TuttoGare (decisioni dell'utente del 26/11: in produzione) sono fonti della console, degli allarmi e dei cron come le
-// altre. Il vincolo della 0128 le ammette con la 0134 e la 0135.
-export const FONTI_ESECUZIONI = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"] as const;
+// altre. Il vincolo della 0128 le ammette con la 0134 e la 0135. EmPULIA e SIAPS allo stesso modo (decisione dell'utente del 27/11), con la
+// 0138 e la 0139.
+export const FONTI_ESECUZIONI = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare", "empulia", "siaps"] as const;
 export type FonteEsecuzione = (typeof FONTI_ESECUZIONI)[number];
 
 /**
@@ -16,8 +17,7 @@ export type FonteEsecuzione = (typeof FONTI_ESECUZIONI)[number];
  * della 0128 ammette «start» solo con la 0137 PROPOSTA: prima di quella, la riga di un giro START non si scrive (scriviEsecuzione non lancia
  * mai eccezioni). Stessa forma di SATER e TuttoGare durante i loro collaudi.
  */
-// EmPULIA e SIAPS (in costruzione) allo stesso modo, con la 0138 e la 0139 PROPOSTE.
-export const FONTI_REGISTRO = [...FONTI_ESECUZIONI, "start", "empulia", "siaps"] as const;
+export const FONTI_REGISTRO = [...FONTI_ESECUZIONI, "start"] as const;
 export type FonteRegistro = (typeof FONTI_REGISTRO)[number];
 export type ModoEsecuzione = "incrementale" | "recupero" | "finestra" | "manuale";
 export type EsitoEsecuzione = "ok" | "errore" | "sospesa" | "occupata" | "inerte" | "gia_eseguito";

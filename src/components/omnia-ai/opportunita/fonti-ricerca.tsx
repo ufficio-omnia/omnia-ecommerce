@@ -1,10 +1,10 @@
 import { descrizioneFonte } from "@/lib/radar/fonti/tipi";
 import { giorno } from "./formato";
 
-export type StatoFontePubblica = { fonte: "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare"; attiva: boolean; datiAl: string | null; ultimoSuccesso: string | null };
+export type StatoFontePubblica = { fonte: "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare" | "empulia" | "siaps"; attiva: boolean; datiAl: string | null; ultimoSuccesso: string | null };
 
 // Regioni sotto soglia coperte da una piattaforma regionale attiva (decisione 9 del 16/11: mai dichiarare una copertura che non c'è).
-const REGIONE_DELLA_PIATTAFORMA: Partial<Record<StatoFontePubblica["fonte"], string>> = { sintel: "Lombardia (gare su Sintel)", sardegnacat: "Sardegna (gare su SardegnaCAT)", sater: "Emilia-Romagna (gare su SATER)", tuttogare: "alcuni enti di Lazio, Puglia e Sicilia (sulle loro piattaforme)" };
+const REGIONE_DELLA_PIATTAFORMA: Partial<Record<StatoFontePubblica["fonte"], string>> = { sintel: "Lombardia (gare su Sintel)", sardegnacat: "Sardegna (gare su SardegnaCAT)", sater: "Emilia-Romagna (gare su SATER)", tuttogare: "alcuni enti di Lazio, Puglia e Sicilia (sulle loro piattaforme)", empulia: "Puglia (gare su EmPULIA)", siaps: "Campania, sanità (gare su SIAPS)" };
 
 // Copertura, aggiornamento e limiti delle fonti attive, sempre visibili nelle schermate di ricerca (precisazione P3 del 16/11/2026).
 // Fase B1-bis: anche la PVL di ANAC, quando è accesa (solo staging). Una gara pubblicata su entrambe compare una volta sola.

@@ -129,7 +129,11 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
             ? limitiValidi(opzioni.limiti, LIMITI_START_PREDEFINITI, LIMITI_START_INTERVALLI)
             : ISTANZE_AFLINK[fonte].paginazione
               ? limitiValidi(opzioni.limiti, LIMITI_AFLINK_PAGINATI_PREDEFINITI, LIMITI_AFLINK_PAGINATI_INTERVALLI)
-              : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
+              : ISTANZE_AFLINK[fonte].contaReindirizzamenti
+                ? // SIAPS (27/11, in produzione): la lettura passa da un reindirizzamento contato (2 richieste); 4 = un nuovo tentativo possibile,
+                  // come nei collaudi, ed è il massimo ammesso per le istanze AF senza pagine. SardegnaCAT e SATER come prima (2).
+                  limitiValidi(opzioni.limiti, { ...LIMITI_AFLINK_PREDEFINITI, richiesteMassime: 4 }, LIMITI_AFLINK_INTERVALLI)
+                : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
   // Fase 2 (EmPULIA, SIAPS): ogni reindirizzamento seguito conta come una richiesta; le altre fonti contano come sempre
   const contaReindirizzamenti = fonte !== "sintel" && fonte !== "tuttogare" && fonte !== "start" && ISTANZE_AFLINK[fonte].contaReindirizzamenti === true;
   const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : fonte === "tuttogare" ? "TuttoGare" : fonte === "start" ? "START" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore, contaReindirizzamenti);

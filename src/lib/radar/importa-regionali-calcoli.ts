@@ -23,13 +23,12 @@ import type { VersioneFonte } from "./unione-calcoli";
 
 // Fase 2: «start» (START Toscana, in costruzione): importabile SOLO sullo staging (nessuna variabile di produzione), fuori da console,
 // cron e programmatore (non è in FONTI_REGIONALI).
-// EmPULIA e SIAPS (Fase 2, in costruzione) allo stesso modo: importabili SOLO sullo staging, fuori da console, cron e programmatore.
 export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare" | "start" | "empulia" | "siaps";
 
 // Le fonti regionali GESTITE da console e giri programmati. Fase 2: anche SATER (decisione dell'utente del 26/11: in produzione), con la
 // sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti). TuttoGare allo stesso modo (decisione
-// dell'utente del 26/11), con la riga della 0135.
-export const FONTI_REGIONALI = ["sintel", "sardegnacat", "sater", "tuttogare"] as const satisfies readonly FonteRegionale[];
+// dell'utente del 26/11), con la riga della 0135. EmPULIA e SIAPS allo stesso modo (decisione dell'utente del 27/11), con la 0138 e la 0139.
+export const FONTI_REGIONALI = ["sintel", "sardegnacat", "sater", "tuttogare", "empulia", "siaps"] as const satisfies readonly FonteRegionale[];
 export type FonteRegionaleGestita = (typeof FONTI_REGIONALI)[number];
 
 export type BandoRegionale = {
