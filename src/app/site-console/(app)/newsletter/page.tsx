@@ -13,7 +13,7 @@ import { TONO_STATO } from "../../_componenti/newsletter-comuni";
 import { creaEdizioneVuota, generaEdizioneSettimanale, salvaImpostazioniNewsletter } from "../../azioni/newsletter";
 
 export const metadata: Metadata = { title: "Newsletter & Comunicazioni" };
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 type Dati = { stato: "ok"; edizioni: Edizione[]; iscritti: Iscritto[]; invii: Invio[]; imp: Impostazioni } | { stato: "errore"; messaggio: string };
 
@@ -79,7 +79,7 @@ export default async function PaginaNewsletter() {
         <Pannello titolo="Genera edizione settimanale">
           <p className="cn-nota">
             Il modello cerca sul web le notizie degli ultimi 7 giorni su fonti ufficiali e autorevoli (ANAC, MIT, Gazzetta Ufficiale, Normattiva, Giustizia amministrativa…) e propone oggetto, preheader e sezioni. I link che non risultano dalla
-            ricerca vengono tolti in automatico. La bozza va sempre riletta e approvata: niente parte da solo. Durata: 2–5 minuti.
+            ricerca vengono tolti in automatico. La bozza va sempre riletta e approvata: niente parte da solo. Durata: fino a 5–8 minuti.
           </p>
           <ModuloAzione azione={generaEdizioneSettimanale} etichetta="Genera edizione settimanale" etichettaInCorso="Ricerca e scrittura in corso…" variante="primario" classe="cn-modulo">
             <label className="cn-etichetta" htmlFor="nl-fonti">

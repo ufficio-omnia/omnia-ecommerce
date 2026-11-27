@@ -12,7 +12,7 @@ import { cronAutorizzato } from "@/lib/cron-autorizzato";
 //   - avvisa l'amministratore quando la bozza è pronta (solo sul deploy di produzione).
 // La risposta contiene solo numeri e motivi: nessun indirizzo, nessun testo.
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function GET(request: NextRequest) {
   if (!cronAutorizzato(request.headers.get("authorization"), process.env.CRON_SECRET)) {

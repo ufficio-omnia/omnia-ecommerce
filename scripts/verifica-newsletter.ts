@@ -168,7 +168,7 @@ async function main() {
   uguale("un clic conta", applicaEvento({ ...riga, stato: "consegnato" }, "email.clicked", "t")?.clic, 1);
 
   console.log("--- 7. Flussi completi (archivio locale, invio simulato) ---");
-  atteso("fuori dalla produzione l'invio reale è vietato", !invioRealeConsentito(process.env) && !invioRealeConsentito({ RESEND_API_KEY: "x", VERCEL_ENV: "preview" } as NodeJS.ProcessEnv) && invioRealeConsentito({ RESEND_API_KEY: "x", VERCEL_ENV: "production" } as NodeJS.ProcessEnv));
+  atteso("fuori dalla produzione l'invio reale è vietato", !invioRealeConsentito(process.env) && !invioRealeConsentito({ RESEND_API_KEY: "x", VERCEL_ENV: "preview" } as unknown as NodeJS.ProcessEnv) && invioRealeConsentito({ RESEND_API_KEY: "x", VERCEL_ENV: "production" } as unknown as NodeJS.ProcessEnv));
   const a = archivioNewsletter();
   uguale("archivio locale attivo", a.tipo, "locale");
   const ed = await a.creaEdizione({ data_edizione: "2026-11-27", oggetto: dati.oggetto, preheader: "p", contenuto: c }, null);

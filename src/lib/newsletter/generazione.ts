@@ -246,10 +246,12 @@ export async function generaEdizione(opz: {
       model,
       max_tokens: 32000,
       thinking: { type: "adaptive" },
+      // sforzo medio: la qualità viene dalle fonti e dal filtro deterministico; così una generazione resta sotto i 5–6 minuti
+      output_config: { effort: "medium" },
       system: ISTRUZIONI,
       tools: [
-        { type: "web_search_20260209", name: "web_search", max_uses: 12, allowed_domains: DOMINI_AUTOREVOLI, user_location: { type: "approximate", country: "IT", timezone: "Europe/Rome" } },
-        { type: "web_fetch_20260209", name: "web_fetch", max_uses: 8, allowed_domains: DOMINI_AUTOREVOLI },
+        { type: "web_search_20260209", name: "web_search", max_uses: 8, allowed_domains: DOMINI_AUTOREVOLI, user_location: { type: "approximate", country: "IT", timezone: "Europe/Rome" } },
+        { type: "web_fetch_20260209", name: "web_fetch", max_uses: 4, allowed_domains: DOMINI_AUTOREVOLI },
         STRUMENTO_COMPONI,
       ],
       messages: messaggi,

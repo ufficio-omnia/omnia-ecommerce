@@ -61,7 +61,8 @@ atteso("la pagina dei piani NON ha il badge (c'è già nel piè di pagina sotto:
 const sorgenti = fileSorgenti("src");
 const usano = sorgenti.filter((f) => /ClimateBadge|climate\.stripe\.com/.test(leggi(f))).sort();
 atteso("il badge è nel componente e nel piè di pagina di OMNIA AI, in nessun altro punto (area riservata, console, e-commerce, piani)", JSON.stringify(usano) === JSON.stringify(["src/components/omnia-ai/climate-badge.tsx", "src/components/omnia-ai/site-footer.tsx"]), usano.join(", "));
-atteso("nessun altro iframe di terzi nei sorgenti, a parte quello del badge", sorgenti.filter((f) => /\.tsx$/.test(f) && /<iframe/.test(leggi(f))).join(",") === "src/components/omnia-ai/climate-badge.tsx");
+// un iframe con srcDoc (contenuto generato dalla pagina stessa, come l'anteprima della newsletter in console) non è di terzi
+atteso("nessun altro iframe di terzi nei sorgenti, a parte quello del badge", sorgenti.filter((f) => /\.tsx$/.test(f) && /<iframe(?![^>]*\bsrcDoc=)/.test(leggi(f))).join(",") === "src/components/omnia-ai/climate-badge.tsx");
 
 console.log("--- La frase sui piani ---");
 const frase = "Omnia Consulting destina l&apos;1% di ogni abbonamento a Stripe Climate, per ridurre la CO₂ nell&apos;atmosfera.";
