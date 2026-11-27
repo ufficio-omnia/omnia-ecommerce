@@ -297,7 +297,9 @@ function dettaglioCosto(c: ContestoCosto, extra: Record<string, unknown>): Recor
 function strumentiRicerca(ricerche: number, letture: number): Anthropic.Messages.ToolUnion[] {
   return [
     { type: "web_search_20260209", name: "web_search", max_uses: ricerche, allowed_domains: DOMINI_AUTOREVOLI, user_location: { type: "approximate", country: "IT", timezone: "Europe/Rome" } },
-    { type: "web_fetch_20260209", name: "web_fetch", max_uses: letture, allowed_domains: DOMINI_AUTOREVOLI },
+    // tetto alla lunghezza di ogni pagina letta: senza, una sola lettura di una pagina lunga portava la chiamata a quasi
+    // un milione di token in ingresso (prova del 27/11: 2,90 $ e 520 s per una notizia)
+    { type: "web_fetch_20260209", name: "web_fetch", max_uses: letture, allowed_domains: DOMINI_AUTOREVOLI, max_content_tokens: 6000 },
   ];
 }
 
@@ -407,7 +409,7 @@ export async function generaEdizione(opz: {
     .filter(Boolean)
     .join("\n\n");
 
-  const r = await eseguiConRicerca({ system: ISTRUZIONI, richiesta, strumento: STRUMENTO_COMPONI, ricerche: 8, letture: 4, contesto: opz.contesto });
+  const r = await eseguiConRicerca({ system: ISTRUZIONI, richiesta, strumento: STRUMENTO_COMPONI, ricerche: 8, letture: 3, contesto: opz.contesto });
   const verificati = urlDaRisultatiRicerca(r.blocchi);
   for (const u of manuali) verificati.add(normalizzaUrlConfronto(u));
   const f = filtraBozza(r.input, verificati, opz.dataEdizione);
@@ -458,7 +460,7 @@ export async function generaParte(opz: {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const r = await eseguiConRicerca({ system: ISTRUZIONI, richiesta, strumento: STRUMENTO_SEZIONE, ricerche: opz.notizia ? 4 : 6, letture: 3, contesto: opz.contesto });
+  const r = await eseguiConRicerca({ system: ISTRUZIONI, richiesta, strumento: STRUMENTO_SEZIONE, ricerche: opz.notizia ? 4 : 6, letture: opz.notizia ? 1 : 2, contesto: opz.contesto });
   const grezzo = (typeof r.input === "object" && r.input !== null ? r.input : {}) as Record<string, unknown>;
   const f = filtraBozza({ oggetto: "", preheader: "", sezioni: { [opz.chiave]: grezzo.notizie }, note_redazione: grezzo.note_redazione }, urlDaRisultatiRicerca(r.blocchi), opz.dataEdizione);
   // filtraBozza sposta le notizie in più della sezione A in B: qui si raccolgono tutte quelle prodotte

@@ -318,12 +318,13 @@ function archivioLocale(): ArchivioNewsletter {
   const file = process.env.NEWSLETTER_ARCHIVIO_FILE || path.join(os.tmpdir(), "omnia-newsletter-locale.json");
   const leggi = (): DatiLocali => {
     try {
-      return JSON.parse(fs.readFileSync(file, "utf8")) as DatiLocali;
+      // solo collaudi in sviluppo: escluso dal tracciamento dei file del pacchetto di Vercel
+      return JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ file, "utf8")) as DatiLocali;
     } catch {
       return { impostazioni: { ...IMPOSTAZIONI_PREDEFINITE }, edizioni: [], iscritti: [], invii: [], eventi: [], registro: [] };
     }
   };
-  const scrivi = (d: DatiLocali) => fs.writeFileSync(file, JSON.stringify(d, null, 1));
+  const scrivi = (d: DatiLocali) => fs.writeFileSync(/*turbopackIgnore: true*/ file, JSON.stringify(d, null, 1));
   const adesso = () => new Date().toISOString();
   // stesse regole del trigger della 0141
   const applicaGuardia = (vecchia: Edizione, nuova: Edizione): Edizione => {
