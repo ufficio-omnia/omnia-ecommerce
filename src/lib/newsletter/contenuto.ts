@@ -22,7 +22,9 @@ function testo(valore: unknown, max: number): string {
 
 export function urlSicuro(valore: unknown): string | null {
   if (typeof valore !== "string") return null;
-  const v = valore.trim();
+  // «&amp;» arriva a volte dai risultati di ricerca già codificati in HTML: nell'indirizzo vale «&»
+  // (anche nella forma spezzata «&amp=&»)
+  const v = valore.trim().replace(/&amp=&/g, "&").replace(/&amp;/g, "&");
   if (v.length > 600) return null;
   try {
     const u = new URL(v);

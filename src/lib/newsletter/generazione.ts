@@ -181,6 +181,13 @@ export function filtraBozza(
       .map((n) => {
         const fonti: Fonte[] = [];
         for (const f of n.fonti) {
+          // la home page di un sito non è una fonte verificabile della notizia
+          const percorso = new URL(f.url).pathname.replace(/\/+$/, "").toLowerCase();
+          if (percorso === "" || /^\/([a-z]{2}\/)?(home|index(\.html?)?)$/.test(percorso)) {
+            fontiScartate++;
+            note.push(`«${n.titolo}»: tolta una fonte che è solo la home page di ${new URL(f.url).hostname}.`);
+            continue;
+          }
           if (!urlVerificati.has(normalizzaUrlConfronto(f.url))) {
             fontiScartate++;
             continue;

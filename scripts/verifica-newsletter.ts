@@ -24,6 +24,9 @@ process.env.NEWSLETTER_ARCHIVIO = "locale";
 process.env.NEWSLETTER_ARCHIVIO_FILE = fileArchivio;
 delete process.env.VERCEL_ENV;
 delete process.env.VERCEL;
+// la build gira con NODE_ENV=production: questa verifica (e solo lei) si dichiara ambiente di prova per usare l'archivio
+// locale in una cartella temporanea; la guardia di archivio.ts resta com'è per tutto il resto
+(process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
 async function main() {
   const { renderNewsletterHtml, renderNewsletterTesto, numeroEdizione, dataLunga } = await import("../src/lib/newsletter/template");
@@ -115,6 +118,13 @@ async function main() {
     verificati,
     "2026-11-27",
   );
+  const homeEAmp = filtraBozza(
+    { oggetto: "O", preheader: "P", sezioni: { normativa: [{ titolo: "Solo home", sintesi: "s", fonti: [{ titolo: "ANAC", url: "https://www.anticorruzione.it/en/home" }] }] } },
+    new Set([...verificati, "anticorruzione.it/en/home"]),
+    "2026-11-27",
+  );
+  atteso("una fonte che è solo la home page viene tolta (e la notizia senza altre fonti con lei)", homeEAmp.contenuto.sezioni.every((s) => s.notizie.length === 0) && homeEAmp.fontiScartate === 1);
+  uguale("«&amp;» negli indirizzi diventa «&»", [urlSicuro("https://x.it/v?a=1&amp;b=2"), urlSicuro("https://x.it/v?a=1&amp=&b=2")], ["https://x.it/v?a=1&b=2", "https://x.it/v?a=1&b=2"]);
   uguale("sezioni passate dal modello come stringa JSON: lette lo stesso", comeStringa.contenuto.sezioni.filter((s) => s.notizie.length).map((s) => s.chiave), ["notizia", "normativa"]);
 
   console.log("--- 4. Calendario Europe/Rome ---");
