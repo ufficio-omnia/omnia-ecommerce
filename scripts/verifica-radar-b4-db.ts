@@ -410,7 +410,7 @@ const PROD_URL = "https://bihfrzspqxsrzlbqqvqa.supabase.co";
   const testoAmbiente = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "radar", "ambiente.ts"), "utf8");
   // dal K8 (48C §3.7) le variabili di produzione esistono, ma solo nella tabella VARIABILI_PRODUZIONE e mai per TED
   const codiceAmbiente = testoAmbiente.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  controlla("ambiente.ts: le variabili RADAR_<FONTE>_PRODUZIONE solo nella tabella VARIABILI_PRODUZIONE (PVL, Sintel, SardegnaCAT e, dalla Fase 2, SATER e TuttoGare; mai TED)", JSON.stringify(codiceAmbiente.match(/RADAR_[A-Z]+_PRODUZIONE/g)) === JSON.stringify(["RADAR_PVL_PRODUZIONE", "RADAR_SINTEL_PRODUZIONE", "RADAR_SARDEGNACAT_PRODUZIONE", "RADAR_SATER_PRODUZIONE", "RADAR_TUTTOGARE_PRODUZIONE"]), codiceAmbiente.match(/RADAR_[A-Z]+_PRODUZIONE/g));
+  controlla("ambiente.ts: le variabili RADAR_<FONTE>_PRODUZIONE solo nella tabella VARIABILI_PRODUZIONE (PVL, Sintel, SardegnaCAT e, dalla Fase 2, SATER, TuttoGare, EmPULIA e SIAPS; mai TED)", JSON.stringify(codiceAmbiente.match(/RADAR_[A-Z]+_PRODUZIONE/g)) === JSON.stringify(["RADAR_PVL_PRODUZIONE", "RADAR_SINTEL_PRODUZIONE", "RADAR_SARDEGNACAT_PRODUZIONE", "RADAR_SATER_PRODUZIONE", "RADAR_TUTTOGARE_PRODUZIONE", "RADAR_EMPULIA_PRODUZIONE", "RADAR_SIAPS_PRODUZIONE"]), codiceAmbiente.match(/RADAR_[A-Z]+_PRODUZIONE/g));
   controlla("ambiente.ts: scrittureRadarConsentite è fonteAutorizzata per l'importazione", /return fonteAutorizzata\(fonte, "importazione", env\)/.test(testoAmbiente));
 }
 

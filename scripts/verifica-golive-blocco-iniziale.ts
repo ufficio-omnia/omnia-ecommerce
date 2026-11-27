@@ -50,6 +50,11 @@ const PRODUZIONE: Record<string, string> = {
   // Fase 2 (26/11): TuttoGare allo stesso modo (0135: spenta e nascosta ai clienti)
   RADAR_TUTTOGARE_CRON: "attivo",
   RADAR_TUTTOGARE_PRODUZIONE: "autorizzata",
+  // Fase 2 (27/11): EmPULIA e SIAPS allo stesso modo (0138, 0139: spente e nascoste ai clienti)
+  RADAR_EMPULIA_CRON: "attivo",
+  RADAR_EMPULIA_PRODUZIONE: "autorizzata",
+  RADAR_SIAPS_CRON: "attivo",
+  RADAR_SIAPS_PRODUZIONE: "autorizzata",
   RADAR_CONTATTO_FONTI: "contatto@esempio.invalid",
 };
 
@@ -68,9 +73,9 @@ const STATO_DOPO_MIGRAZIONI: Riga[] = FONTI_ESECUZIONI.map((fonte) => ({
   blocco_fino_a: null,
   dati_aggiornati_al: null,
   conteggi: {},
-  // SATER e TuttoGare nascono nascoste (0134, 0135); il loro blocco qui è LIBERO: è lo stato da avere in produzione prima dell'accensione
+  // SATER, TuttoGare, EmPULIA e SIAPS nascono nascoste (0134, 0135, 0138, 0139); il loro blocco qui è LIBERO: è lo stato da avere in produzione prima dell'accensione
   // (vedi D)
-  nascosta_ai_clienti: fonte === "sater" || fonte === "tuttogare",
+  nascosta_ai_clienti: fonte === "sater" || fonte === "tuttogare" || fonte === "empulia" || fonte === "siaps",
   aggiornata_il: "2026-11-24T18:00:00.000Z",
 }));
 
@@ -174,7 +179,7 @@ async function principale() {
   // ═════ B. la console «Fonti» il giorno dopo ═════
   const adesso = new Date("2026-12-07T10:00:00.000Z");
   const situazioni = allarmiFonti(righe as unknown as RigaEsecuzioneLetta[], s.db.tabelle.radar_fonti_stato as unknown as RigaStatoFonte[], adesso, { cronAttivi: cronAttiviDa(PRODUZIONE) });
-  controlla(`B1. la console vede le ${FONTI_ESECUZIONI.length} fonti «spente» (con SATER e TuttoGare)`, situazioni.length === FONTI_ESECUZIONI.length && FONTI_ESECUZIONI.length === 6 && situazioni.every((x) => x.stato === "spenta" && !x.attiva), situazioni.map((x) => [x.fonte, x.stato]));
+  controlla(`B1. la console vede le ${FONTI_ESECUZIONI.length} fonti «spente» (con SATER, TuttoGare, EmPULIA e SIAPS)`, situazioni.length === FONTI_ESECUZIONI.length && FONTI_ESECUZIONI.length === 8 && situazioni.every((x) => x.stato === "spenta" && !x.attiva), situazioni.map((x) => [x.fonte, x.stato]));
   controlla("B2. nessun allarme (né «giro_mancato», né errori ripetuti, né registro mancante)", situazioni.every((x) => x.allarmi.length === 0), situazioni.map((x) => [x.fonte, x.allarmi.map((a) => a.codice)]));
 
   // ═════ C. controprova: con UNA fonte accesa il suo primo giro programmato arriva alla fonte ═════
@@ -188,11 +193,11 @@ async function principale() {
     );
   }
 
-  // ═════ D. SATER e TuttoGare con la riga ESATTA della 0134 e della 0135 (blocco 2099-01-01, il semaforo dello staging) ═════
+  // ═════ D. SATER, TuttoGare, EmPULIA e SIAPS con la riga ESATTA della 0134, 0135, 0138 e 0139 (blocco 2099-01-01, il semaforo dello staging) ═════
   // Spenta: «fonte_spenta» come le altre (nessuna richiesta). ACCESA senza togliere quel blocco: ogni giro esce «occupata» e non arriva mai
   // alla fonte. In produzione il blocco va liberato PRIMA dell'accensione (decisione del coordinamento: proposta nel rapporto di B2).
-  for (const nuova of ["sater", "tuttogare"] as const) {
-    const migrazione = nuova === "sater" ? "0134" : "0135";
+  for (const nuova of ["sater", "tuttogare", "empulia", "siaps"] as const) {
+    const migrazione = ({ sater: "0134", tuttogare: "0135", empulia: "0138", siaps: "0139" } as const)[nuova];
     const conBlocco = (attiva: boolean) => {
       const db = new DbFinto();
       db.tabelle.radar_fonti_stato = STATO_DOPO_MIGRAZIONI.map((r) => (r.fonte === nuova ? { ...r, attiva, blocco_fino_a: BLOCCO_0134 } : { ...r }));

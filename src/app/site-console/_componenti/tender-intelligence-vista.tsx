@@ -78,6 +78,12 @@ const ETICHETTA_OGGETTO: Record<string, string> = {
   "fonte:tuttogare:attiva": "Fonte TuttoGare",
   "fonte:tuttogare:nascosta_ai_clienti": "TuttoGare nascosta ai clienti",
   "fonte:tuttogare:giro": "Giro di TuttoGare dalla console",
+  "fonte:empulia:attiva": "Fonte EmPULIA",
+  "fonte:empulia:nascosta_ai_clienti": "EmPULIA nascosta ai clienti",
+  "fonte:empulia:giro": "Giro di EmPULIA dalla console",
+  "fonte:siaps:attiva": "Fonte SIAPS",
+  "fonte:siaps:nascosta_ai_clienti": "SIAPS nascosta ai clienti",
+  "fonte:siaps:giro": "Giro di SIAPS dalla console",
   "cliente:attivo": "Modulo per l'impresa",
   "gara:decisione_classificazione": "Decisione su una gara da verificare",
 };
@@ -530,7 +536,7 @@ export function catalogoFonti(dati: DatiTenderIntelligenceConsole) {
 
 // ───── Panoramica (/tender-intelligence): solo lettura, come va e che cosa c'è da fare ─────
 
-const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"];
+const FONTI_DEL_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare", "empulia", "siaps"];
 
 export default function TenderIntelligenceVista({ dati }: { dati: DatiTenderIntelligenceConsole }) {
   const { parametri } = dati;

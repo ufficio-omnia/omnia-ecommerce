@@ -230,8 +230,8 @@ export async function impostaImpresaRadar(_stato: StatoAzioneTi, formData: FormD
 // ───── fase B2a: fonti regionali (Sintel, SardegnaCAT) e suggerimenti di unione ─────
 
 const UUID_GARA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Le fonti regionali gestite dalla console: Sintel, SardegnaCAT e (Fase 2) SATER e TuttoGare.
-const NOME_REGIONALE: Record<FonteRegionaleGestita, string> = { sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare" };
+// Le fonti regionali gestite dalla console: Sintel, SardegnaCAT e (Fase 2) SATER, TuttoGare, EmPULIA e SIAPS.
+const NOME_REGIONALE: Record<FonteRegionaleGestita, string> = { sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare", empulia: "EmPULIA", siaps: "SIAPS" };
 
 function fonteRegionale(v: FormDataEntryValue | null): FonteRegionaleGestita | null {
   const s = String(v ?? "");
@@ -300,7 +300,7 @@ export async function eseguiGiroRegionale(_stato: StatoAzioneTi, formData: FormD
   await registra(admin, [{ oggetto: `fonte:${fonte}:giro`, valore_precedente: null, valore_nuovo: esito.eseguita ? (esito.errore ? `interrotto: ${esito.errore}` : "eseguito") : `non eseguito: ${esito.motivo}` }], sessione);
   ricarica();
   if (!esito.eseguita) {
-    const motivi = { ambiente_non_consentito: "le fonti regionali sono autorizzate solo sullo staging", fonte_spenta: "la fonte è spenta o sospesa", occupata: "un altro giro è in corso o il semaforo del coordinamento è chiuso", gia_eseguito: "un giro programmato è appena riuscito", contatto_mancante: "manca un contatto valido per lo User-Agent (RADAR_CONTATTO_FONTI)", schema_assente: "manca la migrazione 0120", errore_lettura: "lettura dello stato non riuscita" } as const;
+    const motivi = { ambiente_non_consentito: "le fonti regionali sono autorizzate solo sullo staging", fonte_spenta: "la fonte è spenta o sospesa", occupata: "un altro giro è in corso o il semaforo del coordinamento è chiuso", gia_eseguito: "un giro programmato è appena riuscito", contatto_mancante: "manca un contatto valido per lo User-Agent (RADAR_CONTATTO_FONTI)", schema_assente: "manca la migrazione 0120", errore_lettura: "lettura dello stato non riuscita", fuori_finestra: "fuori dalla finestra di lettura indicata dalla fonte" } as const;
     return { errore: `Giro non eseguito: ${motivi[esito.motivo]}.` };
   }
   const s = esito.statistiche;

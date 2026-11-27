@@ -11,7 +11,7 @@
 // gli orari dei giri vengono da ORARI_GIRI (programmazione-calcoli.ts): frase neutra («giri previsti»), vera anche finché i giri sono spenti
 import { testoOrari } from "../programmazione-calcoli";
 
-export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
+export type IdFonte = "ted" | "pvl" | "sintel" | "sardegnacat" | "sater" | "tuttogare" | "empulia" | "siaps" | "anac_open_data" | "anac_fornitura" | "regionale" | "manuale";
 
 export type StatoFonte = "attiva" | "in_costruzione" | "transitoria" | "prevista";
 
@@ -132,6 +132,39 @@ export const FONTI_RADAR: readonly DescrizioneFonte[] = [
     licenza: "Dati pubblicati dalle stazioni appaltanti sulle proprie piattaforme: solo dati di fatto, con il collegamento alla pagina ufficiale della gara",
     porta: { bandi: true, esiti: false, cig: "spesso", documenti: "collegamento" },
   },
+  // Fase 2 (decisione dell'utente del 27/11: EmPULIA e SIAPS in produzione): partono spente e nascoste ai clienti (0138, 0139); i testi
+  // diventano pubblici solo quando la fonte è accesa e resa visibile dalla console. Testi in BOZZA da far confermare all'utente. Il consenso
+  // al riuso è stato chiesto per PEC il 26/11 (l'utente se ne assume la responsabilità): la licenza dice solo che cosa si mostra.
+  {
+    id: "empulia",
+    nome: "EmPULIA, piattaforma di e-procurement della Regione Puglia (InnovaPuglia)",
+    stato: "in_costruzione",
+    copertura: "Gare, avvisi e consultazioni preliminari di mercato degli enti pugliesi pubblicati su EmPULIA, anche sotto la soglia europea",
+    aggiornamento: `Giri previsti ${testoOrari("empulia")} (ora italiana), dai feed pubblici dei bandi e delle consultazioni`,
+    limiti: [
+      "Comprende solo le gare pubblicate su EmPULIA",
+      "Il CIG manca in molti avvisi: senza CIG la gara non si unisce in automatico a quella delle altre fonti",
+      "Il codice fiscale dell'ente non è indicato: si ricava dal CIG quando la gara è pubblicata anche su altre fonti",
+      "Non comprende procedure su invito né affidamenti diretti",
+    ],
+    licenza: "InnovaPuglia – EmPULIA: feed pubblici dei bandi; solo dati di fatto, con il collegamento alla pagina ufficiale e la citazione della fonte",
+    porta: { bandi: true, esiti: false, cig: "raramente", documenti: "collegamento" },
+  },
+  {
+    id: "siaps",
+    nome: "SIAPS, piattaforma di e-procurement della sanità campana (So.Re.Sa.)",
+    stato: "in_costruzione",
+    copertura: "Gare e consultazioni preliminari di mercato delle aziende sanitarie campane e di So.Re.Sa. pubblicate su SIAPS, anche sotto la soglia europea",
+    aggiornamento: `Giri previsti ${testoOrari("siaps")} (ora italiana), dal feed pubblico dei bandi`,
+    limiti: [
+      "Comprende solo le gare pubblicate su SIAPS",
+      "Il CIG non è indicato: una gara pubblicata anche su altre fonti si collega solo dopo il controllo dell'amministratore",
+      "Il codice fiscale dell'ente e il luogo di esecuzione non sono indicati",
+      "Non comprende procedure su invito né affidamenti diretti",
+    ],
+    licenza: "So.Re.Sa. – SIAPS: feed pubblico dei bandi; solo dati di fatto, con il collegamento alla pagina ufficiale e la citazione della fonte",
+    porta: { bandi: true, esiti: false, cig: "mai", documenti: "collegamento" },
+  },
   {
     id: "anac_open_data",
     nome: "ANAC, dati aperti della Banca dati nazionale dei contratti pubblici",
@@ -223,6 +256,10 @@ export type RecordProcedura = {
   oneriSicurezza: number | null;
   durataMesi: number | null;
   annullata: boolean;
+  // Fase 2 (27/11, correzione «Sospeso»): procedura SOSPESA dichiarata dalla fonte (feed AF: statoFunzionale «Sospeso» o prefisso «Procedura
+  // Sospesa» nell'oggetto). Facoltativo e presente SOLO quando vale true: per tutte le altre letture il record, e la sua impronta, restano
+  // identici a prima.
+  sospesa?: true;
   urlAvviso: string | null;
   urlDocumenti: string | null;
   cpvPrincipale: string | null;

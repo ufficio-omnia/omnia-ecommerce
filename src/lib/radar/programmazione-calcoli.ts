@@ -47,6 +47,21 @@ export const ORARI_GIRI: Readonly<Record<FonteEsecuzione, readonly OrarioGiro[]>
     { ora: "17:35", giorni: "feriali" },
     { ora: "13:35", giorni: "fine_settimana" },
   ],
+  // Fase 2 (27/11, EmPULIA e SIAPS in produzione; proposta B2): minuti liberi :25 (EmPULIA) e :10 (SIAPS), lontani dagli altri giri (:05 PVL,
+  // :15 TED, :20 SardegnaCAT, :35 TuttoGare, :40 Sintel, :50 SATER) e dai promemoria (:00, :30); 3 giri nei feriali e uno nel fine settimana.
+  // EmPULIA: al più 8 pagine + consultazioni, ~18 richieste contando i reindirizzamenti; SIAPS: una lettura (2 richieste)
+  empulia: [
+    { ora: "09:25", giorni: "feriali" },
+    { ora: "13:25", giorni: "feriali" },
+    { ora: "17:25", giorni: "feriali" },
+    { ora: "13:25", giorni: "fine_settimana" },
+  ],
+  siaps: [
+    { ora: "09:10", giorni: "feriali" },
+    { ora: "13:10", giorni: "feriali" },
+    { ora: "17:10", giorni: "feriali" },
+    { ora: "13:10", giorni: "fine_settimana" },
+  ],
 };
 
 const TESTO_GIORNI: Record<GiorniGiro, string> = { tutti: "tutti i giorni", feriali: "dal lunedì al venerdì", fine_settimana: "il sabato e la domenica" };
@@ -133,6 +148,9 @@ export const CRON_PROPOSTI: Readonly<Record<FonteEsecuzione, readonly string[]>>
   sater: ["50 6,7,10,11,14,15 * * *"],
   // 09:35, 13:35 e 17:35 di Roma = 8, 12, 16 UTC d'inverno e 7, 11, 15 UTC d'estate (13:35 anche nel fine settimana)
   tuttogare: ["35 7,8,11,12,15,16 * * *"],
+  // 09:25/13:25/17:25 (EmPULIA) e 09:10/13:10/17:10 (SIAPS) di Roma = 8, 12, 16 UTC d'inverno e 7, 11, 15 UTC d'estate
+  empulia: ["25 7,8,11,12,15,16 * * *"],
+  siaps: ["10 7,8,11,12,15,16 * * *"],
 };
 /**
  * Doppio richiamo (48C §3.1 punto 7): un giro PROGRAMMATO non riparte se l'ultimo giro riuscito della fonte è di meno di 45 minuti fa
@@ -147,10 +165,10 @@ export function eDoppioRichiamo(origine: OrigineGiro | undefined, ultimoSuccesso
 }
 
 /** Le rotte cron per fonte (K1: Sintel e SardegnaCAT hanno ciascuna la sua; la vecchia radar-regionali resta finché vercel.json non cambia). */
-export const ROTTE_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "/api/cron/radar-ted", pvl: "/api/cron/radar-pvl", sintel: "/api/cron/radar-sintel", sardegnacat: "/api/cron/radar-sardegnacat", sater: "/api/cron/radar-sater", tuttogare: "/api/cron/radar-tuttogare" };
+export const ROTTE_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "/api/cron/radar-ted", pvl: "/api/cron/radar-pvl", sintel: "/api/cron/radar-sintel", sardegnacat: "/api/cron/radar-sardegnacat", sater: "/api/cron/radar-sater", tuttogare: "/api/cron/radar-tuttogare", empulia: "/api/cron/radar-empulia", siaps: "/api/cron/radar-siaps" };
 
 /** L'interruttore d'ambiente di ogni rotta cron (= «attivo» per accenderla; spento di base). */
-export const INTERRUTTORI_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "RADAR_TED_CRON", pvl: "RADAR_PVL_CRON", sintel: "RADAR_SINTEL_CRON", sardegnacat: "RADAR_SARDEGNACAT_CRON", sater: "RADAR_SATER_CRON", tuttogare: "RADAR_TUTTOGARE_CRON" };
+export const INTERRUTTORI_CRON: Readonly<Record<FonteEsecuzione, string>> = { ted: "RADAR_TED_CRON", pvl: "RADAR_PVL_CRON", sintel: "RADAR_SINTEL_CRON", sardegnacat: "RADAR_SARDEGNACAT_CRON", sater: "RADAR_SATER_CRON", tuttogare: "RADAR_TUTTOGARE_CRON", empulia: "RADAR_EMPULIA_CRON", siaps: "RADAR_SIAPS_CRON" };
 /** Il vecchio interruttore della rotta unica radar-regionali (Sintel e SardegnaCAT insieme), finché quella rotta esiste. */
 export const INTERRUTTORE_REGIONALI_VECCHIO = "RADAR_REGIONALI_CRON";
 

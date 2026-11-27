@@ -13,23 +13,26 @@ import { registroConEvidenza } from "./importa-evidenza";
 import { ErroreFonte, SessioneFonte, limitiValidi, type LimitiFonte } from "./fonti/sessione-fonte";
 import { LIMITI_SINTEL_INTERVALLI, LIMITI_SINTEL_PREDEFINITI, leggiRigheSintel } from "./fonti/sintel-calcoli";
 import { LettoreSintel } from "./fonti/sintel";
-import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PREDEFINITI, bucoPossibileFeed, leggiElementiAflink, pubblicazionePiuVecchiaAflink } from "./fonti/aflink-calcoli";
+import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PAGINATI_INTERVALLI, LIMITI_AFLINK_PAGINATI_PREDEFINITI, LIMITI_AFLINK_PREDEFINITI, bucoPossibileFeed, idSiapsDaUrl, leggiElementiAflink, pubblicazionePiuVecchiaAflink } from "./fonti/aflink-calcoli";
 import { LettoreAflink } from "./fonti/aflink";
 import { LIMITI_INTERCENTER_INTERVALLI, LIMITI_INTERCENTER_PREDEFINITI, leggiElementiIntercenter } from "./fonti/intercenter-calcoli";
 import { LettoreIntercenter } from "./fonti/intercenter";
 import { LIMITI_TUTTOGARE_INTERVALLI, LIMITI_TUTTOGARE_PREDEFINITI, aggiornaCursoreTuttoGare, cursoreTuttoGare, istanzeAttiveTuttoGare, leggiGaraTuttoGare, type CursoreTuttoGare } from "./fonti/tuttogare-calcoli";
 import { LettoreTuttoGare } from "./fonti/tuttogare";
+import { LIMITI_START_INTERVALLI, LIMITI_START_PREDEFINITI, giroAmmessoStart, leggiGaraStart, numeroStartDaUrl, transizioniStatoStart, type GaraStartInArchivio } from "./fonti/start-calcoli";
+import { LettoreStart } from "./fonti/start";
+import { proponiCollegamenti, type Proposta } from "./collegamenti";
 import { giornoDiRoma } from "./fonti/ted-calcoli";
-import type { Misure } from "./importa";
+import { blocchi, misura, type Misure } from "./importa";
 import { applicaPaginaBandiRegionali } from "./importa-regionali-pagina";
-import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, bandoDaTuttoGare, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
+import { bandoDaAflink, bandoDaIntercenter, bandoDaSintel, bandoDaStart, bandoDaTuttoGare, conta, statisticheRegionaliVuote, type BandoRegionale, type FonteRegionale, type StatisticheRegionali } from "./importa-regionali-calcoli";
 import { datiGiroRegionale, type OrigineGiro } from "./esecuzioni-calcoli";
 import { giroRegistrato, type EsitoRegistro } from "./esecuzioni";
 import { eDoppioRichiamo } from "./programmazione-calcoli";
 import { userAgentFonti } from "./fonti/user-agent";
 
 export type RisultatoImportazioneRegionale =
-  | { eseguita: false; motivo: "ambiente_non_consentito" | "contatto_mancante" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura"; dettaglio?: string }
+  | { eseguita: false; motivo: "ambiente_non_consentito" | "contatto_mancante" | "fonte_spenta" | "occupata" | "gia_eseguito" | "schema_assente" | "errore_lettura" | "fuori_finestra"; dettaglio?: string }
   // giroFinito: tutti i bandi letti sono stati scritti entro il tempo massimo (K6); dichiarati: il conteggio di Sintel (null altrove o se
   // illeggibile); allarmi: conteggio_diverso (Sintel), buco_possibile (feed di SardegnaCAT)
   | {
@@ -63,7 +66,7 @@ function schemaAssente(e: { message: string; code?: string }): boolean {
 /**
  * Un giro di Sintel, SardegnaCAT o SATER, registrato in radar_esecuzioni (0128): una riga a fine giro, mai dove la fonte non può scrivere.
  * SATER (Fase 2): la riga si scrive solo dopo la 0134, che estende il vincolo della 0128; prima la scrittura non riesce senza fermare nulla.
- * TuttoGare (Fase 2) allo stesso modo con la 0135.
+ * TuttoGare (Fase 2) allo stesso modo con la 0135; START (Fase 2, in costruzione) con la 0137 PROPOSTA.
  */
 export function eseguiImportazioneRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzioni: OpzioniImportazioneRegionale = {}): Promise<RisultatoImportazioneRegionale & { esecuzione: EsitoRegistro }> {
   return giroRegistrato(admin, fonte, opzioni, (esecuzioneId) => giroRegionale(admin, fonte, opzioni, esecuzioneId), datiGiroRegionale);
@@ -82,6 +85,9 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   const evidenza = registroConEvidenza(opzioni.env ?? process.env);
   const ora = opzioni.adesso ?? (() => new Date());
   const inizio = ora();
+  // START (Fase 2): robots.txt «Visit-time: 2300-0400» in UTC. Fuori dalla finestra (o troppo vicino alla chiusura) nessun giro parte, nemmeno
+  // manuale: nessuna lettura del database, nessuna richiesta alla fonte
+  if (fonte === "start" && !giroAmmessoStart(inizio)) return { eseguita: false, motivo: "fuori_finestra" };
 
   const { data: righe, error } = await admin.from("radar_fonti_stato").select("fonte, attiva, ultimo_successo_il, cursore, blocco_fino_a, conteggi, nascosta_ai_clienti").returns<(RigaFonte & { fonte: string; nascosta_ai_clienti: boolean })[]>();
   if (error) return { eseguita: false, motivo: schemaAssente(error) ? "schema_assente" : "errore_lettura" };
@@ -119,10 +125,23 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
         ? limitiValidi(opzioni.limiti, LIMITI_INTERCENTER_PREDEFINITI, LIMITI_INTERCENTER_INTERVALLI)
         : fonte === "tuttogare"
           ? limitiValidi(opzioni.limiti, LIMITI_TUTTOGARE_PREDEFINITI, LIMITI_TUTTOGARE_INTERVALLI)
-          : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
-  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : fonte === "tuttogare" ? "TuttoGare" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore);
+          : fonte === "start"
+            ? limitiValidi(opzioni.limiti, LIMITI_START_PREDEFINITI, LIMITI_START_INTERVALLI)
+            : ISTANZE_AFLINK[fonte].paginazione
+              ? limitiValidi(opzioni.limiti, LIMITI_AFLINK_PAGINATI_PREDEFINITI, LIMITI_AFLINK_PAGINATI_INTERVALLI)
+              : ISTANZE_AFLINK[fonte].contaReindirizzamenti
+                ? // SIAPS (27/11, in produzione): la lettura passa da un reindirizzamento contato (2 richieste); 4 = un nuovo tentativo possibile,
+                  // come nei collaudi, ed è il massimo ammesso per le istanze AF senza pagine. SardegnaCAT e SATER come prima (2).
+                  limitiValidi(opzioni.limiti, { ...LIMITI_AFLINK_PREDEFINITI, richiesteMassime: 4 }, LIMITI_AFLINK_INTERVALLI)
+                : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
+  // Fase 2 (EmPULIA, SIAPS): ogni reindirizzamento seguito conta come una richiesta; le altre fonti contano come sempre
+  const contaReindirizzamenti = fonte !== "sintel" && fonte !== "tuttogare" && fonte !== "start" && ISTANZE_AFLINK[fonte].contaReindirizzamenti === true;
+  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : fonte === "tuttogare" ? "TuttoGare" : fonte === "start" ? "START" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore, contaReindirizzamenti);
   // TuttoGare: il cursore nuovo (gare lette per istanza) si salva solo a giro finito, quando i bandi letti sono scritti
   let cursoreTuttoGareNuovo: CursoreTuttoGare | null = null;
+  // START: i numeri dell'elenco letto e se la lettura è arrivata in fondo senza errori (per l'uscita dalle aperte, decisione 1c)
+  let elencoStart: { numeri: Set<string>; completo: boolean } | null = null;
+  let esitoStart: { escono: number; rientrano: number; proposte: number; numeroStart: number } | null = null;
   let datiDel: string | null = null;
   // K6: giro scritto per intero entro il tempo massimo; righe di Sintel uguali al conteggio della fonte; allarmi del giro
   let giroFinito = true;
@@ -200,10 +219,32 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       }
       if (letto.errori.length > 0 && letto.istanze.length === 0) errore = `TuttoGare: nessuna istanza letta (${letto.errori.map((e) => e.host).join(", ").slice(0, 600)})`;
       cursoreTuttoGareNuovo = aggiornaCursoreTuttoGare(prima, letto.istanze.map((l) => ({ host: l.istanza.host, righe: l.righe, trattati: l.trattati })), oggi);
+    } else if (fonte === "start") {
+      // START (Fase 2, in costruzione): l'elenco pubblico delle aperte, tutte le pagine (start.ts), dentro la finestra del robots.txt. Nessun
+      // dettaglio: la scadenza arriva dalla PVL con l'unione per CIG. Una pagina non letta: si scrive quello che c'è, ma il giro non è
+      // completo (allarme); nessuna gara esce dalle aperte
+      const letto = await new LettoreStart(sessione, ora).leggiElenco();
+      dichiarati = letto.totaleDichiarato;
+      if (letto.paginaRipetuta) allarmi.push("paginazione_non_riconosciuta");
+      else if (letto.interruzione) allarmi.push("elenco_non_completo");
+      if (letto.pagine === 0) errore = `START: nessuna pagina dell'elenco letta (${(letto.interruzione ?? "").slice(0, 300)})`;
+      stat.letti += letto.righe.length;
+      for (const r of letto.righe) {
+        const p = leggiGaraStart(r, inizio);
+        if (p.tipo === "esclusione") conta(stat.esclusi, p.motivo === "esclusa_per_oggetto" && p.regole?.length ? `esclusa_per_oggetto:${p.regole.join("+")}` : p.motivo);
+        else {
+          const b = bandoDaStart(p, oggi);
+          if (b) bandi.push(b);
+          else conta(stat.esclusi, "riservata");
+        }
+      }
+      elencoStart = { numeri: new Set(letto.righe.map((r) => r.numero)), completo: letto.completo };
     } else {
       const feed = await new LettoreAflink(fonte, sessione).leggiFeed();
       // feed «scivolato» (K6): l'avviso più vecchio è più recente dell'ultimo giro riuscito → qualcosa può essere uscito dal feed
       if (bucoPossibileFeed(pubblicazionePiuVecchiaAflink(feed.elementi), riga.ultimo_successo_il ? giornoDiRoma(new Date(riga.ultimo_successo_il)) : null)) allarmi.push("buco_possibile");
+      // Fase 2 (EmPULIA): pagine del feed non lette tutte (totale non raggiunto, pagina ripetuta, oltre il massimo): si scrive quello che c'è
+      if (!feed.completo) allarmi.push("elenco_non_completo");
       const letti = leggiElementiAflink(fonte, feed.elementi, inizio);
       stat.letti += letti.length;
       for (const p of letti) {
@@ -227,6 +268,14 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
     bandi = [];
     if (datiDel && giroFinito && completoAllaFonte) cursore = { ...cursore, datiDel };
     if (cursoreTuttoGareNuovo && giroFinito) cursore = { ...cursore, tuttogare: cursoreTuttoGareNuovo };
+    // START: uscita e rientro nelle aperte (1c) e suggerimenti per stesso numero START (mai unioni automatiche); l'uscita SOLO dopo un giro
+    // completo e interamente riuscito (tutte le pagine lette, tutte le scritture fatte, nessun errore)
+    if (elencoStart) {
+      esitoStart = await dopoGiroStart(admin, elencoStart.numeri, elencoStart.completo && giroFinito && !errore, inizio.toISOString(), misure);
+      stat.proposte += esitoStart.proposte;
+    }
+    // SIAPS: suggerimenti per stesso IdMsg nel collegamento (il feed non ha il CIG); mai unioni automatiche
+    if (fonte === "siaps" && giroFinito) stat.proposte += await dopoGiroSiaps(admin, inizio.toISOString(), misure);
   } catch (e) {
     errore = e instanceof Error ? e.message.slice(0, 900) : String(e).slice(0, 900);
     sospesa = e instanceof ErroreFonte && e.sospendi;
@@ -237,7 +286,7 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
   const conteggi = {
     ...(riga.conteggi ?? {}),
     ...(sospesa ? { sospensione: { il: fine.toISOString(), motivo: errore } } : {}),
-    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, invariata_alla_fonte: invariataAllaFonte, giro_finito: giroFinito, dichiarati, allarmi, limiti, ...stat, fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure, errore },
+    ultimo_giro: { iniziato_il: inizio.toISOString(), durata_ms: durataMs, invariata_alla_fonte: invariataAllaFonte, giro_finito: giroFinito, dichiarati, allarmi, limiti, ...stat, ...(esitoStart ? { start: esitoStart } : {}), fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure, errore },
   };
   await admin
     .from("radar_fonti_stato")
@@ -253,4 +302,77 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
     .eq("fonte", fonte);
 
   return { eseguita: true, fonte, invariataAllaFonte, sospesa, giroFinito, dichiarati, allarmi, statistiche: { ...stat, fonte: { richieste: sessione.richieste, byte: sessione.byte, ms: sessione.ms }, db: misure }, durataMs, errore };
+}
+
+/**
+ * START dopo il giro (Fase 2, decisioni del coordinamento del 26/11):
+ *   1) uscita e rientro nelle aperte (transizioniStatoStart, tre paletti): lo stato si scrive SOLO su quelle gare e con un controllo sullo
+ *      stato di partenza; nessuna riga nel registro e nessuna notifica (non è una notizia della fonte: è l'assenza dall'elenco). L'uscita solo
+ *      se «completoERiuscito»; il rientro sempre (evidenza positiva);
+ *   2) SUGGERIMENTI in console (mai unioni automatiche, regola del 17/11) per le gare nate da START, aperte e con START come unica fonte, quando
+ *      un'altra gara dell'archivio ha lo stesso numero START nel collegamento ufficiale ai documenti (le gare TED con collegamento START non
+ *      hanno il CIG). Solo letture dell'archivio: nessuna richiesta alla fonte.
+ */
+async function dopoGiroStart(admin: SupabaseClient, numeri: ReadonlySet<string>, completoERiuscito: boolean, iso: string, misure: Misure): Promise<{ escono: number; rientrano: number; proposte: number; numeroStart: number }> {
+  const { data } = await misura(misure, "gare di START per lo stato", () =>
+    admin.from("radar_procedure").select("id, chiave, stato, scadenza_giorno, fonti").contains("fonti", ["start"]).in("stato", ["aperta", "sconosciuto"]).is("unita_a", null).limit(5000).returns<GaraStartInArchivio[]>(),
+  );
+  const gare = data ?? [];
+  const t = transizioniStatoStart(gare, numeri, completoERiuscito);
+  for (const b of blocchi(t.escono, 100)) {
+    await misura(misure, "gare di START fuori dalle aperte", () => admin.from("radar_procedure").update({ stato: "sconosciuto" }).in("id", b).eq("stato", "aperta").is("scadenza_giorno", null));
+  }
+  for (const b of blocchi(t.rientrano, 100)) {
+    await misura(misure, "gare di START di nuovo aperte", () => admin.from("radar_procedure").update({ stato: "aperta" }).in("id", b).eq("stato", "sconosciuto"));
+  }
+
+  const escono = new Set(t.escono);
+  const sole = gare.filter((g) => g.chiave.startsWith("start:") && (g.fonti ?? []).length === 1 && g.stato === "aperta" && !escono.has(g.id));
+  // «*» è il carattere jolly di PostgREST per ilike (come «%»); il numero START ha solo cifre e un trattino
+  const proposte = await propostePerIdNelCollegamento(admin, sole, "start", (n) => `*/tendering/tenders/${n}/*`, numeroStartDaUrl, (n) => `Stesso numero START (${n}) nel collegamento ufficiale ai documenti, senza CIG in comune: da verificare`, "gare con lo stesso numero START nel collegamento", misure);
+  const r = proposte.length > 0 ? await proponiCollegamenti(admin, proposte, iso, misure) : { proposte: 0, saltate: 0 };
+  return { escono: t.escono.length, rientrano: t.rientrano.length, proposte: r.proposte, numeroStart: proposte.length };
+}
+
+/**
+ * SUGGERIMENTI (mai unioni automatiche, regola del 17/11) per le gare nate da una fonte (chiave «<fonte>:<id>») quando un'altra gara
+ * dell'archivio ha lo STESSO identificativo nel collegamento ufficiale ai documenti (START: il numero START; SIAPS: l'IdMsg dei BT-15). Il
+ * filtro ilike è solo una prima scrematura: l'identificativo si riconosce poi con la regola esatta (idDaUrl). Solo letture dell'archivio.
+ */
+async function propostePerIdNelCollegamento(
+  admin: SupabaseClient,
+  gare: readonly { id: string; chiave: string }[],
+  fonte: string,
+  schema: (id: string) => string,
+  idDaUrl: (url: string | null) => string | null,
+  motivo: (id: string) => string,
+  passo: string,
+  misure: Misure,
+): Promise<Proposta[]> {
+  const proposte: Proposta[] = [];
+  const prefisso = `${fonte}:`;
+  for (const b of blocchi(gare.filter((g) => g.chiave.startsWith(prefisso)), 20)) {
+    const filtro = b.map((g) => `url_documenti.ilike.${schema(g.chiave.slice(prefisso.length))}`).join(",");
+    const { data: altre } = await misura(misure, passo, () => admin.from("radar_procedure").select("id, url_documenti").or(filtro).is("unita_a", null).limit(500).returns<{ id: string; url_documenti: string | null }[]>());
+    for (const a of altre ?? []) {
+      const id = idDaUrl(a.url_documenti);
+      const g = id ? b.find((x) => x.chiave === `${prefisso}${id}`) : undefined;
+      if (g && id && a.id !== g.id) proposte.push({ a: g.id, b: a.id, motivo: motivo(id), fonte });
+    }
+  }
+  return proposte;
+}
+
+/**
+ * SIAPS dopo il giro (Fase 2): il feed non dà MAI il CIG, quindi la stessa gara pubblicata anche da PVL o TED non si unisce da sola.
+ * SUGGERIMENTI in console (decisione del coordinamento del 27/11, opzione (a)) per le gare SOLO SIAPS e aperte, quando un'altra gara ha lo
+ * stesso IdMsg nel collegamento ufficiale («portale.soresa.it/aflink/direct/link/?id=…» o «DettaglioProcedura.asp?ID=…»).
+ */
+async function dopoGiroSiaps(admin: SupabaseClient, iso: string, misure: Misure): Promise<number> {
+  const { data } = await misura(misure, "gare di SIAPS per i suggerimenti", () =>
+    admin.from("radar_procedure").select("id, chiave, stato, fonti").contains("fonti", ["siaps"]).eq("stato", "aperta").is("unita_a", null).limit(5000).returns<{ id: string; chiave: string; stato: string; fonti: string[] | null }[]>(),
+  );
+  const sole = (data ?? []).filter((g) => (g.fonti ?? []).length === 1);
+  const proposte = await propostePerIdNelCollegamento(admin, sole, "siaps", (id) => `*id=${id}*`, idSiapsDaUrl, (id) => `Stesso identificativo SIAPS (${id}) nel collegamento ufficiale ai documenti, senza CIG nel feed: da verificare`, "gare con lo stesso identificativo SIAPS nel collegamento", misure);
+  return proposte.length > 0 ? (await proponiCollegamenti(admin, proposte, iso, misure)).proposte : 0;
 }

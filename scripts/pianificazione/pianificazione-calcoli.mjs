@@ -17,8 +17,9 @@ export const SESSIONE_PIANIFICAZIONE = "local_2d381c41-6b2d-4db3-84dc-0a84c65b2b
 export const CARTELLA_PIANIFICAZIONE = "C:/Users/Dell/Desktop/OMNIA-PROGETTO1/.claude/worktrees/pianificazione-staging";
 export const eCartellaPianificazione = (c) => stessaCartella(c, CARTELLA_PIANIFICAZIONE);
 
-// Fase 2 (26/11): anche SATER e TuttoGare; come le altre, un giro pianificato parte solo con la SUA autorizzazione registrata
-export const FONTI_PIANIFICATE = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare"];
+// Fase 2 (26/11): anche SATER e TuttoGare; (27/11) anche EmPULIA e SIAPS; come le altre, un giro pianificato parte solo con la SUA
+// autorizzazione registrata
+export const FONTI_PIANIFICATE = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare", "empulia", "siaps"];
 
 // Il comando ESATTO di ogni fonte: deve coincidere con quello registrato nell'autorizzazione (esegui-autorizzato.mjs lo verifica di nuovo).
 export const COMANDI_PIANIFICATI = {
@@ -28,8 +29,10 @@ export const COMANDI_PIANIFICATI = {
   sardegnacat: ["npx", "tsx", "scripts/radar-importa-regionale.ts", "sardegnacat"],
   sater: ["npx", "tsx", "scripts/radar-importa-regionale.ts", "sater"],
   tuttogare: ["npx", "tsx", "scripts/radar-importa-regionale.ts", "tuttogare"],
+  empulia: ["npx", "tsx", "scripts/radar-importa-regionale.ts", "empulia"],
+  siaps: ["npx", "tsx", "scripts/radar-importa-regionale.ts", "siaps"],
 };
-export const SCRIPT_DELLA_FONTE = { ted: "scripts/radar-importa-ted.ts", pvl: "scripts/radar-importa-pvl.ts", sintel: "scripts/radar-importa-regionale.ts", sardegnacat: "scripts/radar-importa-regionale.ts", sater: "scripts/radar-importa-regionale.ts", tuttogare: "scripts/radar-importa-regionale.ts" };
+export const SCRIPT_DELLA_FONTE = { ted: "scripts/radar-importa-ted.ts", pvl: "scripts/radar-importa-pvl.ts", sintel: "scripts/radar-importa-regionale.ts", sardegnacat: "scripts/radar-importa-regionale.ts", sater: "scripts/radar-importa-regionale.ts", tuttogare: "scripts/radar-importa-regionale.ts", empulia: "scripts/radar-importa-regionale.ts", siaps: "scripts/radar-importa-regionale.ts" };
 
 export const STAGING_REF = "ryawdldqiumqsskrnyps";
 export const PRODUZIONE_REF = "bihfrzspqxsrzlbqqvqa";

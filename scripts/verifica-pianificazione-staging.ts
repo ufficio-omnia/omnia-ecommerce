@@ -85,9 +85,9 @@ uguale("riga del registro locale: numeri, booleani e motivi in parole fisse; il 
 atteso("riga del registro locale: nessun testo libero dell'uscita", !JSON.stringify(riga).includes("esempio.invalid") && !JSON.stringify(riga).includes("Testo Libero"));
 
 // ───── 5. comandi delle quattro fonti ─────
-uguale("sei fonti (Fase 2: con SATER e TuttoGare), ognuna col suo comando esatto (argomenti semplici, come vuole il registro) e uno script che esiste",
+uguale("otto fonti (Fase 2: con SATER, TuttoGare, EmPULIA e SIAPS), ognuna col suo comando esatto (argomenti semplici, come vuole il registro) e uno script che esiste",
   FONTI_PIANIFICATE.map((f: string) => [f, (COMANDI_PIANIFICATI as Record<string, string[]>)[f].every((x) => /^[A-Za-z0-9_./:=,@+-]+$/.test(x)), fs.existsSync(path.join(RADICE, (SCRIPT_DELLA_FONTE as Record<string, string>)[f])), (COMANDI_PIANIFICATI as Record<string, string[]>)[f].includes((SCRIPT_DELLA_FONTE as Record<string, string>)[f])]),
-  [["ted", true, true, true], ["pvl", true, true, true], ["sintel", true, true, true], ["sardegnacat", true, true, true], ["sater", true, true, true], ["tuttogare", true, true, true]]);
+  [["ted", true, true, true], ["pvl", true, true, true], ["sintel", true, true, true], ["sardegnacat", true, true, true], ["sater", true, true, true], ["tuttogare", true, true, true], ["empulia", true, true, true], ["siaps", true, true, true]]);
 uguale("comandi: gli stessi dei giri a mano già autorizzati (A1, A2) per le regionali; PVL incrementale; TED con i limiti predefiniti",
   [COMANDI_PIANIFICATI.sintel, COMANDI_PIANIFICATI.sardegnacat, COMANDI_PIANIFICATI.pvl, COMANDI_PIANIFICATI.ted],
   [["npx", "tsx", "scripts/radar-importa-regionale.ts", "sintel"], ["npx", "tsx", "scripts/radar-importa-regionale.ts", "sardegnacat"], ["npx", "tsx", "scripts/radar-importa-pvl.ts", "incrementale"], ["npx", "tsx", "scripts/radar-importa-ted.ts"]]);
@@ -110,8 +110,8 @@ atteso("istruzioni: creare spente, accendere, spegnere, togliere e controllare, 
 uguale("strumento «stato»: la sua copia degli orari è identica a ORARI_GIRI", ORARI_ATTESI, ORARI_GIRI);
 uguale("ora di Roma: inverno +1, estate +2", [new Date(istanteRoma("2026-11-24", "08:05")!).toISOString(), new Date(istanteRoma("2026-07-01", "08:05")!).toISOString()], ["2026-11-24T07:05:00.000Z", "2026-07-01T06:05:00.000Z"]);
 const giorno = (g: string) => [Date.parse(`${g}T00:00:00+01:00`), Date.parse(`${g}T23:59:59+01:00`)] as const;
-uguale("giri previsti in un giorno feriale (martedì 24/11): PVL 3, TED 2, Sintel 2, SardegnaCAT 4, SATER 3, TuttoGare 3", FONTI_PIANIFICATE.map((f: string) => giriAttesi(f, ...giorno("2026-11-24"))), [2, 3, 2, 4, 3, 3]);
-uguale("giri previsti di domenica (29/11): PVL 3, TED 0, Sintel 2, SardegnaCAT 1, SATER 1, TuttoGare 1", FONTI_PIANIFICATE.map((f: string) => giriAttesi(f, ...giorno("2026-11-29"))), [0, 3, 2, 1, 1, 1]);
+uguale("giri previsti in un giorno feriale (martedì 24/11): PVL 3, TED 2, Sintel 2, SardegnaCAT 4, SATER 3, TuttoGare 3, EmPULIA 3, SIAPS 3", FONTI_PIANIFICATE.map((f: string) => giriAttesi(f, ...giorno("2026-11-24"))), [2, 3, 2, 4, 3, 3, 3, 3]);
+uguale("giri previsti di domenica (29/11): PVL 3, TED 0, Sintel 2, SardegnaCAT 1, SATER 1, TuttoGare 1, EmPULIA 1, SIAPS 1", FONTI_PIANIFICATE.map((f: string) => giriAttesi(f, ...giorno("2026-11-29"))), [0, 3, 2, 1, 1, 1, 1, 1]);
 uguale("giri previsti nel giorno del cambio dell'ora (domenica 25/10/2026, 25 ore): PVL 3, Sintel 2", [giriAttesi("pvl", Date.parse("2026-10-25T00:00:00+02:00"), Date.parse("2026-10-25T23:59:59+01:00")), giriAttesi("sintel", Date.parse("2026-10-25T00:00:00+02:00"), Date.parse("2026-10-25T23:59:59+01:00"))], [3, 2]);
 
 // ───── 8. usi delle quattro autorizzazioni da 72 ore: giri del periodo più 2 di margine, dentro i 20 del registro ─────
@@ -120,9 +120,9 @@ const massimo72 = (f: string) => {
   for (let t = Date.parse("2026-11-23T00:00:00Z"); t < Date.parse("2026-12-07T00:00:00Z"); t += 15 * 60_000) m = Math.max(m, giriAttesi(f, t, t + 72 * 3_600_000 - 1));
   return m;
 };
-// Fase 2 (26/11): SATER e TuttoGare 9 giri al più in 72 ore → 11 usi
-const USI_PROPOSTI: Record<string, number> = { ted: 8, pvl: 11, sintel: 8, sardegnacat: 14, sater: 11, tuttogare: 11 };
-uguale("massimo dei giri previsti in 72 ore (qualunque partenza, due settimane): TED 6, PVL 9, Sintel 6, SardegnaCAT 12, SATER 9, TuttoGare 9", FONTI_PIANIFICATE.map(massimo72), [6, 9, 6, 12, 9, 9]);
+// Fase 2 (26/11): SATER e TuttoGare 9 giri al più in 72 ore → 11 usi; (27/11) EmPULIA e SIAPS allo stesso modo
+const USI_PROPOSTI: Record<string, number> = { ted: 8, pvl: 11, sintel: 8, sardegnacat: 14, sater: 11, tuttogare: 11, empulia: 11, siaps: 11 };
+uguale("massimo dei giri previsti in 72 ore (qualunque partenza, due settimane): TED 6, PVL 9, Sintel 6, SardegnaCAT 12, SATER 9, TuttoGare 9, EmPULIA 9, SIAPS 9", FONTI_PIANIFICATE.map(massimo72), [6, 9, 6, 12, 9, 9, 9, 9]);
 atteso("usi proposti = massimo in 72 ore + 2 di margine, e dentro il limite di 20 del registro", FONTI_PIANIFICATE.every((f: string) => USI_PROPOSTI[f] === massimo72(f) + 2 && USI_PROPOSTI[f] <= 20), USI_PROPOSTI);
 
 // ───── 9. il lanciatore: ordine dei controlli e nessun nuovo tentativo ─────

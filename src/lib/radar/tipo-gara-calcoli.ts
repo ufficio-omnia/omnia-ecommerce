@@ -13,7 +13,7 @@ import { ETICHETTA_OPPORTUNITA, opportunitaDaTipoAvviso, type TipoOpportunitaArc
 
 export type TipoMostrato = TipoOpportunitaArchivio | "preinformazione";
 
-const TIPI_ARCHIVIO: readonly string[] = ["bando", "manifestazione_interesse", "indagine_mercato", "sistema_qualificazione"] satisfies readonly TipoOpportunitaArchivio[];
+const TIPI_ARCHIVIO: readonly string[] = ["bando", "manifestazione_interesse", "indagine_mercato", "sistema_qualificazione", "consultazione_preliminare"] satisfies readonly TipoOpportunitaArchivio[];
 
 // i nomi sono quelli di opportunita-calcoli.ts; «Avviso di preinformazione» è il nome scelto dall'utente (C11)
 export const ETICHETTA_TIPO: Record<TipoMostrato, string> = {
@@ -21,8 +21,14 @@ export const ETICHETTA_TIPO: Record<TipoMostrato, string> = {
   manifestazione_interesse: ETICHETTA_OPPORTUNITA.manifestazione_interesse,
   indagine_mercato: ETICHETTA_OPPORTUNITA.indagine_mercato,
   sistema_qualificazione: ETICHETTA_OPPORTUNITA.sistema_qualificazione,
+  consultazione_preliminare: ETICHETTA_OPPORTUNITA.consultazione_preliminare,
   preinformazione: "Avviso di preinformazione",
 };
+
+// Fase 2 (consultazioni preliminari, 26/11): la riga della scheda che dice che cosa è. Testo CONFERMATO dall'utente il 26/11 («va bene così»):
+// da usare così
+export const COME_SI_PARTECIPA_CONSULTAZIONE =
+  "Consultazione preliminare di mercato: l'ente raccoglie informazioni e contributi dagli operatori prima di preparare la gara. Non è una gara né una candidatura: si risponde con le informazioni richieste entro il termine indicato.";
 
 // C11: la riga della scheda che dice che cosa si presenta per partecipare
 export const COME_SI_PARTECIPA_PREINFORMAZIONE =
@@ -46,12 +52,24 @@ export function tipoDellaGara(g: { tipo_opportunita?: string | null; tipo_avviso
 
 // ───── C5: i gruppi del filtro di «Cerca» ─────
 
-export type CategoriaTipo = "bandi" | "candidature" | "iscrizioni";
+// Fase 2: «consultazioni» (consultazioni preliminari di mercato), DISTINTE da bandi e candidature (decisione dell'utente del 26/11)
+export type CategoriaTipo = "bandi" | "candidature" | "iscrizioni" | "consultazioni";
+
+/**
+ * La voce «Consultazioni» nel filtro di «Cerca»: SPENTA finché l'utente non decide di mostrarla, INSIEME al testo della pagina pubblica
+ * «Ricerca gare» (src/lib/ricerca-gare-testi.ts, verifica-testi-ricerca-gare B1.8), quando una fonte visibile ai clienti produce davvero
+ * consultazioni. Spenta: nessuna casella vuota in «Cerca», il parametro «tipo=consultazioni» non si accetta. Il tipo, la sua etichetta e il
+ * colore restano pronti per elenchi, scheda ed email.
+ */
+export const CONSULTAZIONI_IN_CERCA = false as boolean;
+
+export const CATEGORIA_CONSULTAZIONI: { id: CategoriaTipo; etichetta: string; breve: string } = { id: "consultazioni", etichetta: "Consultazioni preliminari di mercato (prima della gara)", breve: "Consultazioni" };
 
 export const CATEGORIE_TIPO: readonly { id: CategoriaTipo; etichetta: string; breve: string }[] = [
   { id: "bandi", etichetta: "Bandi di gara", breve: "Bandi di gara" },
   { id: "candidature", etichetta: "Candidature: manifestazioni di interesse, indagini di mercato, avvisi di preinformazione", breve: "Candidature" },
   { id: "iscrizioni", etichetta: "Iscrizioni: elenchi, sistemi di qualificazione, SDA", breve: "Iscrizioni" },
+  ...(CONSULTAZIONI_IN_CERCA ? [CATEGORIA_CONSULTAZIONI] : []),
 ];
 
 export const CATEGORIA_DEL_TIPO: Record<TipoMostrato, CategoriaTipo> = {
@@ -60,6 +78,7 @@ export const CATEGORIA_DEL_TIPO: Record<TipoMostrato, CategoriaTipo> = {
   manifestazione_interesse: "candidature",
   indagine_mercato: "candidature",
   sistema_qualificazione: "iscrizioni",
+  consultazione_preliminare: "consultazioni",
 };
 
 export function eCategoriaTipo(x: string): x is CategoriaTipo {
@@ -81,6 +100,8 @@ const CONDIZIONE_TIPO: Record<CategoriaTipo, string> = {
   bandi: `and(tipo_opportunita.eq.bando,${NON_PREINFORMAZIONE}),and(tipo_opportunita.is.null,${BANDO_DALL_AVVISO},${NON_PREINFORMAZIONE})`,
   candidature: `tipo_opportunita.in.(manifestazione_interesse,indagine_mercato),and(tipo_opportunita.eq.bando,${PREINFORMAZIONE}),and(tipo_opportunita.is.null,${PREINFORMAZIONE}),and(tipo_opportunita.is.null,tipo_avviso.eq.${CANDIDATURE_DALL_AVVISO})`,
   iscrizioni: `tipo_opportunita.eq.sistema_qualificazione,and(tipo_opportunita.is.null,tipo_avviso.in.${ISCRIZIONI_DALL_AVVISO})`,
+  // solo dalla colonna: nessun tipo di avviso di TED o PVL è una consultazione (opportunitaDaTipoAvviso non la riconosce)
+  consultazioni: "tipo_opportunita.eq.consultazione_preliminare",
 };
 
 export function condizioneTipi(categorie: readonly CategoriaTipo[]): string {

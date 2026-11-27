@@ -1,6 +1,8 @@
 // Database IN MEMORIA che imita PostgREST per le sole operazioni del motore delle notifiche (fase B4, B2). Estratto il 23/11/2026 dalla
 // verifica del motore (scripts/verifica-radar-b4-db-motore.ts), SENZA cambiarne il comportamento, per usarlo anche nella prova preliminare del
 // collaudo Z8 (scripts/collaudo-z8). Aggiunta sola: maybeSingle() (lettura dello stato dell'abbonamento, omnia-ai-access.ts).
+// Fase 2 (START, 26/11): contains() su colonne array, la condizione «c.ilike.schema» nel filtro «or» (jolly «*» e «%», senza maiuscole) e
+// l'aggancio facoltativo dopoScrittura (per imitare un trigger, es. radar_procedure.fonti della 0120). Senza aggancio nulla cambia.
 // SOLO per prove: nessuna rete, nessun database vero.
 
 // ═══════════════════════ database in memoria (imitazione di PostgREST per le operazioni del motore) ═══════════════════════
@@ -22,6 +24,8 @@ export class DbFinto {
   guasti = new Map<string, number>();
   orologio: () => Date = () => new Date("2026-10-20T06:00:00Z");
   contatore = 0;
+  /** facoltativo: chiamato dopo ogni scrittura riuscita (update, insert, upsert, delete) con il nome della tabella */
+  dopoScrittura?: (tabella: string) => void;
   t(nome: string): Riga[] {
     return (this.tabelle[nome] ??= []);
   }
@@ -152,6 +156,8 @@ export class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | 
     return this;
   }
   in(c: string, vs: unknown[]) { const s = new Set(vs); this.filtri.push((r) => s.has(r[c])); return this; }
+  /** «@>» di Postgres su una colonna array: contiene TUTTI i valori dati */
+  contains(c: string, vs: unknown[]) { this.filtri.push((r) => Array.isArray(r[c]) && vs.every((v) => (r[c] as unknown[]).includes(v))); return this; }
   is(c: string, v: null) { this.filtri.push((r) => (r[c] ?? null) === v); return this; }
   not(c: string, op: string, v: null) { if (op !== "is") throw new Error("not: solo «is»"); this.filtri.push((r) => (r[c] ?? null) !== v); return this; }
   /** filtro «or» di PostgREST: «and(c.op.v,…),c.op.v,…». Parser STRETTO: ogni sintassi non prevista è un errore (mai un filtro ignorato). */
@@ -160,6 +166,12 @@ export class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | 
       // «c.is.null»: il blocco dei giri degli importatori (blocco_fino_a libero o scaduto), aggiunto per il registro dei giri (K2)
       const nulla = /^([a-z_]+)\.is\.null$/.exec(s);
       if (nulla) return (r) => (r[nulla[1]] ?? null) === null;
+      // «c.ilike.schema»: ILIKE con i jolly di PostgREST («*», come «%»); niente virgole né parentesi nello schema
+      const simile = /^([a-z_]+)\.ilike\.([^,()]+)$/.exec(s);
+      if (simile) {
+        const re = new RegExp(`^${simile[2].split("").map((ch) => (ch === "*" || ch === "%" ? ".*" : ch === "_" ? "." : ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("")}$`, "is");
+        return (r) => typeof r[simile[1]] === "string" && re.test(r[simile[1]] as string);
+      }
       const m = /^([a-z_]+)\.(eq|lt|lte|gt|gte)\.([^,()]+)$/.exec(s);
       if (!m) throw new Error(`or: condizione non prevista «${s}»`);
       const [, c, op, v] = m;
@@ -195,6 +207,11 @@ export class QueryFinta implements PromiseLike<{ data: unknown; error: Errore | 
     return Object.fromEntries(this.colonne.split(",").map((s) => s.trim()).map((k) => [k, r[k] ?? null]));
   }
   private esegui(): { data: unknown; error: Errore | null } {
+    const r = this.eseguiSenzaAggancio();
+    if (this.op !== "select" && !r.error) this.db.dopoScrittura?.(this.tabella);
+    return r;
+  }
+  private eseguiSenzaAggancio(): { data: unknown; error: Errore | null } {
     this.db.richieste.push({ tabella: this.tabella, metodo: this.op ?? "?" });
     const chiaveGuasto = `${this.tabella}|${this.op}`;
     const g = this.db.guasti.get(chiaveGuasto) ?? 0;
