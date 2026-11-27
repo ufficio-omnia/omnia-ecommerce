@@ -203,6 +203,12 @@ a {
   --ombra-rgb: 0, 0, 0;
   --carta: #ffffff;
   --inchiostro: #1b1930;
+  /* copertina di Tender Weekly: scura in entrambi i temi, come la testata dell'email */
+  --tw-notte: #0b0a16;
+  --tw-su-notte: #ffffff;
+  --tw-verde: #4fd1a5;
+  --tw-viola: #5b4bd0;
+  --tw-fioco: #a9a6c4;
 }
 
 /* ---------- Tema chiaro ----------
@@ -248,6 +254,12 @@ a {
   --ombra-rgb: 0, 0, 0;
   --carta: #ffffff;
   --inchiostro: #1b1930;
+  /* copertina di Tender Weekly: scura in entrambi i temi, come la testata dell'email */
+  --tw-notte: #0b0a16;
+  --tw-su-notte: #ffffff;
+  --tw-verde: #4fd1a5;
+  --tw-viola: #5b4bd0;
+  --tw-fioco: #a9a6c4;
 }
 
 /* ---------- Fondamenta ----------
@@ -6009,14 +6021,14 @@ html.omnia-scorrimento-bloccato body {
   display: grid;
   gap: 6px;
   padding: 22px 26px 20px;
-  background: #0b0a16;
-  color: #ffffff;
+  background: var(--tw-notte);
+  color: var(--tw-su-notte);
 }
 .omnia-tw-copertina-occhiello {
   font-size: 10.5px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #4fd1a5;
+  color: var(--tw-verde);
   font-weight: 700;
 }
 .omnia-tw-copertina-testata {
@@ -6031,13 +6043,13 @@ html.omnia-scorrimento-bloccato body {
   height: 3px;
   width: 108px;
   margin: 8px 0 4px;
-  background: linear-gradient(90deg, #5b4bd0 0 66%, #4fd1a5 66% 100%);
+  background: linear-gradient(90deg, var(--tw-viola) 0 66%, var(--tw-verde) 66% 100%);
   border-radius: 2px;
 }
 .omnia-tw-copertina-claim {
   font-size: 10px;
   letter-spacing: 0.2em;
-  color: #a9a6c4;
+  color: var(--tw-fioco);
 }
 .omnia-tw-modulo {
   position: relative;
