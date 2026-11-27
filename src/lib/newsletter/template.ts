@@ -277,8 +277,8 @@ img{-ms-interpolation-mode:bicubic;border:0;outline:none;text-decoration:none;}
 body{margin:0!important;padding:0!important;width:100%!important;}
 a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;}
 @media screen and (max-width:620px){
-  .tw-pad{padding-left:20px!important;padding-right:20px!important;}
-  .tw-pad-interno{padding-left:22px!important;padding-right:22px!important;}
+  .tw-pad{padding-left:14px!important;padding-right:14px!important;}
+  .tw-pad-interno{padding-left:16px!important;padding-right:16px!important;}
   .tw-testata{font-size:36px!important;letter-spacing:1px!important;}
   .tw-titolo-notizia{font-size:21px!important;}
   .tw-titolo-editoriale{font-size:24px!important;}

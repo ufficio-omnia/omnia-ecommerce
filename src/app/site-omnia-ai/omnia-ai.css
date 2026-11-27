@@ -6113,6 +6113,7 @@ html.omnia-scorrimento-bloccato body {
   margin: 14px 0 14px;
 }
 .omnia-tw-conferma p {
+  text-align: center;
   color: var(--testo-2);
   font-size: 16px;
   line-height: 1.7;
