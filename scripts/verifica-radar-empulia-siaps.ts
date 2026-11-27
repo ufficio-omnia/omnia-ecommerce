@@ -1,8 +1,8 @@
 // Verifica dei connettori EmPULIA e SIAPS (Fase 2; istanze del connettore AF Soluzioni; decisioni del coordinamento del 26–27/11): feed
 // PUBBLICATI (indirizzi della ricognizione del 27/11), pagine EmPULIA cambiando SOLO nPag, feed delle consultazioni, regole estese SOLO per
 // queste due istanze (SardegnaCAT e SATER identiche), identità «empulia:<IdMsg>» e «siaps:<IdMsg>», collegamento SIAPS ufficiale dei BT-15,
-// suggerimenti SIAPS per stesso IdMsg (mai unioni), reindirizzamenti contati come richieste, 0138 e 0139 PROPOSTE (mai applicate), tutto
-// spento (nessuna variabile di produzione, fuori da console e cron). Dati [SINTETICI] (feed inventati con la forma vista il 27/11, enti e
+// suggerimenti SIAPS per stesso IdMsg (mai unioni), reindirizzamenti contati come richieste, 0138 e 0139 PROPOSTE (mai applicate); dal 27/11
+// in produzione come SATER e TuttoGare, tutto spento di base (variabile RADAR_<FONTE>_PRODUZIONE, interruttore del cron, riga spenta e nascosta). Dati [SINTETICI] (feed inventati con la forma vista il 27/11, enti e
 // CIG di prova: «Comune di Provasintetica», «PRVAF00001»); nessuna rete (fetch vietato), database in memoria.
 // Uso: npx tsx scripts/verifica-radar-empulia-siaps.ts → codice 0 se passa.
 import fs from "node:fs";
@@ -213,8 +213,15 @@ async function provaLettore(): Promise<void> {
 // ═════ G. guardie, nomi, 0138 e 0139 ═════
 function provaGuardie(): void {
   const tutte = Object.fromEntries(Object.values(VARIABILI_PRODUZIONE).map((v) => [v as string, "autorizzata"]));
-  controlla("ambiente: EmPULIA e SIAPS senza variabile di produzione: staging sì, produzione MAI (nemmeno con tutte le variabili)", ["empulia", "siaps"].every((f) => (FONTI_RADAR as readonly string[]).includes(f) && !(f in VARIABILI_PRODUZIONE) && fonteAutorizzata(f, "importazione", STAGING).ok && !fonteAutorizzata(f, "importazione", { ...PROD_DEPLOY, ...tutte }).ok && !fonteAutorizzata(f, "notifiche", { ...PROD_DEPLOY, ...tutte }).ok));
-  controlla("fuori da console, allarmi e cron; nel registro dei giri e negli script dello staging", ["empulia", "siaps"].every((f) => !(FONTI_REGIONALI as readonly string[]).includes(f) && !(FONTI_ESECUZIONI as readonly string[]).includes(f) && (FONTI_REGISTRO as readonly string[]).includes(f) && (FONTI_ACCENDIBILI as readonly string[]).includes(f) && !(f in ORARI_GIRI) && !(f in CRON_PROPOSTI) && !(f in ROTTE_CRON) && !(f in INTERRUTTORI_CRON)) && !(JSON.parse(leggi("vercel.json")) as { crons: { path: string }[] }).crons.some((c) => /empulia|siaps/i.test(c.path)) && /"start", "empulia", "siaps"\]/.test(leggi("scripts/radar-importa-regionale.ts")));
+  // 27/11 (decisione dell'utente: EmPULIA e SIAPS in produzione): come SATER e TuttoGare, la SUA variabile di produzione; START no
+  for (const f of ["empulia", "siaps"] as const) {
+    const sua = `RADAR_${f.toUpperCase()}_PRODUZIONE`;
+    const altre = Object.fromEntries(Object.entries(tutte).filter(([k]) => k !== sua));
+    controlla(`ambiente: ${f} con la SUA variabile ${sua}: staging sì; produzione solo dal deploy di produzione con «autorizzata»; senza (anche con tutte le altre) mai`, (FONTI_RADAR as readonly string[]).includes(f) && VARIABILI_PRODUZIONE[f] === sua && fonteAutorizzata(f, "importazione", STAGING).ok && fonteAutorizzata(f, "importazione", { ...PROD_DEPLOY, [sua]: "autorizzata" }).ok && !fonteAutorizzata(f, "importazione", { ...PROD_DEPLOY, ...altre }).ok && !fonteAutorizzata(f, "notifiche", { ...PROD_DEPLOY, ...altre }).ok && !fonteAutorizzata(f, "importazione", { ...PROD_DEPLOY, [sua]: "si" }).ok);
+  }
+  controlla("START resta senza variabile di produzione (dormiente)", !("start" in VARIABILI_PRODUZIONE) && !fonteAutorizzata("start", "importazione", { ...PROD_DEPLOY, ...tutte }).ok);
+  const cron = (JSON.parse(leggi("vercel.json")) as { crons: { path: string; schedule: string }[] }).crons;
+  controlla("in console, allarmi, cron e programmatore come SATER e TuttoGare (tutto spento di base: interruttori RADAR_<FONTE>_CRON); START resta fuori da tutto, solo negli script dello staging", ["empulia", "siaps"].every((f) => (FONTI_REGIONALI as readonly string[]).includes(f) && (FONTI_ESECUZIONI as readonly string[]).includes(f) && (FONTI_REGISTRO as readonly string[]).includes(f) && (FONTI_ACCENDIBILI as readonly string[]).includes(f) && ORARI_GIRI[f as "empulia"].length === 4 && CRON_PROPOSTI[f as "empulia"].length === 1 && ROTTE_CRON[f as "empulia"] === `/api/cron/radar-${f}` && INTERRUTTORI_CRON[f as "empulia"] === `RADAR_${f.toUpperCase()}_CRON` && cron.filter((c) => c.path === `/api/cron/radar-${f}`).length === 1 && cron.find((c) => c.path === `/api/cron/radar-${f}`)?.schedule === CRON_PROPOSTI[f as "empulia"][0]) && !(FONTI_ESECUZIONI as readonly string[]).includes("start") && !("start" in ORARI_GIRI) && !cron.some((c) => /start/i.test(c.path)) && (FONTI_REGISTRO as readonly string[]).includes("start") && /\[\.\.\.FONTI_REGIONALI, "start"\]/.test(leggi("scripts/radar-importa-regionale.ts")), cron.map((c) => c.path));
   controlla("motore di unione: precedenza e sede come SardegnaCAT; nomi e attribuzioni uguali a quelli delle istanze; scheda «EmPULIA, procedura <IdMsg>»", ["empulia", "siaps"].every((f) => FONTI_UNITE.includes(f as "empulia") && PRECEDENZA_FONTI[f as "empulia"] === PRECEDENZA_FONTI.sardegnacat && SEDE_DELL_ENTE[f as "empulia"] === true) && NOME_FONTE.empulia === "EmPULIA" && NOME_FONTE.siaps === "SIAPS" && ATTRIBUZIONE_FONTE.empulia === EMPULIA.attribuzione && ATTRIBUZIONE_FONTE.siaps === SIAPS.attribuzione && descriviAvvisoLetto({ fonte: "empulia", id_fonte: "9000001", tipo_avviso: "Bando" }) === "EmPULIA, procedura 9000001");
   for (const [num, fonte, file] of [["0138", "empulia", "0138_radar_fonte_empulia.sql"], ["0139", "siaps", "0139_radar_fonte_siaps.sql"]] as const) {
     const sql = leggi(`supabase/migrations/${file}`);
@@ -226,7 +233,7 @@ function provaGuardie(): void {
 // ═════ H. giri col database in memoria ═════
 function mondo(fonte: "empulia" | "siaps", stato: "assente" | "accesa" | "accesa_migrazione"): DbFinto {
   const db = new DbFinto();
-  const altre = FONTI_ESECUZIONI.map((f) => ({ fonte: f, attiva: false, ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: false, dati_aggiornati_al: null }));
+  const altre = FONTI_ESECUZIONI.filter((f) => f !== fonte).map((f) => ({ fonte: f, attiva: false, ultimo_successo_il: null, cursore: null, blocco_fino_a: null, conteggi: {}, nascosta_ai_clienti: false, dati_aggiornati_al: null }));
   db.tabelle.radar_fonti_stato = stato === "assente" ? altre : [...altre, { fonte, attiva: true, ultimo_successo_il: null, cursore: null, blocco_fino_a: stato === "accesa_migrazione" ? "2099-01-01T00:00:00.000Z" : null, conteggi: {}, nascosta_ai_clienti: true, dati_aggiornati_al: null }];
   // il trigger della 0120: radar_procedure.fonti = le fonti della provenienza
   db.dopoScrittura = (tabella) => {
@@ -266,8 +273,9 @@ async function provaGiri(): Promise<void> {
     const ra = await eseguiImportazioneRegionale(a as unknown as SupabaseClient, fonte, { env: STAGING, adesso: () => ADESSO });
     controlla(`${fonte}: staging SENZA la sua riga (migrazione non applicata): «fonte_spenta», nessuna gara, nessuna richiesta`, !ra.eseguita && ra.motivo === "fonte_spenta" && a.t("radar_procedure").length === 0);
     const b = mondo(fonte, "accesa");
-    const rb = await eseguiImportazioneRegionale(b as unknown as SupabaseClient, fonte, { env: { ...PROD_DEPLOY, ...tutte, RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
-    controlla(`${fonte}: produzione (anche con tutte le variabili): «ambiente_non_consentito», zero accessi al database`, !rb.eseguita && rb.motivo === "ambiente_non_consentito" && b.richieste.length === 0);
+    const senzaLaSua = Object.fromEntries(Object.entries(tutte).filter(([k]) => k !== `RADAR_${fonte.toUpperCase()}_PRODUZIONE`));
+    const rb = await eseguiImportazioneRegionale(b as unknown as SupabaseClient, fonte, { env: { ...PROD_DEPLOY, ...senzaLaSua, RADAR_CONTATTO_FONTI: "contatto@esempio.invalid" }, adesso: () => ADESSO });
+    controlla(`${fonte}: produzione SENZA la sua variabile (anche con tutte le altre): «ambiente_non_consentito», zero accessi al database`, !rb.eseguita && rb.motivo === "ambiente_non_consentito" && b.richieste.length === 0);
     const o = mondo(fonte, "accesa_migrazione");
     const ro = await eseguiImportazioneRegionale(o as unknown as SupabaseClient, fonte, { env: STAGING, adesso: () => ADESSO });
     controlla(`${fonte}: accesa col semaforo 2099 della sua migrazione: «occupata»`, !ro.eseguita && ro.motivo === "occupata");

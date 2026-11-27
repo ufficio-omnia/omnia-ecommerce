@@ -67,8 +67,8 @@ const stati = (x: Partial<Record<string, Partial<RigaStatoFonte>>> = {}) => ["te
 
 function provaAllarmi(): void {
   const vuoto = allarmiFonti([], [], ADESSO);
-  // Fase 2 (26/11): sei fonti, con SATER e TuttoGare in fondo
-  controlla("sempre le sei fonti, in ordine; senza righe di stato: spente, nessun allarme", vuoto.map((s) => `${s.fonte}:${s.stato}:${s.allarmi.length}`).join() === "ted:spenta:0,pvl:spenta:0,sintel:spenta:0,sardegnacat:spenta:0,sater:spenta:0,tuttogare:spenta:0");
+  // Fase 2 (26/11): sei fonti, con SATER e TuttoGare in fondo; (27/11) otto, con EmPULIA e SIAPS
+  controlla("sempre le otto fonti, in ordine; senza righe di stato: spente, nessun allarme", vuoto.map((s) => `${s.fonte}:${s.stato}:${s.allarmi.length}`).join() === "ted:spenta:0,pvl:spenta:0,sintel:spenta:0,sardegnacat:spenta:0,sater:spenta:0,tuttogare:spenta:0,empulia:spenta:0,siaps:spenta:0");
 
   // sospesa
   const sosp = di(allarmiFonti([], stati({ pvl: { attiva: false, conteggi: { sospensione: { il: "2026-11-23T08:06:00Z", motivo: "HTTP 429 dalla PVL" } } } }), ADESSO), "pvl");
@@ -167,15 +167,15 @@ async function provaLettura(): Promise<void> {
   db.tabelle.radar_fonti_stato = stati();
   db.tabelle.radar_esecuzioni = [riga("pvl", "2026-11-23T07:06:00Z", "ok"), riga("ted", "2026-10-02T09:15:00Z", "errore"), riga("ted", "2026-10-01T09:15:00Z", "errore")];
   const r = await leggiSituazioneFonti(db as unknown as SupabaseClient, ADESSO, { RADAR_PVL_CRON: "attivo" });
-  controlla("lettura: due letture (stato e registro), nessuna scrittura; sei fonti; giro mancato della PVL (cron acceso)", db.richieste.length === 2 && db.richieste.every((q) => q.metodo === "select") && r.situazioni.length === 6 && codici(di(r.situazioni, "pvl")).includes("giro_mancato") && r.errore === null && !r.registroAssente, { r: r.situazioni.map((s) => [s.fonte, s.stato, codici(s)]), richieste: db.richieste });
+  controlla("lettura: due letture (stato e registro), nessuna scrittura; otto fonti; giro mancato della PVL (cron acceso)", db.richieste.length === 2 && db.richieste.every((q) => q.metodo === "select") && r.situazioni.length === 8 && codici(di(r.situazioni, "pvl")).includes("giro_mancato") && r.errore === null && !r.registroAssente, { r: r.situazioni.map((s) => [s.fonte, s.stato, codici(s)]), richieste: db.richieste });
   controlla("lettura: solo gli ultimi 30 giorni del registro (i due errori TED di inizio ottobre non contano)", di(r.situazioni, "ted").erroriConsecutivi === 0 && di(r.situazioni, "ted").ultimoGiro === null, di(r.situazioni, "ted"));
   // tabella del registro assente (0128 non applicata): situazioni dallo stato, «registroAssente», nessun errore
   const senzaTabella = { from: (t: string) => (t === "radar_esecuzioni" ? catena({ code: "PGRST205", message: "Could not find the table 'public.radar_esecuzioni' in the schema cache" }) : db.from(t)) };
   const r3 = await leggiSituazioneFonti(senzaTabella as unknown as SupabaseClient, ADESSO, {});
-  controlla("lettura: registro assente → registroAssente, sei fonti dallo stato, nessun errore", r3.registroAssente && r3.errore === null && r3.situazioni.length === 6, r3);
+  controlla("lettura: registro assente → registroAssente, otto fonti dallo stato, nessun errore", r3.registroAssente && r3.errore === null && r3.situazioni.length === 8, r3);
   const guastoRegistro = { from: (t: string) => (t === "radar_esecuzioni" ? catena({ code: "08006", message: "connessione persa" }) : db.from(t)) };
   const r4 = await leggiSituazioneFonti(guastoRegistro as unknown as SupabaseClient, ADESSO, {});
-  controlla("lettura: registro non leggibile per un guasto → errore detto, non «assente»", !r4.registroAssente && /registro dei giri/.test(r4.errore ?? "") && r4.situazioni.length === 6, r4);
+  controlla("lettura: registro non leggibile per un guasto → errore detto, non «assente»", !r4.registroAssente && /registro dei giri/.test(r4.errore ?? "") && r4.situazioni.length === 8, r4);
   const db2 = new DbFinto();
   db2.tabelle.radar_fonti_stato = stati();
   db2.guasti.set("radar_fonti_stato|select", 1);
