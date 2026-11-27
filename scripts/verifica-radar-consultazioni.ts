@@ -32,7 +32,7 @@ controlla("TED e PVL invariati: nessun tipo di avviso diventa una consultazione"
 
 // ═════ B. interruttore PER FONTE (nel codice) ═════
 controlla("fonti che possono produrre consultazioni: SOLO start, empulia, siaps (nel codice, non in una variabile d'ambiente)", JSON.stringify(FONTI_CON_CONSULTAZIONI) === JSON.stringify(["start", "empulia", "siaps"]) && ["start", "empulia", "siaps"].every(consultazioniAccese));
-controlla("SATER, SardegnaCAT, Sintel, TuttoGare, PVL e TED: spente (nessun cambiamento in produzione)", FONTI_UNITE.filter((f) => !["start"].includes(f)).every((f) => !consultazioniAccese(f)) && !consultazioniAccese("sater") && !consultazioniAccese("sardegnacat"));
+controlla("SATER, SardegnaCAT, Sintel, TuttoGare, PVL e TED: spente (nessun cambiamento in produzione)", FONTI_UNITE.filter((f) => !["start", "empulia", "siaps"].includes(f)).every((f) => !consultazioniAccese(f)) && !consultazioniAccese("sater") && !consultazioniAccese("sardegnacat"));
 controlla("l'interruttore non dipende dall'ambiente: nessuna lettura di variabili", !/process\.env/.test(leggi("src/lib/radar/opportunita-calcoli.ts")));
 
 // ═════ C. lato lettura: tipo mostrato, etichette, filtro distinto ═════
@@ -72,7 +72,10 @@ const elemento = (tipo: string, oggetto: string): ElementoAflink => ({ IdMsg: "1
 const sardegna = leggiElementoAflink("sardegnacat", elemento("Consultazione Preliminare di Mercato", "Consultazione preliminare di mercato per i servizi di pulizia"), ADESSO);
 const sardegnaAvviso = leggiElementoAflink("sardegnacat", elemento("Avviso", "Consultazione preliminare di mercato per i servizi di pulizia"), ADESSO);
 controlla("SardegnaCAT (elementi [SINTETICI]): tipo «Consultazione…» escluso come prima; «Avviso» di consultazione entra come manifestazione come prima; mai il tipo nuovo", sardegna.tipo === "esclusione" && sardegna.motivo === "tipo_sconosciuto" && sardegnaAvviso.tipo === "bando" && sardegnaAvviso.opportunita.tipo === "manifestazione_interesse", { sardegna: sardegna.tipo === "esclusione" ? sardegna.motivo : sardegna.opportunita, avviso: sardegnaAvviso.tipo === "bando" ? sardegnaAvviso.opportunita : sardegnaAvviso.motivo });
-controlla("il connettore AF non usa ancora l'interruttore (EmPULIA e SIAPS non sono ancora costruite): nessun cambio al percorso di SATER e SardegnaCAT", !/consultazioniAccese|consultazione_preliminare/.test(leggi("src/lib/radar/fonti/aflink-calcoli.ts")) && !/consultazioniAccese|consultazione_preliminare/.test(leggi("src/lib/radar/fonti/intercenter-calcoli.ts")));
+// Fase 2 (27/11): il connettore AF usa l'interruttore SOLO nelle regole estese, che si applicano SOLO alle istanze che le dichiarano
+// (EmPULIA, SIAPS); SardegnaCAT e SATER non le dichiarano; il connettore SATER (API Intercent-ER) non le conosce
+const af = leggi("src/lib/radar/fonti/aflink-calcoli.ts");
+controlla("connettore AF: tipo nuovo solo nelle regole estese (desc.regoleEstese), dichiarate SOLO da EmPULIA e SIAPS; SardegnaCAT, SATER-feed e l'API di SATER fuori", /const opp = desc\.regoleEstese \? opportunitaAflinkEstesa\(/.test(af) && (af.match(/regoleEstese: true/g) ?? []).length === 2 && /consultazioniAccese\(istanza\) \? opportunita\("consultazione_preliminare"\)/.test(af) && !/consultazioniAccese|consultazione_preliminare/.test(leggi("src/lib/radar/fonti/intercenter-calcoli.ts")));
 
 // ═════ E. START: per ora le consultazioni restano escluse (il suo collaudo non dipende dalla 0140) ═════
 const rigaStart = { numero: "100005-2026", collegamento: null, ente: "Comune di Provasintetica", oggetto: "Consultazione preliminare di mercato per il servizio di portierato", procedura: "Consultazione preliminare di mercato", tipo: "Servizi", cig: "n/a", importo: null, stato: "In corso", pubblicazione: "20/11/2026", impronta: "x" };
