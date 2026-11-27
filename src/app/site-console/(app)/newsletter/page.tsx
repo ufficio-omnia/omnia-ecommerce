@@ -17,17 +17,6 @@ export const maxDuration = 300;
 
 type Dati = { stato: "ok"; edizioni: Edizione[]; iscritti: Iscritto[]; invii: Invio[]; imp: Impostazioni } | { stato: "errore"; messaggio: string };
 
-async function leggi(): Promise<Dati> {
-  try {
-    const a = archivioNewsletter();
-    const [edizioni, iscritti, invii, imp] = await Promise.all([a.elencoEdizioni(), a.elencoIscritti(), a.tuttiGliInvii(5000), a.leggiImpostazioni()]);
-    return { stato: "ok", edizioni, iscritti, invii, imp };
-  } catch (e) {
-    const m = e instanceof Error ? e.message : String(e);
-    return { stato: "errore", messaggio: /newsletter_/.test(m) ? "Le tabelle della newsletter non esistono ancora: va eseguita la migrazione 0141." : m };
-  }
-}
-
 export default async function PaginaNewsletter() {
   await richiediAdminPagina();
   const d = await leggi();
@@ -223,4 +212,15 @@ export default async function PaginaNewsletter() {
       </div>
     </>
   );
+}
+
+async function leggi(): Promise<Dati> {
+  try {
+    const a = archivioNewsletter();
+    const [edizioni, iscritti, invii, imp] = await Promise.all([a.elencoEdizioni(), a.elencoIscritti(), a.tuttiGliInvii(5000), a.leggiImpostazioni()]);
+    return { stato: "ok", edizioni, iscritti, invii, imp };
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    return { stato: "errore", messaggio: /newsletter_/.test(m) ? "Le tabelle della newsletter non esistono ancora: va eseguita la migrazione 0141." : m };
+  }
 }

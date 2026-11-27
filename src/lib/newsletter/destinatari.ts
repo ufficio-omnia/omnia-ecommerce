@@ -1,8 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { schemaAssente } from "@/lib/omnia-ai-incassi";
 
-// Stessa regola di «attivo» di statoAbbonamento (src/lib/console/abbonamenti-calcoli.ts): abbonamento attivo e periodo
-// pagato non scaduto. Ripetuta qui perché src/lib fuori dalla console non deve importare moduli della console
+// Stessa regola di «attivo» di statoAbbonamento (abbonamenti-calcoli.ts della console): abbonamento attivo e periodo
+// pagato non scaduto. Ripetuta qui perché i moduli dei siti pubblici non importano moduli della console
 // (scripts/verifica-console.ts, punto 2).
 function attivo(s: { status: string; current_period_end: string | null }, adesso: Date): boolean {
   return s.status === "attivo" && (s.current_period_end === null || Date.parse(s.current_period_end) > adesso.getTime());

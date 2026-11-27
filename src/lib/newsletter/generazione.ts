@@ -99,6 +99,8 @@ const STRUMENTO_COMPONI: Anthropic.Tool = {
 };
 
 export type EsitoGenerazione = {
+  // input dello strumento così come l'ha scritto il modello (diagnosi; non va mai mostrato ai lettori)
+  grezzo?: unknown;
   oggetto: string;
   preheader: string;
   contenuto: ContenutoEdizione;
@@ -143,8 +145,29 @@ export function filtraBozza(
   urlVerificati: Set<string>,
   dataEdizione: string,
 ): { oggetto: string; preheader: string; contenuto: ContenutoEdizione; note: string[]; fontiScartate: number; notizieScartate: number } {
-  const r = (typeof grezzo === "object" && grezzo !== null ? grezzo : {}) as Record<string, unknown>;
-  const sezioniGrezze = (typeof r.sezioni === "object" && r.sezioni !== null ? r.sezioni : {}) as Record<string, unknown>;
+  // il modello a volte passa oggetti annidati come stringhe JSON: si decodificano (una volta) prima di leggerli
+  const decodifica = (x: unknown): unknown => {
+    if (typeof x !== "string") return x;
+    try {
+      return JSON.parse(x);
+    } catch {
+      return x;
+    }
+  };
+  const r = (() => {
+    const g = decodifica(grezzo);
+    return (typeof g === "object" && g !== null ? g : {}) as Record<string, unknown>;
+  })();
+  const sezioniDecodificate = decodifica(r.sezioni);
+  const sezioniGrezze: Record<string, unknown> = {};
+  if (Array.isArray(sezioniDecodificate)) {
+    // forma alternativa: [{ chiave: "notizia", notizie: [...] }, ...]
+    for (const s of sezioniDecodificate) {
+      if (typeof s === "object" && s !== null && typeof (s as Record<string, unknown>).chiave === "string") sezioniGrezze[(s as Record<string, unknown>).chiave as string] = (s as Record<string, unknown>).notizie;
+    }
+  } else if (typeof sezioniDecodificate === "object" && sezioniDecodificate !== null) {
+    for (const [k, v] of Object.entries(sezioniDecodificate)) sezioniGrezze[k] = decodifica(v);
+  }
   const note: string[] = [];
   let fontiScartate = 0;
   let notizieScartate = 0;
@@ -152,7 +175,7 @@ export function filtraBozza(
 
   base.sezioni = base.sezioni.map((s) => {
     if (s.chiave === "omnia" || s.chiave === "chiusura") return s;
-    const lista = Array.isArray(sezioniGrezze[s.chiave]) ? (sezioniGrezze[s.chiave] as unknown[]) : [];
+    const lista = Array.isArray(sezioniGrezze[s.chiave]) ? (sezioniGrezze[s.chiave] as unknown[]).map(decodifica) : [];
     const provvisoria = normalizzaContenuto({ sezioni: [{ chiave: s.chiave, notizie: lista }] }).sezioni.find((x) => x.chiave === s.chiave)!;
     const notizie = provvisoria.notizie
       .map((n) => {
@@ -261,5 +284,6 @@ export async function generaEdizione(opz: {
   const verificati = urlDaRisultatiRicerca(tutti);
   for (const u of manuali) verificati.add(normalizzaUrlConfronto(u));
   const f = filtraBozza(uso, verificati, opz.dataEdizione);
-  return { oggetto: f.oggetto, preheader: f.preheader, contenuto: f.contenuto, note: f.note.join("\n"), ricerche, fontiScartate: f.fontiScartate, notizieScartate: f.notizieScartate };
+  if (f.contenuto.sezioni.every((s) => s.notizie.length === 0)) f.note.unshift("ATTENZIONE: il modello non ha prodotto notizie leggibili. Controllare la bozza o rigenerarla.");
+  return { grezzo: uso, oggetto: f.oggetto, preheader: f.preheader, contenuto: f.contenuto, note: f.note.join("\n"), ricerche, fontiScartate: f.fontiScartate, notizieScartate: f.notizieScartate };
 }

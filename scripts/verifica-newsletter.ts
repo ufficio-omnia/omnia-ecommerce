@@ -110,6 +110,12 @@ async function main() {
   atteso("l'approfondimento senza fonti resta", sez("esperto").notizie.length === 1);
   atteso("la sezione OMNIA AI News resta vuota e spenta", sez("omnia").notizie.length === 0 && !sez("omnia").attiva);
   uguale("oggetto ripulito", f.oggetto, "Oggetto");
+  const comeStringa = filtraBozza(
+    { oggetto: "O", preheader: "P", sezioni: JSON.stringify({ notizia: [{ titolo: "Vera", sintesi: "s", fonti: [{ titolo: "ANAC", url: "https://anticorruzione.it/-/vera" }] }], normativa: JSON.stringify([{ titolo: "Due", sintesi: "s", fonti: [{ titolo: "MIT", url: "https://www.mit.gov.it/notizia" }] }]) }) },
+    verificati,
+    "2026-11-27",
+  );
+  uguale("sezioni passate dal modello come stringa JSON: lette lo stesso", comeStringa.contenuto.sezioni.filter((s) => s.notizie.length).map((s) => s.chiave), ["notizia", "normativa"]);
 
   console.log("--- 4. Calendario Europe/Rome ---");
   // giovedì 26/11/2026 18:00 Roma = 17:00 UTC (ora solare)

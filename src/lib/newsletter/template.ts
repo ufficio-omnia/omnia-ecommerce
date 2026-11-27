@@ -277,7 +277,8 @@ a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important
   .tw-testata{font-size:36px!important;letter-spacing:1px!important;}
   .tw-titolo-notizia{font-size:21px!important;}
   .tw-titolo-editoriale{font-size:24px!important;}
-  .tw-meta{display:block!important;text-align:left!important;padding-top:8px!important;}
+  .tw-blocco,.tw-meta{display:block!important;width:100%!important;}
+  .tw-meta{text-align:left!important;padding-top:10px!important;}
 }
 </style>
 </head>
@@ -290,7 +291,7 @@ a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important
 ${fasciaProva}
 <tr><td bgcolor="${C.notte}" style="background-color:${C.notte};padding:22px 40px 0 40px;" class="tw-pad">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td valign="middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="middle" class="tw-blocco"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
 <td valign="middle"><img src="${LOGO_URL}" width="34" height="34" alt="OMNIA AI" style="display:block;width:34px;height:34px;border:0;border-radius:6px;"></td>
 <td valign="middle" style="padding-left:10px;font-family:${FONT_TITOLI};font-size:16px;font-weight:800;letter-spacing:2px;color:#ffffff;">OMNIA&nbsp;AI</td>
 </tr></table></td>
