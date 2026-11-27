@@ -4,7 +4,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { createHmac } from "crypto";
+import { createHash, createHmac } from "crypto";
 
 let errori = 0;
 let controlli = 0;
@@ -507,10 +507,10 @@ async function main() {
     atteso("0142: stato «in_attesa», base «contratto_abbonamento», provenienza vincolata", /'in_attesa', 'iscritto'/.test(m2) && /'contratto_abbonamento'/.test(m2) && /provenienza in \('sito', 'console', 'importazione', 'abbonamento'\)/.test(m2));
     atteso("0142: chi arriva dal sito ha sempre testo del consenso e versione dell'informativa", /provenienza <> 'sito' or \(consenso_testo is not null and informativa_versione is not null\)/.test(m2));
     atteso("0142: gettone di conferma solo per «in_attesa»", /\(stato = 'in_attesa'\) = \(conferma_token is not null\)/.test(m2));
-    atteso("0141 non modificata dopo il collaudo sullo staging", require("crypto").createHash("sha256").update(leggi("supabase/migrations/0141_newsletter_tender_weekly.sql")).digest("hex").startsWith("b09187b993fd28b2"));
+    atteso("0141 non modificata dopo il collaudo sullo staging", createHash("sha256").update(leggi("supabase/migrations/0141_newsletter_tender_weekly.sql")).digest("hex").startsWith("b09187b993fd28b2"));
     const att = leggi("supabase/manuali/attiva_documenti_v3_newsletter.sql");
     for (const [file, tipo] of [["legal/privacy-policy-omnia-ai-v3.md", "omnia_ai_privacy_policy"], ["legal/condizioni-abbonamento-v3.md", "omnia_ai_condizioni_abbonamento"]]) {
-      const h = require("crypto").createHash("sha256").update(leggi(file).replace(/\r\n/g, "\n")).digest("hex");
+      const h = createHash("sha256").update(leggi(file).replace(/\r\n/g, "\n")).digest("hex");
       atteso(`attivazione v3: impronta di ${file} corretta`, att.includes(h) && att.includes(tipo));
     }
     atteso("le versioni v2 pubblicate non sono state toccate", !/Tender Weekly/.test(leggi("legal/privacy-policy-omnia-ai-v2.md")) && !/Tender Weekly/.test(leggi("legal/condizioni-abbonamento-v2.md")));
