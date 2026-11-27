@@ -23,7 +23,8 @@ import type { VersioneFonte } from "./unione-calcoli";
 
 // Fase 2: «start» (START Toscana, in costruzione): importabile SOLO sullo staging (nessuna variabile di produzione), fuori da console,
 // cron e programmatore (non è in FONTI_REGIONALI).
-export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare" | "start";
+// EmPULIA e SIAPS (Fase 2, in costruzione) allo stesso modo: importabili SOLO sullo staging, fuori da console, cron e programmatore.
+export type FonteRegionale = "sintel" | "sardegnacat" | "sater" | "tuttogare" | "start" | "empulia" | "siaps";
 
 // Le fonti regionali GESTITE da console e giri programmati. Fase 2: anche SATER (decisione dell'utente del 26/11: in produzione), con la
 // sua variabile di produzione, il suo cron e la riga della 0134 (spenta e nascosta ai clienti). TuttoGare allo stesso modo (decisione

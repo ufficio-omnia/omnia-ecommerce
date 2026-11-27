@@ -5,7 +5,7 @@ import { FONTI_UNITE, eFonteUnita, type FonteUnita, type ProvenienzaCampi } from
 // Fase B2a: le fonti di una gara sono quelle del motore di unione (TED, PVL, Sintel, SardegnaCAT).
 export type FonteGara = FonteUnita;
 
-export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "Piattaforma dell'ente", start: "START" };
+export const NOME_FONTE: Record<FonteGara, string> = { ted: "TED", pvl: "PVL ANAC", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "Piattaforma dell'ente", start: "START", empulia: "EmPULIA", siaps: "SIAPS" };
 export const NOME_FONTE_ESTESO: Record<FonteGara, string> = {
   ted: "TED, Gazzetta ufficiale dell'Unione europea",
   pvl: "ANAC, Piattaforma di pubblicità a valore legale",
@@ -15,6 +15,8 @@ export const NOME_FONTE_ESTESO: Record<FonteGara, string> = {
   // TuttoGare: per il cliente senza il nome del software (indicazione del coordinamento del 26/11; le istanze sono le piattaforme degli enti)
   tuttogare: "Piattaforme telematiche delle stazioni appaltanti (pagine pubbliche delle gare)",
   start: "START, piattaforma di e-procurement della Regione Toscana (elenco pubblico delle procedure)",
+  empulia: "EmPULIA, piattaforma di e-procurement della Regione Puglia (feed pubblici dei bandi e delle consultazioni)",
+  siaps: "SIAPS, piattaforma di e-procurement della sanità della Regione Campania (feed pubblico dei bandi)",
 };
 export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
   ted: "TED, Ufficio delle pubblicazioni dell'Unione europea (riuso libero citando la fonte)",
@@ -28,6 +30,9 @@ export const ATTRIBUZIONE_FONTE: Record<FonteGara, string> = {
   tuttogare: "Piattaforme telematiche delle stazioni appaltanti (dati pubblicati dagli enti)",
   // START (in costruzione): uguale a CANALE_START.attribuzione (start-calcoli.ts), controllata da verifica-radar-start
   start: "Regione Toscana – START, Sistema Telematico Acquisti Regionale della Toscana (dati pubblicati dagli enti)",
+  // EmPULIA e SIAPS (in costruzione): uguali a ISTANZE_AFLINK.<istanza>.attribuzione, controllate da verifica-radar-empulia-siaps
+  empulia: "InnovaPuglia – EmPULIA, piattaforma di e-procurement della Regione Puglia (feed RSS pubblici)",
+  siaps: "So.Re.Sa. – SIAPS, piattaforma di e-procurement della sanità della Regione Campania (feed RSS pubblico)",
 };
 
 const eFonte = eFonteUnita;
@@ -115,7 +120,7 @@ export function descriviAvvisoLetto(a: Pick<AvvisoLetto, "fonte" | "id_fonte" | 
   // dell'istanza è nel collegamento alla pagina ufficiale)
   if (a.fonte === "tuttogare") return `${NOME_FONTE.tuttogare}, gara ${a.id_fonte.split(":").pop()}`;
   // START: «START, procedura 038448-2026» (il numero START, come nei collegamenti ufficiali)
-  if (a.fonte === "sintel" || a.fonte === "sardegnacat" || a.fonte === "sater" || a.fonte === "start") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
+  if (a.fonte === "sintel" || a.fonte === "sardegnacat" || a.fonte === "sater" || a.fonte === "start" || a.fonte === "empulia" || a.fonte === "siaps") return `${NOME_FONTE[a.fonte]}, procedura ${a.id_fonte}`;
   return `${NOME_FONTE.ted} ${a.id_fonte}`;
 }
 

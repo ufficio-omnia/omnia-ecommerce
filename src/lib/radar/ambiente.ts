@@ -36,7 +36,8 @@ export const MOTIVO_ANTEPRIMA = "Anteprima Vercel: le importazioni sono spente (
 // con la sua variabile della tabella VARIABILI_PRODUZIONE; senza la variabile non importa e non notifica.
 // Fase 2: «start» (START Toscana, in costruzione). NON ha la variabile di produzione (VARIABILI_PRODUZIONE): fuori dallo staging non è mai
 // autorizzata, qualunque cosa ci sia nel database o nell'ambiente.
-export const FONTI_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare", "start"] as const;
+// Fase 2: «empulia» e «siaps» (EmPULIA e SIAPS, in costruzione) allo stesso modo: nessuna variabile di produzione.
+export const FONTI_RADAR = ["ted", "pvl", "sintel", "sardegnacat", "sater", "tuttogare", "start", "empulia", "siaps"] as const;
 export type FonteRadar = (typeof FONTI_RADAR)[number];
 
 /**
@@ -59,7 +60,7 @@ export const VARIABILI_PRODUZIONE: Readonly<Partial<Record<FonteRadar, string>>>
   // Fase 2 (decisione dell'utente del 26/11: TuttoGare in produzione), con la stessa regola
   tuttogare: "RADAR_TUTTOGARE_PRODUZIONE",
 };
-const NOMI_FONTI: Record<FonteRadar, string> = { ted: "TED", pvl: "La PVL", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare", start: "START" };
+const NOMI_FONTI: Record<FonteRadar, string> = { ted: "TED", pvl: "La PVL", sintel: "Sintel", sardegnacat: "SardegnaCAT", sater: "SATER", tuttogare: "TuttoGare", start: "START", empulia: "EmPULIA", siaps: "SIAPS" };
 
 /**
  * L'UNICA regola che decide se una fonte del Radar si può usare in questo ambiente, per un dato uso (importatori, accensione dalla console,

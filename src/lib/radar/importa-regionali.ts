@@ -13,7 +13,7 @@ import { registroConEvidenza } from "./importa-evidenza";
 import { ErroreFonte, SessioneFonte, limitiValidi, type LimitiFonte } from "./fonti/sessione-fonte";
 import { LIMITI_SINTEL_INTERVALLI, LIMITI_SINTEL_PREDEFINITI, leggiRigheSintel } from "./fonti/sintel-calcoli";
 import { LettoreSintel } from "./fonti/sintel";
-import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PREDEFINITI, bucoPossibileFeed, leggiElementiAflink, pubblicazionePiuVecchiaAflink } from "./fonti/aflink-calcoli";
+import { ISTANZE_AFLINK, LIMITI_AFLINK_INTERVALLI, LIMITI_AFLINK_PAGINATI_INTERVALLI, LIMITI_AFLINK_PAGINATI_PREDEFINITI, LIMITI_AFLINK_PREDEFINITI, bucoPossibileFeed, idSiapsDaUrl, leggiElementiAflink, pubblicazionePiuVecchiaAflink } from "./fonti/aflink-calcoli";
 import { LettoreAflink } from "./fonti/aflink";
 import { LIMITI_INTERCENTER_INTERVALLI, LIMITI_INTERCENTER_PREDEFINITI, leggiElementiIntercenter } from "./fonti/intercenter-calcoli";
 import { LettoreIntercenter } from "./fonti/intercenter";
@@ -127,8 +127,12 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
           ? limitiValidi(opzioni.limiti, LIMITI_TUTTOGARE_PREDEFINITI, LIMITI_TUTTOGARE_INTERVALLI)
           : fonte === "start"
             ? limitiValidi(opzioni.limiti, LIMITI_START_PREDEFINITI, LIMITI_START_INTERVALLI)
-            : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
-  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : fonte === "tuttogare" ? "TuttoGare" : fonte === "start" ? "START" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore);
+            : ISTANZE_AFLINK[fonte].paginazione
+              ? limitiValidi(opzioni.limiti, LIMITI_AFLINK_PAGINATI_PREDEFINITI, LIMITI_AFLINK_PAGINATI_INTERVALLI)
+              : limitiValidi(opzioni.limiti, LIMITI_AFLINK_PREDEFINITI, LIMITI_AFLINK_INTERVALLI);
+  // Fase 2 (EmPULIA, SIAPS): ogni reindirizzamento seguito conta come una richiesta; le altre fonti contano come sempre
+  const contaReindirizzamenti = fonte !== "sintel" && fonte !== "tuttogare" && fonte !== "start" && ISTANZE_AFLINK[fonte].contaReindirizzamenti === true;
+  const sessione = new SessioneFonte(fonte === "sintel" ? "Sintel" : fonte === "tuttogare" ? "TuttoGare" : fonte === "start" ? "START" : ISTANZE_AFLINK[fonte].nome, limiti, opzioni.fetchFn, undefined, ua.valore, contaReindirizzamenti);
   // TuttoGare: il cursore nuovo (gare lette per istanza) si salva solo a giro finito, quando i bandi letti sono scritti
   let cursoreTuttoGareNuovo: CursoreTuttoGare | null = null;
   // START: i numeri dell'elenco letto e se la lettura è arrivata in fondo senza errori (per l'uscita dalle aperte, decisione 1c)
@@ -235,6 +239,8 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       const feed = await new LettoreAflink(fonte, sessione).leggiFeed();
       // feed «scivolato» (K6): l'avviso più vecchio è più recente dell'ultimo giro riuscito → qualcosa può essere uscito dal feed
       if (bucoPossibileFeed(pubblicazionePiuVecchiaAflink(feed.elementi), riga.ultimo_successo_il ? giornoDiRoma(new Date(riga.ultimo_successo_il)) : null)) allarmi.push("buco_possibile");
+      // Fase 2 (EmPULIA): pagine del feed non lette tutte (totale non raggiunto, pagina ripetuta, oltre il massimo): si scrive quello che c'è
+      if (!feed.completo) allarmi.push("elenco_non_completo");
       const letti = leggiElementiAflink(fonte, feed.elementi, inizio);
       stat.letti += letti.length;
       for (const p of letti) {
@@ -264,6 +270,8 @@ async function giroRegionale(admin: SupabaseClient, fonte: FonteRegionale, opzio
       esitoStart = await dopoGiroStart(admin, elencoStart.numeri, elencoStart.completo && giroFinito && !errore, inizio.toISOString(), misure);
       stat.proposte += esitoStart.proposte;
     }
+    // SIAPS: suggerimenti per stesso IdMsg nel collegamento (il feed non ha il CIG); mai unioni automatiche
+    if (fonte === "siaps" && giroFinito) stat.proposte += await dopoGiroSiaps(admin, inizio.toISOString(), misure);
   } catch (e) {
     errore = e instanceof Error ? e.message.slice(0, 900) : String(e).slice(0, 900);
     sospesa = e instanceof ErroreFonte && e.sospendi;
@@ -316,19 +324,51 @@ async function dopoGiroStart(admin: SupabaseClient, numeri: ReadonlySet<string>,
 
   const escono = new Set(t.escono);
   const sole = gare.filter((g) => g.chiave.startsWith("start:") && (g.fonti ?? []).length === 1 && g.stato === "aperta" && !escono.has(g.id));
-  const proposte: Proposta[] = [];
-  for (const b of blocchi(sole, 20)) {
-    // «*» è il carattere jolly di PostgREST per ilike (come «%»); il numero START ha solo cifre e un trattino
-    const filtro = b.map((g) => `url_documenti.ilike.*/tendering/tenders/${g.chiave.slice("start:".length)}/*`).join(",");
-    const { data: altre } = await misura(misure, "gare con lo stesso numero START nel collegamento", () =>
-      admin.from("radar_procedure").select("id, url_documenti").or(filtro).is("unita_a", null).limit(500).returns<{ id: string; url_documenti: string | null }[]>(),
-    );
-    for (const a of altre ?? []) {
-      const n = numeroStartDaUrl(a.url_documenti);
-      const g = n ? b.find((x) => x.chiave === `start:${n}`) : undefined;
-      if (g && a.id !== g.id) proposte.push({ a: g.id, b: a.id, motivo: `Stesso numero START (${n}) nel collegamento ufficiale ai documenti, senza CIG in comune: da verificare`, fonte: "start" });
-    }
-  }
+  // «*» è il carattere jolly di PostgREST per ilike (come «%»); il numero START ha solo cifre e un trattino
+  const proposte = await propostePerIdNelCollegamento(admin, sole, "start", (n) => `*/tendering/tenders/${n}/*`, numeroStartDaUrl, (n) => `Stesso numero START (${n}) nel collegamento ufficiale ai documenti, senza CIG in comune: da verificare`, "gare con lo stesso numero START nel collegamento", misure);
   const r = proposte.length > 0 ? await proponiCollegamenti(admin, proposte, iso, misure) : { proposte: 0, saltate: 0 };
   return { escono: t.escono.length, rientrano: t.rientrano.length, proposte: r.proposte, numeroStart: proposte.length };
+}
+
+/**
+ * SUGGERIMENTI (mai unioni automatiche, regola del 17/11) per le gare nate da una fonte (chiave «<fonte>:<id>») quando un'altra gara
+ * dell'archivio ha lo STESSO identificativo nel collegamento ufficiale ai documenti (START: il numero START; SIAPS: l'IdMsg dei BT-15). Il
+ * filtro ilike è solo una prima scrematura: l'identificativo si riconosce poi con la regola esatta (idDaUrl). Solo letture dell'archivio.
+ */
+async function propostePerIdNelCollegamento(
+  admin: SupabaseClient,
+  gare: readonly { id: string; chiave: string }[],
+  fonte: string,
+  schema: (id: string) => string,
+  idDaUrl: (url: string | null) => string | null,
+  motivo: (id: string) => string,
+  passo: string,
+  misure: Misure,
+): Promise<Proposta[]> {
+  const proposte: Proposta[] = [];
+  const prefisso = `${fonte}:`;
+  for (const b of blocchi(gare.filter((g) => g.chiave.startsWith(prefisso)), 20)) {
+    const filtro = b.map((g) => `url_documenti.ilike.${schema(g.chiave.slice(prefisso.length))}`).join(",");
+    const { data: altre } = await misura(misure, passo, () => admin.from("radar_procedure").select("id, url_documenti").or(filtro).is("unita_a", null).limit(500).returns<{ id: string; url_documenti: string | null }[]>());
+    for (const a of altre ?? []) {
+      const id = idDaUrl(a.url_documenti);
+      const g = id ? b.find((x) => x.chiave === `${prefisso}${id}`) : undefined;
+      if (g && id && a.id !== g.id) proposte.push({ a: g.id, b: a.id, motivo: motivo(id), fonte });
+    }
+  }
+  return proposte;
+}
+
+/**
+ * SIAPS dopo il giro (Fase 2): il feed non dà MAI il CIG, quindi la stessa gara pubblicata anche da PVL o TED non si unisce da sola.
+ * SUGGERIMENTI in console (decisione del coordinamento del 27/11, opzione (a)) per le gare SOLO SIAPS e aperte, quando un'altra gara ha lo
+ * stesso IdMsg nel collegamento ufficiale («portale.soresa.it/aflink/direct/link/?id=…» o «DettaglioProcedura.asp?ID=…»).
+ */
+async function dopoGiroSiaps(admin: SupabaseClient, iso: string, misure: Misure): Promise<number> {
+  const { data } = await misura(misure, "gare di SIAPS per i suggerimenti", () =>
+    admin.from("radar_procedure").select("id, chiave, stato, fonti").contains("fonti", ["siaps"]).eq("stato", "aperta").is("unita_a", null).limit(5000).returns<{ id: string; chiave: string; stato: string; fonti: string[] | null }[]>(),
+  );
+  const sole = (data ?? []).filter((g) => (g.fonti ?? []).length === 1);
+  const proposte = await propostePerIdNelCollegamento(admin, sole, "siaps", (id) => `*id=${id}*`, idSiapsDaUrl, (id) => `Stesso identificativo SIAPS (${id}) nel collegamento ufficiale ai documenti, senza CIG nel feed: da verificare`, "gare con lo stesso identificativo SIAPS nel collegamento", misure);
+  return proposte.length > 0 ? (await proponiCollegamenti(admin, proposte, iso, misure)).proposte : 0;
 }
