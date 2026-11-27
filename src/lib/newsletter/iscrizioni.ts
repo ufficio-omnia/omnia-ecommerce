@@ -170,3 +170,26 @@ export async function confermaIscrizione(token: string, a: ArchivioNewsletter = 
   await a.annota(null, "iscrizione_confermata", { iscritto: i.id }, null);
   return { ok: true, prossimoInvio, giornoInvio, giaConfermato: false };
 }
+
+// Pulizia promessa dall'informativa: le iscrizioni dal sito mai confermate si cancellano dopo 30 giorni. Chi era già stato
+// iscritto (confermato o disiscritto in passato) e ha chiesto di nuovo senza confermare torna «disiscritto»: la prova della
+// disiscrizione precedente non si perde. Un indirizzo che ha confermato non è mai toccato.
+export const GIORNI_PULIZIA_NON_CONFERMATI = 30;
+
+export async function pulisciNonConfermati(a: ArchivioNewsletter = archivioNewsletter(), adesso = new Date()): Promise<{ cancellati: number; tornatiDisiscritti: number }> {
+  const limite = adesso.getTime() - GIORNI_PULIZIA_NON_CONFERMATI * 86400000;
+  let cancellati = 0;
+  let tornatiDisiscritti = 0;
+  for (const i of await a.elencoIscritti()) {
+    if (i.stato !== "in_attesa" || !i.conferma_inviata_il || Date.parse(i.conferma_inviata_il) > limite) continue;
+    if (i.disiscritto_il || i.confermato_il) {
+      await a.aggiornaIscritto(i.id, { stato: "disiscritto", conferma_token: null, motivo_uscita: i.motivo_uscita ?? "nuova richiesta di iscrizione non confermata" });
+      tornatiDisiscritti++;
+    } else {
+      await a.eliminaIscritto(i.id);
+      cancellati++;
+    }
+  }
+  if (cancellati || tornatiDisiscritti) await a.annota(null, "pulizia_non_confermati", { cancellati, tornatiDisiscritti }, null);
+  return { cancellati, tornatiDisiscritti };
+}

@@ -4,6 +4,7 @@ import { richiediAdminPagina } from "@/lib/console/accesso";
 import { archivioNewsletter } from "@/lib/newsletter/archivio";
 import { abbonatiAttivi, selezionaDestinatari, type Abbonato } from "@/lib/newsletter/destinatari";
 import { sincronizzaClienti } from "@/lib/newsletter/gestione-iscritti";
+import { pulisciNonConfermati } from "@/lib/newsletter/iscrizioni";
 import { formattaRoma } from "@/lib/newsletter/pianificazione";
 import { ETICHETTA_BASE, ETICHETTA_PROVENIENZA, type Iscritto, type Provenienza } from "@/lib/newsletter/tipi";
 import { Badge, Pannello, Tessera } from "../../../_componenti/elementi";
@@ -90,6 +91,8 @@ export default async function PaginaIscritti({ searchParams }: { searchParams: P
   try {
     // i clienti che hanno accettato le Condizioni con Tender Weekly entrano da soli (nessun intervento dell'admin)
     acquisiti = (await sincronizzaClienti(a).catch(() => ({ aggiunti: 0 }))).aggiunti;
+    // iscrizioni dal sito mai confermate da oltre 30 giorni: come promesso dall'informativa
+    await pulisciNonConfermati(a).catch((e) => console.error("Newsletter: pulizia non riuscita", e instanceof Error ? e.message : e));
     [iscritti, abbonati] = await Promise.all([a.elencoIscritti(), abbonatiAttivi()]);
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);

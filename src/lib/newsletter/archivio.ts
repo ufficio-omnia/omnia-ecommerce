@@ -37,6 +37,8 @@ export interface ArchivioNewsletter {
   aggiornaIscritto(id: string, campi: Partial<Omit<Iscritto, "id" | "email" | "token_disiscrizione" | "creato_il">>): Promise<void>;
   // iscrizione dal sito in attesa di conferma, per il gettone del link di conferma
   iscrittoPerConferma(token: string): Promise<Iscritto | null>;
+  // cancellazione di un'iscrizione mai confermata (pulizia dopo 30 giorni)
+  eliminaIscritto(id: string): Promise<void>;
   // richieste d'iscrizione dal sito con la stessa impronta dell'IP dopo un certo istante (limite di frequenza)
   contaRichiesteRecenti(ipHash: string, daIso: string): Promise<number>;
   // inserisce le righe ignorando quelle già presenti (stesso iscritto e stessa edizione): idempotente
@@ -175,6 +177,10 @@ function archivioSupabase(): ArchivioNewsletter {
       const { data, error } = await db().from("newsletter_iscritti").select("*").eq("conferma_token", token).maybeSingle();
       if (error) erroreDb("iscritto per conferma", error);
       return (data as Iscritto | null) ?? null;
+    },
+    async eliminaIscritto(id) {
+      const { error } = await db().from("newsletter_iscritti").delete().eq("id", id).eq("stato", "in_attesa");
+      if (error) erroreDb("cancellazione iscrizione non confermata", error);
     },
     async contaRichiesteRecenti(ipHash, daIso) {
       const { count, error } = await db()
@@ -452,6 +458,11 @@ function archivioLocale(): ArchivioNewsletter {
     },
     async iscrittoPerConferma(token) {
       return leggi().iscritti.find((x) => x.conferma_token === token) ?? null;
+    },
+    async eliminaIscritto(id) {
+      const d = leggi();
+      d.iscritti = d.iscritti.filter((x) => !(x.id === id && x.stato === "in_attesa"));
+      scrivi(d);
     },
     async contaRichiesteRecenti(ipHash, daIso) {
       return leggi().registro.filter((r) => r.azione === "richiesta_iscrizione" && r.creato_il >= daIso && r.dettaglio.ip_hash === ipHash).length;

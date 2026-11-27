@@ -22,6 +22,14 @@ export async function eseguiPassaggioNewsletter(adesso: Date, a: ArchivioNewslet
     invii.push({ edizione: 0, esito: `errore: ${err instanceof Error ? err.message.slice(0, 160) : "sconosciuto"}` });
   }
 
+  // pulizia delle iscrizioni dal sito mai confermate (30 giorni), a ogni passaggio: una lettura sola se non c'è nulla
+  try {
+    const { pulisciNonConfermati } = await import("./iscrizioni");
+    await pulisciNonConfermati(a, adesso);
+  } catch (err) {
+    console.error("Newsletter: pulizia non riuscita", err instanceof Error ? err.message : err);
+  }
+
   let generazione = "non_dovuta";
   try {
     const imp = await a.leggiImpostazioni();

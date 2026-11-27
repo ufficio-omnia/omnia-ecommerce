@@ -408,6 +408,10 @@ async function main() {
     await disiscriviConToken(conf.token_disiscrizione, "prova", a);
     await isc.richiediIscrizione({ email: "nuovo.lettore@example.com", consenso: true, ipHash: "ip-y", userAgent: null, adesso: t0 }, a);
     atteso("disiscritto che si riscrive: torna «in attesa» e serve una nuova conferma", (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!.stato === "in_attesa" && (await confermeInviate()) === prima + 1);
+    // pulizia dopo 30 giorni: «lento» (mai iscritto) cancellato; «nuovo.lettore» (già disiscritto, riscritto) torna disiscritto
+    const pul = await isc.pulisciNonConfermati(a, new Date(t0.getTime() + 31 * 86400000));
+    atteso("pulizia a 30 giorni: mai confermati cancellati, ex iscritti tornano disiscritti", pul.cancellati >= 1 && !(await a.iscrittoPerEmail("lento@example.com")) && (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!.stato === "disiscritto", JSON.stringify(pul));
+    atteso("pulizia: gli iscritti confermati non si toccano", (await a.iscrittoPerEmail("mattina@example.com"))!.stato === "iscritto");
     const contenuto = isc.emailConferma("https://omnia-ai.it/newsletter/conferma?t=abc");
     atteso("email di conferma: link, scadenza e versione testo", contenuto.html.includes("https://omnia-ai.it/newsletter/conferma?t=abc") && contenuto.text.includes("https://omnia-ai.it/newsletter/conferma?t=abc") && /7 giorni/.test(contenuto.text));
   }
