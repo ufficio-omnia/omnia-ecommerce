@@ -223,6 +223,10 @@ export type RecordProcedura = {
   oneriSicurezza: number | null;
   durataMesi: number | null;
   annullata: boolean;
+  // Fase 2 (27/11, correzione «Sospeso»): procedura SOSPESA dichiarata dalla fonte (feed AF: statoFunzionale «Sospeso» o prefisso «Procedura
+  // Sospesa» nell'oggetto). Facoltativo e presente SOLO quando vale true: per tutte le altre letture il record, e la sua impronta, restano
+  // identici a prima.
+  sospesa?: true;
   urlAvviso: string | null;
   urlDocumenti: string | null;
   cpvPrincipale: string | null;

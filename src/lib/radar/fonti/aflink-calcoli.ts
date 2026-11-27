@@ -248,15 +248,18 @@ export function leggiFeedAflink(xml: string, campiObbligatori: readonly string[]
 // ───── campi ─────
 
 // Oggetto: HTML tolto, avvisi di stato del portale riconosciuti e tolti dal testo.
-export type OggettoAflink = { testo: string; rettificato: boolean; revocato: boolean; ripristinato: boolean };
+export type OggettoAflink = { testo: string; rettificato: boolean; revocato: boolean; ripristinato: boolean; sospeso: boolean };
 
 export function oggettoAflink(grezzo: string | null | undefined): OggettoAflink {
   const conTag = decodificaEntita(grezzo ?? "");
   const rettificato = /bando\s+(rettificato|in\s+rettifica)/i.test(conTag);
   const revocato = /bando\s+revocato/i.test(conTag);
   const ripristinato = /procedura\s+ripristinata/i.test(conTag);
+  // «<strong>Procedura Sospesa - </strong> Oggetto…» (correzione «Sospeso» del 27/11: SardegnaCAT, EmPULIA e SIAPS, sempre insieme a
+  // statoFunzionale «Sospeso»). SOLO in testa all'oggetto: le parole «procedura sospesa» dentro il testo non dicono che QUESTA lo è.
+  const sospeso = /^\s*(<strong>\s*)?procedura\s+sospes[ao]\b/i.test(conTag);
   // nel feed: «<strong>Bando Rettificato - </strong> Oggetto…»; si tolgono anche le forme senza grassetto
-  const avviso = /(bando\s+(rettificato|in\s+rettifica|revocato)|procedura\s+ripristinata)[\s\-–:]*/;
+  const avviso = /(bando\s+(rettificato|in\s+rettifica|revocato)|procedura\s+(ripristinata|sospes[ao]))[\s\-–:]*/;
   const testo = decodificaEntita(
     conTag
       .replace(new RegExp(`<strong>\\s*${avviso.source}<\\/strong>`, "gi"), " ")
@@ -268,7 +271,14 @@ export function oggettoAflink(grezzo: string | null | undefined): OggettoAflink 
     .replace(/^[\s\-–:]+/, "")
     .replace(new RegExp(`^${avviso.source}`, "i"), "")
     .trim();
-  return { testo, rettificato, revocato, ripristinato };
+  return { testo, rettificato, revocato, ripristinato, sospeso };
+}
+
+// La procedura è sospesa? statoFunzionale «Sospeso» oppure il prefisso «Procedura Sospesa» in testa all'oggetto (nei feed salvati dal 16/11 al
+// 27/11 i due segnali compaiono sempre insieme; il prefisso basta dove statoFunzionale è vuoto). Una revoca prevale: annullata, non sospesa.
+export function sospesaAflink(statoFunzionale: string | null | undefined, ogg: Pick<OggettoAflink, "sospeso" | "revocato">): boolean {
+  if (ogg.revocato || /^revocat/i.test((statoFunzionale ?? "").trim())) return false;
+  return ogg.sospeso || /^sospes/i.test((statoFunzionale ?? "").trim());
 }
 
 // «200.221,44» → 200221.44; «35086» → 35086. Formati diversi → null (mai un importo indovinato).
@@ -546,6 +556,7 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
   const comune = denominazione?.match(/^comune di\s+(.+)$/i)?.[1] ?? null;
   const pubblicazione = scadenzaAflink(e.DtPubblicazioneTecnical);
   const annullata = ogg.revocato || /^revocat/i.test(meta.stato);
+  const sospesa = sospesaAflink(meta.stato, ogg);
 
   const record: RecordProcedura = {
     fonte: "regionale",
@@ -568,6 +579,8 @@ export function leggiElementoAflink(istanza: IstanzaAflink, e: ElementoAflink, a
     oneriSicurezza: null,
     durataMesi: null,
     annullata,
+    // solo quando vale: le procedure non sospese hanno il record (e l'impronta) di prima
+    ...(sospesa ? { sospesa: true as const } : {}),
     urlAvviso: url,
     urlDocumenti: url,
     cpvPrincipale: cpv,

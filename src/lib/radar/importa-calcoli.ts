@@ -95,11 +95,14 @@ export function rigaDaBando(b: BandoNormalizzato, precedente: RigaProcedura | nu
   const iso = adesso.toISOString();
   // annullata dalla fonte = annullata; un esito già registrato non torna «aperta» per una correzione successiva del bando
   const statoPrecedente = precedente?.stato ?? null;
+  // sospesa: solo se la fonte lo dichiara (record.sospesa, oggi solo i feed AF); senza il segnale tutto come prima
   const stato: StatoProcedura = r.annullata
     ? "annullata"
     : statoPrecedente === "aggiudicata" || statoPrecedente === "chiusa_senza_aggiudicazione" || statoPrecedente === "annullata"
       ? statoPrecedente
-      : "aperta";
+      : r.sospesa
+        ? "sospesa"
+        : "aperta";
   const dataPubblicazione = precedente?.data_pubblicazione && r.dataPubblicazione ? (precedente.data_pubblicazione < r.dataPubblicazione ? precedente.data_pubblicazione : r.dataPubblicazione) : (precedente?.data_pubblicazione ?? r.dataPubblicazione);
   return {
     chiave: r.chiaveProcedura,
@@ -164,11 +167,18 @@ function stessoValore(a: number | null, b: number | null): boolean {
 // I cambiamenti che contano per chi segue la gara, tra la versione in archivio e quella nuova. Fase B4 (26B §6.2, punti 1, 2, 3 e 7): la
 // scadenza si confronta per ISTANTE (non come testo) e un'ora che sparisce nello stesso giorno non è una modifica; oggetto e collegamento ai
 // documenti si confrontano normalizzati (importa-evidenza.ts): una differenza solo di forma non entra nel registro.
+// Il cambiamento è una sospensione o una ripresa (aperta ↔ sospesa)? Non è una rettifica del bando: non segna la gara come «rettificata».
+export function cambioDiSospensione(c: Pick<Cambiamento, "campo" | "prima" | "dopo">): boolean {
+  return c.campo === "stato" && (c.prima === "sospesa" || c.dopo === "sospesa");
+}
+
 export function cambiamentiTraVersioni(prima: RigaProcedura, dopo: RigaProcedura): Cambiamento[] {
   const c: Cambiamento[] = [];
   if (dopo.stato === "annullata" && prima.stato !== "annullata") c.push({ tipo: "annullamento", campo: "stato", prima: prima.stato, dopo: "annullata" });
   // ripristino dopo un annullamento (SardegnaCAT «Procedura Ripristinata», 23/11): una rettifica dello stato, con il valore di prima e di dopo
   if (prima.stato === "annullata" && dopo.stato !== "annullata") c.push({ tipo: "rettifica", campo: "stato", prima: "annullata", dopo: dopo.stato });
+  // sospensione e ripresa dichiarate dalla fonte (correzione «Sospeso», 27/11): una rettifica dello stato, come il ripristino
+  if ((prima.stato === "aperta" && dopo.stato === "sospesa") || (prima.stato === "sospesa" && dopo.stato === "aperta")) c.push({ tipo: "rettifica", campo: "stato", prima: prima.stato, dopo: dopo.stato });
   const s = cambioDiScadenza({ giorno: prima.scadenza_giorno, iso: prima.scadenza_offerte }, { giorno: dopo.scadenza_giorno, iso: dopo.scadenza_offerte }, "scadenza_offerte");
   if (s) c.push(s);
   if (!stessoValore(prima.valore_stimato, dopo.valore_stimato)) c.push({ tipo: "rettifica", campo: "valore_stimato", prima: testo(prima.valore_stimato), dopo: testo(dopo.valore_stimato) });
