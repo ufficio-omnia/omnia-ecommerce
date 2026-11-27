@@ -6,7 +6,7 @@ import { paginaMetadata } from "@/lib/omnia-ai-seo";
 export const metadata: Metadata = paginaMetadata({
   title: "Tender Weekly — la newsletter sugli appalti pubblici di OMNIA AI",
   description:
-    "Ogni venerdì le principali novità del mondo degli appalti pubblici: normativa, ANAC, giurisprudenza e approfondimenti operativi per gli uffici gare. Iscrizione gratuita.",
+    "Ogni venerdì le principali novità del mondo degli appalti pubblici: normativa, provvedimenti delle autorità, giurisprudenza e approfondimenti operativi per gli uffici gare. Iscrizione gratuita.",
   path: "/newsletter",
 });
 

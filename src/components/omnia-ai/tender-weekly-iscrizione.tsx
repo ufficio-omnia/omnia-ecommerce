@@ -12,7 +12,7 @@ import { iscrivitiTenderWeekly, type StatoIscrizione } from "@/app/actions/omnia
 
 const CONTENUTI = [
   { titolo: "La notizia della settimana", testo: "La novità che conta davvero, spiegata con le sue conseguenze pratiche." },
-  { titolo: "Normativa e giurisprudenza", testo: "Codice dei contratti, ANAC, MIT, TAR e Consiglio di Stato." },
+  { titolo: "Normativa e giurisprudenza", testo: "Codice dei contratti, provvedimenti delle autorità, TAR e Consiglio di Stato." },
   { titolo: "L'approfondimento dell'esperto", testo: "Strategie e attenzioni operative per l'ufficio gare." },
 ];
 
