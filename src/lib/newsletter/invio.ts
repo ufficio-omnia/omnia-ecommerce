@@ -111,6 +111,11 @@ export async function avviaInvio(edizioneId: string, autore: string | null, orig
   if (!presa) return { ok: false, errore: "L'edizione è già in invio o è cambiata nel frattempo: nessun invio ripetuto." };
 
   try {
+    // clienti che hanno accettato le Condizioni con Tender Weekly incluso: acquisiti prima di calcolare i destinatari
+    if (a.tipo === "supabase") {
+      const { sincronizzaClienti } = await import("./gestione-iscritti");
+      await sincronizzaClienti(a).catch((e) => console.error("Newsletter: clienti non acquisiti prima dell'invio", e instanceof Error ? e.message : e));
+    }
     const { inclusi, esclusi } = await anteprimaDestinatari(presa, a);
     await a.accodaInvii(inclusi.map((i) => ({ edizione_id: presa.id, iscritto_id: i.id, tipo: "reale" as const, email: i.email, versione: presa.versione, stato: "in_coda" as const })));
     await a.annota(presa.id, "invio_avviato", { origine, destinatari: inclusi.length, esclusi: esclusi.length, versione: presa.versione, reale: invioRealeConsentito() }, autore);

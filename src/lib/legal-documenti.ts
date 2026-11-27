@@ -22,6 +22,8 @@ export type DocumentoMarkdownRegistrato = {
 export const DOCUMENTI_MARKDOWN: Record<string, Record<string, DocumentoMarkdownRegistrato>> = {
   "condizioni-abbonamento": {
     "2": { file: "condizioni-abbonamento-v2.md", titolo: "Condizioni di abbonamento", tipoDb: "omnia_ai_condizioni_abbonamento", versioneNelTesto: false },
+    // v3 (27/11/2026): Tender Weekly incluso tra i servizi informativi. Entra in vigore SOLO con supabase/manuali/attiva_documenti_v3_newsletter.sql.
+    "3": { file: "condizioni-abbonamento-v3.md", titolo: "Condizioni di abbonamento", tipoDb: "omnia_ai_condizioni_abbonamento", versioneNelTesto: false },
   },
   "allegato-a": {
     "1": { file: "allegato-a-nomina-responsabile-v1.md", titolo: "Allegato A — Atto di nomina a responsabile del trattamento", tipoDb: "omnia_ai_allegato_a", versioneNelTesto: true },
@@ -30,6 +32,8 @@ export const DOCUMENTI_MARKDOWN: Record<string, Record<string, DocumentoMarkdown
   // il deploy; fino ad allora le pagine /privacy e /cookie-policy mostrano la v1 (vedi le pagine: seguono la versione in legal_documents).
   "privacy-policy": {
     "2": { file: "privacy-policy-omnia-ai-v2.md", titolo: "Privacy policy", tipoDb: "omnia_ai_privacy_policy", versioneNelTesto: false },
+    // v3 (27/11/2026): newsletter Tender Weekly. Entra in vigore SOLO con supabase/manuali/attiva_documenti_v3_newsletter.sql.
+    "3": { file: "privacy-policy-omnia-ai-v3.md", titolo: "Privacy policy", tipoDb: "omnia_ai_privacy_policy", versioneNelTesto: false },
   },
   "cookie-policy": {
     "2": { file: "cookie-policy-omnia-ai-v2.md", titolo: "Cookie policy", tipoDb: "omnia_ai_cookie_policy", versioneNelTesto: false },

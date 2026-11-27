@@ -6,7 +6,8 @@ import { statistiche } from "@/lib/newsletter/invio";
 import { formattaRoma, prossimaScadenza } from "@/lib/newsletter/pianificazione";
 import { invioRealeConsentito } from "@/lib/newsletter/posta";
 import { numeroEdizione } from "@/lib/newsletter/template";
-import { ETICHETTA_STATO, GIORNI_SETTIMANA, type Edizione, type Impostazioni, type Invio, type Iscritto } from "@/lib/newsletter/tipi";
+import { ETICHETTA_PROVENIENZA, ETICHETTA_STATO, GIORNI_SETTIMANA, type Edizione, type Impostazioni, type Invio, type Iscritto, type Provenienza } from "@/lib/newsletter/tipi";
+import { abbonatiAttivi, selezionaDestinatari, type Abbonato } from "@/lib/newsletter/destinatari";
 import { Badge, Pannello, Tessera } from "../../_componenti/elementi";
 import ModuloAzione from "../../_componenti/modulo-azione";
 import { TONO_STATO } from "../../_componenti/newsletter-comuni";
@@ -15,7 +16,7 @@ import { creaEdizioneVuota, generaEdizioneSettimanale, salvaImpostazioniNewslett
 export const metadata: Metadata = { title: "Newsletter & Comunicazioni" };
 export const maxDuration = 800;
 
-type Dati = { stato: "ok"; edizioni: Edizione[]; iscritti: Iscritto[]; invii: Invio[]; imp: Impostazioni } | { stato: "errore"; messaggio: string };
+type Dati = { stato: "ok"; edizioni: Edizione[]; iscritti: Iscritto[]; invii: Invio[]; imp: Impostazioni; abbonati: Abbonato[] } | { stato: "errore"; messaggio: string };
 
 export default async function PaginaNewsletter() {
   await richiediAdminPagina();
@@ -34,8 +35,12 @@ export default async function PaginaNewsletter() {
     );
   }
   const { edizioni, iscritti, invii, imp } = d;
-  const attivi = iscritti.filter((i) => i.stato === "iscritto").length;
-  const usciti = iscritti.filter((i) => i.stato !== "iscritto").length;
+  const autorizzati = selezionaDestinatari(iscritti, d.abbonati, { abbonati_attivi: true, altri_autorizzati: true }).inclusi;
+  const attivi = autorizzati.length;
+  const inAttesa = iscritti.filter((i) => i.stato === "in_attesa").length;
+  const perProvenienza = (["abbonamento", "sito", "console", "importazione"] as Provenienza[])
+    .map((p) => ({ p, n: autorizzati.filter((i) => (i.provenienza ?? "console") === p).length }))
+    .filter((x) => x.n > 0);
   const ultimaInviata = edizioni.find((e) => e.stato === "inviata" || e.stato === "invio_parziale");
   const programmata = edizioni.filter((e) => e.stato === "programmata").sort((a, b) => (a.programmata_per ?? "").localeCompare(b.programmata_per ?? ""))[0];
   const perEdizione = new Map<string, Invio[]>();
@@ -69,7 +74,12 @@ export default async function PaginaNewsletter() {
 
       <div className="cn-tessere">
         <Tessera etichetta="Edizioni" valore={edizioni.length} dettaglio={`${edizioni.filter((e) => e.stato === "inviata").length} inviate`} />
-        <Tessera etichetta="Iscritti attivi" valore={attivi} dettaglio={`${usciti} disiscritti, rimbalzati o spam`} tono="accento" />
+        <Tessera
+          etichetta="Destinatari autorizzati"
+          valore={attivi}
+          dettaglio={`${perProvenienza.map((x) => `${x.n} ${ETICHETTA_PROVENIENZA[x.p].toLowerCase()}`).join(" · ") || "nessuno"}${inAttesa ? ` · ${inAttesa} in attesa di conferma` : ""}`}
+          tono="accento"
+        />
         <Tessera etichetta="Prossimo invio" valore={programmata ? `n. ${numeroEdizione(programmata.numero)}` : "—"} dettaglio={programmata ? formattaRoma(programmata.programmata_per) : "nessuna edizione programmata"} />
         <Tessera
           etichetta="Ultima inviata"
@@ -228,8 +238,8 @@ export default async function PaginaNewsletter() {
 async function leggi(): Promise<Dati> {
   try {
     const a = archivioNewsletter();
-    const [edizioni, iscritti, invii, imp] = await Promise.all([a.elencoEdizioni(), a.elencoIscritti(), a.tuttiGliInvii(5000), a.leggiImpostazioni()]);
-    return { stato: "ok", edizioni, iscritti, invii, imp };
+    const [edizioni, iscritti, invii, imp, abbonati] = await Promise.all([a.elencoEdizioni(), a.elencoIscritti(), a.tuttiGliInvii(5000), a.leggiImpostazioni(), abbonatiAttivi().catch((): Abbonato[] => [])]);
+    return { stato: "ok", edizioni, iscritti, invii, imp, abbonati };
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     return { stato: "errore", messaggio: /newsletter_/.test(m) ? "Le tabelle della newsletter non esistono ancora: va eseguita la migrazione 0141." : m };

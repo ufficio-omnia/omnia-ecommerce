@@ -354,6 +354,169 @@ async function main() {
     uguale("Costi e margini: la newsletter non pesa sul costo per gara", tot.costoPerGaraEur, null);
   }
 
+  console.log("--- 15. Iscrizione pubblica con doppia conferma ---");
+  {
+    const isc = await import("../src/lib/newsletter/iscrizioni");
+    const t0 = new Date("2026-11-27T15:00:00Z");
+    const ip = "ip-prova-1";
+    const r1 = await isc.richiediIscrizione({ email: "  Nuovo.Lettore@Example.COM ", consenso: true, ipHash: ip, userAgent: "UA", adesso: t0 }, a);
+    const n = (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!;
+    atteso("richiesta valida: riga «in attesa» dal sito, email in minuscolo", r1.ok && n.stato === "in_attesa" && n.provenienza === "sito");
+    atteso("consenso registrato: testo, versione dell'informativa, impronta IP, browser", Boolean(n.consenso_testo && n.informativa_versione && n.consenso_ip_hash === ip && n.consenso_user_agent === "UA"));
+    atteso("gettone di conferma casuale (48 esadecimali)", /^[a-f0-9]{48}$/.test(n.conferma_token ?? ""));
+    const confermeInviate = async () => (await a.registroPerAzione("email_conferma", 100)).length;
+    uguale("una email di conferma (simulata fuori produzione)", await confermeInviate(), 1);
+    atteso("la conferma è simulata (nessun invio reale)", (await a.registroPerAzione("email_conferma", 1))[0].dettaglio.simulato === true);
+    const { selezionaDestinatari } = await import("../src/lib/newsletter/destinatari");
+    atteso("in attesa: NON tra i destinatari", !selezionaDestinatari(await a.elencoIscritti(), [], { abbonati_attivi: true, altri_autorizzati: true }).inclusi.some((i) => i.email === "nuovo.lettore@example.com"));
+    // stessa richiesta subito dopo: nessuna seconda email (pausa tra le conferme), risposta identica
+    const r2 = await isc.richiediIscrizione({ email: "nuovo.lettore@example.com", consenso: true, ipHash: "ip-2", userAgent: null, adesso: new Date(t0.getTime() + 60_000) }, a);
+    atteso("seconda richiesta ravvicinata: stessa risposta, nessuna nuova email", r2.ok && (await confermeInviate()) === 1);
+    const r3 = await isc.richiediIscrizione({ email: "nuovo.lettore@example.com", consenso: true, ipHash: "ip-3", userAgent: null, adesso: new Date(t0.getTime() + 11 * 60_000) }, a);
+    atteso("dopo la pausa: nuova email con un nuovo gettone", r3.ok && (await confermeInviate()) === 2 && (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!.conferma_token !== n.conferma_token);
+    atteso("email non valida rifiutata", !(await isc.richiediIscrizione({ email: "non-una-email", consenso: true, ipHash: "x", userAgent: null }, a)).ok);
+    atteso("senza consenso rifiutata", !(await isc.richiediIscrizione({ email: "a@example.com", consenso: false, ipHash: "x", userAgent: null }, a)).ok);
+    // limite di frequenza: 5 richieste all'ora per impronta IP
+    for (let k = 0; k < 5; k++) await isc.richiediIscrizione({ email: `raffica${k}@example.com`, consenso: true, ipHash: "ip-raffica", userAgent: null, adesso: t0 }, a);
+    const sesta = await isc.richiediIscrizione({ email: "raffica6@example.com", consenso: true, ipHash: "ip-raffica", userAgent: null, adesso: t0 });
+    atteso("limite di frequenza: la sesta richiesta in un'ora è rifiutata", !sesta.ok && sesta.motivo === "troppe_richieste");
+    atteso("…e non crea la riga", !(await a.iscrittoPerEmail("raffica6@example.com")));
+    // conferma
+    const tok = (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!.conferma_token!;
+    const c1 = await isc.confermaIscrizione(tok, a, new Date("2026-11-27T16:00:00Z"));
+    const conf = (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!;
+    atteso("conferma: diventa «iscritto» con base consenso e prova completa", c1.ok && conf.stato === "iscritto" && conf.base_giuridica === "consenso" && /Doppia conferma/.test(conf.prova_base) && Boolean(conf.confermato_il) && conf.conferma_token === null);
+    atteso("prossimo invio: venerdì 4 dicembre alle 10:00 di Roma (venerdì 27 alle 17 è già passato)", c1.ok && c1.prossimoInvio.toISOString() === "2026-12-04T09:00:00.000Z" && c1.giornoInvio === "venerdì");
+    const c0 = await isc.confermaIscrizione(tok, a, new Date("2026-11-27T08:00:00Z"));
+    atteso("gettone già usato: non valido", !c0.ok);
+    atteso("confermato: tra i destinatari", selezionaDestinatari(await a.elencoIscritti(), [], { abbonati_attivi: true, altri_autorizzati: true }).inclusi.some((i) => i.email === "nuovo.lettore@example.com"));
+    const pc = await isc.confermaIscrizione(tok.replace(/./, "0"), a);
+    atteso("gettone inesistente: non valido", !pc.ok);
+    // prossimo invio di venerdì mattina prima delle 10: oggi stesso
+    await isc.richiediIscrizione({ email: "mattina@example.com", consenso: true, ipHash: "ip-m", userAgent: null, adesso: new Date("2026-12-04T07:00:00Z") }, a);
+    const cm = await isc.confermaIscrizione((await a.iscrittoPerEmail("mattina@example.com"))!.conferma_token!, a, new Date("2026-12-04T07:30:00Z"));
+    atteso("confermato venerdì alle 8:30: il prossimo invio è oggi alle 10", cm.ok && cm.prossimoInvio.toISOString() === "2026-12-04T09:00:00.000Z");
+    // gettone scaduto
+    await isc.richiediIscrizione({ email: "lento@example.com", consenso: true, ipHash: "ip-l", userAgent: null, adesso: t0 }, a);
+    const cs = await isc.confermaIscrizione((await a.iscrittoPerEmail("lento@example.com"))!.conferma_token!, a, new Date(t0.getTime() + 8 * 86400000));
+    atteso("conferma dopo 8 giorni: scaduta, resta in attesa", !cs.ok && cs.motivo === "scaduto" && (await a.iscrittoPerEmail("lento@example.com"))!.stato === "in_attesa");
+    // già iscritto: nessuna email; disiscritto: nuovo consenso con doppia conferma
+    const prima = await confermeInviate();
+    await isc.richiediIscrizione({ email: "nuovo.lettore@example.com", consenso: true, ipHash: "ip-x", userAgent: null, adesso: t0 }, a);
+    atteso("già iscritto: nessuna email, stessa risposta", (await confermeInviate()) === prima && (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!.stato === "iscritto");
+    const { disiscriviConToken } = await import("../src/lib/newsletter/disiscrizione");
+    await disiscriviConToken(conf.token_disiscrizione, "prova", a);
+    await isc.richiediIscrizione({ email: "nuovo.lettore@example.com", consenso: true, ipHash: "ip-y", userAgent: null, adesso: t0 }, a);
+    atteso("disiscritto che si riscrive: torna «in attesa» e serve una nuova conferma", (await a.iscrittoPerEmail("nuovo.lettore@example.com"))!.stato === "in_attesa" && (await confermeInviate()) === prima + 1);
+    const contenuto = isc.emailConferma("https://omnia-ai.it/newsletter/conferma?t=abc");
+    atteso("email di conferma: link, scadenza e versione testo", contenuto.html.includes("https://omnia-ai.it/newsletter/conferma?t=abc") && contenuto.text.includes("https://omnia-ai.it/newsletter/conferma?t=abc") && /7 giorni/.test(contenuto.text));
+  }
+
+  console.log("--- 16. Destinatari manuali, elenchi, CSV, clienti ---");
+  {
+    const g = await import("../src/lib/newsletter/gestione-iscritti");
+    const e1 = g.leggiElenco("Mario Rossi <mario@x.it>, anna@y.it; non-email\nANNA@y.it\nluca@z.it luigi@w.it");
+    uguale("elenco incollato: indirizzi estratti, duplicati tolti, minuscolo", e1.righe.map((r) => r.email), ["mario@x.it", "anna@y.it", "luca@z.it", "luigi@w.it"]);
+    atteso("elenco incollato: nome da «Nome <email>» e righe non valide segnalate", e1.righe[0].nome === "Mario Rossi" && e1.nonValidi.includes("non-email"));
+    const e2 = g.leggiElenco("\uFEFFNome;Cognome;Azienda;E-mail\nMario;Rossi;\"Rossi; Figli srl\";MARIO@x.it\n;;;sbagliata\n");
+    atteso("CSV con intestazione e punto e virgola, campo tra virgolette", e2.righe.length === 1 && e2.righe[0].email === "mario@x.it" && e2.righe[0].nome === "Mario Rossi" && e2.righe[0].azienda === "Rossi; Figli srl" && e2.nonValidi.length === 1, JSON.stringify(e2));
+    const e3 = g.leggiElenco("email,nome\na@b.it,A\n");
+    atteso("CSV con virgola", e3.righe.length === 1 && e3.righe[0].nome === "A");
+    // inserimento: nuovi, duplicati, disiscritti, bloccati
+    const base = { base: "consenso" as const, prova: "consenso scritto conservato in archivio", baseDal: "2026-11-27", note: "nota", categoria: "prospect" as const, provenienza: "importazione" as const };
+    const dis = await a.aggiungiIscritto({ email: "ex@x.it", nome: null, user_id: null, categoria: "altro", stato: "iscritto", base_giuridica: "consenso", prova_base: "consenso precedente documentato", base_dal: "2026-01-01" }, null);
+    await a.aggiornaIscritto(dis.id, { stato: "disiscritto", disiscritto_il: "2026-11-01T10:00:00Z" });
+    const bl = await a.aggiungiIscritto({ email: "rimbalza@x.it", nome: null, user_id: null, categoria: "altro", stato: "iscritto", base_giuridica: "consenso", prova_base: "consenso precedente documentato", base_dal: "2026-01-01" }, null);
+    await a.aggiornaIscritto(bl.id, { stato: "rimbalzato" });
+    const righe = [{ email: "nuovo1@x.it", nome: "N", azienda: "Az" }, { email: "ex@x.it", nome: null, azienda: null }, { email: "rimbalza@x.it", nome: null, azienda: null }, { email: "luca@z.it", nome: null, azienda: null }];
+    const r1 = await g.inserisciDestinatari({ ...base, righe, nuovaAutorizzazione: false }, null, a);
+    atteso("inserimento: nuovi aggiunti, disiscritto NON riattivato senza nuova autorizzazione, bloccato non toccato", r1.aggiunti.join() === "nuovo1@x.it,luca@z.it" && r1.disiscrittiNonRiattivati.join() === "ex@x.it" && r1.bloccati.join() === "rimbalza@x.it", JSON.stringify(r1));
+    atteso("il disiscritto resta disiscritto", (await a.iscrittoPerEmail("ex@x.it"))!.stato === "disiscritto");
+    const nuovo1 = (await a.iscrittoPerEmail("nuovo1@x.it"))!;
+    atteso("provenienza, azienda, note e base registrate", nuovo1.provenienza === "importazione" && nuovo1.azienda === "Az" && nuovo1.note_admin === "nota" && nuovo1.base_giuridica === "consenso");
+    const r2 = await g.inserisciDestinatari({ ...base, righe: [{ email: "nuovo1@x.it", nome: null, azienda: null }], nuovaAutorizzazione: false }, null, a);
+    atteso("di nuovo lo stesso indirizzo: nessun doppione", r2.giaPresenti.join() === "nuovo1@x.it" && (await a.elencoIscritti()).filter((i) => i.email === "nuovo1@x.it").length === 1);
+    const r3 = await g.inserisciDestinatari({ ...base, righe: [{ email: "ex@x.it", nome: null, azienda: null }], nuovaAutorizzazione: true }, null, a);
+    const ex = (await a.iscrittoPerEmail("ex@x.it"))!;
+    atteso("con la nuova autorizzazione: riattivato e la prova lo dice", r3.riattivati.join() === "ex@x.it" && ex.stato === "iscritto" && /NUOVA autorizzazione/.test(ex.prova_base));
+    // clienti dagli abbonamenti: chi è già presente (anche disiscritto) non si tocca
+    const { clientiDaAggiungere } = await import("../src/lib/newsletter/destinatari");
+    const clienti = [
+      { userId: "u-ex", email: "ex@x.it", accettazioneId: "a1", versione: 3, accettataIl: "2026-12-01T10:00:00Z" },
+      { userId: "u-nuovo", email: "cliente.nuovo@x.it", accettazioneId: "a2", versione: 3, accettataIl: "2026-12-01T10:00:00Z" },
+    ];
+    uguale("clienti da aggiungere: solo chi non c'è", clientiDaAggiungere(await a.elencoIscritti(), clienti).map((c) => c.email), ["cliente.nuovo@x.it"]);
+    await a.aggiornaIscritto(ex.id, { stato: "disiscritto", disiscritto_il: "2026-12-02T10:00:00Z" });
+    const s = await g.sincronizzaClienti(a, async () => clienti);
+    const cn = (await a.iscrittoPerEmail("cliente.nuovo@x.it"))!;
+    atteso("cliente acquisito in automatico con base «contratto_abbonamento» e prova dell'accettazione", s.aggiunti === 1 && cn.stato === "iscritto" && cn.base_giuridica === "contratto_abbonamento" && cn.provenienza === "abbonamento" && /v3/.test(cn.prova_base) && /a2/.test(cn.prova_base));
+    atteso("un cliente disiscritto che rinnova NON viene riacquisito", (await a.iscrittoPerEmail("ex@x.it"))!.stato === "disiscritto");
+    uguale("una seconda sincronizzazione non aggiunge nulla", (await g.sincronizzaClienti(a, async () => clienti)).aggiunti, 0);
+    const { selezionaDestinatari } = await import("../src/lib/newsletter/destinatari");
+    const sel = selezionaDestinatari([...(await a.elencoIscritti()), { ...cn, id: "doppio", email: "Cliente.Nuovo@x.it" }], [], { abbonati_attivi: true, altri_autorizzati: true });
+    uguale("stesso indirizzo da due fonti: una sola copia", sel.inclusi.filter((i) => i.email.toLowerCase() === "cliente.nuovo@x.it").length, 1);
+  }
+
+  console.log("--- 17. Testo giustificato nel template ---");
+  {
+    const { renderNewsletterHtml, GIUSTIFICATO } = await import("../src/lib/newsletter/template");
+    const html = renderNewsletterHtml(dati, { urlDisiscrizione: "https://omnia-ai.it/newsletter/disiscrizione" });
+    // paragrafi di testo (carattere del testo e interlinea 1,65); le etichette in maiuscoletto sono intestazioni
+    const paragrafi = html.match(/<p style="margin:0 0 (14|8)px 0;font-family:'Inter'[^"]*line-height:1.65[^"]*">/g) ?? [];
+    atteso("i paragrafi discorsivi sono giustificati", paragrafi.length > 0 && paragrafi.every((p) => p.includes("text-align:justify")));
+    atteso("con sillabazione per gli schermi stretti", GIUSTIFICATO.includes("hyphens:auto") && html.includes('lang="it"'));
+    atteso("titoli, fonti, pulsanti e piè di pagina NON giustificati", !/<h[123][^>]*text-align:justify/.test(html) && !/text-align:justify[^>]*>Fonti</.test(html) && !/text-align:justify[^>]*>[^<]*Accedi a OMNIA AI/.test(html) && (html.match(/text-align:justify/g) ?? []).length === paragrafi.length);
+  }
+
+  console.log("--- 18. Costi: email di conferma ---");
+  {
+    const { riepilogaCostiNewsletter } = await import("../src/lib/console/newsletter-costi-calcoli");
+    const r = riepilogaCostiNewsletter({
+      operazioni: [],
+      versioni: [],
+      edizioni: [],
+      invii: [],
+      conferme: [
+        { creato_il: "2026-11-27T10:00:00Z", dettaglio: { simulato: false, esito: "ok" } },
+        { creato_il: "2026-11-27T11:00:00Z", dettaglio: { simulato: true, esito: "ok" } },
+        { creato_il: "2026-11-27T12:00:00Z", dettaglio: { simulato: false, esito: "errore" } },
+      ],
+      impostazioni: { resend_piano: null, resend_quota_mensile_eur: null },
+      cambioUsdEur: null,
+      adesso: new Date("2026-11-27T15:00:00Z"),
+      da: "2026-11-01",
+      a: "2026-11-30",
+    });
+    atteso("conferme vere contate nei volumi di Resend, simulate a parte, nessun costo per email", r.resend.periodo.conferme === 1 && r.resend.mesi[0].conferme === 1 && r.resend.periodo.simulate === 1 && r.tessere.periodo.costoUsd === 0);
+  }
+
+  console.log("--- 19. Cablaggio della parte pubblica e della 0142 ---");
+  {
+    const leggi = (p: string) => fs.readFileSync(p, "utf8");
+    const azione = leggi("src/app/actions/omnia-ai-newsletter.ts");
+    atteso("azione pubblica: campo trappola, Turnstile, impronta IP prima di toccare i dati", azione.indexOf("NOME_CAMPO_TRAPPOLA") < azione.indexOf("verificaFormUmano") && azione.indexOf("verificaFormUmano") < azione.indexOf("richiediIscrizione({"));
+    const conferma = leggi("src/app/site-omnia-ai/newsletter/conferma/page.tsx");
+    atteso("pagina di conferma: non indicizzata, conferma solo dal pulsante (POST)", /index: false/.test(conferma) && /action=\{confermaTenderWeekly\}/.test(conferma));
+    atteso("messaggio di benvenuto richiesto", conferma.includes("Benvenuto in Tender Weekly!") && conferma.includes("Grazie per esserti iscritto alla newsletter di OMNIA AI.") && conferma.includes("riceverai direttamente nella tua casella di posta le principali novità del mondo degli appalti pubblici.") && conferma.includes("inizia con Tender Weekly."));
+    atteso("home: sezione Tender Weekly subito prima del piè di pagina", /<TenderWeeklyIscrizione \/>\s*<\/section>\s*<SiteFooter \/>/.test(leggi("src/app/site-omnia-ai/page.tsx")));
+    atteso("piè di pagina: collegamento permanente alla newsletter", leggi("src/components/omnia-ai/site-footer.tsx").includes('<Link href="/newsletter">Newsletter</Link>'));
+    atteso("sitemap: /newsletter presente, conferma e disiscrizione no", /path: "\/newsletter"/.test(leggi("src/app/sitemap.ts")) && !/newsletter\/(conferma|disiscrizione)/.test(leggi("src/app/sitemap.ts")));
+    const modulo = leggi("src/components/omnia-ai/tender-weekly-iscrizione.tsx");
+    atteso("modulo: email, consenso obbligatorio, link all'informativa, Turnstile, «Iscriviti gratuitamente»", /type="email"/.test(modulo) && /name="consenso" value="1" required/.test(modulo) && modulo.includes('href="/privacy"') && modulo.includes("<TurnstileCampo") && modulo.includes("Iscriviti gratuitamente"));
+    const m2 = leggi("supabase/migrations/0142_newsletter_iscrizioni_pubbliche.sql");
+    atteso("0142: stato «in_attesa», base «contratto_abbonamento», provenienza vincolata", /'in_attesa', 'iscritto'/.test(m2) && /'contratto_abbonamento'/.test(m2) && /provenienza in \('sito', 'console', 'importazione', 'abbonamento'\)/.test(m2));
+    atteso("0142: chi arriva dal sito ha sempre testo del consenso e versione dell'informativa", /provenienza <> 'sito' or \(consenso_testo is not null and informativa_versione is not null\)/.test(m2));
+    atteso("0142: gettone di conferma solo per «in_attesa»", /\(stato = 'in_attesa'\) = \(conferma_token is not null\)/.test(m2));
+    atteso("0141 non modificata dopo il collaudo sullo staging", require("crypto").createHash("sha256").update(leggi("supabase/migrations/0141_newsletter_tender_weekly.sql")).digest("hex").startsWith("b09187b993fd28b2"));
+    const att = leggi("supabase/manuali/attiva_documenti_v3_newsletter.sql");
+    for (const [file, tipo] of [["legal/privacy-policy-omnia-ai-v3.md", "omnia_ai_privacy_policy"], ["legal/condizioni-abbonamento-v3.md", "omnia_ai_condizioni_abbonamento"]]) {
+      const h = require("crypto").createHash("sha256").update(leggi(file).replace(/\r\n/g, "\n")).digest("hex");
+      atteso(`attivazione v3: impronta di ${file} corretta`, att.includes(h) && att.includes(tipo));
+    }
+    atteso("le versioni v2 pubblicate non sono state toccate", !/Tender Weekly/.test(leggi("legal/privacy-policy-omnia-ai-v2.md")) && !/Tender Weekly/.test(leggi("legal/condizioni-abbonamento-v2.md")));
+    atteso("condizioni v3: Tender Weekly incluso e disiscrizione senza effetti sull'abbonamento", /comprende anche Tender Weekly/.test(leggi("legal/condizioni-abbonamento-v3.md")) && /senza alcun effetto sull'abbonamento/.test(leggi("legal/condizioni-abbonamento-v3.md")));
+  }
+
   fs.rmSync(fileArchivio, { force: true });
   console.log(`\n${controlli - errori}/${controlli} controlli superati.`);
   if (errori) process.exit(1);

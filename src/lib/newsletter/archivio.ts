@@ -34,7 +34,11 @@ export interface ArchivioNewsletter {
   iscrittoPerEmail(email: string): Promise<Iscritto | null>;
   iscrittoPerToken(token: string): Promise<Iscritto | null>;
   aggiungiIscritto(i: Omit<Iscritto, "id" | "token_disiscrizione" | "creato_il" | "disiscritto_il" | "motivo_uscita">, autore: string | null): Promise<Iscritto>;
-  aggiornaIscritto(id: string, campi: Partial<Pick<Iscritto, "stato" | "disiscritto_il" | "motivo_uscita" | "base_giuridica" | "prova_base" | "base_dal" | "nome" | "categoria">>): Promise<void>;
+  aggiornaIscritto(id: string, campi: Partial<Omit<Iscritto, "id" | "email" | "token_disiscrizione" | "creato_il">>): Promise<void>;
+  // iscrizione dal sito in attesa di conferma, per il gettone del link di conferma
+  iscrittoPerConferma(token: string): Promise<Iscritto | null>;
+  // richieste d'iscrizione dal sito con la stessa impronta dell'IP dopo un certo istante (limite di frequenza)
+  contaRichiesteRecenti(ipHash: string, daIso: string): Promise<number>;
   // inserisce le righe ignorando quelle già presenti (stesso iscritto e stessa edizione): idempotente
   accodaInvii(righe: Omit<Invio, "id" | "creato_il" | "resend_id" | "errore" | "inviato_il" | "consegnato_il" | "aperto_il" | "cliccato_il" | "clic">[]): Promise<void>;
   inviiDellEdizione(edizioneId: string): Promise<Invio[]>;
@@ -59,6 +63,8 @@ export interface ArchivioNewsletter {
   operazioniCosto(): Promise<OperazioneCosto[]>;
   registraCosto(r: RegistrazioneCosto): Promise<void>;
   registro(edizioneId: string, limite: number): Promise<{ azione: string; dettaglio: Record<string, unknown>; creato_il: string }[]>;
+  // righe del registro con una certa azione (per esempio le email di conferma delle iscrizioni, nei costi)
+  registroPerAzione(azione: string, limite: number): Promise<{ azione: string; dettaglio: Record<string, unknown>; creato_il: string }[]>;
 }
 
 function edizioneDaRiga(r: Record<string, unknown>): Edizione {
@@ -164,6 +170,22 @@ function archivioSupabase(): ArchivioNewsletter {
       if (error) erroreDb(error.code === "23505" ? "indirizzo già presente" : "aggiunta iscritto", error);
       return data as Iscritto;
     },
+    async iscrittoPerConferma(token) {
+      if (!/^[a-f0-9]{32,64}$/.test(token)) return null;
+      const { data, error } = await db().from("newsletter_iscritti").select("*").eq("conferma_token", token).maybeSingle();
+      if (error) erroreDb("iscritto per conferma", error);
+      return (data as Iscritto | null) ?? null;
+    },
+    async contaRichiesteRecenti(ipHash, daIso) {
+      const { count, error } = await db()
+        .from("newsletter_registro")
+        .select("id", { count: "exact", head: true })
+        .eq("azione", "richiesta_iscrizione")
+        .gte("creato_il", daIso)
+        .filter("dettaglio->>ip_hash", "eq", ipHash);
+      if (error) erroreDb("limite di frequenza", error);
+      return count ?? 0;
+    },
     async aggiornaIscritto(id, campi) {
       const { error } = await db().from("newsletter_iscritti").update({ ...campi, aggiornato_il: new Date().toISOString() }).eq("id", id);
       if (error) erroreDb("aggiornamento iscritto", error);
@@ -218,6 +240,11 @@ function archivioSupabase(): ArchivioNewsletter {
     async registro(edizioneId, limite) {
       const { data, error } = await db().from("newsletter_registro").select("azione, dettaglio, creato_il").eq("edizione_id", edizioneId).order("creato_il", { ascending: false }).limit(limite);
       if (error) return [];
+      return (data ?? []) as { azione: string; dettaglio: Record<string, unknown>; creato_il: string }[];
+    },
+    async registroPerAzione(azione, limite) {
+      const { data, error } = await db().from("newsletter_registro").select("azione, dettaglio, creato_il").eq("azione", azione).order("creato_il", { ascending: false }).limit(limite);
+      if (error) erroreDb("registro", error);
       return (data ?? []) as { azione: string; dettaglio: Record<string, unknown>; creato_il: string }[];
     },
     async elencoVersioni(edizioneId) {
@@ -423,6 +450,12 @@ function archivioLocale(): ArchivioNewsletter {
       scrivi(d);
       return nuovo;
     },
+    async iscrittoPerConferma(token) {
+      return leggi().iscritti.find((x) => x.conferma_token === token) ?? null;
+    },
+    async contaRichiesteRecenti(ipHash, daIso) {
+      return leggi().registro.filter((r) => r.azione === "richiesta_iscrizione" && r.creato_il >= daIso && r.dettaglio.ip_hash === ipHash).length;
+    },
     async aggiornaIscritto(id, campi) {
       const d = leggi();
       const x = d.iscritti.find((r) => r.id === id);
@@ -470,6 +503,12 @@ function archivioLocale(): ArchivioNewsletter {
     async registro(edizioneId, limite) {
       return leggi()
         .registro.filter((r) => r.edizione_id === edizioneId)
+        .reverse()
+        .slice(0, limite);
+    },
+    async registroPerAzione(azione, limite) {
+      return leggi()
+        .registro.filter((r) => r.azione === azione)
         .reverse()
         .slice(0, limite);
     },

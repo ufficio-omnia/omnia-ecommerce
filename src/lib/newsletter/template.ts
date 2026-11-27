@@ -67,6 +67,11 @@ function conCampagna(url: string, numero: number): string {
   }
 }
 
+// Testi discorsivi giustificati (richiesta del 27/11): allineamento in linea, compatibile con Gmail, Outlook e Apple Mail;
+// la sillabazione (dove il client la supporta; la lingua è dichiarata «it») evita i vuoti tra le parole su smartphone.
+// Titoli, intestazioni, fonti, elenchi e pulsanti NON passano da questa funzione e restano allineati a sinistra.
+export const GIUSTIFICATO = "text-align:justify;text-justify:inter-word;-webkit-hyphens:auto;-ms-hyphens:auto;hyphens:auto;";
+
 function paragrafi(testo: string, colore: string, dimensione = 16): string {
   return testo
     .split(/\n\s*\n/)
@@ -74,7 +79,7 @@ function paragrafi(testo: string, colore: string, dimensione = 16): string {
     .filter(Boolean)
     .map(
       (p) =>
-        `<p style="margin:0 0 14px 0;font-family:${FONT_TESTO};font-size:${dimensione}px;line-height:1.65;color:${colore};">${esc(p).replace(/\n/g, "<br>")}</p>`,
+        `<p style="margin:0 0 14px 0;font-family:${FONT_TESTO};font-size:${dimensione}px;line-height:1.65;color:${colore};${GIUSTIFICATO}">${esc(p).replace(/\n/g, "<br>")}</p>`,
     )
     .join("");
 }

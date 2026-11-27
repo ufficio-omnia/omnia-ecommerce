@@ -64,6 +64,8 @@ export function riepilogaCostiNewsletter(d: {
   versioni: Omit<Versione, "contenuto">[];
   edizioni: Edizione[];
   invii: Invio[];
+  // email di conferma delle iscrizioni dal sito (righe «email_conferma» del registro)
+  conferme?: { creato_il: string; dettaglio: Record<string, unknown> }[];
   impostazioni: Pick<Impostazioni, "resend_piano" | "resend_quota_mensile_eur">;
   cambioUsdEur: number | null;
   adesso: Date;
@@ -166,12 +168,20 @@ export function riepilogaCostiNewsletter(d: {
 
   // Resend: volumi per mese (solo invii veri: gli id «simulato-» sono prove di sviluppo)
   const veri = d.invii.filter((i) => i.resend_id && !i.resend_id.startsWith("simulato-") && i.inviato_il);
-  const perMese = new Map<string, { reali: number; prove: number }>();
+  const perMese = new Map<string, { reali: number; prove: number; conferme: number }>();
   for (const i of veri) {
     const m = dataRoma(new Date(i.inviato_il!)).slice(0, 7);
-    const x = perMese.get(m) ?? { reali: 0, prove: 0 };
+    const x = perMese.get(m) ?? { reali: 0, prove: 0, conferme: 0 };
     if (i.tipo === "reale") x.reali++;
     else x.prove++;
+    perMese.set(m, x);
+  }
+  // email di conferma vere (le simulate dello sviluppo non partono e non contano)
+  const confermeVere = (d.conferme ?? []).filter((c) => c.dettaglio?.simulato !== true && c.dettaglio?.esito !== "errore");
+  for (const c of confermeVere) {
+    const m = dataRoma(new Date(c.creato_il)).slice(0, 7);
+    const x = perMese.get(m) ?? { reali: 0, prove: 0, conferme: 0 };
+    x.conferme++;
     perMese.set(m, x);
   }
   const resend = {
@@ -181,7 +191,8 @@ export function riepilogaCostiNewsletter(d: {
     periodo: {
       reali: veri.filter((i) => i.tipo === "reale" && dataRoma(new Date(i.inviato_il!)) >= d.da && dataRoma(new Date(i.inviato_il!)) <= d.a).length,
       prove: veri.filter((i) => i.tipo === "prova" && dataRoma(new Date(i.inviato_il!)) >= d.da && dataRoma(new Date(i.inviato_il!)) <= d.a).length,
-      simulate: d.invii.filter((i) => i.resend_id?.startsWith("simulato-")).length,
+      simulate: d.invii.filter((i) => i.resend_id?.startsWith("simulato-")).length + (d.conferme ?? []).filter((c) => c.dettaglio?.simulato === true).length,
+      conferme: confermeVere.filter((c) => dataRoma(new Date(c.creato_il)) >= d.da && dataRoma(new Date(c.creato_il)) <= d.a).length,
     },
   };
 

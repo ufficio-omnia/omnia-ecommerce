@@ -6,6 +6,7 @@ import { richiediAdminAzione } from "@/lib/console/accesso";
 import { archivioNewsletter } from "@/lib/newsletter/archivio";
 import { controllaEdizione, normalizzaContenuto } from "@/lib/newsletter/contenuto";
 import { emailValida } from "@/lib/newsletter/destinatari";
+import { inserisciDestinatari, leggiElenco } from "@/lib/newsletter/gestione-iscritti";
 import { generaNuovaEdizione, rigenera, ripristinaVersione, type TestoEditor } from "@/lib/newsletter/versioni";
 import { avviaInvio, inviaProva, riprendiInvio } from "@/lib/newsletter/invio";
 import { dataRoma, daInputLocale, oraValida, prossimaScadenza } from "@/lib/newsletter/pianificazione";
@@ -295,41 +296,64 @@ export async function riprendiInvioEdizione(_s: EsitoNewsletter, formData: FormD
 
 // ───── iscritti ─────
 
-export async function aggiungiIscritto(_s: EsitoNewsletter, formData: FormData): Promise<EsitoNewsletter> {
+// Aggiungi destinatario: uno solo, un elenco incollato o un file CSV. Base giuridica e prova sono obbligatorie e
+// valgono per tutti gli indirizzi del lotto; i duplicati non si creano; un disiscritto si riattiva solo con la spunta
+// «nuova autorizzazione documentata».
+export async function aggiungiDestinatari(_s: EsitoNewsletter, formData: FormData): Promise<EsitoNewsletter> {
   const sessione = await richiediAdminAzione();
   if (!sessione) return { errore: "Non autorizzato." };
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const modo = String(formData.get("modo") ?? "singolo");
   const base = String(formData.get("base_giuridica") ?? "") as BaseGiuridica;
   const prova = String(formData.get("prova_base") ?? "").trim();
   const categoria = String(formData.get("categoria") ?? "altro") as CategoriaIscritto;
   const dal = String(formData.get("base_dal") ?? "");
-  const userId = String(formData.get("user_id") ?? "");
-  if (!emailValida(email)) return { errore: "Indirizzo email non valido." };
-  if (!BASI_GIURIDICHE.includes(base)) return { errore: "Scegli la base giuridica." };
-  if (prova.length < 10) return { errore: "Descrivi la prova della base giuridica (almeno 10 caratteri: come, quando, dove è documentata)." };
+  const note = String(formData.get("note_admin") ?? "").trim().slice(0, 500) || null;
+  if (!BASI_GIURIDICHE.includes(base) || base === "contratto_abbonamento") return { errore: "Scegli la base giuridica (i clienti con abbonamento entrano da soli quando hanno accettato le Condizioni v3)." };
+  if (prova.length < 10) return { errore: "Descrivi la prova dell'autorizzazione (almeno 10 caratteri: come, quando, dove è documentata)." };
   if (!["cliente", "prospect", "interno", "altro"].includes(categoria)) return { errore: "Categoria non valida." };
   if (dal && !/^\d{4}-\d{2}-\d{2}$/.test(dal)) return { errore: "Data della base non valida." };
-  if (formData.get("dichiarazione") !== "1") return { errore: "Conferma che la base giuridica è documentata e conservata." };
+  if (formData.get("dichiarazione") !== "1") return { errore: "Conferma che l'autorizzazione è documentata e la prova è conservata." };
+
+  let elenco: ReturnType<typeof leggiElenco>;
+  if (modo === "singolo") {
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    if (!emailValida(email)) return { errore: "Indirizzo email non valido." };
+    elenco = { righe: [{ email, nome: String(formData.get("nome") ?? "").trim().slice(0, 120) || null, azienda: String(formData.get("azienda") ?? "").trim().slice(0, 160) || null }], nonValidi: [] };
+  } else if (modo === "elenco") {
+    elenco = leggiElenco(String(formData.get("elenco") ?? "").slice(0, 500_000));
+  } else if (modo === "csv") {
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { errore: "Scegli un file CSV." };
+    if (file.size > 2_000_000) return { errore: "File troppo grande (massimo 2 MB)." };
+    elenco = leggiElenco(await file.text());
+  } else return { errore: "Modalità non valida." };
+  if (elenco.righe.length === 0) return { errore: `Nessun indirizzo valido trovato${elenco.nonValidi.length ? ` (${elenco.nonValidi.length} non validi)` : ""}.` };
+  if (elenco.righe.length > 5000) return { errore: "Al massimo 5.000 indirizzi per volta." };
+
   try {
-    const a = archivioNewsletter();
-    const esistente = await a.iscrittoPerEmail(email);
-    if (esistente) return { errore: `Indirizzo già presente (stato: ${esistente.stato}).` };
-    const nuovo = await a.aggiungiIscritto(
+    const r = await inserisciDestinatari(
       {
-        email,
-        nome: String(formData.get("nome") ?? "").trim().slice(0, 120) || null,
-        user_id: UUID.test(userId) ? userId : null,
+        righe: elenco.righe,
+        base,
+        prova,
+        baseDal: dal || dataRoma(new Date()),
+        note,
         categoria,
-        stato: "iscritto",
-        base_giuridica: base,
-        prova_base: prova.slice(0, 1000),
-        base_dal: dal || dataRoma(new Date()),
+        provenienza: modo === "singolo" ? "console" : "importazione",
+        nuovaAutorizzazione: formData.get("nuova_autorizzazione") === "1",
       },
       sessione.userId,
     );
-    await a.annota(null, "iscritto_aggiunto", { iscritto: nuovo.id, base }, sessione.userId);
     aggiorna();
-    return { ok: true };
+    const parti = [
+      `${r.aggiunti.length} aggiunti`,
+      r.giaPresenti.length ? `${r.giaPresenti.length} già presenti (nessun doppione)` : "",
+      r.riattivati.length ? `${r.riattivati.length} disiscritti riattivati con la nuova autorizzazione` : "",
+      r.disiscrittiNonRiattivati.length ? `${r.disiscrittiNonRiattivati.length} disiscritti NON riattivati (serve la spunta «nuova autorizzazione»): ${r.disiscrittiNonRiattivati.slice(0, 5).join(", ")}${r.disiscrittiNonRiattivati.length > 5 ? "…" : ""}` : "",
+      r.bloccati.length ? `${r.bloccati.length} bloccati (rimbalzo o spam)` : "",
+      elenco.nonValidi.length ? `${elenco.nonValidi.length} righe non valide: ${elenco.nonValidi.slice(0, 5).join(", ")}${elenco.nonValidi.length > 5 ? "…" : ""}` : "",
+    ].filter(Boolean);
+    return { ok: true, avviso: parti.join(" · ") };
   } catch (e) {
     return errore(e);
   }
@@ -344,7 +368,7 @@ export async function cambiaStatoIscritto(_s: EsitoNewsletter, formData: FormDat
   try {
     const a = archivioNewsletter();
     if (azione === "disiscrivi") {
-      await a.aggiornaIscritto(id, { stato: "disiscritto", disiscritto_il: new Date().toISOString(), motivo_uscita: "disiscritto dall'amministratore" });
+      await a.aggiornaIscritto(id, { stato: "disiscritto", disiscritto_il: new Date().toISOString(), motivo_uscita: "disiscritto dall'amministratore", conferma_token: null });
     } else {
       // riattivare un disiscritto richiede un nuovo consenso: si fa dalla pagina pubblica dell'interessato, non da qui
       return { errore: "Azione non prevista: un indirizzo disiscritto si riattiva solo con un nuovo consenso dell'interessato." };

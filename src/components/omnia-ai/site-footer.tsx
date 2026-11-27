@@ -36,6 +36,7 @@ export default async function SiteFooter() {
           <Link href="/ricerca-gare">Ricerca gare</Link>
           <Link href="/piani">Piani</Link>
           <Link href="/demo">Demo</Link>
+          <Link href="/newsletter">Newsletter</Link>
           <Link href="/login">Accedi</Link>
           <a href="https://omniaitalia.com">omniaitalia.com</a>
           <Link href="/contatti">Contatti</Link>

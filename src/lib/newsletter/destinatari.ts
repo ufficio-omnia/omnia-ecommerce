@@ -48,7 +48,7 @@ export function selezionaDestinatari(iscritti: Iscritto[], abbonati: Abbonato[],
     if (visti.has(email)) continue;
     visti.add(email);
     if (i.stato !== "iscritto") {
-      esclusi.push({ email, motivo: i.stato === "disiscritto" ? "disiscritto" : i.stato === "rimbalzato" ? "indirizzo non valido (rimbalzo)" : "ha segnalato spam" });
+      esclusi.push({ email, motivo: i.stato === "in_attesa" ? "in attesa di conferma (doppia conferma)" : i.stato === "disiscritto" ? "disiscritto" : i.stato === "rimbalzato" ? "indirizzo non valido (rimbalzo)" : "ha segnalato spam" });
       continue;
     }
     if (!i.base_giuridica || !i.prova_base || i.prova_base.trim().length < 10) {
@@ -73,4 +73,47 @@ export function candidatiDaAbbonati(iscritti: Iscritto[], abbonati: Abbonato[]):
 
 export function emailValida(email: string): boolean {
   return /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[a-z]{2,}$/i.test(email.trim()) && email.length <= 254;
+}
+
+// ───── acquisizione automatica dei clienti ─────
+
+export type ClienteConCondizioni = Abbonato & { accettazioneId: string; versione: number; accettataIl: string };
+
+// Abbonati attivi che hanno accettato Condizioni di abbonamento che includono Tender Weekly (versione ≥ minima). È la
+// prova documentata della base giuridica «contratto_abbonamento»: senza quell'accettazione il cliente NON entra.
+export async function clientiConCondizioniNewsletter(versioneMinima: number, adesso = new Date()): Promise<ClienteConCondizioni[]> {
+  if (process.env.NEWSLETTER_ARCHIVIO === "locale") return [];
+  const abbonati = await abbonatiAttivi(adesso);
+  if (abbonati.length === 0) return [];
+  const admin = createAdminClient();
+  const { data: documenti, error: e1 } = await admin.from("legal_documents").select("id, version").eq("document_type", "omnia_ai_condizioni_abbonamento").gte("version", versioneMinima);
+  if (e1) throw new Error(`Newsletter, lettura documenti legali: ${e1.message}`);
+  const versioni = new Map(((documenti ?? []) as { id: string; version: number }[]).map((d) => [d.id, d.version]));
+  if (versioni.size === 0) return [];
+  const { data: acc, error: e2 } = await admin
+    .from("omnia_ai_legal_acceptances")
+    .select("id, user_id, legal_document_id, accepted_at")
+    .in("legal_document_id", [...versioni.keys()])
+    .in("user_id", abbonati.map((a) => a.userId))
+    .order("accepted_at", { ascending: false });
+  if (e2) throw new Error(`Newsletter, lettura accettazioni: ${e2.message}`);
+  const perUtente = new Map<string, { id: string; legal_document_id: string; accepted_at: string }>();
+  for (const r of (acc ?? []) as { id: string; user_id: string; legal_document_id: string; accepted_at: string }[]) if (!perUtente.has(r.user_id)) perUtente.set(r.user_id, r);
+  return abbonati.flatMap((a) => {
+    const r = perUtente.get(a.userId);
+    return r ? [{ ...a, accettazioneId: r.id, versione: versioni.get(r.legal_document_id) ?? versioneMinima, accettataIl: r.accepted_at }] : [];
+  });
+}
+
+// Funzione pura: quali clienti aggiungere. Un indirizzo già presente (con QUALSIASI stato, disiscritti compresi) non
+// si tocca: una disiscrizione resta tale anche se il cliente rinnova l'abbonamento.
+export function clientiDaAggiungere(iscritti: Pick<Iscritto, "email" | "user_id">[], clienti: ClienteConCondizioni[]): ClienteConCondizioni[] {
+  const email = new Set(iscritti.map((i) => i.email.toLowerCase()));
+  const utenti = new Set(iscritti.map((i) => i.user_id).filter(Boolean));
+  const visti = new Set<string>();
+  return clienti.filter((c) => {
+    if (email.has(c.email) || utenti.has(c.userId) || visti.has(c.email)) return false;
+    visti.add(c.email);
+    return true;
+  });
 }

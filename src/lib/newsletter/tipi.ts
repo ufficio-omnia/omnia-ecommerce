@@ -90,15 +90,33 @@ export type Edizione = {
   aggiornata_il: string;
 };
 
-export const BASI_GIURIDICHE = ["consenso", "soft_spam_art130", "altro_documentato"] as const;
+export const BASI_GIURIDICHE = ["consenso", "soft_spam_art130", "altro_documentato", "contratto_abbonamento"] as const;
 export type BaseGiuridica = (typeof BASI_GIURIDICHE)[number];
 export const ETICHETTA_BASE: Record<BaseGiuridica, string> = {
   consenso: "Consenso espresso",
   soft_spam_art130: "Cliente – art. 130 c. 4 Codice privacy",
   altro_documentato: "Altra base documentata",
+  contratto_abbonamento: "Cliente – servizio incluso nell'abbonamento (Condizioni v3+)",
 };
 
-export type StatoIscritto = "iscritto" | "disiscritto" | "rimbalzato" | "segnalato_spam";
+// Le Condizioni di abbonamento includono Tender Weekly tra i servizi informativi da questa versione in poi: solo chi l'ha
+// accettata viene acquisito in automatico come iscritto «contratto_abbonamento».
+export const VERSIONE_CONDIZIONI_CON_NEWSLETTER = 3;
+// Versione dell'informativa privacy che cita la newsletter (registrata con ogni iscrizione dal sito).
+export const VERSIONE_INFORMATIVA_NEWSLETTER = "privacy-policy v3";
+// Testo del consenso mostrato nel modulo pubblico: si salva identico con ogni iscrizione.
+export const TESTO_CONSENSO_NEWSLETTER =
+  "Acconsento a ricevere Tender Weekly, la newsletter informativa settimanale di OMNIA AI, all'indirizzo indicato. Posso disiscrivermi in qualunque momento dal link presente in ogni email.";
+
+export type Provenienza = "sito" | "console" | "importazione" | "abbonamento";
+export const ETICHETTA_PROVENIENZA: Record<Provenienza, string> = {
+  sito: "Sito omnia-ai.it",
+  console: "Aggiunto a mano",
+  importazione: "Importazione (elenco o CSV)",
+  abbonamento: "Cliente con abbonamento",
+};
+
+export type StatoIscritto = "in_attesa" | "iscritto" | "disiscritto" | "rimbalzato" | "segnalato_spam";
 export type CategoriaIscritto = "cliente" | "prospect" | "interno" | "altro";
 
 export type Iscritto = {
@@ -115,6 +133,18 @@ export type Iscritto = {
   disiscritto_il: string | null;
   motivo_uscita: string | null;
   creato_il: string;
+  // 0142 (facoltativi: assenti prima della migrazione)
+  provenienza?: Provenienza;
+  azienda?: string | null;
+  note_admin?: string | null;
+  consenso_testo?: string | null;
+  informativa_versione?: string | null;
+  consenso_ip_hash?: string | null;
+  consenso_user_agent?: string | null;
+  conferma_token?: string | null;
+  conferma_inviata_il?: string | null;
+  conferme_inviate?: number;
+  confermato_il?: string | null;
 };
 
 export type StatoInvio = "in_coda" | "inviato" | "consegnato" | "ritardato" | "rimbalzato" | "segnalato_spam" | "errore" | "saltato";

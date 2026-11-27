@@ -31,8 +31,9 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
   try {
     const a = archivioNewsletter();
     const [operazioni, versioni, edizioni, invii, impostazioni, par] = await Promise.all([a.operazioniCosto(), a.versioniSenzaContenuto(), a.elencoEdizioni(), a.tuttiGliInviiConProve(20000), a.leggiImpostazioni(), leggiParametriCalcolo()]);
+    const conferme = await a.registroPerAzione("email_conferma", 20000).catch(() => []);
     cambio = par.cambioUsdEur;
-    r = riepilogaCostiNewsletter({ operazioni, versioni, edizioni, invii, impostazioni, cambioUsdEur: cambio, adesso: new Date(), da: periodo.da, a: periodo.a });
+    r = riepilogaCostiNewsletter({ operazioni, versioni, edizioni, invii, conferme, impostazioni, cambioUsdEur: cambio, adesso: new Date(), da: periodo.da, a: periodo.a });
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     errore = /newsletter_|dettaglio/.test(m) ? "Le tabelle della newsletter non esistono ancora: va eseguita la migrazione 0141." : m;
@@ -199,7 +200,7 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
                 modelli). Costi incrementali oltre il piano: non disponibili dall&apos;API di Resend.
               </p>
               <p className="cn-nota">
-                Nel periodo: {r.resend.periodo.reali} email della newsletter, {r.resend.periodo.prove} email di prova. Invii simulati (sviluppo, mai spediti): {r.resend.periodo.simulate}.
+                Nel periodo: {r.resend.periodo.reali} email della newsletter, {r.resend.periodo.prove} email di prova, {r.resend.periodo.conferme} email di conferma delle iscrizioni dal sito. Invii simulati (sviluppo, mai spediti): {r.resend.periodo.simulate}.
               </p>
               <table className="cn-tab">
                 <thead>
@@ -207,6 +208,7 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
                     <th>Mese</th>
                     <th className="num">Newsletter</th>
                     <th className="num">Prove</th>
+                    <th className="num">Conferme</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -215,11 +217,12 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
                       <td className="mono">{m.mese}</td>
                       <td className="num">{m.reali}</td>
                       <td className="num">{m.prove}</td>
+                      <td className="num">{m.conferme}</td>
                     </tr>
                   ))}
                   {r.resend.mesi.length === 0 && (
                     <tr>
-                      <td colSpan={3}>Nessun invio reale finora.</td>
+                      <td colSpan={4}>Nessun invio reale finora.</td>
                     </tr>
                   )}
                 </tbody>
