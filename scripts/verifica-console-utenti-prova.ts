@@ -72,11 +72,23 @@ async function main() {
   atteso(`gare = ${MAX_GARE_GRATUITE} accettate`, errore({ gare: String(MAX_GARE_GRATUITE) }) === null);
 
   console.log("--- Generatore di password ---");
-  const generate = Array.from({ length: 300 }, () => generaPassword(Math.random));
+  // Prova DETERMINISTICA (27/11, deploy di b69d695 fallito nel prebuild): con Math.random e l'email «zzzz@altro.it» una delle 300
+  // password poteva contenere «zzzz» (z e Z sono nell'alfabeto: ~6 build su 1.000), e la validazione la rifiutava giustamente. Ora:
+  // generatore seminato fisso (mulberry32), stesse password a ogni esecuzione; email di prova con un punto nella parte locale, che non è
+  // nell'alfabeto del generatore, quindi «contiene la parte locale» non può mai scattare per caso.
+  const seminato = (seme: number) => () => {
+    seme = (seme + 0x6d2b79f5) | 0;
+    let t = Math.imul(seme ^ (seme >>> 15), 1 | seme);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const casuale = seminato(20261127);
+  const generate = Array.from({ length: 300 }, () => generaPassword(casuale));
   atteso("sedici caratteri", generate.every((p) => p.length === 16));
   atteso("sempre con una lettera e una cifra", generate.every((p) => /[A-Za-z]/.test(p) && /\d/.test(p)));
   atteso("senza caratteri ambigui (0 O 1 l I)", generate.every((p) => !/[0O1lI]/.test(p)));
-  atteso("superano la validazione del modulo", generate.every((p) => validaNuovoUtente({ email: "zzzz@altro.it", password: p, gare: "1" }).ok));
+  atteso("superano la validazione del modulo", generate.every((p) => validaNuovoUtente({ email: "mario.rossi@altro.it", password: p, gare: "1" }).ok));
+  atteso("la parte locale dell'email di prova non può comparire in una password generata (il punto non è nell'alfabeto)", generate.every((p) => !p.includes(".")));
   atteso("non sono tutte uguali", new Set(generate).size > 290);
   atteso("determinista con un generatore dato", generaPassword(() => 0.5) === generaPassword(() => 0.5));
   atteso("regge i valori estremi del generatore (0 e quasi 1)", generaPassword(() => 0).length === 16 && generaPassword(() => 0.9999999).length === 16);

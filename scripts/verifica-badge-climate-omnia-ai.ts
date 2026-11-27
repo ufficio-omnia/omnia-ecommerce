@@ -61,7 +61,12 @@ atteso("la pagina dei piani NON ha il badge (c'è già nel piè di pagina sotto:
 const sorgenti = fileSorgenti("src");
 const usano = sorgenti.filter((f) => /ClimateBadge|climate\.stripe\.com/.test(leggi(f))).sort();
 atteso("il badge è nel componente e nel piè di pagina di OMNIA AI, in nessun altro punto (area riservata, console, e-commerce, piani)", JSON.stringify(usano) === JSON.stringify(["src/components/omnia-ai/climate-badge.tsx", "src/components/omnia-ai/site-footer.tsx"]), usano.join(", "));
-atteso("nessun altro iframe di terzi nei sorgenti, a parte quello del badge", sorgenti.filter((f) => /\.tsx$/.test(f) && /<iframe/.test(leggi(f))).join(",") === "src/components/omnia-ai/climate-badge.tsx");
+// Un iframe che carica un indirizzo (attributo src) è di terzi. È ammesso solo quello del badge. L'unica eccezione è un
+// iframe con srcDoc e SENZA src, cioè con un contenuto generato dalla pagina stessa, come l'anteprima della newsletter
+// in console: non carica nulla da fuori. Un tag con srcDoc E src conta come di terzi.
+const iframeDiTerzi = (testo: string) => (testo.match(/<iframe\b[^>]*>/g) ?? []).some((tag) => /\ssrc=/.test(tag) || !/\ssrcDoc=/.test(tag));
+atteso("nessun altro iframe di terzi nei sorgenti, a parte quello del badge", sorgenti.filter((f) => /\.tsx$/.test(f) && iframeDiTerzi(leggi(f))).join(",") === "src/components/omnia-ai/climate-badge.tsx");
+atteso("controllo iframe: srcDoc con src esterno è di terzi, srcDoc da solo no", iframeDiTerzi('<iframe srcDoc={x} src="https://x.it" />') && !iframeDiTerzi("<iframe title=\"a\" srcDoc={html} sandbox=\"\" />") && iframeDiTerzi('<iframe src="https://x.it" />'));
 
 console.log("--- La frase sui piani ---");
 const frase = "Omnia Consulting destina l&apos;1% di ogni abbonamento a Stripe Climate, per ridurre la CO₂ nell&apos;atmosfera.";

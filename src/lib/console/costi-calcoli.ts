@@ -112,7 +112,8 @@ export function calcolaMargine(ricavoLordo: number, costoEur: number | null, ali
 
 export type CostoClienteDb = {
   user_id: string | null;
-  categoria: "cliente" | "piattaforma" | "non_attribuito" | "prova";
+  // «newsletter» (0141): operazioni «newsletter_*», costo operativo interno (Tender Weekly)
+  categoria: "cliente" | "piattaforma" | "newsletter" | "non_attribuito" | "prova";
   operazioni: number;
   operazioni_senza_costo: number;
   costo_usd: number;
@@ -154,6 +155,9 @@ export type TotaliCosti = {
   costoEur: number | null;
   // di cui: costo della piattaforma (kb_*)
   costoPiattaformaUsd: number;
+  // di cui: costo della newsletter Tender Weekly (newsletter_*): costo operativo interno, nel margine complessivo ma
+  // non nel costo per gara né in quello di un cliente
+  costoNewsletterUsd: number;
   // costo di operazioni senza cliente e senza essere della piattaforma: script di
   // sviluppo precedenti al prefisso "prova:" o clienti eliminati. NON entra nel
   // margine né nel costo per gara (è spesa di sviluppo, non costo di servire i
@@ -172,7 +176,7 @@ export type TotaliCosti = {
 };
 
 export type CostiNonAttribuiti = {
-  categoria: "piattaforma" | "non_attribuito" | "prova";
+  categoria: "piattaforma" | "newsletter" | "non_attribuito" | "prova";
   operazioni: number;
   operazioniSenzaCosto: number;
   costoUsd: number;
@@ -293,14 +297,15 @@ export function assemblaClienti(dati: DatiGrezziCosti, parametri: ParametriDiCal
     r.marginePerc = m.percentuale;
   }
 
-  // Totali. Nel margine entrano i costi dei clienti e quelli della piattaforma
-  // (knowledge base: serve per erogare il servizio). NON entrano le operazioni
+  // Totali. Nel margine entrano i costi dei clienti, quelli della piattaforma
+  // (knowledge base: serve per erogare il servizio) e quelli della newsletter (costo operativo interno). NON entrano le operazioni
   // senza cliente e senza essere della piattaforma (script di sviluppo, clienti
   // eliminati), che si mostrano a parte, né le prove degli script con prefisso.
   const costoClientiUsd = righe.reduce((s, r) => s + r.costoUsd, 0);
   const costoPiattaformaUsd = nonAttribuiti.filter((n) => n.categoria === "piattaforma").reduce((s, n) => s + n.costoUsd, 0);
+  const costoNewsletterUsd = nonAttribuiti.filter((n) => n.categoria === "newsletter").reduce((s, n) => s + n.costoUsd, 0);
   const costoNonAttribuitoUsd = nonAttribuiti.filter((n) => n.categoria === "non_attribuito").reduce((s, n) => s + n.costoUsd, 0);
-  const costoUsd = costoClientiUsd + costoPiattaformaUsd;
+  const costoUsd = costoClientiUsd + costoPiattaformaUsd + costoNewsletterUsd;
   const costoEur = usdInEur(costoUsd, parametri.cambioUsdEur);
   const ricavoLordo = righe.reduce((s, r) => s + r.ricavoLordo, 0);
   const margineTotale = calcolaMargine(ricavoLordo, costoEur, parametri.aliquotaIva);
@@ -312,8 +317,9 @@ export function assemblaClienti(dati: DatiGrezziCosti, parametri: ParametriDiCal
     costoUsd,
     costoEur,
     costoPiattaformaUsd,
+    costoNewsletterUsd,
     costoNonAttribuitoUsd,
-    operazioni: righe.reduce((s, r) => s + r.operazioni, 0) + nonAttribuiti.filter((n) => n.categoria === "piattaforma").reduce((s, n) => s + n.operazioni, 0),
+    operazioni: righe.reduce((s, r) => s + r.operazioni, 0) + nonAttribuiti.filter((n) => n.categoria === "piattaforma" || n.categoria === "newsletter").reduce((s, n) => s + n.operazioni, 0),
     operazioniSenzaCosto: righe.reduce((s, r) => s + r.operazioniSenzaCosto, 0) + nonDiProva.reduce((s, n) => s + n.operazioniSenzaCosto, 0),
     gare,
     costoPerGaraEur: costoClientiEur !== null && gare > 0 ? costoClientiEur / gare : null,

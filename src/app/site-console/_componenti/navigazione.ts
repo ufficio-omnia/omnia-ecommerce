@@ -36,6 +36,10 @@ export const NAVIGAZIONE: GruppoNavigazione[] = [
     ],
   },
   {
+    titolo: "Comunicazioni",
+    voci: [{ href: "/newsletter", etichetta: "Newsletter & Comunicazioni", pronto: true }],
+  },
+  {
     titolo: "Sistema",
     voci: [
       { href: "/prezzi", etichetta: "Piani e prezzi", pronto: true },

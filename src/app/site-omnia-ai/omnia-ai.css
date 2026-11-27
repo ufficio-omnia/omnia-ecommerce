@@ -203,6 +203,12 @@ a {
   --ombra-rgb: 0, 0, 0;
   --carta: #ffffff;
   --inchiostro: #1b1930;
+  /* copertina di Tender Weekly: scura in entrambi i temi, come la testata dell'email */
+  --tw-notte: #0b0a16;
+  --tw-su-notte: #ffffff;
+  --tw-verde: #4fd1a5;
+  --tw-viola: #5b4bd0;
+  --tw-fioco: #a9a6c4;
 }
 
 /* ---------- Tema chiaro ----------
@@ -248,6 +254,12 @@ a {
   --ombra-rgb: 0, 0, 0;
   --carta: #ffffff;
   --inchiostro: #1b1930;
+  /* copertina di Tender Weekly: scura in entrambi i temi, come la testata dell'email */
+  --tw-notte: #0b0a16;
+  --tw-su-notte: #ffffff;
+  --tw-verde: #4fd1a5;
+  --tw-viola: #5b4bd0;
+  --tw-fioco: #a9a6c4;
 }
 
 /* ---------- Fondamenta ----------
@@ -5941,5 +5953,205 @@ html.omnia-scorrimento-bloccato body {
   }
   .omnia-nav.omnia-principale .omnia-tema {
     margin-left: 0;
+  }
+}
+
+/* ───── Tender Weekly: iscrizione alla newsletter (home e /newsletter, 27/11/2026) ─────
+   Solo variabili del tema (chiaro di base, scuro a scelta): nessun colore fisso tranne la copertina, che riprende la
+   testata scura dell'email in entrambi i temi. */
+.omnia-tw {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 48px;
+  align-items: center;
+  padding: 44px;
+  border: 1px solid var(--bordo);
+  border-radius: 24px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(var(--viola-rgb), 0.1), rgba(var(--viola-rgb), 0) 55%),
+    radial-gradient(90% 120% at 0% 100%, rgba(var(--verde-rgb), 0.08), rgba(var(--verde-rgb), 0) 60%),
+    var(--vetro);
+}
+.omnia-tw-titolo {
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.12;
+  margin: 6px 0 14px;
+}
+.omnia-tw-guida {
+  margin: 0 0 22px;
+  text-align: left;
+}
+.omnia-tw-elenco {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.omnia-tw-elenco li {
+  display: grid;
+  gap: 2px;
+  padding-left: 18px;
+  border-left: 2px solid var(--viola);
+}
+.omnia-tw-elenco strong {
+  color: var(--testo);
+  font-weight: 600;
+  font-size: 15px;
+}
+.omnia-tw-elenco span {
+  color: var(--fioco);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.omnia-tw-garanzie {
+  margin: 22px 0 0;
+  font-size: 12.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--verde);
+}
+.omnia-tw-scheda {
+  border: 1px solid var(--bordo);
+  border-radius: 18px;
+  background: var(--vetro-3);
+  overflow: hidden;
+}
+.omnia-tw-copertina {
+  display: grid;
+  gap: 6px;
+  padding: 22px 26px 20px;
+  background: var(--tw-notte);
+  color: var(--tw-su-notte);
+}
+.omnia-tw-copertina-occhiello {
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--tw-verde);
+  font-weight: 700;
+}
+.omnia-tw-copertina-testata {
+  font-family: "Montserrat", sans-serif;
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.05;
+}
+.omnia-tw-copertina-linea {
+  display: block;
+  height: 3px;
+  width: 108px;
+  margin: 8px 0 4px;
+  background: linear-gradient(90deg, var(--tw-viola) 0 66%, var(--tw-verde) 66% 100%);
+  border-radius: 2px;
+}
+.omnia-tw-copertina-claim {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--tw-fioco);
+}
+.omnia-tw-modulo {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 24px 26px 26px;
+}
+.omnia-tw-modulo .omnia-etichetta {
+  margin-bottom: 0;
+}
+.omnia-tw-consenso {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--testo-2);
+}
+.omnia-tw-consenso input {
+  margin-top: 3px;
+  accent-color: var(--viola);
+}
+.omnia-tw-consenso a {
+  color: var(--viola);
+}
+.omnia-tw-errore {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--rosso);
+}
+.omnia-tw-bottone {
+  justify-self: stretch;
+  width: 100%;
+}
+.omnia-tw-esito {
+  padding: 28px 26px 30px;
+  text-align: center;
+}
+.omnia-tw-esito h3 {
+  margin: 10px 0 8px;
+  font-size: 21px;
+}
+.omnia-tw-esito p {
+  margin: 0 auto 8px;
+  max-width: 380px;
+  color: var(--testo-2);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.omnia-tw-esito .omnia-tw-nota {
+  color: var(--fioco);
+  font-size: 12.5px;
+}
+.omnia-tw-busta {
+  width: 52px;
+  height: 52px;
+  color: var(--verde);
+  padding: 10px;
+  border-radius: 50%;
+  background: rgba(var(--verde-rgb), 0.12);
+}
+.omnia-tw-conferma {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 44px 36px;
+  border: 1px solid var(--bordo);
+  border-radius: 24px;
+  background: var(--vetro);
+  text-align: center;
+}
+.omnia-tw-conferma h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  margin: 14px 0 14px;
+}
+.omnia-tw-conferma p {
+  text-align: center;
+  color: var(--testo-2);
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 0 auto 10px;
+  max-width: 500px;
+}
+.omnia-tw-conferma .omnia-tw-frase {
+  margin-top: 18px;
+  color: var(--viola);
+  font-weight: 600;
+}
+@media (max-width: 900px) {
+  .omnia-tw {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 26px 20px;
+    border-radius: 20px;
+  }
+  .omnia-tw-modulo,
+  .omnia-tw-esito {
+    padding: 20px 18px 22px;
+  }
+  .omnia-tw-copertina {
+    padding: 18px 20px;
+  }
+  .omnia-tw-conferma {
+    padding: 32px 20px;
   }
 }

@@ -15,6 +15,7 @@ import SelettorePeriodo, { parametriPeriodo, urlConParametri } from "./selettore
 
 export const ETICHETTA_CATEGORIA: Record<CostiNonAttribuiti["categoria"], string> = {
   piattaforma: "Piattaforma: knowledge base (nel margine)",
+  newsletter: "Newsletter | Tender Weekly: costo operativo interno (nel margine)",
   non_attribuito: "Senza cliente: script di sviluppo o clienti eliminati (fuori dal margine)",
   prova: "Prove degli script con prefisso «prova:» (escluse da tutto)",
 };
@@ -289,7 +290,7 @@ export default function CostiVista({
                         {n.categoria === "prova" ? (
                           ETICHETTA_CATEGORIA[n.categoria]
                         ) : (
-                          <Link href={urlConParametri("/costi/piattaforma", parametriLink)}>{ETICHETTA_CATEGORIA[n.categoria]}</Link>
+                          <Link href={urlConParametri(n.categoria === "newsletter" ? "/costi/newsletter" : "/costi/piattaforma", parametriLink)}>{ETICHETTA_CATEGORIA[n.categoria]}</Link>
                         )}
                       </td>
                       <td className="num">{formattaIntero(n.operazioni)}</td>

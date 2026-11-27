@@ -1765,3 +1765,228 @@ a.cn-nav-voce:hover {
   padding-left: 0;
   padding-right: 0;
 }
+
+/* ───── Newsletter & Comunicazioni (Tender Weekly, 27/11/2026) ───── */
+.cn-nl-banner {
+  margin: 0 0 14px;
+  padding: 9px 13px;
+  border: 1px solid var(--cn-avviso);
+  border-radius: 6px;
+  background: var(--cn-avviso-sfondo);
+  color: var(--cn-testo);
+  font-size: 12.5px;
+}
+.cn-nl-banner.errore {
+  border-color: var(--cn-errore);
+  background: var(--cn-errore-sfondo);
+}
+.cn-nl-flusso {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+.cn-nl-flusso .cn-pannello > *:not(.cn-pannello-testa) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+.cn-nl-flusso .cn-pannello > *:last-child {
+  margin-bottom: 14px;
+}
+.cn-nl-flusso .cn-pannello form {
+  margin-top: 10px;
+}
+.cn-nl-griglia {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.cn-nl-griglia .cn-etichetta {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--cn-sans);
+  font-size: 12px;
+}
+.cn-nl-griglia .cn-input {
+  margin-top: 4px;
+}
+.cn-nl-largo {
+  grid-column: 1 / -1;
+}
+.cn-nl-riga {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.cn-nl-riga > * {
+  flex: 1;
+}
+.cn-nl-comandi {
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.cn-nl-comandi > * {
+  flex: 0 0 auto;
+}
+.cn-nl-spunta {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 6px 0;
+  font-size: 12.5px;
+  color: var(--cn-testo);
+}
+.cn-nl-corto {
+  max-width: 230px;
+}
+.cn-nl-area {
+  height: auto;
+  min-height: 60px;
+  padding: 8px 11px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: var(--cn-sans);
+}
+.cn-nl-mono {
+  font-family: var(--cn-mono);
+  font-size: 11.5px;
+}
+.cn-nl-problemi {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: var(--cn-avviso);
+  font-size: 12.5px;
+}
+.cn-nl-problemi.errore {
+  color: var(--cn-errore);
+}
+.cn-nl-note pre {
+  white-space: pre-wrap;
+  font-size: 11.5px;
+  color: var(--cn-secondario);
+  max-height: 220px;
+  overflow: auto;
+}
+.cn-nl-elenco-breve {
+  max-height: 320px;
+}
+.cn-nl-escluso td {
+  color: var(--cn-fioco);
+}
+.cn-nl-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 16px;
+  align-items: start;
+}
+.cn-nl-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.cn-nl-fieldset .cn-etichetta {
+  margin-top: 10px;
+}
+.cn-nl-blocco,
+.cn-nl-sezione {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--cn-bordo);
+  border-radius: 8px;
+  background: var(--cn-pannello);
+}
+.cn-nl-sezione > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cn-nl-sezione.spenta > summary {
+  color: var(--cn-fioco);
+}
+.cn-nl-sezione[open] > summary {
+  margin-bottom: 8px;
+}
+.cn-nl-lettera {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #5b4bd0;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.cn-nl-conta {
+  margin-left: auto;
+  font-family: var(--cn-mono);
+  font-size: 11px;
+  color: var(--cn-fioco);
+}
+.cn-nl-notizia {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-left: 3px solid #5b4bd0;
+  background: var(--cn-rilievo);
+  border-radius: 0 6px 6px 0;
+}
+.cn-nl-salva {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  background: var(--cn-sfondo);
+  border-top: 1px solid var(--cn-bordo);
+}
+.cn-nl-colonna-anteprima {
+  position: sticky;
+  top: 12px;
+}
+.cn-nl-anteprima-barra {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.cn-nl-cornice {
+  margin: 0 auto;
+  border: 1px solid var(--cn-bordo-forte);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eeedf5;
+  transition: max-width 0.2s;
+}
+.cn-nl-cornice.desktop {
+  max-width: 720px;
+}
+.cn-nl-cornice.mobile {
+  max-width: 390px;
+  border-radius: 28px;
+  border-width: 8px;
+  border-color: #2b2f38;
+}
+.cn-nl-iframe {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 120px);
+  min-height: 600px;
+  border: 0;
+  background: #eeedf5;
+}
+@media (max-width: 1280px) {
+  .cn-nl-flusso,
+  .cn-nl-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cn-nl-colonna-anteprima {
+    position: static;
+  }
+}

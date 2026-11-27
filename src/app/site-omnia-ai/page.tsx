@@ -7,6 +7,7 @@ import AnteprimaRelazione from "@/components/omnia-ai/anteprima-relazione";
 import FaqAccordion from "@/components/omnia-ai/faq-accordion";
 import SchermataPiattaforma from "@/components/omnia-ai/schermata-piattaforma";
 import SiteFooter from "@/components/omnia-ai/site-footer";
+import TenderWeeklyIscrizione from "@/components/omnia-ai/tender-weekly-iscrizione";
 import { OMNIA_AI_BASE_URL } from "@/lib/zone";
 import { PIANI, PIANI_ORDINE } from "@/lib/omnia-ai-plans";
 import { SITO_FAQ_PIANO_LAVORO, SITO_HOME_PIANO_LAVORO } from "@/lib/piano-lavoro-testi";
@@ -429,6 +430,11 @@ export default function OmniaAiHomePage() {
               Richiedi la demo
             </Link>
           </div>
+        </section>
+
+        {/* Tender Weekly: iscrizione gratuita alla newsletter, ultima sezione prima del piè di pagina */}
+        <section className="omnia-section" id="newsletter" aria-label="Tender Weekly, la newsletter di OMNIA AI">
+          <TenderWeeklyIscrizione />
         </section>
 
         <SiteFooter />

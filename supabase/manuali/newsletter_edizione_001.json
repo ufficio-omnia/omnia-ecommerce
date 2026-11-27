@@ -1,0 +1,110 @@
+{
+  "numero": 1,
+  "data_edizione": "2026-11-27",
+  "oggetto": "Tender Weekly n. 1: l'Europa riscrive le regole degli appalti",
+  "preheader": "ANAC sul Public Procurement Act, trasparenza in consultazione fino al 2/12, due sentenze da conoscere.",
+  "contenuto": {
+    "editoriale": {
+      "attivo": true,
+      "titolo": "Benvenuti in Tender Weekly",
+      "testo": "Chi partecipa alle gare pubbliche lo sa: le regole cambiano in fretta, e una sentenza o una delibera letta in ritardo può costare un'esclusione o qualche punto decisivo in graduatoria.\n\nPer questo nasce Tender Weekly. Ogni venerdì OMNIA AI selezionerà per voi le principali novità del mondo degli appalti pubblici — norme, provvedimenti ANAC, giurisprudenza, mercato — con una sintesi chiara, le implicazioni operative per le imprese e sempre il collegamento alla fonte, da verificare in prima persona.\n\nNon è una newsletter commerciale: è il lavoro di osservazione che facciamo ogni giorno per i nostri clienti, messo in ordine e condiviso. La tecnologia ci aiuta a leggere di più e più in fretta; la selezione e il giudizio restano umani.",
+      "firma": "La redazione di OMNIA AI"
+    },
+    "sezioni": [
+      {
+        "chiave": "notizia",
+        "titolo": "La notizia della settimana",
+        "attiva": true,
+        "introduzione": "",
+        "notizie": [
+          {
+            "titolo": "Public Procurement Act: l'ANAC chiede di salvare le regole italiane più avanzate",
+            "sintesi": "La Commissione europea ha proposto il 9 settembre un regolamento su appalti pubblici e concessioni (COM(2026) 590), destinato a sostituire le direttive del 2014. A differenza di una direttiva, un regolamento si applica direttamente in tutti gli Stati membri.\n\nIl 18 novembre l'ANAC è stata audita dalla Commissione Politiche dell'Unione europea della Camera. L'Autorità suggerisce di concentrare il negoziato sui contenuti, così che gli Stati possano conservare istituti più evoluti: tra questi la qualificazione tramite attestazioni SOA, la revisione prezzi obbligatoria prevista dal Codice e il tetto al punteggio economico nei contratti ad alta intensità di manodopera. Nella proposta, infatti, il peso minimo della qualità è del 30%, che sale al 50% per le prestazioni ad alta intensità di manodopera: ANAC teme un ritorno a gare giocate soprattutto sul prezzo.\n\nSulla stessa linea l'ANCE, audita il 19 novembre, che chiede una direttiva al posto del regolamento, soglie di qualità più alte e meccanismi obbligatori di adeguamento dei prezzi.",
+            "evidenza": "Qualità minima al 30% (50% ad alta intensità di manodopera): ANAC e ANCE temono gare più sbilanciate sul prezzo.",
+            "implicazioni": "Per ora nulla cambia: la proposta è all'inizio dell'iter europeo e il Codice dei contratti (d.lgs. 36/2023) resta pienamente in vigore. Conviene però seguire il negoziato: qualificazione, revisione prezzi e peso dell'offerta tecnica sono i tre punti che potrebbero cambiare il modo di partecipare alle gare nei prossimi anni.",
+            "fonti": [
+              { "titolo": "Nuovo Regolamento UE appalti: cosa cambia secondo ANAC", "url": "https://www.lavoripubblici.it/news/nuovo-regolamento-ue-appalti-anac-39205", "data": "2026-11-27", "ente": "LavoriPubblici.it" },
+              { "titolo": "Public Procurement Act, la posizione di ANCE in audizione", "url": "https://ance.it/2026/11/public-procurement-act-ance-no-al-regolamento-europeo-si-alla-direttiva-per-salvaguardare-le-esperienze-nazionali-positive/", "data": "2026-11-19", "ente": "ANCE" }
+            ]
+          }
+        ]
+      },
+      {
+        "chiave": "normativa",
+        "titolo": "Normativa e giurisprudenza",
+        "attiva": true,
+        "introduzione": "",
+        "notizie": [
+          {
+            "titolo": "Trasparenza negli appalti: osservazioni all'ANAC entro il 2 dicembre",
+            "sintesi": "È aperta fino al 2 dicembre alle 23:59 la consultazione dell'ANAC sul nuovo provvedimento che individua dati e documenti da pubblicare lungo tutto il ciclo di vita dei contratti, dalla programmazione all'esecuzione (art. 28 del d.lgs. 36/2023). Il testo, approvato dall'Autorità il 28 ottobre, sostituirà la delibera n. 264/2023.\n\nTra le novità: il ruolo delle piattaforme di approvvigionamento digitale per gli atti non comunicati alla BDNCP, gli incentivi alle funzioni tecniche, le varianti in corso d'opera, gli affidamenti in house e l'accesso civico.",
+            "evidenza": "Scadenza: 2 dicembre 2026, ore 23:59, solo tramite il questionario online dell'ANAC.",
+            "implicazioni": "Fino all'entrata in vigore del nuovo provvedimento resta valida la disciplina attuale. Per le imprese, più dati pubblicati in modo uniforme significano più informazioni accessibili su gare, varianti ed esecuzione dei contratti.",
+            "fonti": [
+              { "titolo": "Consultazione sul nuovo provvedimento trasparenza (art. 28 d.lgs. 36/2023)", "url": "https://www.anticorruzione.it/-/cons.delibera.nuovo.provvedimento.trasparenza-art.28d.lgs.36.2023", "data": "2026-11-02", "ente": "ANAC" }
+            ]
+          },
+          {
+            "titolo": "CCNL diverso da quello del bando: l'equivalenza va dimostrata nei fatti",
+            "sintesi": "Con la sentenza n. 8699 del 26 novembre 2026, la Quinta Sezione del Consiglio di Stato ha accolto l'appello della seconda classificata in una gara in cui il bando indicava il CCNL Metalmeccanici e l'aggiudicataria aveva dichiarato il CCNL Commercio. Il Collegio ha riconosciuto l'assenza di equivalenza tra i due contratti, sia sul piano economico sia su quello normativo.",
+            "implicazioni": "Chi applica un contratto collettivo diverso da quello indicato negli atti di gara deve essere pronto a dimostrarne l'equivalenza sostanziale, non solo formale. Una verifica da fare prima di presentare l'offerta, non dopo l'aggiudicazione.",
+            "fonti": [
+              { "titolo": "Il CCNL del Commercio non è equivalente al CCNL Metalmeccanici", "url": "https://www.giurisprudenzappalti.it/sentenze/il-ccnl-del-commercio-non-e-equivalente-al-ccnl-metalmeccanici/", "data": "2026-11-26", "ente": "Consiglio di Stato, sez. V, n. 8699/2026" }
+            ]
+          },
+          {
+            "titolo": "Premiare chi si presenta in raggruppamento? Il punteggio deve misurare l'offerta",
+            "sintesi": "Con la sentenza n. 8237 del 12 novembre 2026, la Settima Sezione del Consiglio di Stato ha annullato un sub-criterio che assegnava fino a 16 punti in base al numero di soggetti proponenti, nella concessione di un impianto sportivo comunale. Il numero dei partecipanti, in sé, non misura la qualità della proposta: il criterio premiava la composizione del concorrente e non il progetto di gestione, in contrasto con l'art. 108 del Codice. Il Comune dovrà riaprire i termini con una nuova griglia di valutazione.",
+            "implicazioni": "Un criterio che premia la forma del concorrente invece delle caratteristiche della prestazione può essere contestato, soprattutto quando il differenziale di punteggio ha deciso la graduatoria. Vale la pena leggere la griglia tecnica con questo occhio già prima della scadenza.",
+            "fonti": [
+              { "titolo": "Gare pubbliche: legittimo premiare il raggruppamento di più operatori?", "url": "https://www.segretaricomunalivighenzi.it/gare-pubbliche-legittimo-premiare-il-raggruppamento-di-piu-operatori-rispetto-a-un-concorrente-singolo/27/11/2026/", "data": "2026-11-27", "ente": "Consiglio di Stato, sez. VII, n. 8237/2026" }
+            ]
+          }
+        ]
+      },
+      {
+        "chiave": "esperto",
+        "titolo": "L'approfondimento dell'esperto",
+        "attiva": true,
+        "introduzione": "",
+        "notizie": [
+          {
+            "titolo": "Prima di scrivere l'offerta tecnica, leggete la griglia come la leggerà la commissione",
+            "sintesi": "La maggior parte dei punti si perde prima ancora di scrivere: nel modo in cui si legge il disciplinare. Ogni criterio e sub-criterio è una domanda precisa, con un peso preciso. Un'offerta efficace risponde a quella domanda, con la stessa struttura e lo stesso lessico, e porta elementi verificabili: numeri, tempi, responsabilità, strumenti di controllo.\n\nTre controlli pratici prima di iniziare. Primo: costruite una tabella con criterio, punteggio massimo, limiti di pagine e ciò che il criterio chiede davvero, e date spazio in proporzione ai punti. Secondo: verificate i vincoli formali — numero di facciate, formato, allegati ammessi — perché un eccesso di pagine può significare contenuti non valutati. Terzo: controllate la coerenza tra offerta tecnica, offerta economica e dichiarazioni amministrative, a partire dal contratto collettivo applicato e dalle risorse impiegate.",
+            "evidenza": "Una risposta per ogni sub-criterio, nell'ordine del disciplinare, con elementi misurabili.",
+            "implicazioni": "",
+            "fonti": []
+          }
+        ]
+      },
+      {
+        "chiave": "omnia",
+        "titolo": "OMNIA AI News",
+        "attiva": true,
+        "introduzione": "",
+        "notizie": [
+          {
+            "titolo": "Uffici Gare: ora fino a tre per ogni titolare",
+            "sintesi": "Da questa settimana ogni titolare di un abbonamento OMNIA AI può invitare fino a tre Uffici Gare, che lavorano sulle stesse gare con il proprio accesso personale. Si gestiscono dall'area riservata.",
+            "fonti": []
+          }
+        ]
+      },
+      {
+        "chiave": "tender",
+        "titolo": "Tender Intelligence",
+        "attiva": false,
+        "introduzione": "",
+        "notizie": []
+      },
+      {
+        "chiave": "chiusura",
+        "titolo": "Chiusura",
+        "attiva": true,
+        "introduzione": "Analisi del bando, criteri di valutazione, scadenze e bozze della relazione tecnica in un unico spazio di lavoro, con il vostro ufficio gare sempre al centro. Ci rileggiamo venerdì prossimo.",
+        "notizie": []
+      }
+    ],
+    "cta": { "testo": "", "etichetta": "Accedi a OMNIA AI", "url": "https://omnia-ai.it/login" }
+  }
+}
