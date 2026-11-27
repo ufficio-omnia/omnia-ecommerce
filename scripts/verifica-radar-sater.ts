@@ -90,7 +90,8 @@ const feedXml = (els: Record<string, string>[]) =>
     .join("")}</channel></rss>`;
 
 function provaIstanze(): void {
-  controlla("istanze: SardegnaCAT e SATER", JSON.stringify(Object.keys(ISTANZE_AFLINK)) === JSON.stringify(["sardegnacat", "sater"]));
+  // Fase 2 (27/11): più EmPULIA e SIAPS (in costruzione, spente); SATER e SardegnaCAT restano le prime due, invariate
+  controlla("istanze: SardegnaCAT e SATER (più EmPULIA e SIAPS, Fase 2)", JSON.stringify(Object.keys(ISTANZE_AFLINK)) === JSON.stringify(["sardegnacat", "sater", "empulia", "siaps"]));
   controlla("SardegnaCAT: campi obbligatori invariati (8, compresi TipoProcedura e dataUltimaModifica)", ISTANZE_AFLINK.sardegnacat.campiObbligatori === CAMPI_AFLINK_OBBLIGATORI && CAMPI_AFLINK_OBBLIGATORI.length === 8);
   controlla("SardegnaCAT: solo https, IdMsg = identificativo, nessuna ricostruzione, procedura obbligatoria", !ISTANZE_AFLINK.sardegnacat.collegamentiHttp && ISTANZE_AFLINK.sardegnacat.idMsgEIdPiattaforma && ISTANZE_AFLINK.sardegnacat.collegamentoDaIdMsg === null && !ISTANZE_AFLINK.sardegnacat.proceduraFacoltativa);
   controlla("SATER: indirizzo del feed NON confermato (null), nessuna pagina, nessun collegamento ricavato per analogia", ISTANZE_AFLINK.sater.urlFeed === null && ISTANZE_AFLINK.sater.paginaFeed === null && ISTANZE_AFLINK.sater.collegamentoDaIdMsg === null);
