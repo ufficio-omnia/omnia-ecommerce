@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { BASE_URL } from "@/lib/zone";
 import AnteprimaDownloadCta from "@/components/anteprima-download-cta";
+import OmniaAiRimando from "@/components/omnia-ai-rimando";
 import { FlowDiagram, HubDiagram } from "@/components/offerta-tecnica-gare-pulizia/diagrams";
 import Toc from "@/components/offerta-tecnica-gare-pulizia/toc";
 
@@ -305,6 +306,7 @@ export default function OffertaTecnicaGarePuliziaPage() {
             <p className="mt-3 font-mono text-xs tracking-wide text-sage uppercase">
               12 min di lettura · nessun acquisto richiesto
             </p>
+            <OmniaAiRimando variante="compatto" />
           </div>
           <FlowDiagram
             steps={["Criteri di gara", "Organizzazione", "Controllo qualità", "Migliorie"]}
