@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { effectivePrice } from "@/lib/products";
+import OmniaAiRimando from "@/components/omnia-ai-rimando";
 
 export const metadata: Metadata = {
   title: "Documenti pronti per gare d'appalto | Omnia Consulting",
@@ -86,6 +87,8 @@ export default async function Home() {
           </Link>
         </div>
       </section>
+
+      <OmniaAiRimando variante="sezione" />
 
       {products.length > 0 && (
         <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-20">
