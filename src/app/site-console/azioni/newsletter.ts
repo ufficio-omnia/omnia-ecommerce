@@ -6,10 +6,10 @@ import { richiediAdminAzione } from "@/lib/console/accesso";
 import { archivioNewsletter } from "@/lib/newsletter/archivio";
 import { controllaEdizione, normalizzaContenuto } from "@/lib/newsletter/contenuto";
 import { emailValida } from "@/lib/newsletter/destinatari";
-import { generaEdizione } from "@/lib/newsletter/generazione";
+import { generaNuovaEdizione, rigenera, ripristinaVersione, type TestoEditor } from "@/lib/newsletter/versioni";
 import { avviaInvio, inviaProva, riprendiInvio } from "@/lib/newsletter/invio";
 import { dataRoma, daInputLocale, oraValida, prossimaScadenza } from "@/lib/newsletter/pianificazione";
-import { BASI_GIURIDICHE, contenutoVuoto, type BaseGiuridica, type CategoriaIscritto, type DestinatariScelti, type Impostazioni } from "@/lib/newsletter/tipi";
+import { BASI_GIURIDICHE, contenutoVuoto, type BaseGiuridica, type CategoriaIscritto, type ChiaveSezione, type DestinatariScelti, type Impostazioni } from "@/lib/newsletter/tipi";
 
 // Newsletter & Comunicazioni (migrazione 0141). Ogni azione parte da richiediAdminAzione(). Le regole che contano
 // (approvazione, doppio invio, modifica dopo l'approvazione) sono anche nel database e nella libreria: qui si
@@ -60,29 +60,80 @@ export async function generaEdizioneSettimanale(_s: EsitoNewsletter, formData: F
     .split(/\s+/)
     .filter((x) => /^https?:\/\//.test(x));
   const indicazioni = String(formData.get("indicazioni") ?? "");
-  const oggi = dataRoma(new Date());
   let id: string;
   try {
-    const g = await generaEdizione({ dataEdizione: oggi, fontiManuali: fonti, indicazioni });
-    const a = archivioNewsletter();
-    const e = await a.creaEdizione(
-      {
-        data_edizione: oggi,
-        oggetto: g.oggetto,
-        preheader: g.preheader,
-        contenuto: g.contenuto,
-        origine: "ai",
-        note_generazione: [`Ricerche web: ${g.ricerche}. Fonti scartate perché non trovate nei risultati: ${g.fontiScartate}. Notizie tolte: ${g.notizieScartate}.`, g.note].filter(Boolean).join("\n"),
-      },
-      sessione.userId,
-    );
-    await a.annota(e.id, "generata", { ricerche: g.ricerche, fontiScartate: g.fontiScartate, notizieScartate: g.notizieScartate }, sessione.userId);
-    id = e.id;
+    // l'edizione nasce subito (numero e data) e la generazione ne diventa la versione 1: anche un tentativo fallito
+    // resta legato all'edizione, con il suo costo, e si può rigenerare
+    const { edizione } = await generaNuovaEdizione({ dataEdizione: dataRoma(new Date()), fontiManuali: fonti, indicazioni, autore: sessione.userId });
+    id = edizione.id;
   } catch (e) {
     return errore(e);
   }
   aggiorna();
   redirect(`/newsletter/${id}`);
+}
+
+function leggiTestoEditor(formData: FormData): TestoEditor | null {
+  const grezzo = formData.get("testo");
+  if (typeof grezzo !== "string" || !grezzo) return null;
+  try {
+    const t = JSON.parse(grezzo) as Record<string, unknown>;
+    const d = (t.destinatari ?? {}) as Record<string, unknown>;
+    const data = String(t.data_edizione ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return null;
+    return {
+      oggetto: String(t.oggetto ?? "").replace(/\s+/g, " ").trim().slice(0, 150),
+      preheader: String(t.preheader ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
+      data_edizione: data,
+      contenuto: normalizzaContenuto(t.contenuto),
+      destinatari: { abbonati_attivi: d.abbonati_attivi !== false, altri_autorizzati: d.altri_autorizzati !== false },
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Rigenerazione intera, di una sezione o di una notizia. Il testo dell'editor (anche non salvato) si salva prima.
+export async function rigeneraNewsletter(_s: EsitoNewsletter, formData: FormData): Promise<EsitoNewsletter> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+  if (!process.env.ANTHROPIC_API_KEY) return { errore: "ANTHROPIC_API_KEY non configurata: la generazione non è disponibile." };
+  const id = String(formData.get("id") ?? "");
+  if (!UUID.test(id)) return { errore: "Edizione non valida." };
+  const tipo = String(formData.get("tipo") ?? "");
+  if (tipo !== "rigenerazione" && tipo !== "rigenerazione_sezione" && tipo !== "rigenerazione_notizia") return { errore: "Tipo di rigenerazione non valido." };
+  const chiave = String(formData.get("chiave") ?? "") as ChiaveSezione;
+  const indice = Number(formData.get("indice"));
+  try {
+    const r = await rigenera({
+      edizioneId: id,
+      tipo,
+      chiave: tipo === "rigenerazione" ? undefined : chiave,
+      indice: tipo === "rigenerazione_notizia" && Number.isInteger(indice) && indice >= 0 ? indice : undefined,
+      indicazioni: String(formData.get("indicazioni") ?? "").slice(0, 1500),
+      testoEditor: leggiTestoEditor(formData),
+      autore: sessione.userId,
+    });
+    aggiorna(id);
+    return r.ok ? { ok: true, avviso: `${r.messaggio} Costo stimato: ${r.costoUsd.toFixed(3)} $.` } : { errore: `${r.errore}${r.costoUsd > 0 ? ` Costo stimato del tentativo: ${r.costoUsd.toFixed(3)} $ (registrato).` : ""}` };
+  } catch (e) {
+    return errore(e);
+  }
+}
+
+export async function ripristinaVersioneNewsletter(_s: EsitoNewsletter, formData: FormData): Promise<EsitoNewsletter> {
+  const sessione = await richiediAdminAzione();
+  if (!sessione) return { errore: "Non autorizzato." };
+  const id = String(formData.get("id") ?? "");
+  const numero = Number(formData.get("numero"));
+  if (!UUID.test(id) || !Number.isInteger(numero) || numero < 1) return { errore: "Versione non valida." };
+  try {
+    const r = await ripristinaVersione({ edizioneId: id, numero, testoEditor: leggiTestoEditor(formData), autore: sessione.userId });
+    aggiorna(id);
+    return r.ok ? { ok: true, avviso: r.messaggio } : { errore: r.errore };
+  } catch (e) {
+    return errore(e);
+  }
 }
 
 export async function salvaEdizione(_s: EsitoNewsletter, formData: FormData): Promise<EsitoNewsletter> {
@@ -334,6 +385,13 @@ export async function salvaImpostazioniNewsletter(_s: EsitoNewsletter, formData:
     mittente_email: mittenteEmail,
     rispondi_a: rispondiA || null,
     email_notifica_admin: notifica,
+    resend_piano: String(formData.get("resend_piano") ?? "").trim().slice(0, 60) || null,
+    resend_quota_mensile_eur: (() => {
+      const v = String(formData.get("resend_quota_mensile_eur") ?? "").trim().replace(",", ".");
+      if (!v) return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 && n < 100000 ? Math.round(n * 100) / 100 : null;
+    })(),
   };
   try {
     await archivioNewsletter().salvaImpostazioni(imp, sessione.userId);

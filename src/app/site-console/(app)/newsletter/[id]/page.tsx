@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { richiediAdminPagina } from "@/lib/console/accesso";
-import { archivioNewsletter } from "@/lib/newsletter/archivio";
+import { archivioNewsletter, generazioneInCorso } from "@/lib/newsletter/archivio";
+import { costoEdizione } from "@/lib/console/newsletter-costi-calcoli";
+import { leggiParametriCalcolo } from "@/lib/console/costi";
 import { controllaEdizione } from "@/lib/newsletter/contenuto";
 import { anteprimaDestinatari, statistiche } from "@/lib/newsletter/invio";
 import { formattaRoma, perInputLocale, prossimaScadenza } from "@/lib/newsletter/pianificazione";
@@ -16,7 +18,7 @@ import { TONO_STATO } from "../../../_componenti/newsletter-comuni";
 import { cambiaStatoEdizione, inviaAdesso, inviaEmailDiProva, programmaInvio, riprendiInvioEdizione } from "../../../azioni/newsletter";
 
 export const metadata: Metadata = { title: "Edizione · Newsletter" };
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export default async function PaginaEdizione({ params }: { params: Promise<{ id: string }> }) {
   const sessione = await richiediAdminPagina();
@@ -25,7 +27,18 @@ export default async function PaginaEdizione({ params }: { params: Promise<{ id:
   const a = archivioNewsletter();
   const e = await a.leggiEdizione(id);
   if (!e) notFound();
-  const [invii, imp, registro, destinatari] = await Promise.all([a.inviiDellEdizione(id), a.leggiImpostazioni(), a.registro(id, 30), anteprimaDestinatari(e, a)]);
+  const [invii, imp, registro, destinatari, versioni, operazioni, parametri] = await Promise.all([
+    a.inviiDellEdizione(id),
+    a.leggiImpostazioni(),
+    a.registro(id, 30),
+    anteprimaDestinatari(e, a),
+    a.elencoVersioni(id),
+    a.operazioniCosto().catch(() => []),
+    leggiParametriCalcolo(),
+  ]);
+  const costo = costoEdizione(operazioni, id);
+  const cambio = parametri.cambioUsdEur;
+  const inCorso = generazioneInCorso(e.generazione_in_corso_da);
   const st = statistiche(invii);
   const controllo = controllaEdizione(e);
   const modificabile = STATI_MODIFICABILI.includes(e.stato);
@@ -61,6 +74,11 @@ export default async function PaginaEdizione({ params }: { params: Promise<{ id:
         <Tessera etichetta="Esclusi" valore={destinatari.esclusi.length} dettaglio="disiscritti, rimbalzi, gruppi non scelti" />
         <Tessera etichetta="Inviate" valore={st.inviati} dettaglio={st.totale ? `su ${st.totale} in elenco` : "nessun invio reale"} tono={st.errori ? "avviso" : "neutro"} />
         <Tessera etichetta="Consegnate / aperte / clic" valore={`${st.consegnati} / ${st.aperti} / ${st.cliccati}`} dettaglio="dal webhook di Resend" />
+        <Tessera
+          etichetta="Costo dell'edizione"
+          valore={cambio ? `${(costo.produzioneUsd * cambio).toFixed(2)} €` : `${costo.produzioneUsd.toFixed(3)} $`}
+          dettaglio={`tutte le versioni, anche scartate o fallite · ${costo.chiamate} chiamate${costo.sviluppoUsd > 0 ? ` · sviluppo ${costo.sviluppoUsd.toFixed(3)} $` : ""}`}
+        />
         <Tessera etichetta="Rimbalzi · spam · errori" valore={`${st.rimbalzati} · ${st.spam} · ${st.errori}`} tono={st.rimbalzati + st.spam + st.errori ? "avviso" : "neutro"} />
       </div>
 
@@ -181,6 +199,10 @@ export default async function PaginaEdizione({ params }: { params: Promise<{ id:
           id={e.id}
           numero={e.numero}
           modificabile={modificabile}
+          revisione={e.versione}
+          versioneAttiva={e.versione_attiva}
+          generazioneInCorso={inCorso}
+          versioni={versioni.map((v) => ({ numero: v.numero_versione, origine: v.origine, esito: v.esito, creata_il: v.creata_il, costo_usd: v.costo_usd === null ? null : Number(v.costo_usd), indicazioni: v.indicazioni, errore: v.errore, ambito: v.ambito ?? {} }))}
           iniziale={{ oggetto: e.oggetto, preheader: e.preheader, data_edizione: e.data_edizione, contenuto: e.contenuto, destinatari: e.destinatari }}
         />
       </div>

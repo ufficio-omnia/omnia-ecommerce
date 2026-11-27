@@ -1,21 +1,51 @@
 "use client";
 
-import { useActionState, useDeferredValue, useMemo, useState } from "react";
+import { useActionState, useDeferredValue, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { normalizzaContenuto } from "@/lib/newsletter/contenuto";
 import { renderNewsletterHtml } from "@/lib/newsletter/template";
-import { SEZIONI_PREDEFINITE, type ContenutoEdizione, type DestinatariScelti, type Fonte, type Notizia, type Sezione } from "@/lib/newsletter/tipi";
-import { salvaEdizione, type EsitoNewsletter } from "../azioni/newsletter";
+import { ETICHETTA_ORIGINE, SEZIONI_PREDEFINITE, type ChiaveSezione, type ContenutoEdizione, type DestinatariScelti, type Fonte, type Notizia, type OrigineVersione, type Sezione } from "@/lib/newsletter/tipi";
+import { rigeneraNewsletter, ripristinaVersioneNewsletter, salvaEdizione, type EsitoNewsletter } from "../azioni/newsletter";
 
 // Editor di un'edizione: campi per ogni sezione (attiva/spenta, ordine, testi, notizie, fonti) e anteprima dal vivo
 // dello stesso template che parte per email (desktop 640 px e smartphone 390 px). Il salvataggio passa dal server,
 // che rinormalizza tutto: qui non si decide niente di definitivo.
 
+export type VersioneBreve = {
+  numero: number;
+  origine: OrigineVersione;
+  esito: "ok" | "fallita";
+  creata_il: string;
+  costo_usd: number | null;
+  indicazioni: string | null;
+  errore: string | null;
+  ambito: { chiave?: string; indice?: number; titolo?: string };
+};
+
 type Props = {
   id: string;
   numero: number;
   modificabile: boolean;
+  // revisione del contenuto salvato (cresce a ogni modifica): quando cambia, l'editor ricarica il testo dal server
+  revisione: number;
+  versioneAttiva: number | null;
+  versioni: VersioneBreve[];
+  generazioneInCorso: boolean;
   iniziale: { oggetto: string; preheader: string; data_edizione: string; contenuto: ContenutoEdizione; destinatari: DestinatariScelti };
 };
+
+// Le sezioni E (OMNIA AI News) e F (chiusura) le scrive la redazione: niente rigenerazione (stessa regola del server).
+const RIGENERABILI: ChiaveSezione[] = ["notizia", "normativa", "tender", "esperto"];
+
+function quando(iso: string): string {
+  return new Date(iso).toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function fontiIniziali(c: ContenutoEdizione): Record<string, string> {
+  const m: Record<string, string> = {};
+  c.sezioni.forEach((s) => s.notizie.forEach((n, i) => (m[`${s.chiave}:${i}`] = fontiInTesto(n.fonti))));
+  return m;
+}
 
 function fontiInTesto(f: Fonte[]): string {
   return f.map((x) => [x.titolo, x.url, x.data ?? "", x.ente ?? ""].join(" | ").replace(/( \| )+$/, "")).join("\n");
@@ -39,20 +69,34 @@ function notiziaVuota(): Notizia {
   return { titolo: "", sintesi: "", implicazioni: "", evidenza: "", fonti: [] };
 }
 
-export default function EditorNewsletter({ id, numero, modificabile, iniziale }: Props) {
+export default function EditorNewsletter({ id, numero, modificabile, revisione, versioneAttiva, versioni, generazioneInCorso, iniziale }: Props) {
   const [oggetto, setOggetto] = useState(iniziale.oggetto);
   const [preheader, setPreheader] = useState(iniziale.preheader);
   const [dataEdizione, setData] = useState(iniziale.data_edizione);
   const [destinatari, setDestinatari] = useState(iniziale.destinatari);
   const [c, setC] = useState<ContenutoEdizione>(iniziale.contenuto);
   // testo delle fonti così come lo scrive l'utente (si interpreta al salvataggio e nell'anteprima)
-  const [fontiGrezze, setFontiGrezze] = useState<Record<string, string>>(() => {
-    const m: Record<string, string> = {};
-    iniziale.contenuto.sezioni.forEach((s) => s.notizie.forEach((n, i) => (m[`${s.chiave}:${i}`] = fontiInTesto(n.fonti))));
-    return m;
-  });
+  const [fontiGrezze, setFontiGrezze] = useState<Record<string, string>>(() => fontiIniziali(iniziale.contenuto));
   const [vista, setVista] = useState<"desktop" | "mobile">("desktop");
   const [sporco, setSporco] = useState(false);
+  // il testo sul server è cambiato (rigenerazione, ripristino, salvataggio): l'editor riparte da quello
+  const [revisioneVista, setRevisioneVista] = useState(revisione);
+  if (revisione !== revisioneVista) {
+    setRevisioneVista(revisione);
+    setOggetto(iniziale.oggetto);
+    setPreheader(iniziale.preheader);
+    setData(iniziale.data_edizione);
+    setDestinatari(iniziale.destinatari);
+    setC(iniziale.contenuto);
+    setFontiGrezze(fontiIniziali(iniziale.contenuto));
+    setSporco(false);
+  }
+  const router = useRouter();
+  const [indicazioni, setIndicazioni] = useState("");
+  const [generando, avviaTransizione] = useTransition();
+  const [inLavorazione, setInLavorazione] = useState<string | null>(null);
+  const [esitoGen, setEsitoGen] = useState<EsitoNewsletter>({});
+  const bloccato = generando || generazioneInCorso;
   const [stato, esegui, inCorso] = useActionState(async (p: EsitoNewsletter, f: FormData) => {
     const r = await salvaEdizione(p, f);
     if (r.ok) setSporco(false);
@@ -67,6 +111,51 @@ export default function EditorNewsletter({ id, numero, modificabile, iniziale }:
     [c, fontiGrezze],
   );
   const differito = useDeferredValue({ contenutoCompleto, oggetto, preheader, dataEdizione });
+
+  // Il testo dell'editor (anche non salvato) parte con la richiesta: il server lo salva e lo conserva prima di generare.
+  function datiConTesto(): FormData {
+    const fd = new FormData();
+    fd.set("id", id);
+    fd.set("testo", JSON.stringify({ oggetto, preheader, data_edizione: dataEdizione, contenuto: contenutoCompleto, destinatari }));
+    return fd;
+  }
+
+  function rigeneraParte(tipo: "rigenerazione" | "rigenerazione_sezione" | "rigenerazione_notizia", etichetta: string, chiave?: ChiaveSezione, indice?: number) {
+    if (bloccato) return;
+    const avviso =
+      tipo === "rigenerazione"
+        ? "Rigenerare l'intera newsletter? Si fa una nuova ricerca; editoriale, OMNIA AI News e chiusura restano come sono. Il testo attuale resta nello storico."
+        : `Rigenerare ${etichetta}? Il resto dell'edizione non cambia; il testo attuale resta nello storico.`;
+    if (!window.confirm(avviso)) return;
+    const fd = datiConTesto();
+    fd.set("tipo", tipo);
+    fd.set("indicazioni", indicazioni);
+    if (chiave) fd.set("chiave", chiave);
+    if (indice !== undefined) fd.set("indice", String(indice));
+    setInLavorazione(etichetta);
+    setEsitoGen({});
+    avviaTransizione(async () => {
+      const r = await rigeneraNewsletter({}, fd);
+      setEsitoGen(r);
+      setInLavorazione(null);
+      router.refresh();
+    });
+  }
+
+  function ripristina(n: number) {
+    if (bloccato) return;
+    if (!window.confirm(`Ripristinare la versione ${n}? Il testo attuale (anche non salvato) resta nello storico.`)) return;
+    const fd = datiConTesto();
+    fd.set("numero", String(n));
+    setInLavorazione(`ripristino della versione ${n}`);
+    setEsitoGen({});
+    avviaTransizione(async () => {
+      const r = await ripristinaVersioneNewsletter({}, fd);
+      setEsitoGen(r);
+      setInLavorazione(null);
+      router.refresh();
+    });
+  }
   const html = useMemo(
     () =>
       renderNewsletterHtml(
@@ -131,6 +220,44 @@ export default function EditorNewsletter({ id, numero, modificabile, iniziale }:
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="contenuto" value={JSON.stringify(contenutoCompleto)} />
         <fieldset disabled={disabilitato} className="cn-nl-fieldset">
+          <div className="cn-nl-blocco cn-nl-rigenera">
+            <label className="cn-etichetta" htmlFor="nl-indicazioni">
+              Indicazioni per l&apos;AI (facoltative, valgono per la prossima rigenerazione)
+            </label>
+            <textarea
+              id="nl-indicazioni"
+              className="cn-input cn-nl-area"
+              rows={2}
+              value={indicazioni}
+              onChange={(e) => setIndicazioni(e.target.value)}
+              maxLength={1500}
+              placeholder="Es. più spazio alla giurisprudenza, evitare un tema già trattato, tono più operativo…"
+            />
+            <div className="cn-nl-riga cn-nl-comandi">
+              <button type="button" className="cn-btn primario" disabled={bloccato} onClick={() => rigeneraParte("rigenerazione", "l'intera newsletter")}>
+                {generando && inLavorazione === "l'intera newsletter" ? "Rigenerazione in corso…" : "Rigenera intera newsletter"}
+              </button>
+              <span className="cn-nota">
+                Versione in uso: {versioneAttiva ? `v${versioneAttiva}` : "scritta a mano"}
+                {sporco ? " (modificata, non salvata)" : ""}
+              </span>
+            </div>
+            {bloccato && (
+              <p className="cn-azione-avviso">
+                {generando ? `In corso: ${inLavorazione ?? "generazione"}. Può richiedere alcuni minuti: non chiudere la pagina.` : "C'è una generazione in corso per questa edizione: i pulsanti tornano attivi quando finisce (ricarica la pagina)."}
+              </p>
+            )}
+            {esitoGen.errore && (
+              <p className="cn-azione-errore" role="alert">
+                {esitoGen.errore}
+              </p>
+            )}
+            {esitoGen.ok && (
+              <p className="cn-azione-ok" role="status">
+                {esitoGen.avviso ?? "Fatto."}
+              </p>
+            )}
+          </div>
           <div className="cn-nl-blocco">
             <label className="cn-etichetta" htmlFor="nl-oggetto">
               Oggetto ({oggetto.length}/70 consigliati)
@@ -191,6 +318,13 @@ export default function EditorNewsletter({ id, numero, modificabile, iniziale }:
                   Sezione attiva
                 </label>
                 <span>
+                  {RIGENERABILI.includes(s.chiave) && (
+                    <>
+                      <button type="button" className="cn-btn piccolo" disabled={bloccato} onClick={() => rigeneraParte("rigenerazione_sezione", `la sezione «${s.titolo}»`, s.chiave)}>
+                        Rigenera sezione
+                      </button>{" "}
+                    </>
+                  )}
                   <button type="button" className="cn-btn piccolo" onClick={() => sposta(k, -1)} disabled={k === 0} title="Sposta su">
                     ↑
                   </button>{" "}
@@ -227,6 +361,13 @@ export default function EditorNewsletter({ id, numero, modificabile, iniziale }:
                         <button type="button" className="cn-btn piccolo" onClick={() => spostaNotizia(k, i, 1)} disabled={i === s.notizie.length - 1} title="Sposta giù">
                           ↓
                         </button>{" "}
+                        {RIGENERABILI.includes(s.chiave) && (
+                          <>
+                            <button type="button" className="cn-btn piccolo" disabled={bloccato} onClick={() => rigeneraParte("rigenerazione_notizia", `la notizia «${n.titolo || `n. ${i + 1}`}»`, s.chiave, i)}>
+                              Rigenera notizia
+                            </button>{" "}
+                          </>
+                        )}
                         <button type="button" className="cn-btn piccolo pericolo" onClick={() => togliNotizia(k, i)}>
                           Togli
                         </button>
@@ -274,6 +415,47 @@ export default function EditorNewsletter({ id, numero, modificabile, iniziale }:
             </>
           ) : (
             <span className="cn-nota">Edizione in invio, inviata o annullata: il contenuto non si modifica più.</span>
+          )}
+        </div>
+        <div className="cn-nl-blocco cn-nl-versioni">
+          <span className="cn-etichetta">Storico delle versioni ({versioni.length})</span>
+          {versioni.length === 0 ? (
+            <p className="cn-nota">Nessuna versione: nascono con la generazione, con ogni rigenerazione e quando il testo modificato a mano viene conservato prima di rigenerare.</p>
+          ) : (
+            <table className="cn-tab">
+              <tbody>
+                {versioni.map((v) => (
+                  <tr key={v.numero} className={v.esito === "fallita" ? "cn-nl-escluso" : undefined}>
+                    <td className="mono">
+                      v{v.numero}
+                      {v.numero === versioneAttiva ? " ●" : ""}
+                    </td>
+                    <td>
+                      {ETICHETTA_ORIGINE[v.origine]}
+                      {v.ambito.titolo ? ` · «${v.ambito.titolo}»` : v.ambito.chiave ? ` · ${SEZIONI_PREDEFINITE[v.ambito.chiave as ChiaveSezione]?.titolo ?? v.ambito.chiave}` : ""}
+                      {v.esito === "fallita" ? <span className="cn-azione-errore"> · fallita: {v.errore}</span> : null}
+                      {v.indicazioni ? <span className="cn-nota"> · indicazioni: {v.indicazioni}</span> : null}
+                    </td>
+                    <td className="mono">{quando(v.creata_il)}</td>
+                    <td className="num">{v.costo_usd === null ? "n.d." : `${v.costo_usd.toFixed(3)} $`}</td>
+                    <td className="nowrap">
+                      {v.esito === "ok" && (
+                        <>
+                          <a className="cn-btn piccolo" href={`/newsletter/${id}/anteprima?versione=${v.numero}`} target="_blank" rel="noopener noreferrer">
+                            Vedi
+                          </a>{" "}
+                          {modificabile && v.numero !== versioneAttiva && (
+                            <button type="button" className="cn-btn piccolo" disabled={bloccato} onClick={() => ripristina(v.numero)}>
+                              Ripristina
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </form>

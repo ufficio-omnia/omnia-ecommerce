@@ -34,12 +34,41 @@ export async function logAiUsage(params: {
   // cache_read_tokens restano null, come sempre prima di questo campo.
   cacheCreationTokens?: number | null;
   cacheReadTokens?: number | null;
+  // Riferimenti dell'operazione (colonna «dettaglio» della 0141), per esempio edizione e versione della newsletter.
+  // Si scrive SOLO se passato: le chiamate di sempre non cambiano.
+  dettaglio?: Record<string, unknown>;
+  // Costo già calcolato per una voce che non si misura in token (per esempio le ricerche web: N × tariffa per
+  // ricerca). Se assente, il costo si stima dai token come sempre.
+  costoUsd?: number | null;
 }): Promise<void> {
-  const { userId, garaId, operazione, provider, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens } = params;
+  const { userId, garaId, operazione, provider, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, dettaglio } = params;
 
   try {
-    const costoStimato = calcolaCostoStimato(model, inputTokens, outputTokens, { creazione: cacheCreationTokens ?? null, lettura: cacheReadTokens ?? null });
+    const costoStimato =
+      params.costoUsd !== undefined ? params.costoUsd : calcolaCostoStimato(model, inputTokens, outputTokens, { creazione: cacheCreationTokens ?? null, lettura: cacheReadTokens ?? null });
     const admin = createAdminClient();
+
+    if (dettaglio) {
+      const { error } = await admin.from("ai_operazioni").insert({
+        user_id: userId,
+        gara_id: garaId,
+        operazione,
+        provider,
+        model,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_creation_tokens: cacheCreationTokens ?? null,
+        cache_read_tokens: cacheReadTokens ?? null,
+        costo_stimato: costoStimato,
+        dettaglio,
+      });
+      if (!error) return;
+      // PGRST204 = colonna «dettaglio» non ancora creata (0141): il costo si registra lo stesso, senza riferimenti
+      if (error.code !== "PGRST204") {
+        console.error("Errore registrazione costo AI:", error);
+        return;
+      }
+    }
 
     const riga = {
       user_id: userId,

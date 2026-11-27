@@ -18,7 +18,8 @@ async function main() {
   const data = process.argv[3] ?? new Date().toISOString().slice(0, 10);
   const { generaEdizione } = await import("../src/lib/newsletter/generazione");
   const inizio = Date.now();
-  const g = await generaEdizione({ dataEdizione: data });
+  const { randomUUID } = await import("crypto");
+  const g = await generaEdizione({ dataEdizione: data, contesto: { generazioneId: randomUUID(), tipo: "generazione" } });
   fs.writeFileSync(uscita, JSON.stringify(g, null, 2));
   console.log(`Bozza scritta in ${uscita} in ${Math.round((Date.now() - inizio) / 1000)} s. Ricerche: ${g.ricerche}, fonti scartate: ${g.fontiScartate}, notizie tolte: ${g.notizieScartate}.`);
 }

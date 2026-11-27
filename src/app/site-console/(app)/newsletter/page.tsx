@@ -52,6 +52,9 @@ export default async function PaginaNewsletter() {
           <p>OMNIA AI | Tender Weekly — il mondo degli appalti pubblici, ogni settimana. Comunicazioni informative, separate dalle email di servizio.</p>
         </div>
         <div className="cn-azioni-testata">
+          <Link className="cn-btn" href="/costi/newsletter">
+            Costi
+          </Link>
           <Link className="cn-btn" href="/newsletter/iscritti">
             Iscritti ({attivi})
           </Link>
@@ -145,6 +148,14 @@ export default async function PaginaNewsletter() {
               <label className="cn-etichetta">
                 Notifica bozza pronta a
                 <input name="email_notifica_admin" className="cn-input" defaultValue={imp.email_notifica_admin} />
+              </label>
+              <label className="cn-etichetta">
+                Piano Resend (per i costi)
+                <input name="resend_piano" className="cn-input" defaultValue={imp.resend_piano ?? ""} placeholder="es. Free, Pro" />
+              </label>
+              <label className="cn-etichetta">
+                Quota fissa mensile attribuita (€, facoltativa)
+                <input name="resend_quota_mensile_eur" className="cn-input" inputMode="decimal" defaultValue={imp.resend_quota_mensile_eur ?? ""} placeholder="vuoto = non disponibile" />
               </label>
             </div>
             <label className="cn-nl-spunta">

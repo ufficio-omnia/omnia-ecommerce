@@ -1,7 +1,14 @@
 import { randomBytes, randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizzaContenuto } from "./contenuto";
-import { IMPOSTAZIONI_PREDEFINITE, type Edizione, type Impostazioni, type Invio, type Iscritto, type StatoEdizione } from "./tipi";
+import { logAiUsage } from "@/lib/ai-usage";
+import { IMPOSTAZIONI_PREDEFINITE, type Edizione, type Impostazioni, type Invio, type Iscritto, type OperazioneCosto, type StatoEdizione, type Versione } from "./tipi";
+
+export type RegistrazioneCosto = Parameters<typeof logAiUsage>[0];
+
+// Oltre questo tempo un blocco di generazione è considerato abbandonato (funzione interrotta): la durata massima di
+// una funzione su Vercel è 800 s.
+export const BLOCCO_SCADUTO_MS = 15 * 60 * 1000;
 
 // Accesso ai dati della newsletter, in un posto solo. Due archivi con la stessa interfaccia:
 //  - Supabase (sempre in produzione e di base anche in sviluppo): tabelle della migrazione 0141, service role;
@@ -32,11 +39,25 @@ export interface ArchivioNewsletter {
   accodaInvii(righe: Omit<Invio, "id" | "creato_il" | "resend_id" | "errore" | "inviato_il" | "consegnato_il" | "aperto_il" | "cliccato_il" | "clic">[]): Promise<void>;
   inviiDellEdizione(edizioneId: string): Promise<Invio[]>;
   tuttiGliInvii(limite: number): Promise<Invio[]>;
+  // reali e di prova (volumi di Resend nei costi)
+  tuttiGliInviiConProve(limite: number): Promise<Invio[]>;
   aggiornaInvio(id: string, campi: Partial<Invio>): Promise<void>;
   invioPerResendId(resendId: string): Promise<Invio | null>;
   // false = evento già registrato (rinvio del webhook)
   registraEvento(e: { svix_id: string; tipo: string; resend_id: string | null; invio_id: string | null; dati: unknown }): Promise<boolean>;
   annota(edizioneId: string | null, azione: string, dettaglio: Record<string, unknown>, autore: string | null): Promise<void>;
+  // ── versioni ──
+  elencoVersioni(edizioneId: string): Promise<Versione[]>;
+  // tutte le versioni, senza contenuto (per i riepiloghi dei costi)
+  versioniSenzaContenuto(): Promise<Omit<Versione, "contenuto">[]>;
+  // assegna il numero successivo (unico per edizione nel database)
+  aggiungiVersione(v: Omit<Versione, "id" | "numero_versione" | "creata_il">, autore: string | null): Promise<Versione>;
+  // blocco delle generazioni: true se preso (nessuna generazione in corso o una ferma da oltre BLOCCO_SCADUTO_MS)
+  prendiBlocco(edizioneId: string, token: string, statiAmmessi: StatoEdizione[]): Promise<boolean>;
+  rilasciaBlocco(edizioneId: string, token: string): Promise<void>;
+  // ── costi (righe di ai_operazioni della newsletter, anche «prova:») ──
+  operazioniCosto(): Promise<OperazioneCosto[]>;
+  registraCosto(r: RegistrazioneCosto): Promise<void>;
   registro(edizioneId: string, limite: number): Promise<{ azione: string; dettaglio: Record<string, unknown>; creato_il: string }[]>;
 }
 
@@ -168,6 +189,11 @@ function archivioSupabase(): ArchivioNewsletter {
       if (error) erroreDb("invii", error);
       return (data ?? []) as Invio[];
     },
+    async tuttiGliInviiConProve(limite) {
+      const { data, error } = await db().from("newsletter_invii").select("*").order("creato_il", { ascending: false }).limit(limite);
+      if (error) erroreDb("invii", error);
+      return (data ?? []) as Invio[];
+    },
     async aggiornaInvio(id, campi) {
       const { error } = await db().from("newsletter_invii").update(campi).eq("id", id);
       if (error) erroreDb("aggiornamento invio", error);
@@ -192,6 +218,76 @@ function archivioSupabase(): ArchivioNewsletter {
       if (error) return [];
       return (data ?? []) as { azione: string; dettaglio: Record<string, unknown>; creato_il: string }[];
     },
+    async elencoVersioni(edizioneId) {
+      const { data, error } = await db().from("newsletter_versioni").select("*").eq("edizione_id", edizioneId).order("numero_versione", { ascending: false }).limit(500);
+      if (error) erroreDb("elenco versioni", error);
+      return ((data ?? []) as Versione[]).map((v) => ({ ...v, contenuto: v.contenuto ? normalizzaContenuto(v.contenuto) : null }));
+    },
+    async versioniSenzaContenuto() {
+      const { data, error } = await db()
+        .from("newsletter_versioni")
+        .select("id, edizione_id, numero_versione, origine, esito, ambito, indicazioni, oggetto, preheader, generazione_id, costo_usd, input_tokens, output_tokens, ricerche_web, modello, errore, creata_il")
+        .order("creata_il", { ascending: false })
+        .limit(10000);
+      if (error) erroreDb("versioni", error);
+      return ((data ?? []) as Omit<Versione, "contenuto">[]).map((v) => ({ ...v, costo_usd: v.costo_usd === null ? null : Number(v.costo_usd) }));
+    },
+    async aggiungiVersione(v, autore) {
+      // numero successivo; il vincolo unico (edizione, numero) risolve le corse: si riprova col numero dopo
+      for (let tentativo = 0; tentativo < 5; tentativo++) {
+        const { data: ultima } = await db().from("newsletter_versioni").select("numero_versione").eq("edizione_id", v.edizione_id).order("numero_versione", { ascending: false }).limit(1).maybeSingle();
+        const numero = ((ultima?.numero_versione as number | undefined) ?? 0) + 1;
+        const { data, error } = await db()
+          .from("newsletter_versioni")
+          .insert({ ...v, numero_versione: numero, creata_da: autore })
+          .select("*")
+          .single();
+        if (!error) return data as Versione;
+        if (error.code !== "23505") erroreDb("registrazione versione", error);
+      }
+      throw new Error("Newsletter: numero di versione conteso, riprovare.");
+    },
+    async prendiBlocco(edizioneId, token, statiAmmessi) {
+      const scaduto = new Date(Date.now() - BLOCCO_SCADUTO_MS).toISOString();
+      const { data, error } = await db()
+        .from("newsletter_edizioni")
+        .update({ generazione_in_corso_da: new Date().toISOString(), generazione_token: token })
+        .eq("id", edizioneId)
+        .in("stato", statiAmmessi)
+        .or(`generazione_in_corso_da.is.null,generazione_in_corso_da.lt.${scaduto}`)
+        .select("id");
+      if (error) erroreDb("blocco della generazione", error);
+      return (data ?? []).length === 1;
+    },
+    async rilasciaBlocco(edizioneId, token) {
+      const { error } = await db().from("newsletter_edizioni").update({ generazione_in_corso_da: null, generazione_token: null }).eq("id", edizioneId).eq("generazione_token", token);
+      if (error) console.error("Newsletter: blocco non rilasciato", error.message);
+    },
+    async operazioniCosto() {
+      // le sole operazioni della newsletter, di produzione («newsletter_*») e di sviluppo («prova:newsletter_*»)
+      const { data, error } = await db()
+        .from("ai_operazioni")
+        .select("id, operazione, provider, model, input_tokens, output_tokens, costo_stimato, created_at, dettaglio")
+        .or("operazione.like.newsletter\\_%,operazione.like.prova:newsletter\\_%")
+        .order("created_at", { ascending: false })
+        .limit(20000);
+      if (error?.code === "42703" || error?.code === "PGRST204") {
+        // colonna «dettaglio» non ancora creata (0141): si leggono le righe senza riferimenti
+        const r = await db()
+          .from("ai_operazioni")
+          .select("id, operazione, provider, model, input_tokens, output_tokens, costo_stimato, created_at")
+          .or("operazione.like.newsletter\\_%,operazione.like.prova:newsletter\\_%")
+          .order("created_at", { ascending: false })
+          .limit(20000);
+        if (r.error) erroreDb("costi della newsletter", r.error);
+        return ((r.data ?? []) as Omit<OperazioneCosto, "dettaglio">[]).map((x) => ({ ...x, costo_stimato: x.costo_stimato === null ? null : Number(x.costo_stimato), dettaglio: null }));
+      }
+      if (error) erroreDb("costi della newsletter", error);
+      return ((data ?? []) as OperazioneCosto[]).map((x) => ({ ...x, costo_stimato: x.costo_stimato === null ? null : Number(x.costo_stimato) }));
+    },
+    async registraCosto(r) {
+      await logAiUsage(r);
+    },
   };
 }
 
@@ -204,6 +300,8 @@ type DatiLocali = {
   invii: Invio[];
   eventi: { svix_id: string }[];
   registro: { edizione_id: string | null; azione: string; dettaglio: Record<string, unknown>; creato_il: string }[];
+  versioni?: Versione[];
+  operazioni?: OperazioneCosto[];
 };
 
 const STATI_PER_TRIGGER: StatoEdizione[] = ["in_invio", "inviata", "invio_parziale"];
@@ -276,6 +374,9 @@ function archivioLocale(): ArchivioNewsletter {
         origine: "manuale",
         note_generazione: null,
         versione: 1,
+        versione_attiva: null,
+        generazione_in_corso_da: null,
+        generazione_token: null,
         approvata_il: null,
         approvata_da: null,
         programmata_per: null,
@@ -339,6 +440,9 @@ function archivioLocale(): ArchivioNewsletter {
     async tuttiGliInvii(limite) {
       return leggi().invii.filter((x) => x.tipo === "reale").slice(-limite);
     },
+    async tuttiGliInviiConProve(limite) {
+      return leggi().invii.slice(-limite);
+    },
     async aggiornaInvio(id, campi) {
       const d = leggi();
       const x = d.invii.find((r) => r.id === id);
@@ -366,6 +470,63 @@ function archivioLocale(): ArchivioNewsletter {
         .reverse()
         .slice(0, limite);
     },
+    async elencoVersioni(edizioneId) {
+      return (leggi().versioni ?? []).filter((v) => v.edizione_id === edizioneId).sort((a, b) => b.numero_versione - a.numero_versione);
+    },
+    async versioniSenzaContenuto() {
+      return (leggi().versioni ?? []).map(({ contenuto: _c, ...v }) => (void _c, v));
+    },
+    async aggiungiVersione(v) {
+      const d = leggi();
+      d.versioni = d.versioni ?? [];
+      const numero = Math.max(0, ...d.versioni.filter((x) => x.edizione_id === v.edizione_id).map((x) => x.numero_versione)) + 1;
+      if (v.esito === "ok" && !v.contenuto) throw new Error("Versione riuscita senza contenuto");
+      const nuova: Versione = { ...v, id: randomUUID(), numero_versione: numero, creata_il: adesso() };
+      d.versioni.push(nuova);
+      scrivi(d);
+      return nuova;
+    },
+    async prendiBlocco(edizioneId, token, statiAmmessi) {
+      const d = leggi();
+      const e = d.edizioni.find((x) => x.id === edizioneId);
+      if (!e || !statiAmmessi.includes(e.stato)) return false;
+      if (e.generazione_in_corso_da && Date.parse(e.generazione_in_corso_da) > Date.now() - BLOCCO_SCADUTO_MS) return false;
+      e.generazione_in_corso_da = adesso();
+      e.generazione_token = token;
+      scrivi(d);
+      return true;
+    },
+    async rilasciaBlocco(edizioneId, token) {
+      const d = leggi();
+      const e = d.edizioni.find((x) => x.id === edizioneId);
+      if (e && e.generazione_token === token) {
+        e.generazione_in_corso_da = null;
+        e.generazione_token = null;
+        scrivi(d);
+      }
+    },
+    async operazioniCosto() {
+      return [...(leggi().operazioni ?? [])].reverse();
+    },
+    async registraCosto(r) {
+      // stesso calcolo del registro vero (logAiUsage), scritto nel file del collaudo
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { calcolaCostoStimato } = require("@/lib/ai-pricing") as typeof import("@/lib/ai-pricing");
+      const d = leggi();
+      d.operazioni = d.operazioni ?? [];
+      d.operazioni.push({
+        id: randomUUID(),
+        operazione: r.operazione,
+        provider: r.provider,
+        model: r.model,
+        input_tokens: r.inputTokens,
+        output_tokens: r.outputTokens,
+        costo_stimato: r.costoUsd !== undefined ? r.costoUsd : calcolaCostoStimato(r.model, r.inputTokens, r.outputTokens, { creazione: r.cacheCreationTokens ?? null, lettura: r.cacheReadTokens ?? null }),
+        created_at: adesso(),
+        dettaglio: r.dettaglio ?? null,
+      });
+      scrivi(d);
+    },
   };
 }
 
@@ -377,4 +538,9 @@ export function archivioNewsletter(): ArchivioNewsletter {
     return archivioLocale();
   }
   return archivioSupabase();
+}
+
+// C'è una generazione in corso (blocco preso e non ancora scaduto)?
+export function generazioneInCorso(da: string | null, adessoMs: number = Date.now()): boolean {
+  return Boolean(da && adessoMs - Date.parse(da) < BLOCCO_SCADUTO_MS);
 }

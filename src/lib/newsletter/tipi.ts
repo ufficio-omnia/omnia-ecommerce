@@ -78,6 +78,9 @@ export type Edizione = {
   note_generazione: string | null;
   destinatari: DestinatariScelti;
   versione: number;
+  versione_attiva: number | null;
+  generazione_in_corso_da: string | null;
+  generazione_token: string | null;
   approvata_il: string | null;
   approvata_da: string | null;
   programmata_per: string | null;
@@ -144,6 +147,8 @@ export type Impostazioni = {
   mittente_email: string;
   rispondi_a: string | null;
   email_notifica_admin: string;
+  resend_piano: string | null;
+  resend_quota_mensile_eur: number | null;
 };
 
 export const IMPOSTAZIONI_PREDEFINITE: Impostazioni = {
@@ -156,6 +161,8 @@ export const IMPOSTAZIONI_PREDEFINITE: Impostazioni = {
   mittente_email: "newsletter@omniaitalia.com",
   rispondi_a: null,
   email_notifica_admin: "ufficio@omniaitalia.com",
+  resend_piano: null,
+  resend_quota_mensile_eur: null,
 };
 
 export const GIORNI_SETTIMANA = ["", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"];
@@ -177,3 +184,50 @@ export function contenutoVuoto(): ContenutoEdizione {
     },
   };
 }
+
+// ───── versioni di un'edizione ─────
+
+export type OrigineVersione = "generazione" | "rigenerazione" | "rigenerazione_sezione" | "rigenerazione_notizia" | "modifiche_manuali" | "iniziale";
+
+export const ETICHETTA_ORIGINE: Record<OrigineVersione, string> = {
+  generazione: "Generazione",
+  rigenerazione: "Rigenerazione intera",
+  rigenerazione_sezione: "Rigenerazione di una sezione",
+  rigenerazione_notizia: "Rigenerazione di una notizia",
+  modifiche_manuali: "Modifiche manuali (salvate prima di rigenerare)",
+  iniziale: "Testo iniziale",
+};
+
+export type Versione = {
+  id: string;
+  edizione_id: string;
+  numero_versione: number;
+  origine: OrigineVersione;
+  esito: "ok" | "fallita";
+  ambito: { chiave?: string; indice?: number; titolo?: string };
+  indicazioni: string | null;
+  oggetto: string | null;
+  preheader: string | null;
+  contenuto: ContenutoEdizione | null;
+  generazione_id: string | null;
+  costo_usd: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  ricerche_web: number | null;
+  modello: string | null;
+  errore: string | null;
+  creata_il: string;
+};
+
+// Una riga di ai_operazioni della newsletter (stesso registro dei costi di tutto il progetto).
+export type OperazioneCosto = {
+  id: string;
+  operazione: string;
+  provider: string;
+  model: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  costo_stimato: number | null;
+  created_at: string;
+  dettaglio: Record<string, unknown> | null;
+};

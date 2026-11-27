@@ -1,18 +1,17 @@
 import { sendEmail } from "@/lib/email";
 import { escapeHtml } from "@/lib/html";
 import { archivioNewsletter, type ArchivioNewsletter } from "./archivio";
-import { generaEdizione } from "./generazione";
 import { avviaInvio } from "./invio";
 import { dataRoma, generazioneDovuta, settimanaIso } from "./pianificazione";
 import { numeroEdizione } from "./template";
-import { contenutoVuoto } from "./tipi";
+import { generaNuovaEdizione } from "./versioni";
 
 // Un passaggio del processo pianificato (vedi src/app/api/cron/newsletter/route.ts). Gli errori di una parte non
 // fermano l'altra; ogni esito finisce nel registro.
 
 export type EsitoPassaggio = { eseguito: true; invii: { edizione: number; esito: string }[]; generazione: string };
 
-export async function eseguiPassaggioNewsletter(adesso: Date, a: ArchivioNewsletter = archivioNewsletter(), genera = generaEdizione): Promise<EsitoPassaggio> {
+export async function eseguiPassaggioNewsletter(adesso: Date, a: ArchivioNewsletter = archivioNewsletter(), generatori?: Parameters<typeof generaNuovaEdizione>[0]["g"]): Promise<EsitoPassaggio> {
   const invii: { edizione: number; esito: string }[] = [];
   try {
     for (const e of await a.edizioniDaInviare(adesso)) {
@@ -31,33 +30,11 @@ export async function eseguiPassaggioNewsletter(adesso: Date, a: ArchivioNewslet
       const settimana = settimanaIso(adesso);
       if (await a.edizioneDellaSettimana(settimana)) generazione = "gia_presente";
       else {
-        // prima si «prenota» la settimana (vincolo unico): due passaggi contemporanei non chiamano il modello due volte
-        const e = await a.creaEdizione({ data_edizione: dataRoma(adesso), settimana, origine: "ai_automatica", contenuto: contenutoVuoto(), note_generazione: "Generazione automatica in corso…" }, null);
-        if (e.note_generazione !== "Generazione automatica in corso…" || e.oggetto) generazione = "gia_presente";
-        else {
-          try {
-            const g = await genera({ dataEdizione: dataRoma(adesso) });
-            await a.aggiornaEdizione(
-              e.id,
-              {
-                oggetto: g.oggetto,
-                preheader: g.preheader,
-                contenuto: g.contenuto,
-                note_generazione: [`Generata in automatico. Ricerche web: ${g.ricerche}. Fonti scartate: ${g.fontiScartate}. Notizie tolte: ${g.notizieScartate}.`, g.note].filter(Boolean).join("\n"),
-              },
-              ["bozza"],
-            );
-            await a.annota(e.id, "generata_automatica", { ricerche: g.ricerche }, null);
-            generazione = "generata";
-            await notificaAdmin(a, e.numero, g.oggetto);
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            await a.aggiornaEdizione(e.id, { note_generazione: `Generazione automatica NON riuscita: ${msg.slice(0, 400)}. Scrivi l'edizione a mano o rigenerala dalla console.` }, ["bozza"]);
-            await a.annota(e.id, "generazione_errore", { errore: msg.slice(0, 400) }, null);
-            generazione = "errore";
-            await notificaAdmin(a, e.numero, null);
-          }
-        }
+        // l'edizione nasce con la settimana (vincolo unico: due passaggi contemporanei non ne creano due) e la generazione
+        // ne diventa la versione 1; un fallimento lascia l'edizione vuota, la versione «fallita» e il costo speso
+        const { edizione, esito } = await generaNuovaEdizione({ dataEdizione: dataRoma(adesso), settimana, autore: null, automatica: true, a, g: generatori });
+        generazione = esito.ok ? "generata" : "errore";
+        await notificaAdmin(a, edizione.numero, esito.ok ? (await a.leggiEdizione(edizione.id))?.oggetto ?? "" : null);
       }
     }
   } catch (err) {

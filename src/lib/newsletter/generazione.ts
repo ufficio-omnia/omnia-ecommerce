@@ -1,8 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { createAnthropicClient, MODELLO_PRINCIPALE, operazionePerRegistro } from "@/lib/anthropic";
+import { createAnthropicClient, MODELLO_PRINCIPALE } from "@/lib/anthropic";
 import { logAiUsage } from "@/lib/ai-usage";
+import { calcolaCostoStimato } from "@/lib/ai-pricing";
 import { normalizzaContenuto, urlSicuro } from "./contenuto";
-import { contenutoVuoto, type ContenutoEdizione, type Fonte } from "./tipi";
+import { SEZIONI_PREDEFINITE, contenutoVuoto, type ChiaveSezione, type ContenutoEdizione, type Fonte, type Notizia } from "./tipi";
 
 // Generazione della bozza settimanale con il modello principale e la RICERCA WEB lato server di Anthropic (già usata
 // dalla chat delle gare e dal piano di lavoro: nessuna infrastruttura nuova).
@@ -108,6 +109,8 @@ export type EsitoGenerazione = {
   ricerche: number;
   fontiScartate: number;
   notizieScartate: number;
+  // consumi e costo di TUTTE le chiamate di questa generazione (già registrati uno per uno in ai_operazioni)
+  uso: UsoGenerazione;
 };
 
 function normalizzaUrlConfronto(url: string): string {
@@ -227,72 +230,240 @@ export function filtraBozza(
   return { oggetto, preheader, contenuto: base, note, fontiScartate, notizieScartate };
 }
 
+
+// ───── consumi e costi ─────
+
+// Ricerca web di Anthropic: 10 $ ogni 1.000 ricerche (la stessa tariffa del piano di lavoro, COSTO_STIMATO_RICERCA_WEB).
+export const COSTO_RICERCA_WEB_USD = 0.01;
+
+export type TipoGenerazione = "generazione" | "rigenerazione" | "rigenerazione_sezione" | "rigenerazione_notizia";
+
+// Riferimenti scritti in ai_operazioni.dettaglio per ogni chiamata: l'area «Newsletter | Tender Weekly» di Costi e
+// margini li legge per edizione, versione e tipo.
+export type ContestoCosto = {
+  generazioneId: string;
+  tipo: TipoGenerazione;
+  edizioneId?: string | null;
+  numeroEdizione?: number | null;
+  // numero che avrà la versione se la generazione riesce
+  versione?: number | null;
+  automatica?: boolean;
+  // dove registrare il costo di ogni chiamata (di base logAiUsage, cioè ai_operazioni; l'archivio locale dei collaudi
+  // passa il proprio). Non finisce nel dettaglio.
+  registra?: (r: Parameters<typeof logAiUsage>[0]) => Promise<void>;
+};
+
+// Solo per le verifiche automatiche: un client finto al posto di quello vero (nessuna chiamata a pagamento).
+let clienteDiProva: Pick<Anthropic, "messages"> | null = null;
+export function impostaClienteDiProva(c: Pick<Anthropic, "messages"> | null) {
+  if (c && (process.env.VERCEL || process.env.NODE_ENV === "production")) throw new Error("Client di prova rifiutato in produzione");
+  clienteDiProva = c;
+}
+
+export type UsoGenerazione = { costoUsd: number; inputTokens: number; outputTokens: number; ricerche: number; chiamate: number; modello: string; senzaTariffa: boolean };
+
+export function usoVuoto(): UsoGenerazione {
+  return { costoUsd: 0, inputTokens: 0, outputTokens: 0, ricerche: 0, chiamate: 0, modello: MODELLO_PRINCIPALE, senzaTariffa: false };
+}
+
+export class ErroreGenerazione extends Error {
+  readonly uso: UsoGenerazione;
+  constructor(messaggio: string, uso: UsoGenerazione) {
+    super(messaggio);
+    this.uso = uso;
+  }
+}
+
+// In produzione «newsletter_<tipo>»; altrove (sviluppo, anteprime, script) «prova:newsletter_<tipo>»: le generazioni di
+// sviluppo che consumano API a pagamento restano visibili come sviluppo e collaudo, fuori dai costi di produzione.
+export function operazioneNewsletter(tipo: TipoGenerazione, env: NodeJS.ProcessEnv = process.env): string {
+  const op = `newsletter_${tipo}`;
+  return env.VERCEL_ENV === "production" && env.OMNIA_AI_SCRIPT_PROVE !== "1" ? op : `prova:${op}`;
+}
+
+function dettaglioCosto(c: ContestoCosto, extra: Record<string, unknown>): Record<string, unknown> {
+  return {
+    modulo: "newsletter",
+    tipo: c.tipo,
+    generazione_id: c.generazioneId,
+    edizione_id: c.edizioneId ?? null,
+    numero_edizione: c.numeroEdizione ?? null,
+    versione: c.versione ?? null,
+    automatica: c.automatica === true,
+    ...extra,
+  };
+}
+
+function strumentiRicerca(ricerche: number, letture: number): Anthropic.Messages.ToolUnion[] {
+  return [
+    { type: "web_search_20260209", name: "web_search", max_uses: ricerche, allowed_domains: DOMINI_AUTOREVOLI, user_location: { type: "approximate", country: "IT", timezone: "Europe/Rome" } },
+    { type: "web_fetch_20260209", name: "web_fetch", max_uses: letture, allowed_domains: DOMINI_AUTOREVOLI },
+  ];
+}
+
+// Ciclo comune: ricerca web lato server + uno strumento di composizione. Ogni risposta del modello è registrata subito
+// in ai_operazioni (token e, a parte, le ricerche web): anche una generazione che poi fallisce lascia il suo costo.
+async function eseguiConRicerca(opz: {
+  system: string;
+  richiesta: string;
+  strumento: Anthropic.Tool;
+  ricerche: number;
+  letture: number;
+  contesto: ContestoCosto;
+}): Promise<{ input: unknown; blocchi: unknown[]; uso: UsoGenerazione }> {
+  const anthropic = clienteDiProva ?? createAnthropicClient();
+  const model = MODELLO_PRINCIPALE;
+  const uso = usoVuoto();
+  const registra = opz.contesto.registra ?? logAiUsage;
+  const messaggi: Anthropic.MessageParam[] = [{ role: "user", content: opz.richiesta }];
+  const blocchi: unknown[] = [];
+  const operazione = operazioneNewsletter(opz.contesto.tipo);
+  try {
+    for (let giro = 0; giro < 6; giro++) {
+      const stream = anthropic.messages.stream({
+        model,
+        max_tokens: 32000,
+        thinking: { type: "adaptive" },
+        // sforzo medio: la qualità viene dalle fonti e dal filtro deterministico; così una generazione resta sotto i 5–6 minuti
+        output_config: { effort: "medium" },
+        system: opz.system,
+        tools: [...strumentiRicerca(opz.ricerche, opz.letture), opz.strumento],
+        messages: messaggi,
+      });
+      const risposta = await stream.finalMessage();
+      const u = risposta.usage;
+      const ricerche = u.server_tool_use?.web_search_requests ?? 0;
+      const costoToken = calcolaCostoStimato(model, u.input_tokens, u.output_tokens, { creazione: u.cache_creation_input_tokens ?? null, lettura: u.cache_read_input_tokens ?? null });
+      uso.chiamate++;
+      uso.inputTokens += u.input_tokens;
+      uso.outputTokens += u.output_tokens;
+      uso.ricerche += ricerche;
+      if (costoToken === null) uso.senzaTariffa = true;
+      uso.costoUsd += (costoToken ?? 0) + ricerche * COSTO_RICERCA_WEB_USD;
+      await registra({
+        userId: null,
+        garaId: null,
+        operazione,
+        provider: "anthropic",
+        model,
+        inputTokens: u.input_tokens,
+        outputTokens: u.output_tokens,
+        cacheCreationTokens: u.cache_creation_input_tokens ?? null,
+        cacheReadTokens: u.cache_read_input_tokens ?? null,
+        dettaglio: dettaglioCosto(opz.contesto, { voce: "modello", chiamata: giro + 1, natura_costo: costoToken === null ? "non_disponibile" : "stimato_da_consumi", stop: risposta.stop_reason }),
+      });
+      if (ricerche > 0) {
+        await registra({
+          userId: null,
+          garaId: null,
+          operazione,
+          provider: "anthropic",
+          model: "web_search",
+          inputTokens: null,
+          outputTokens: null,
+          costoUsd: Math.round(ricerche * COSTO_RICERCA_WEB_USD * 10000) / 10000,
+          dettaglio: dettaglioCosto(opz.contesto, { voce: "ricerca_web", chiamata: giro + 1, ricerche_web: ricerche, natura_costo: "stimato_tariffa_ricerca" }),
+        });
+      }
+      blocchi.push(...risposta.content);
+      if (risposta.stop_reason === "refusal") throw new Error("Il modello ha rifiutato la richiesta.");
+      const composizione = risposta.content.find((b) => b.type === "tool_use" && b.name === opz.strumento.name);
+      if (composizione && composizione.type === "tool_use") return { input: composizione.input, blocchi, uso };
+      messaggi.push({ role: "assistant", content: risposta.content });
+      if (risposta.stop_reason === "pause_turn") continue;
+      // il modello si è fermato senza comporre: glielo si chiede esplicitamente
+      messaggi.push({ role: "user", content: `Ora chiama lo strumento ${opz.strumento.name} con le notizie verificate che hai trovato.` });
+    }
+    throw new Error(`Il modello non ha prodotto il testo (nessuna chiamata a ${opz.strumento.name}).`);
+  } catch (e) {
+    throw new ErroreGenerazione(e instanceof Error ? e.message : String(e), uso);
+  }
+}
+
+function settimanaPrima(dataEdizione: string): string {
+  return new Date(Date.parse(`${dataEdizione}T12:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10);
+}
+
+// ───── edizione intera (generazione e rigenerazione) ─────
+
 export async function generaEdizione(opz: {
   dataEdizione: string; // AAAA-MM-GG (Roma)
   fontiManuali?: string[]; // indirizzi indicati dall'amministratore, da considerare
   indicazioni?: string; // indicazioni editoriali libere dell'amministratore
+  // titoli già proposti nelle versioni precedenti: la rigenerazione può scegliere argomenti diversi
+  titoliPrecedenti?: string[];
+  contesto: ContestoCosto;
 }): Promise<EsitoGenerazione> {
-  const anthropic = createAnthropicClient();
-  const model = MODELLO_PRINCIPALE;
   const manuali = (opz.fontiManuali ?? []).map((u) => urlSicuro(u)).filter((u): u is string => u !== null).slice(0, 15);
+  const precedenti = (opz.titoliPrecedenti ?? []).filter(Boolean).slice(0, 20);
   const richiesta = [
-    `Data dell'edizione: ${opz.dataEdizione}. Considera le notizie pubblicate dal giorno ${new Date(Date.parse(`${opz.dataEdizione}T12:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10)} in poi.`,
+    `Data dell'edizione: ${opz.dataEdizione}. Considera le notizie pubblicate dal giorno ${settimanaPrima(opz.dataEdizione)} in poi.`,
     manuali.length ? `L'amministratore segnala queste fonti da considerare (verificale con la ricerca o la lettura della pagina):\n${manuali.map((u) => `- ${u}`).join("\n")}` : "",
-    opz.indicazioni?.trim() ? `Indicazioni editoriali dell'amministratore: ${opz.indicazioni.trim().slice(0, 1500)}` : "",
+    precedenti.length
+      ? `Questa è una NUOVA generazione dell'edizione: la precedente proponeva questi argomenti. Fai una ricerca nuova; puoi proporre argomenti diversi se ce ne sono di altrettanto rilevanti e attuali, oppure trattare gli stessi in modo migliore:\n${precedenti.map((t) => `- ${t}`).join("\n")}`
+      : "",
+    opz.indicazioni?.trim() ? `Indicazioni editoriali dell'amministratore (prioritarie): ${opz.indicazioni.trim().slice(0, 1500)}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
 
-  const messaggi: Anthropic.MessageParam[] = [{ role: "user", content: richiesta }];
-  const tutti: unknown[] = [];
-  let ricerche = 0;
-  let uso: unknown = null;
-
-  for (let giro = 0; giro < 6; giro++) {
-    const stream = anthropic.messages.stream({
-      model,
-      max_tokens: 32000,
-      thinking: { type: "adaptive" },
-      // sforzo medio: la qualità viene dalle fonti e dal filtro deterministico; così una generazione resta sotto i 5–6 minuti
-      output_config: { effort: "medium" },
-      system: ISTRUZIONI,
-      tools: [
-        { type: "web_search_20260209", name: "web_search", max_uses: 8, allowed_domains: DOMINI_AUTOREVOLI, user_location: { type: "approximate", country: "IT", timezone: "Europe/Rome" } },
-        { type: "web_fetch_20260209", name: "web_fetch", max_uses: 4, allowed_domains: DOMINI_AUTOREVOLI },
-        STRUMENTO_COMPONI,
-      ],
-      messages: messaggi,
-    });
-    const risposta = await stream.finalMessage();
-    ricerche += risposta.usage.server_tool_use?.web_search_requests ?? 0;
-    await logAiUsage({
-      userId: null,
-      garaId: null,
-      operazione: operazionePerRegistro("newsletter_generazione"),
-      provider: "anthropic",
-      model,
-      inputTokens: risposta.usage.input_tokens,
-      outputTokens: risposta.usage.output_tokens,
-      cacheCreationTokens: risposta.usage.cache_creation_input_tokens ?? null,
-      cacheReadTokens: risposta.usage.cache_read_input_tokens ?? null,
-    });
-    tutti.push(...risposta.content);
-    if (risposta.stop_reason === "refusal") throw new Error("Il modello ha rifiutato la richiesta.");
-    const componi = risposta.content.find((b) => b.type === "tool_use" && b.name === STRUMENTO_COMPONI.name);
-    if (componi && componi.type === "tool_use") {
-      uso = componi.input;
-      break;
-    }
-    messaggi.push({ role: "assistant", content: risposta.content });
-    if (risposta.stop_reason === "pause_turn") continue;
-    // il modello si è fermato senza comporre: glielo si chiede esplicitamente una volta
-    messaggi.push({ role: "user", content: "Ora chiama lo strumento componi_edizione con le notizie verificate che hai trovato." });
-  }
-  if (!uso) throw new Error("Il modello non ha prodotto la bozza (nessuna chiamata a componi_edizione).");
-
-  const verificati = urlDaRisultatiRicerca(tutti);
+  const r = await eseguiConRicerca({ system: ISTRUZIONI, richiesta, strumento: STRUMENTO_COMPONI, ricerche: 8, letture: 4, contesto: opz.contesto });
+  const verificati = urlDaRisultatiRicerca(r.blocchi);
   for (const u of manuali) verificati.add(normalizzaUrlConfronto(u));
-  const f = filtraBozza(uso, verificati, opz.dataEdizione);
-  if (f.contenuto.sezioni.every((s) => s.notizie.length === 0)) f.note.unshift("ATTENZIONE: il modello non ha prodotto notizie leggibili. Controllare la bozza o rigenerarla.");
-  return { grezzo: uso, oggetto: f.oggetto, preheader: f.preheader, contenuto: f.contenuto, note: f.note.join("\n"), ricerche, fontiScartate: f.fontiScartate, notizieScartate: f.notizieScartate };
+  const f = filtraBozza(r.input, verificati, opz.dataEdizione);
+  if (f.contenuto.sezioni.every((s) => s.notizie.length === 0)) throw new ErroreGenerazione("Il modello non ha prodotto notizie verificabili: la versione precedente resta invariata.", r.uso);
+  return { grezzo: r.input, oggetto: f.oggetto, preheader: f.preheader, contenuto: f.contenuto, note: f.note.join("\n"), ricerche: r.uso.ricerche, fontiScartate: f.fontiScartate, notizieScartate: f.notizieScartate, uso: r.uso };
+}
+
+// ───── una sezione o una notizia ─────
+
+const STRUMENTO_SEZIONE: Anthropic.Tool = {
+  name: "componi_sezione",
+  description: "Registra le notizie della SOLA sezione richiesta.",
+  input_schema: {
+    type: "object",
+    properties: {
+      notizie: { type: "array", items: SCHEMA_NOTIZIA },
+      note_redazione: { type: "string", description: "Cosa conviene verificare a mano prima della pubblicazione" },
+    },
+    required: ["notizie"],
+  },
+};
+
+const QUANTE: Record<ChiaveSezione, string> = { notizia: "UNA notizia", normativa: "2-3 notizie", tender: "0-2 notizie con dati verificati", esperto: "UN approfondimento", omnia: "", chiusura: "" };
+
+// Le sezioni E (OMNIA AI News) e F (chiusura) le scrive la redazione: non si generano.
+export const SEZIONI_RIGENERABILI: ChiaveSezione[] = ["notizia", "normativa", "tender", "esperto"];
+
+export async function generaParte(opz: {
+  dataEdizione: string;
+  chiave: ChiaveSezione;
+  // rigenerazione di UNA notizia: quella da sostituire; altrimenti tutta la sezione
+  notizia?: Notizia | null;
+  // titoli di tutte le altre notizie dell'edizione (da non ripetere)
+  altriTitoli: string[];
+  indicazioni?: string;
+  contesto: ContestoCosto;
+}): Promise<{ notizie: Notizia[]; note: string; uso: UsoGenerazione; fontiScartate: number }> {
+  if (!SEZIONI_RIGENERABILI.includes(opz.chiave)) throw new ErroreGenerazione("Questa sezione la scrive la redazione: non si rigenera.", usoVuoto());
+  const def = SEZIONI_PREDEFINITE[opz.chiave];
+  const richiesta = [
+    `Data dell'edizione: ${opz.dataEdizione}. Considera le notizie pubblicate dal giorno ${settimanaPrima(opz.dataEdizione)} in poi.`,
+    `Ti viene chiesta SOLO la sezione «${def.titolo}» (chiave «${opz.chiave}»: ${def.descrizione}). Usa lo strumento componi_sezione.`,
+    opz.notizia
+      ? `Riscrivi UNA sola notizia che sostituisca questa (stesso tema con una ricerca nuova e un testo migliore, oppure un altro tema se le indicazioni lo chiedono):\nTitolo: ${opz.notizia.titolo}\nTesto: ${opz.notizia.sintesi.slice(0, 1500)}`
+      : `Componi ${QUANTE[opz.chiave]} per questa sezione, con una ricerca nuova.`,
+    opz.altriTitoli.length ? `Non ripetere questi argomenti, già presenti nell'edizione:\n${opz.altriTitoli.slice(0, 20).map((t) => `- ${t}`).join("\n")}` : "",
+    opz.indicazioni?.trim() ? `Indicazioni editoriali dell'amministratore (prioritarie): ${opz.indicazioni.trim().slice(0, 1500)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const r = await eseguiConRicerca({ system: ISTRUZIONI, richiesta, strumento: STRUMENTO_SEZIONE, ricerche: opz.notizia ? 4 : 6, letture: 3, contesto: opz.contesto });
+  const grezzo = (typeof r.input === "object" && r.input !== null ? r.input : {}) as Record<string, unknown>;
+  const f = filtraBozza({ oggetto: "", preheader: "", sezioni: { [opz.chiave]: grezzo.notizie }, note_redazione: grezzo.note_redazione }, urlDaRisultatiRicerca(r.blocchi), opz.dataEdizione);
+  // filtraBozza sposta le notizie in più della sezione A in B: qui si raccolgono tutte quelle prodotte
+  let notizie = f.contenuto.sezioni.flatMap((s) => s.notizie);
+  if (opz.notizia || opz.chiave === "notizia") notizie = notizie.slice(0, 1);
+  if (notizie.length === 0) throw new ErroreGenerazione("Il modello non ha prodotto notizie verificabili: il contenuto attuale resta invariato.", r.uso);
+  return { notizie, note: f.note.join("\n"), uso: r.uso, fontiScartate: f.fontiScartate };
 }
