@@ -241,10 +241,9 @@ async function main() {
   await a.aggiornaEdizione(ed3.id, { stato: "approvata", approvata_il: new Date().toISOString() }, ["bozza"]);
   await a.aggiornaEdizione(ed3.id, { stato: "programmata", programmata_per: new Date(Date.now() + 3600_000).toISOString() }, ["approvata"]);
   let gen = 0;
-  const finta = async () => {
-    gen++;
-    return { oggetto: "Generata", preheader: "p", contenuto: c, note: "", ricerche: 1, fontiScartate: 0, notizieScartate: 0 };
-  };
+  const { generatoriFinti } = await import("./newsletter-prove-versioni");
+  const baseFinti = generatoriFinti({ giro: 0, fallisci: false });
+  const finta = { ...baseFinti, generaEdizione: async (o: Parameters<typeof baseFinti.generaEdizione>[0]) => (gen++, baseFinti.generaEdizione(o)) };
   const r1 = await eseguiPassaggioNewsletter(new Date("2026-11-26T17:30:00Z"), a, finta);
   uguale("programmata nel futuro: non parte", r1.invii.length, 0);
   uguale("giovedì 18:30: bozza generata", r1.generazione, "generata");
@@ -264,7 +263,12 @@ async function main() {
   atteso("cron NON in vercel.json (si accende solo con autorizzazione)", !leggi("vercel.json").includes("/api/cron/newsletter"));
   atteso("le email transazionali non cambiano (mittente noreply invariato)", leggi("src/lib/email.ts").includes('const FROM = "OMNIA <noreply@omniaitalia.com>"'));
   const mig = leggi("supabase/migrations/0141_newsletter_tender_weekly.sql");
-  atteso("0141: RLS su tutte e sei le tabelle", (mig.match(/enable row level security/g) ?? []).length === 6);
+  atteso("0141: RLS su tutte e sette le tabelle", (mig.match(/enable row level security/g) ?? []).length === 7);
+  atteso("0141: versioni con numero unico per edizione e contenuto obbligatorio se riuscite", /unique \(edizione_id, numero_versione\)/.test(mig) && /check \(esito = 'fallita' or contenuto is not null\)/.test(mig));
+  atteso("0141: costi nello stesso registro (ai_operazioni.dettaglio), nessuna tabella di costi parallela", /alter table public\.ai_operazioni add column if not exists dettaglio jsonb/.test(mig) && !/create table[^(]*cost/i.test(mig));
+  atteso("0141: categoria «newsletter» nella funzione dei costi, il resto invariato", /when starts_with\(b\.operazione, 'newsletter_'\) then 'newsletter'/.test(mig) && /when starts_with\(b\.operazione, 'kb_'\) then 'piattaforma'/.test(mig) && /when b\.e_prova then 'prova'/.test(mig));
+  atteso("0141: nessuna estensione richiesta (token con gen_random_uuid)", !/create extension/i.test(mig) && !/gen_random_bytes/.test(mig));
+  atteso("0141: blocco delle generazioni sull'edizione", /generazione_in_corso_da timestamptz/.test(mig) && /generazione_token uuid/.test(mig));
   atteso("0141: niente accesso per anon/authenticated", /revoke all on[\s\S]*from anon, authenticated/.test(mig) && !/grant [^;]* to (anon|authenticated)/.test(mig));
   atteso("0141: un invio reale per iscritto ed edizione", /unique index if not exists newsletter_invii_un_reale_per_iscritto[\s\S]*\(edizione_id, iscritto_id\)/.test(mig));
   atteso("0141: base giuridica obbligatoria", /base_giuridica text not null/.test(mig) && /prova_base text not null/.test(mig));
@@ -273,6 +277,82 @@ async function main() {
   atteso("webhook: firma verificata prima di leggere il corpo come JSON", webhook.indexOf("verificaFirmaSvix") < webhook.indexOf("JSON.parse"));
   const pag = leggi("src/app/site-omnia-ai/newsletter/disiscrizione/page.tsx");
   atteso("pagina di disiscrizione noindex e con conferma via POST", /index: false/.test(pag) && /action=\{confermaDisiscrizione\}/.test(pag));
+
+  console.log("--- 12. Versioni: tre rigenerazioni, ripristino, sezione, notizia, errori, approvazione, concorrenza, costi ---");
+  const { provaVersioniECosti } = await import("./newsletter-prove-versioni");
+  await provaVersioniECosti(a, atteso, { marcatore: "verifica-locale" });
+
+  console.log("--- 13. Contabilizzazione sul codice vero (client finto, nessuna chiamata a pagamento) ---");
+  {
+    const gen = await import("../src/lib/newsletter/generazione");
+    const registrate: { operazione: string; model: string; costoUsd?: number | null; dettaglio?: Record<string, unknown> }[] = [];
+    const registra = async (r: { operazione: string; model: string; costoUsd?: number | null; dettaglio?: Record<string, unknown> }) => {
+      registrate.push(r);
+    };
+    let chiamate = 0;
+    const risposta = (contenuto: unknown[], stop: string, ricerche: number) => ({ content: contenuto, stop_reason: stop, usage: { input_tokens: 1000, output_tokens: 500, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, server_tool_use: { web_search_requests: ricerche } } });
+    const sequenza = [
+      risposta([{ type: "web_search_tool_result", content: [{ type: "web_search_result", url: "https://www.anticorruzione.it/-/vera" }] }], "pause_turn", 2),
+      risposta([{ type: "tool_use", name: "componi_edizione", id: "x", input: { oggetto: "O", preheader: "P", sezioni: { notizia: [{ titolo: "Vera", sintesi: "s", fonti: [{ titolo: "ANAC", url: "https://www.anticorruzione.it/-/vera", data: "2026-11-26" }] }] } } }], "tool_use", 1),
+    ];
+    const finto = { messages: { stream: () => ({ finalMessage: async () => sequenza[chiamate++] }) } };
+    gen.impostaClienteDiProva(finto as never);
+    const esito = await gen.generaEdizione({ dataEdizione: "2026-11-27", contesto: { generazioneId: "g-1", tipo: "rigenerazione", edizioneId: "e-1", numeroEdizione: 7, versione: 3, registra: registra as never } });
+    uguale("due chiamate al modello e due righe di ricerca web registrate", registrate.map((r) => r.model), ["claude-sonnet-5", "web_search", "claude-sonnet-5", "web_search"]);
+    atteso("ogni riga porta edizione, numero, versione, tipo e generazione", registrate.every((r) => r.dettaglio?.edizione_id === "e-1" && r.dettaglio?.numero_edizione === 7 && r.dettaglio?.versione === 3 && r.dettaglio?.tipo === "rigenerazione" && r.dettaglio?.generazione_id === "g-1"));
+    atteso("fuori produzione le operazioni sono di sviluppo («prova:newsletter_…»)", registrate.every((r) => r.operazione === "prova:newsletter_rigenerazione"));
+    uguale("in produzione «newsletter_…»", gen.operazioneNewsletter("generazione", { VERCEL_ENV: "production" } as unknown as NodeJS.ProcessEnv), "newsletter_generazione");
+    const atteso2 = 2 * (1000 * 3 + 500 * 15) / 1e6 + 3 * gen.COSTO_RICERCA_WEB_USD;
+    atteso("costo della generazione = token × tariffa + ricerche × 0,01 $", Math.abs(esito.uso.costoUsd - atteso2) < 1e-9, `${esito.uso.costoUsd} vs ${atteso2}`);
+    uguale("ricerche contate", esito.uso.ricerche, 3);
+    // errore a metà: la prima chiamata è pagata, la seconda fallisce → il costo speso resta registrato e arriva al chiamante
+    registrate.length = 0;
+    chiamate = 0;
+    const rotto = { messages: { stream: () => ({ finalMessage: async () => { if (chiamate++ === 0) return sequenza[0]; throw new Error("rete interrotta"); } }) } };
+    gen.impostaClienteDiProva(rotto as never);
+    let erroreUso: number | null = null;
+    try {
+      await gen.generaEdizione({ dataEdizione: "2026-11-27", contesto: { generazioneId: "g-2", tipo: "rigenerazione", registra: registra as never } });
+    } catch (e) {
+      erroreUso = e instanceof gen.ErroreGenerazione ? e.uso.costoUsd : null;
+    }
+    atteso("errore a metà: il costo della chiamata già fatta è registrato e restituito", registrate.length === 2 && erroreUso !== null && Math.abs(erroreUso - ((1000 * 3 + 500 * 15) / 1e6 + 0.02)) < 1e-9, `${registrate.length} ${erroreUso}`);
+    gen.impostaClienteDiProva(null);
+  }
+
+  console.log("--- 14. Aggregazioni economiche (giorno, mese, anno, storico; produzione e sviluppo separati) ---");
+  {
+    const { riepilogaCostiNewsletter } = await import("../src/lib/console/newsletter-costi-calcoli");
+    const op = (id: string, quando: string, costo: number | null, operazione = "newsletter_generazione", dett: Record<string, unknown> = {}) => ({ id, operazione, provider: "anthropic", model: "claude-sonnet-5", input_tokens: 10, output_tokens: 5, costo_stimato: costo, created_at: quando, dettaglio: { voce: "modello", tipo: operazione.replace(/^prova:/, "").replace("newsletter_", ""), ...dett } });
+    const ops = [
+      op("a", "2026-11-27T10:00:00Z", 1, "newsletter_generazione", { generazione_id: "g1" }),
+      op("b", "2026-11-26T23:30:00Z", 2, "newsletter_rigenerazione", { generazione_id: "g2" }), // 27/11 00:30 a Roma
+      op("c", "2026-11-02T10:00:00Z", 4, "newsletter_rigenerazione_sezione", { generazione_id: "g3" }),
+      op("d", "2026-03-01T10:00:00Z", 8, "newsletter_generazione", { generazione_id: "g4" }),
+      op("e", "2025-12-31T22:30:00Z", 16, "newsletter_generazione", { generazione_id: "g5" }), // 31/12 23:30 a Roma: anno precedente
+      op("f", "2026-11-27T11:00:00Z", 32, "prova:newsletter_generazione", { generazione_id: "g6" }),
+      op("g", "2026-11-27T12:00:00Z", null, "newsletter_generazione", { generazione_id: "g1" }),
+    ];
+    const r = riepilogaCostiNewsletter({ operazioni: ops, versioni: [], edizioni: [], invii: [], impostazioni: { resend_piano: null, resend_quota_mensile_eur: null }, cambioUsdEur: 0.5, adesso: new Date("2026-11-27T15:00:00Z"), da: "2026-11-01", a: "2026-11-30" });
+    uguale("oggi (fuso di Roma: la riga delle 23:30 UTC del 26 è del 27)", r.tessere.oggi.costoUsd, 3);
+    uguale("mese corrente", r.tessere.mese.costoUsd, 7);
+    uguale("anno corrente (il 31/12 23:30 di Roma resta nel 2025)", r.tessere.anno.costoUsd, 15);
+    uguale("storico", r.tessere.storico.costoUsd, 31);
+    uguale("euro col cambio del sistema esistente", r.tessere.storico.costoEur, 15.5);
+    uguale("sviluppo e collaudo fuori dai totali", [r.tessere.sviluppoPeriodo.costoUsd, r.tessere.sviluppoStorico.costoUsd], [32, 32]);
+    uguale("costo non disponibile contato a parte, non come zero nascosto", r.tessere.periodo.senzaCosto, 1);
+    uguale("generazioni nel periodo contate per identificativo (non per riga)", r.conteggi.totaleGenerazioni, 3);
+    uguale("ripartizione per tipologia", r.perTipo.map((x) => [x.tipo, x.costoUsd]), [["rigenerazione_sezione", 4], ["rigenerazione", 2], ["generazione", 1]]);
+    const { assemblaClienti } = await import("../src/lib/console/costi-calcoli");
+    const tot = assemblaClienti(
+      { costi: [{ user_id: null, categoria: "newsletter", operazioni: 2, operazioni_senza_costo: 0, costo_usd: 5, input_token: 0, output_token: 0 }, { user_id: null, categoria: "piattaforma", operazioni: 1, operazioni_senza_costo: 0, costo_usd: 1, input_token: 0, output_token: 0 }, { user_id: null, categoria: "prova", operazioni: 1, operazioni_senza_costo: 0, costo_usd: 100, input_token: 0, output_token: 0 }], gare: [], abbonamenti: [], acquisti: [], identita: new Map() },
+      { cambioUsdEur: 1, aliquotaIva: 22 },
+      { preset: "mese", etichetta: "m", da: "2026-11-01", a: "2026-11-30", daIso: "2026-10-31T23:00:00Z", aIso: "2026-11-30T23:00:00Z", giorni: 30, inCorso: true },
+      new Date("2026-11-27T12:00:00Z"),
+    ).totali;
+    uguale("Costi e margini: la newsletter entra nel costo complessivo una volta sola, le prove no", [tot.costoUsd, tot.costoNewsletterUsd, tot.costoPiattaformaUsd], [6, 5, 1]);
+    uguale("Costi e margini: la newsletter non pesa sul costo per gara", tot.costoPerGaraEur, null);
+  }
 
   fs.rmSync(fileArchivio, { force: true });
   console.log(`\n${controlli - errori}/${controlli} controlli superati.`);
