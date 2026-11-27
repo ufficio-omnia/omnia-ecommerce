@@ -84,7 +84,9 @@ function archivioSupabase(): ArchivioNewsletter {
     async leggiImpostazioni() {
       const { data, error } = await db().from("newsletter_impostazioni").select("*").eq("id", 1).maybeSingle();
       if (error) erroreDb("lettura impostazioni", error);
-      return { ...IMPOSTAZIONI_PREDEFINITE, ...(data ?? {}) } as Impostazioni;
+      const i = { ...IMPOSTAZIONI_PREDEFINITE, ...(data ?? {}) } as Impostazioni;
+      // numeric arriva come testo da PostgREST
+      return { ...i, resend_quota_mensile_eur: i.resend_quota_mensile_eur == null ? null : Number(i.resend_quota_mensile_eur) };
     },
     async salvaImpostazioni(i, autore) {
       const { error } = await db().from("newsletter_impostazioni").upsert({ id: 1, ...i, aggiornato_il: new Date().toISOString(), aggiornato_da: autore });
@@ -342,7 +344,7 @@ function archivioLocale(): ArchivioNewsletter {
   return {
     tipo: "locale",
     async leggiImpostazioni() {
-      return leggi().impostazioni;
+      return { ...IMPOSTAZIONI_PREDEFINITE, ...leggi().impostazioni };
     },
     async salvaImpostazioni(i) {
       const d = leggi();

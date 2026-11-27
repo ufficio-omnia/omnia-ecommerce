@@ -195,7 +195,7 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
             <Pannello titolo="Invii (Resend)">
               <p className="cn-nota">
                 Nessun costo per singola email: sono comprese nel piano. Piano dichiarato: <strong>{r.resend.piano ?? "non indicato"}</strong>. Quota fissa mensile attribuita alla newsletter:{" "}
-                <strong>{r.resend.quotaMensileEur === null ? "non disponibile" : formattaEuro(r.resend.quotaMensileEur)}</strong> (si imposta in Newsletter → Programmazione; è condivisa con le email transazionali e non entra nel margine dei
+                <strong>{r.resend.quotaMensileEur == null ? "non disponibile" : formattaEuro(r.resend.quotaMensileEur)}</strong> (si imposta in Newsletter → Programmazione; è condivisa con le email transazionali e non entra nel margine dei
                 modelli). Costi incrementali oltre il piano: non disponibili dall&apos;API di Resend.
               </p>
               <p className="cn-nota">
@@ -233,10 +233,10 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
                       <th>Quando</th>
                       <th>Edizione</th>
                       <th>Tipologia</th>
-                      <th>Voce</th>
-                      <th className="num">Token in/out</th>
                       <th className="num">Costo</th>
                       <th>Natura</th>
+                      <th>Voce</th>
+                      <th className="num">Token in/out</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -248,10 +248,10 @@ export default async function PaginaCostiNewsletter({ searchParams }: { searchPa
                           {TIPO[o.tipo] ?? o.tipo}
                           {o.ambito === "sviluppo" ? " · sviluppo" : ""}
                         </td>
-                        <td>{o.voce === "ricerca_web" ? `ricerca web × ${Number((o.dettaglio ?? {}).ricerche_web ?? 0)}` : o.model}</td>
-                        <td className="num">{o.voce === "ricerca_web" ? "—" : `${formattaIntero(o.input_tokens ?? 0)} / ${formattaIntero(o.output_tokens ?? 0)}`}</td>
                         <td className="num">{o.costo_stimato === null ? "n.d." : formattaUsd(o.costo_stimato, 4)}</td>
                         <td>{o.costo_stimato === null ? "non disponibile" : "stimato"}</td>
+                        <td>{o.voce === "ricerca_web" ? `ricerca web × ${Number((o.dettaglio ?? {}).ricerche_web ?? 0)}` : o.model}</td>
+                        <td className="num">{o.voce === "ricerca_web" ? "—" : `${formattaIntero(o.input_tokens ?? 0)} / ${formattaIntero(o.output_tokens ?? 0)}`}</td>
                       </tr>
                     ))}
                   </tbody>
