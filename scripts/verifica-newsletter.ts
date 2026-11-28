@@ -242,7 +242,7 @@ async function main() {
     const m = av.emailAvvisoDisiscrizione(iscrittoProva, "troppe email", "2026-11-28T09:30:00Z");
     atteso("avviso: oggetto con l'indirizzo", m.subject === "Tender Weekly: disiscrizione di uno@x.it");
     atteso("avviso: indirizzo, motivo, provenienza, nome, azienda e ora di Roma", m.text.includes("Indirizzo: uno@x.it") && m.text.includes("Motivo: troppe email") && m.text.includes("Provenienza: Sito omnia-ai.it") && m.text.includes("Nome: Lettore Prova") && m.text.includes("Azienda: Impresa & Soci") && m.text.includes("Iscritto dal: 27/11/2026") && m.text.includes("28/11/2026, 10:30"));
-    atteso("avviso: HTML con caratteri protetti e collegamento alla console", m.html.includes("Impresa &amp; Soci") && m.html.includes(av.URL_ISCRITTI_CONSOLE));
+    atteso("avviso: HTML con caratteri protetti e percorso della console", m.html.includes("Impresa &amp; Soci") && m.text.includes(av.PERCORSO_ISCRITTI_CONSOLE));
     atteso("avviso: motivo vuoto → «non indicato»", av.emailAvvisoDisiscrizione(iscrittoProva, "", "2026-11-28T09:30:00Z").text.includes("Motivo: non indicato"));
     const spediti: { to: string; subject: string }[] = [];
     uguale("avviso: va all'email delle notifiche delle impostazioni", await av.avvisaDisiscrizione(iscrittoProva, "x", "2026-11-28T09:30:00Z", a, async (x) => (spediti.push(x), true)), "inviato");

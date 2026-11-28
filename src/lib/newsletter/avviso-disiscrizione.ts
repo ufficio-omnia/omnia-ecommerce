@@ -10,7 +10,8 @@ import { ETICHETTA_BASE, ETICHETTA_PROVENIENZA, type Iscritto } from "./tipi";
 // Solo sul deploy di produzione: in sviluppo la chiave di Resend in .env.local è quella vera. Un errore dell'avviso
 // non annulla mai la disiscrizione.
 
-export const URL_ISCRITTI_CONSOLE = "https://console.omniaitalia.com/newsletter/iscritti?filtro=disiscritti";
+// Solo il percorso, senza indirizzo: i file del sito pubblico non citano la console (scripts/verifica-console.ts).
+export const PERCORSO_ISCRITTI_CONSOLE = "Console amministrativa → Comunicazioni → Newsletter → Iscritti (filtro «Disiscritti»)";
 
 const FUSO = "Europe/Rome";
 
@@ -48,12 +49,12 @@ export function emailAvvisoDisiscrizione(i: Iscritto, motivo: string, quando: st
     `<table cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px">` +
     righe.map(([k, v]) => `<tr><td style="color:#666;padding-right:16px;vertical-align:top">${escapeHtml(k)}</td><td><strong>${escapeHtml(v)}</strong></td></tr>`).join("") +
     `</table>` +
-    `<p>Elenco dei disiscritti nella console: <a href="${URL_ISCRITTI_CONSOLE}">Newsletter → Iscritti</a>.</p>` +
+    `<p>Elenco dei disiscritti: ${escapeHtml(PERCORSO_ISCRITTI_CONSOLE)}.</p>` +
     `<p style="color:#888;font-size:12px">Non reiscriverlo dalla console senza una nuova autorizzazione documentata: può tornare iscritto da solo con il pulsante «iscrivimi di nuovo» del suo link.</p>`;
   const text =
     `Un iscritto si è disiscritto da Tender Weekly. È già escluso da tutti gli invii successivi.\n\n` +
     righe.map(([k, v]) => `${k}: ${v}`).join("\n") +
-    `\n\nElenco dei disiscritti nella console: ${URL_ISCRITTI_CONSOLE}\n`;
+    `\n\nElenco dei disiscritti: ${PERCORSO_ISCRITTI_CONSOLE}.\n`;
   return { subject, html, text };
 }
 
