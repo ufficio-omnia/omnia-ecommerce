@@ -290,7 +290,10 @@ async function main() {
   const leggi = (f: string) => fs.readFileSync(f, "utf8");
   const cron = leggi("src/app/api/cron/newsletter/route.ts");
   atteso("cron: segreto prima di tutto, interruttore spento di base", cron.indexOf("cronAutorizzato") < cron.indexOf("NEWSLETTER_CRON") && /!== "attivo"/.test(cron));
-  atteso("cron NON in vercel.json (si accende solo con autorizzazione)", !leggi("vercel.json").includes("/api/cron/newsletter"));
+  // acceso con l'autorizzazione dell'utente del 28/11/2026: una sola riga, ogni 15 minuti; l'interruttore resta
+  // NEWSLETTER_CRON=attivo (senza, la rotta risponde subito senza leggere il database)
+  const cronNewsletter = (JSON.parse(leggi("vercel.json")) as { crons: { path: string; schedule: string }[] }).crons.filter((c) => c.path === "/api/cron/newsletter");
+  uguale("cron in vercel.json: una sola volta, ogni 15 minuti (autorizzato il 28/11/2026)", cronNewsletter.map((c) => c.schedule), ["*/15 * * * *"]);
   atteso("le email transazionali non cambiano (mittente noreply invariato)", leggi("src/lib/email.ts").includes('const FROM = "OMNIA <noreply@omniaitalia.com>"'));
   const mig = leggi("supabase/migrations/0141_newsletter_tender_weekly.sql");
   atteso("0141: RLS su tutte e sette le tabelle", (mig.match(/enable row level security/g) ?? []).length === 7);

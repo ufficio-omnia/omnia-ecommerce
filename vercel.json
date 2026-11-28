@@ -52,6 +52,10 @@
     {
       "path": "/api/cron/radar-promemoria",
       "schedule": "*/30 5-19 * * *"
+    },
+    {
+      "path": "/api/cron/newsletter",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
