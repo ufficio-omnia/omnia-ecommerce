@@ -55,11 +55,12 @@ export default async function PaginaDisiscrizione({ searchParams }: { searchPara
           {riattivato ? "." : ". Non riceverai più la newsletter. Le comunicazioni di servizio legate al tuo account, se ne hai uno, continueranno ad arrivare."}
         </p>
         {!riattivato && (
-          <form action={confermaDisiscrizione} style={{ marginTop: 28 }}>
+          <form action={confermaDisiscrizione} style={{ marginTop: 28, maxWidth: 420, marginInline: "auto", textAlign: "left" }}>
             <input type="hidden" name="t" value={t} />
-            <label style={{ display: "block", marginBottom: 14 }}>
-              <span style={{ display: "block", marginBottom: 6 }}>Motivo (facoltativo)</span>
-              <select name="motivo" className="omnia-campo" defaultValue="">
+            <label style={{ display: "block", marginBottom: 18 }}>
+              <span className="omnia-etichetta">Motivo (facoltativo)</span>
+              {/* .omnia-select, NON .omnia-campo: quella è la tela dello sfondo animato (fissa a tutto schermo) e copriva la pagina */}
+              <select name="motivo" className="omnia-select" defaultValue="">
                 <option value="">Preferisco non dirlo</option>
                 <option value="troppe email">Ricevo troppe email</option>
                 <option value="contenuti non pertinenti">I contenuti non mi interessano</option>

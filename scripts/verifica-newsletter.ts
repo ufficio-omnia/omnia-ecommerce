@@ -521,6 +521,15 @@ async function main() {
     atteso("condizioni v3: Tender Weekly incluso e disiscrizione senza effetti sull'abbonamento", /comprende anche Tender Weekly/.test(leggi("legal/condizioni-abbonamento-v3.md")) && /senza alcun effetto sull'abbonamento/.test(leggi("legal/condizioni-abbonamento-v3.md")));
   }
 
+  {
+    // .omnia-campo è la tela dello sfondo animato (position: fixed, tutto schermo): usata su un campo di un modulo copre
+    // l'intera pagina (pagina di disiscrizione «vuota», 28/11/2026). I campi usano .omnia-input/.omnia-select/.omnia-textarea.
+    const pagine = ["src/app/site-omnia-ai/newsletter/page.tsx", "src/app/site-omnia-ai/newsletter/conferma/page.tsx", "src/app/site-omnia-ai/newsletter/disiscrizione/page.tsx", "src/components/omnia-ai/tender-weekly-iscrizione.tsx"];
+    const usi = pagine.filter((p) => /className="[^"]*\bomnia-campo\b/.test(fs.readFileSync(p, "utf8")));
+    atteso("pagine pubbliche della newsletter: nessun campo con la classe dello sfondo animato (.omnia-campo)", usi.length === 0, usi.join(", "));
+    atteso("disiscrizione: il menu del motivo usa .omnia-select", /<select name="motivo" className="omnia-select"/.test(fs.readFileSync("src/app/site-omnia-ai/newsletter/disiscrizione/page.tsx", "utf8")));
+  }
+
   fs.rmSync(fileArchivio, { force: true });
   console.log(`\n${controlli - errori}/${controlli} controlli superati.`);
   if (errori) process.exit(1);
