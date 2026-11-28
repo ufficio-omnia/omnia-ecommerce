@@ -218,8 +218,15 @@ async function main() {
   console.log("--- 8. Disiscrizione ---");
   const tok = i1.token_disiscrizione;
   atteso("token casuale lungo", /^[a-f0-9]{48}$/.test(tok));
-  await disiscriviConToken(tok, "prova", a);
+  const avvisi: { email: string; motivo: string }[] = [];
+  const registraAvviso = async (i: { email: string }, motivo: string) => {
+    avvisi.push({ email: i.email, motivo });
+  };
+  await disiscriviConToken(tok, "prova", a, registraAvviso);
   uguale("disiscritto", (await a.iscrittoPerEmail("uno@x.it"))!.stato, "disiscritto");
+  uguale("avviso all'ufficio: uno, con indirizzo e motivo", avvisi, [{ email: "uno@x.it", motivo: "prova" }]);
+  await disiscriviConToken(tok, "ancora", a, registraAvviso);
+  uguale("già disiscritto: nessun secondo avviso", avvisi.length, 1);
   await a.aggiornaEdizione(ed2.id, { oggetto: "Edizione 2", contenuto: c }, ["bozza"]);
   await a.aggiornaEdizione(ed2.id, { stato: "approvata", approvata_il: new Date().toISOString() }, ["bozza"]);
   await avviaInvio(ed2.id, null, "manuale", a);
@@ -227,7 +234,30 @@ async function main() {
   uguale("riattivazione dal proprio link: nuovo consenso", await riattivaConToken(tok, a), "ok");
   const riattivato = (await a.iscrittoPerEmail("uno@x.it"))!;
   atteso("riattivazione registrata come consenso con data", riattivato.stato === "iscritto" && riattivato.base_giuridica === "consenso" && riattivato.prova_base.includes("link personale"));
-  uguale("token sconosciuto", await disiscriviConToken("f".repeat(48), "x", a), null);
+  uguale("token sconosciuto", await disiscriviConToken("f".repeat(48), "x", a, registraAvviso), null);
+  uguale("token sconosciuto: nessun avviso", avvisi.length, 1);
+  {
+    const av = await import("../src/lib/newsletter/avviso-disiscrizione");
+    const iscrittoProva = { ...riattivato, nome: "Lettore Prova", azienda: "Impresa & Soci", provenienza: "sito" as const, confermato_il: "2026-11-27T10:00:00Z" };
+    const m = av.emailAvvisoDisiscrizione(iscrittoProva, "troppe email", "2026-11-28T09:30:00Z");
+    atteso("avviso: oggetto con l'indirizzo", m.subject === "Tender Weekly: disiscrizione di uno@x.it");
+    atteso("avviso: indirizzo, motivo, provenienza, nome, azienda e ora di Roma", m.text.includes("Indirizzo: uno@x.it") && m.text.includes("Motivo: troppe email") && m.text.includes("Provenienza: Sito omnia-ai.it") && m.text.includes("Nome: Lettore Prova") && m.text.includes("Azienda: Impresa & Soci") && m.text.includes("Iscritto dal: 27/11/2026") && m.text.includes("28/11/2026, 10:30"));
+    atteso("avviso: HTML con caratteri protetti e collegamento alla console", m.html.includes("Impresa &amp; Soci") && m.html.includes(av.URL_ISCRITTI_CONSOLE));
+    atteso("avviso: motivo vuoto → «non indicato»", av.emailAvvisoDisiscrizione(iscrittoProva, "", "2026-11-28T09:30:00Z").text.includes("Motivo: non indicato"));
+    const spediti: { to: string; subject: string }[] = [];
+    uguale("avviso: va all'email delle notifiche delle impostazioni", await av.avvisaDisiscrizione(iscrittoProva, "x", "2026-11-28T09:30:00Z", a, async (x) => (spediti.push(x), true)), "inviato");
+    uguale("avviso: destinatario = email delle notifiche predefinita", spediti.map((s) => s.to), [(await a.leggiImpostazioni()).email_notifica_admin]);
+    uguale("avviso fuori dalla produzione: non parte", await av.avvisaDisiscrizione(iscrittoProva, "x", "2026-11-28T09:30:00Z", a), "saltato");
+    uguale("avviso: un errore di invio non solleva eccezioni", await av.avvisaDisiscrizione(iscrittoProva, "x", "2026-11-28T09:30:00Z", a, async () => { throw new Error("rete"); }), "non_inviato");
+    // la disiscrizione resta valida anche se l'avviso fallisce
+    await a.aggiornaIscritto(riattivato.id, { stato: "iscritto" });
+    await disiscriviConToken(tok, "prova errore avviso", a, async () => { throw new Error("rete"); });
+    uguale("avviso fallito: la disiscrizione è comunque registrata", (await a.iscrittoPerEmail("uno@x.it"))!.stato, "disiscritto");
+    await riattivaConToken(tok, a);
+    const pagina = fs.readFileSync("src/app/site-omnia-ai/newsletter/disiscrizione/page.tsx", "utf8");
+    const rotta = fs.readFileSync("src/app/site-omnia-ai/api/newsletter/disiscrizione/route.ts", "utf8");
+    atteso("pagina e disiscrizione in un clic passano entrambe da disiscriviConToken (quindi dall'avviso)", pagina.includes("disiscriviConToken(") && rotta.includes("disiscriviConToken("));
+  }
 
   console.log("--- 9. Eventi del webhook sull'archivio ---");
   const rigaDue = (await a.inviiDellEdizione(ed2.id)).find((r) => r.tipo === "reale")!;

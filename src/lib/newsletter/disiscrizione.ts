@@ -1,4 +1,5 @@
 import { archivioNewsletter, type ArchivioNewsletter } from "./archivio";
+import { avvisaDisiscrizione } from "./avviso-disiscrizione";
 import type { Iscritto } from "./tipi";
 
 // Disiscrizione e riattivazione dal link personale (token casuale di 48 caratteri esadecimali, uno per iscritto).
@@ -11,12 +12,20 @@ export function mascheraEmail(email: string): string {
   return `${nome.slice(0, 2)}${"•".repeat(Math.max(2, Math.min(6, nome.length - 2)))}@${dominio}`;
 }
 
-export async function disiscriviConToken(token: string, motivo: string, a: ArchivioNewsletter = archivioNewsletter()): Promise<Iscritto | null> {
+export async function disiscriviConToken(
+  token: string,
+  motivo: string,
+  a: ArchivioNewsletter = archivioNewsletter(),
+  avvisa: (i: Iscritto, motivo: string, quando: string) => Promise<unknown> = (i, m, q) => avvisaDisiscrizione(i, m, q, a),
+): Promise<Iscritto | null> {
   const i = await a.iscrittoPerToken(token);
   if (!i) return null;
   if (i.stato === "iscritto") {
-    await a.aggiornaIscritto(i.id, { stato: "disiscritto", disiscritto_il: new Date().toISOString(), motivo_uscita: motivo.slice(0, 200) });
+    const quando = new Date().toISOString();
+    await a.aggiornaIscritto(i.id, { stato: "disiscritto", disiscritto_il: quando, motivo_uscita: motivo.slice(0, 200) });
     await a.annota(null, "disiscrizione", { iscritto: i.id, motivo: motivo.slice(0, 200) }, null);
+    // avviso all'ufficio solo DOPO la disiscrizione registrata; un suo errore non la annulla
+    await avvisa(i, motivo.slice(0, 200), quando).catch(() => undefined);
   }
   return { ...i, stato: i.stato === "iscritto" ? "disiscritto" : i.stato };
 }
